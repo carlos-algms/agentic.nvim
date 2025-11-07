@@ -7,7 +7,7 @@ local uv = vim.uv or vim.loop
 local M = {}
 
 ---@class agentic.acp.TransportCallbacks
----@field on_state_change fun(state: agentic.acp.ClientConnectionState): nil
+---@field on_state_change fun(state: agentic.acp.ClientConnectionState): nil The transport state like "connecting", "connected", "disconnected", "error"
 ---@field on_message fun(message: table): nil
 ---@field on_reconnect fun(): nil
 

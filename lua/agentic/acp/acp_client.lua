@@ -5,10 +5,13 @@ local uv = vim.uv or vim.loop
 ---FIXIT: try to delete convenience methods down below to not keep unused code
 
 ---@class agentic.acp.ACPClient
+---@field config agentic.acp.ClientConfig
+---@field id_counter number
+---@field session_id number
+---@field state agentic.acp.ClientConnectionState
 ---@field protocol_version number
 ---@field capabilities agentic.acp.ClientCapabilities
 ---@field agent_capabilities? agentic.acp.AgentCapabilities
----@field config agentic.acp.ClientConfig
 ---@field callbacks table<number, fun(result?: table, err?: agentic.acp.ACPError)>
 ---@field transport? agentic.acp.ACPTransportInstance
 local ACPClient = {}
@@ -29,7 +32,9 @@ ACPClient.ERROR_CODES = {
 function ACPClient:new(config)
     ---@type agentic.acp.ACPClient
     local instance = {
+        config = config or {},
         id_counter = 0,
+        session_id = 0,
         protocol_version = 1,
         capabilities = {
             fs = {
@@ -45,17 +50,15 @@ function ACPClient:new(config)
         pending_responses = {},
         callbacks = {},
         transport = nil,
-        config = config or {},
         state = "disconnected",
         reconnect_count = 0,
-        heartbeat_timer = nil,
     }
 
     local client = setmetatable(instance, { __index = self }) --[[@as agentic.acp.ACPClient]]
 
     client:_setup_transport()
-    client:connect()
-    client:create_session()
+    client:_connect()
+    client:_create_session()
     return client
 end
 
@@ -82,7 +85,7 @@ function ACPClient:_setup_transport()
             end,
             on_reconnect = function()
                 if self.state == "disconnected" then
-                    self:connect()
+                    self:_connect()
                 end
             end,
             get_reconnect_count = function()
@@ -130,7 +133,6 @@ function ACPClient:_next_id()
     return self.id_counter
 end
 
----Send JSON-RPC request
 ---@param method string
 ---@param params? table
 ---@param callback? fun(result: table|nil, err: agentic.acp.ACPError|nil)
@@ -385,7 +387,7 @@ function ACPClient:_handle_write_text_file(message_id, params)
     end
 end
 
-function ACPClient:connect()
+function ACPClient:_connect()
     if self.state ~= "disconnected" then
         return
     end
@@ -448,9 +450,7 @@ function ACPClient:authenticate(method_id)
     })
 end
 
----@return string|nil session_id
----@return agentic.acp.ACPError|nil err
-function ACPClient:create_session()
+function ACPClient:_create_session()
     local cwd = vim.fn.getcwd()
 
     local result, err = self:_send_request("session/new", {
@@ -474,7 +474,7 @@ function ACPClient:create_session()
         return nil, err
     end
 
-    return result.sessionId, nil
+    self.session_id = result.sessionId
 end
 
 ---@param session_id string
@@ -764,7 +764,7 @@ return ACPClient
 ---@class agentic.acp.ClientHandlers
 ---@field on_session_update? fun(update: agentic.acp.UserMessageChunk | agentic.acp.AgentMessageChunk | agentic.acp.AgentThoughtChunk | agentic.acp.ToolCallUpdate | agentic.acp.PlanUpdate | agentic.acp.AvailableCommandsUpdate)
 ---@field on_request_permission? fun(request: agentic.acp.RequestPermission, callback: fun(option_id: string | nil)): nil
----@field on_read_file? fun(path: string, line: integer | nil, limit: integer | nil, callback: fun(content: string)): nil
+---@field on_read_file? fun(path: string, line: integer | nil, limit: integer | nil, callback: fun(content: string|nil)): nil
 ---@field on_write_file? fun(path: string, content: string, callback: fun(error: string|nil)): nil
 ---@field on_error? fun(error: table)
 
@@ -773,12 +773,9 @@ return ACPClient
 ---@field command? string Command to spawn agent (for stdio)
 ---@field args? string[] Arguments for agent command
 ---@field env? table<string, string> Environment variables
----@field host? string Host for tcp/websocket
----@field port? number Port for tcp/websocket
 ---@field timeout? number Request timeout in milliseconds
 ---@field reconnect? boolean Enable auto-reconnect
 ---@field max_reconnect_attempts? number Maximum reconnection attempts
----@field heartbeat_interval? number Heartbeat interval in milliseconds
 ---@field auth_method? string Authentication method
 ---@field handlers? agentic.acp.ClientHandlers
 ---@field on_state_change? fun(new_state: agentic.acp.ClientConnectionState, old_state: agentic.acp.ClientConnectionState)

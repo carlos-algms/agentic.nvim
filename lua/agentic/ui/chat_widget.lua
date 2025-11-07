@@ -82,47 +82,21 @@ function ChatWidget:_initialize()
     self.main_buffer.winid = vim.api.nvim_get_current_win()
     self.main_buffer.bufnr = vim.api.nvim_get_current_buf()
 
-    --FIXIT: deduplicate the split properties
-
-    self.panels.chat = Split({
+    self.panels.chat = self._make_split({
         buf_options = {
-            swapfile = false,
-            buftype = "nofile",
             filetype = "AgenticChat",
         },
-        win_options = {
-            wrap = true,
-            signcolumn = "no",
-            number = false,
-            relativenumber = false,
+    })
+
+    self.panels.files = self._make_split({
+        buf_options = {
+            filetype = "AgenticFiles",
         },
     })
 
-    self.panels.files = Split({
+    self.panels.input = self._make_split({
         buf_options = {
-            swapfile = false,
-            buftype = "nofile",
-            filetype = "AgenticBlock2",
-        },
-        win_options = {
-            wrap = true,
-            signcolumn = "no",
-            number = false,
-            relativenumber = false,
-        },
-    })
-
-    self.panels.input = Split({
-        buf_options = {
-            swapfile = false,
-            buftype = "nofile",
-            filetype = "AgenticBlock3",
-        },
-        win_options = {
-            wrap = true,
-            signcolumn = "no",
-            number = false,
-            relativenumber = false,
+            filetype = "AgenticInput",
         },
     })
 
@@ -144,6 +118,22 @@ function ChatWidget:_initialize()
             Layout.Box(self.panels.input, { size = 15 }),
         }, { dir = "col" })
     )
+end
+
+---@param props nui_split_options
+function ChatWidget._make_split(props)
+    return Split(vim.tbl_deep_extend("force", {
+        buf_options = {
+            swapfile = false,
+            buftype = "nofile",
+        },
+        win_options = {
+            wrap = true,
+            signcolumn = "no",
+            number = false,
+            relativenumber = false,
+        },
+    }, props))
 end
 
 return ChatWidget

@@ -1,11 +1,8 @@
 local Config = require("agentic.config")
 
----@class agentic.state.Instances
----@field chat_widget agentic.ui.ChatWidget
----@field agent_client agentic.acp.ACPClient
-
 --- A list of instances indexed by tab page ID
----@type table<integer, agentic.state.Instances>
+--- We are limited by one Agent instance per tab
+---@type table<integer, agentic.state.Instance>
 local instances = {}
 
 ---Cleanup all active instances and processes
@@ -23,7 +20,7 @@ local function cleanup_all()
 end
 
 ---@class agentic.Agentic
-local M = {}
+local Agentic = {}
 
 local function deep_merge_into(target, ...)
     for _, source in ipairs({ ... }) do
@@ -39,7 +36,7 @@ local function deep_merge_into(target, ...)
 end
 
 ---@param opts agentic.UserConfig
-function M.setup(opts)
+function Agentic.setup(opts)
     deep_merge_into(Config, opts or {})
     ---FIXIT: remove the debug override before release
     Config.debug = true
@@ -90,30 +87,23 @@ local function get_instance()
     local instance = instances[tab_page_id]
 
     if not instance then
-        local ChatWidget = require("agentic.ui.chat_widget")
-        local Client = require("agentic.acp.acp_client")
-
-        instance = {
-            chat_widget = ChatWidget:new(tab_page_id),
-            agent_client = Client:new(),
-        }
-
+        instance = require("agentic.agent_instance").make_instance(tab_page_id)
         instances[tab_page_id] = instance
     end
 
     return instance
 end
 
-function M.open()
+function Agentic.open()
     get_instance().chat_widget:open()
 end
 
-function M.close()
+function Agentic.close()
     get_instance().chat_widget:hide()
 end
 
-function M.toggle()
+function Agentic.toggle()
     get_instance().chat_widget:toggle()
 end
 
-return M
+return Agentic
