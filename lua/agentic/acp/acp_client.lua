@@ -1,4 +1,5 @@
 local logger = require("agentic.utils.logger")
+local transport_module = require("agentic.acp.acp_transport")
 local uv = vim.uv or vim.loop
 
 ---FIXIT: try to delete convenience methods down below to not keep unused code
@@ -54,6 +55,7 @@ function ACPClient:new(config)
 
     client:_setup_transport()
     client:connect()
+    client:create_session()
     return client
 end
 
@@ -61,7 +63,38 @@ function ACPClient:_setup_transport()
     local transport_type = self.config.transport_type or "stdio"
 
     if transport_type == "stdio" then
-        self.transport = self:_create_stdio_transport()
+        ---@type agentic.acp.StdioTransportConfig
+        local transport_config = {
+            command = self.config.command or "claude-code-acp",
+            args = self.config.args,
+            env = self.config.env,
+            enable_reconnect = self.config.reconnect,
+            max_reconnect_attempts = self.config.max_reconnect_attempts,
+        }
+
+        ---@type agentic.acp.TransportCallbacks
+        local callbacks = {
+            on_state_change = function(state)
+                self:_set_state(state)
+            end,
+            on_message = function(message)
+                self:_handle_message(message)
+            end,
+            on_reconnect = function()
+                if self.state == "disconnected" then
+                    self:connect()
+                end
+            end,
+            get_reconnect_count = function()
+                return self.reconnect_count
+            end,
+            increment_reconnect_count = function()
+                self.reconnect_count = self.reconnect_count + 1
+            end,
+        }
+
+        self.transport =
+            transport_module.create_stdio_transport(transport_config, callbacks)
     else
         error("Unsupported transport type: " .. transport_type)
     end
@@ -91,194 +124,6 @@ function ACPClient:_create_error(code, message, data)
     }
 end
 
-function ACPClient:_create_stdio_transport()
-    --- @class agentic.acp.ACPTransportInstance
-    local transport = {
-        --- @type uv.uv_pipe_t|nil
-        stdin = nil,
-        --- @type uv.uv_pipe_t|nil
-        stdout = nil,
-        --- @type uv.uv_process_t|nil
-        process = nil,
-    }
-
-    --- @param transport_self agentic.acp.ACPTransportInstance
-    --- @param data string
-    function transport.send(transport_self, data)
-        if transport_self.stdin and not transport_self.stdin:is_closing() then
-            transport_self.stdin:write(data .. "\n")
-            return true
-        end
-        return false
-    end
-
-    --- @param transport_self agentic.acp.ACPTransportInstance
-    --- @param on_message fun(message: any)
-    function transport.start(transport_self, on_message)
-        self:_set_state("connecting")
-
-        local stdin = uv.new_pipe(false)
-        local stdout = uv.new_pipe(false)
-        local stderr = uv.new_pipe(false)
-
-        if not stdin or not stdout or not stderr then
-            self:_set_state("error")
-            error("Failed to create pipes for ACP agent")
-        end
-
-        local args = vim.deepcopy(self.config.args or {})
-        local env = self.config.env
-
-        local final_env = {}
-
-        local path = vim.fn.getenv("PATH")
-        if path then
-            final_env[#final_env + 1] = "PATH=" .. path
-        end
-
-        if env then
-            for k, v in pairs(env) do
-                final_env[#final_env + 1] = k .. "=" .. v
-            end
-        end
-
-        -- local handle, pid = uv.spawn(self.config.command, {
-        ---@diagnostic disable-next-line: missing-fields
-        local handle, pid = uv.spawn("claude-code-acp", {
-            args = args,
-            env = final_env,
-            stdio = { stdin, stdout, stderr },
-            detached = false,
-        }, function(code, signal)
-            logger.debug(
-                "ACP agent exited with code ",
-                code,
-                " and signal ",
-                signal
-            )
-            self:_set_state("disconnected")
-
-            if transport_self.process then
-                transport_self.process:close()
-                transport_self.process = nil
-            end
-
-            if
-                self.config.reconnect
-                and self.reconnect_count
-                    < (self.config.max_reconnect_attempts or 3)
-            then
-                self.reconnect_count = self.reconnect_count + 1
-                vim.defer_fn(function()
-                    if self.state == "disconnected" then
-                        self:connect()
-                    end
-                end, 2000)
-            end
-        end)
-
-        logger.debug("Spawned ACP agent process with PID ", tostring(pid))
-
-        if not handle then
-            self:_set_state("error")
-            error("Failed to spawn ACP agent process")
-        end
-
-        transport_self.process = handle
-        transport_self.stdin = stdin
-        transport_self.stdout = stdout
-
-        self:_set_state("connected")
-
-        local chunks = ""
-        stdout:read_start(function(err, data)
-            if err then
-                vim.notify("ACP stdout error: " .. err, vim.log.levels.ERROR)
-                self:_set_state("error")
-                return
-            end
-
-            if data then
-                chunks = chunks .. data
-
-                -- Split on newlines and process complete JSON-RPC messages
-                local lines = vim.split(chunks, "\n", { plain = true })
-                chunks = lines[#lines]
-
-                for i = 1, #lines - 1 do
-                    local line = vim.trim(lines[i])
-                    if line ~= "" then
-                        local ok, message = pcall(vim.json.decode, line)
-                        if ok then
-                            on_message(message)
-                        else
-                            vim.schedule(function()
-                                vim.notify(
-                                    "Failed to parse JSON-RPC message: " .. line,
-                                    vim.log.levels.WARN
-                                )
-                            end)
-                        end
-                    end
-                end
-            end
-        end)
-
-        stderr:read_start(function(_, data)
-            if data then
-                if
-                    not (
-                        data:match("Session not found")
-                        or data:match("session/prompt")
-                    )
-                then
-                    vim.schedule(function()
-                        logger.debug("ACP stderr: ", data)
-                    end)
-                end
-            end
-        end)
-    end
-
-    --- @param transport_self agentic.acp.ACPTransportInstance
-    function transport.stop(transport_self)
-        if
-            transport_self.process and not transport_self.process:is_closing()
-        then
-            local process = transport_self.process
-            transport_self.process = nil
-
-            if not process then
-                return
-            end
-
-            -- Try to terminate gracefully
-            pcall(function()
-                process:kill(15)
-            end)
-            -- then force kill, it'll fail harmlessly if already exited
-            pcall(function()
-                process:kill(9)
-            end)
-
-            process:close()
-        end
-
-        if transport_self.stdin then
-            transport_self.stdin:close()
-            transport_self.stdin = nil
-        end
-        if transport_self.stdout then
-            transport_self.stdout:close()
-            transport_self.stdout = nil
-        end
-
-        self:_set_state("disconnected")
-    end
-
-    return transport
-end
-
 ---@return number
 function ACPClient:_next_id()
     self.id_counter = self.id_counter + 1
@@ -304,8 +149,9 @@ function ACPClient:_send_request(method, params, callback)
         self.callbacks[id] = callback
     end
 
-    local data = vim.inspect(message)
-    logger.debug_to_file("request: " .. data .. string.rep("=", 100) .. "\n\n")
+    local data = vim.json.encode(message)
+
+    logger.debug_to_file("request: ", vim.inspect(message))
 
     if not self.transport:send(data) then
         return nil
@@ -317,10 +163,10 @@ function ACPClient:_send_request(method, params, callback)
 end
 
 function ACPClient:_wait_response(id)
-    local start_time = vim.loop.now()
+    local start_time = vim.uv.now()
     local timeout = self.config.timeout or 100000
 
-    while vim.loop.now() - start_time < timeout do
+    while vim.uv.now() - start_time < timeout do
         vim.wait(10)
 
         if self.pending_responses[id] then
@@ -347,10 +193,9 @@ function ACPClient:_send_notification(method, params)
         params = params or {},
     }
 
-    local data = vim.inspect(message)
-    logger.debug_to_file(
-        "notification: " .. data .. string.rep("=", 100) .. "\n\n"
-    )
+    local data = vim.json.encode(message)
+
+    logger.debug_to_file("notification: ", vim.inspect(message), "\n\n")
 
     self.transport:send(data)
 end
@@ -363,9 +208,7 @@ function ACPClient:_send_result(id, result)
     local message = { jsonrpc = "2.0", id = id, result = result }
 
     local data = vim.json.encode(message)
-    logger.debug_to_file(
-        "request: " .. data .. "\n" .. string.rep("=", 100) .. "\n"
-    )
+    logger.debug_to_file("request:", vim.inspect(message))
 
     self.transport:send(data)
 end
@@ -392,13 +235,7 @@ function ACPClient:_handle_message(message)
         -- This is a notification
         self:_handle_notification(message.id, message.method, message.params)
     elseif message.id and (message.result or message.error) then
-        logger.debug_to_file(
-            "response: ",
-            vim.inspect(message),
-            "\n",
-            string.rep("=", 100),
-            "\n\n"
-        )
+        logger.debug_to_file("response: ", vim.inspect(message))
 
         local callback = self.callbacks[message.id]
         if callback then
@@ -421,13 +258,7 @@ end
 ---@param method string
 ---@param params table
 function ACPClient:_handle_notification(message_id, method, params)
-    logger.debug_to_file("method: ", method, "\n\n")
-    logger.debug_to_file(
-        vim.inspect(params),
-        "\n",
-        string.rep("=", 100),
-        "\n\n"
-    )
+    logger.debug_to_file("method:", method, vim.inspect(params))
 
     if method == "session/update" then
         self:_handle_session_update(params)
@@ -559,9 +390,7 @@ function ACPClient:connect()
         return
     end
 
-    self.transport:start(function(message)
-        self:_handle_message(message)
-    end)
+    self.transport:start()
 
     self:initialize()
 end
@@ -619,14 +448,14 @@ function ACPClient:authenticate(method_id)
     })
 end
 
----@param cwd string
----@param mcp_servers table[]?
 ---@return string|nil session_id
 ---@return agentic.acp.ACPError|nil err
-function ACPClient:create_session(cwd, mcp_servers)
+function ACPClient:create_session()
+    local cwd = vim.fn.getcwd()
+
     local result, err = self:_send_request("session/new", {
         cwd = cwd,
-        mcpServers = mcp_servers or {},
+        mcpServers = {},
     })
 
     if err then
@@ -924,13 +753,6 @@ return ACPClient
 ---@class agentic.acp.RequestPermissionOutcome
 ---@field outcome "cancelled" | "selected"
 ---@field optionId? string
-
----@alias agentic.acp.TransportType "stdio" | "tcp" | "websocket"
-
----@class agentic.acp.ACPTransport
----@field send function
----@field start function
----@field stop function
 
 ---@alias agentic.acp.ClientConnectionState "disconnected" | "connecting" | "connected" | "initializing" | "ready" | "error"
 

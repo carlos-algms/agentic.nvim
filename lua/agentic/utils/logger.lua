@@ -26,7 +26,7 @@ local function format_debug_message(...)
     local timestamp = M.get_timestamp()
     local log_parts = {
         string.format(
-            "[%s] [DEBUG] [%s:%d]",
+            "[%s] [%s:%d]",
             timestamp,
             caller_module,
             info.currentline
@@ -58,7 +58,10 @@ function M.debug_to_file(...)
         return
     end
 
-    local log_message = table.concat(log_parts, " ") .. "\n"
+    local log_message = table.concat(log_parts, " ")
+        .. "\n"
+        .. string.rep("=", 100)
+        .. "\n\n"
 
     local cache_dir = vim.fn.stdpath("cache")
     local log_file_path = cache_dir .. "/agentic_debug.log"
