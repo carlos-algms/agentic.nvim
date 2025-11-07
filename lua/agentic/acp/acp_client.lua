@@ -23,7 +23,7 @@ ACPClient.ERROR_CODES = {
     INVALID_REQUEST = -32006,
 }
 
----@param config agentic.acp.ClientConfig
+---@param config? agentic.acp.ClientConfig
 ---@return agentic.acp.ACPClient
 function ACPClient:new(config)
     ---@type agentic.acp.ACPClient
@@ -53,6 +53,7 @@ function ACPClient:new(config)
     local client = setmetatable(instance, { __index = self }) --[[@as agentic.acp.ACPClient]]
 
     client:_setup_transport()
+    client:connect()
     return client
 end
 
@@ -141,8 +142,9 @@ function ACPClient:_create_stdio_transport()
             end
         end
 
+        -- local handle, pid = uv.spawn(self.config.command, {
         ---@diagnostic disable-next-line: missing-fields
-        local handle, pid = uv.spawn(self.config.command, {
+        local handle, pid = uv.spawn("claude-code-acp", {
             args = args,
             env = final_env,
             stdio = { stdin, stdout, stderr },
@@ -945,7 +947,7 @@ return ACPClient
 ---@field on_error? fun(error: table)
 
 ---@class agentic.acp.ClientConfig
----@field transport_type agentic.acp.TransportType
+---@field transport_type? agentic.acp.TransportType
 ---@field command? string Command to spawn agent (for stdio)
 ---@field args? string[] Arguments for agent command
 ---@field env? table<string, string> Environment variables

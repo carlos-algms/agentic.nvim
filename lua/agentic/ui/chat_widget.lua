@@ -2,8 +2,6 @@ local Layout = require("nui.layout")
 local Split = require("nui.split")
 local event = require("nui.utils.autocmd").event
 
-local PPath = require("plenary.path")
-
 ---@class agentic.ui.ChatWidgetWinIds
 ---@field result_container integer
 ---@field todos_container integer integer
