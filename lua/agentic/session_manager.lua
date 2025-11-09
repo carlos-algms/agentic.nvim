@@ -12,6 +12,7 @@ local P = {}
 ---@class agentic.SessionManager
 ---@field widget agentic.ui.ChatWidget
 ---@field agent agentic.acp.ACPClient
+---@field message_writer agentic.ui.MessageWriter
 local SessionManager = {}
 
 ---@param tab_page_id integer
@@ -79,6 +80,12 @@ function SessionManager:new(tab_page_id)
         end)
     end)
 
+    local MessageWriter = require("agentic.ui.message_writer")
+    if instance.widget.panels.chat and instance.widget.panels.chat.bufnr then
+        instance.message_writer =
+            MessageWriter:new(instance.widget.panels.chat.bufnr)
+    end
+
     agent:create_session(function(response, err)
         if err or not response then
             return
@@ -93,27 +100,15 @@ end
 ---@param session agentic.SessionManager
 ---@param update agentic.acp.SessionUpdateMessage
 function P.on_session_update(session, update)
-    -- {
-    --      sessionUpdate = "agent_message_chunk"
-    --      content = {
-    --          text = "Hi! 👋 I'm ready to help you with your software engineering tasks. What would you like to work on today?",
-    --          type = "text"
-    --      },
-    -- }
-
     -- order the IF blocks in order of likeliness to be called for performance
 
     if update.sessionUpdate == "plan" then
     elseif update.sessionUpdate == "agent_message_chunk" then
-        -- FIXIT: move this to the MessageWriter
-        vim.api.nvim_buf_set_lines(
-            session.widget.panels.chat.bufnr,
-            0,
-            -1,
-            false,
-            vim.split(update.content.text, "\n", { plain = true })
-        )
+        session.message_writer:write_message(update)
+    elseif update.sessionUpdate == "user_message_chunk" then
+        session.message_writer:write_message(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
+        session.message_writer:write_message(update)
     elseif update.sessionUpdate == "tool_call" then
     elseif update.sessionUpdate == "tool_call_update" then
     elseif update.sessionUpdate == "available_commands_update" then
