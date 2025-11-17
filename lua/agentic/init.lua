@@ -80,7 +80,9 @@ function Agentic.new_session()
     local session = chat_widgets_by_tab[tab_page_id]
 
     if session then
-        session:destroy()
+        pcall(function()
+            session:destroy()
+        end)
         chat_widgets_by_tab[tab_page_id] = nil
     end
 

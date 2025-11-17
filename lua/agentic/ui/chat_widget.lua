@@ -128,16 +128,6 @@ function ChatWidget:render_selected_files(selected_files)
     end)
 end
 
-function ChatWidget:clear_all_panels()
-    for _, panel in pairs(self.panels) do
-        if panel and panel.bufnr and vim.api.nvim_buf_is_valid(panel.bufnr) then
-            BufHelpers.with_modifiable(panel.bufnr, function(bufnr)
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-            end)
-        end
-    end
-end
-
 function ChatWidget:_submit_input()
     local lines =
         vim.api.nvim_buf_get_lines(self.panels.input.bufnr, 0, -1, false)
