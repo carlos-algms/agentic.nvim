@@ -402,7 +402,11 @@ function MessageWriter:remove_permission_buttons(start_row, end_row)
     end)
 end
 
-function MessageWriter:destroy()
+function MessageWriter:clear()
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
     pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, self.ns_id, 0, -1)
     pcall(
         vim.api.nvim_buf_clear_namespace,

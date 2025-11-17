@@ -65,11 +65,6 @@ function ACPClient:_subscribe(session_id, handlers)
 end
 
 ---@param session_id string
-function ACPClient:unsubscribe(session_id)
-    self.subscribers[session_id] = nil
-end
-
----@param session_id string
 ---@return agentic.acp.ClientHandlers|nil
 function ACPClient:_get_subscriber(session_id)
     return self.subscribers[session_id]
@@ -518,10 +513,16 @@ end
 
 ---@param session_id string
 function ACPClient:cancel_session(session_id)
+    if not session_id then
+        return
+    end
+
+    -- remove subscriber first to avoid handling any further messages
+    self.subscribers[session_id] = nil
+
     self:_send_notification("session/cancel", {
         sessionId = session_id,
     })
-    self:unsubscribe(session_id)
 end
 
 ---@return boolean

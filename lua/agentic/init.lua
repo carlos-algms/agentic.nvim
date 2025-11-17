@@ -59,6 +59,7 @@ function Agentic.toggle()
     end
 end
 
+--- Add the current visual selection to the current chat session context
 function Agentic.add_selection()
     local session = get_session_for_tab_page()
     session:add_selection_to_session()
@@ -66,9 +67,18 @@ function Agentic.add_selection()
     session.widget:show()
 end
 
+--- Add the current file to the current chat session context
 function Agentic.add_file()
     local session = get_session_for_tab_page()
     session:add_file_to_session()
+    session.widget:show()
+end
+
+--- Clears the current chat session and starts a new one
+function Agentic.new_session()
+    local session = get_session_for_tab_page()
+    session:new_session()
+    session:add_selection_or_file_to_session()
     session.widget:show()
 end
 
