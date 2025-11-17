@@ -76,10 +76,17 @@ end
 
 --- Clears the current chat session and starts a new one
 function Agentic.new_session()
-    local session = get_session_for_tab_page()
-    session:new_session()
-    session:add_selection_or_file_to_session()
-    session.widget:show()
+    local tab_page_id = vim.api.nvim_get_current_tabpage()
+    local session = chat_widgets_by_tab[tab_page_id]
+
+    if session then
+        session:destroy()
+        chat_widgets_by_tab[tab_page_id] = nil
+    end
+
+    local new_session = get_session_for_tab_page()
+    new_session:add_selection_or_file_to_session()
+    new_session.widget:show()
 end
 
 local traps_set = false

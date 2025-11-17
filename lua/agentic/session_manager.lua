@@ -59,14 +59,13 @@ function SessionManager:new(tab_page_id)
         instance.message_writer
     )
 
-    instance:new_session()
+    instance:_new_session()
 
     return instance
 end
 
-function SessionManager:new_session()
-    self:cancel_session()
-
+function SessionManager:_new_session()
+    self:_cancel_session()
     ---@type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
@@ -132,19 +131,13 @@ function SessionManager:new_session()
     end)
 end
 
-function SessionManager:cancel_session()
+function SessionManager:_cancel_session()
     if not self.session_id then
         return
     end
 
     self.agent:cancel_session(self.session_id)
-    self.message_writer:clear()
-    self.widget:clear_all_panels()
     self.permission_manager:clear()
-
-    self.session_id = nil
-    self.selected_files = {}
-    self.code_selections = {}
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -434,9 +427,8 @@ function P.on_write_file(abs_path, content, callback)
 end
 
 function SessionManager:destroy()
-    self:cancel_session()
+    self:_cancel_session()
     self.widget:destroy()
-    self.message_writer:clear()
 end
 
 return SessionManager
