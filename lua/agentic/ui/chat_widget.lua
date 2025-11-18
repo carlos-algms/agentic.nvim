@@ -62,9 +62,14 @@ function ChatWidget:show()
 end
 
 function ChatWidget:hide()
-    if self:is_open() then
-        vim.cmd("stopinsert")
-        -- FIXIT: Add hide logic
+    if not self:is_open() then
+        return
+    end
+
+    vim.cmd("stopinsert")
+
+    for _name, winid in pairs(self.win_nrs) do
+        vim.api.nvim_win_close(winid, true)
     end
 end
 
