@@ -7,9 +7,10 @@ local BufHelpers = {}
 --- @param callback fun(bufnr: integer): T|nil
 --- @return T|nil
 function BufHelpers.with_modifiable(bufnr, callback)
+    local original_modifiable = vim.api.nvim_get_option_value("modifiable", { buf = bufnr })
     vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
     local _ok, response = pcall(callback, bufnr)
-    vim.api.nvim_set_option_value("modifiable", false, { buf = bufnr })
+    vim.api.nvim_set_option_value("modifiable", original_modifiable, { buf = bufnr })
     return response
 end
 

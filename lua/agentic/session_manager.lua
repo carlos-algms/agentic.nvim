@@ -59,13 +59,20 @@ function SessionManager:new(tab_page_id)
         instance.message_writer
     )
 
+    instance:_new_session()
+
+    return instance
+end
+
+function SessionManager:_new_session()
+    self:_cancel_session()
     ---@type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
             Logger.debug("Agent error: ", err)
 
-            instance.message_writer:write_message(
-                instance.agent:generate_agent_message({
+            self.message_writer:write_message(
+                self.agent:generate_agent_message({
                     "🐞 Agent Error:",
                     "",
                     vim.inspect(err),
@@ -82,27 +89,34 @@ function SessionManager:new(tab_page_id)
         end,
 
         on_session_update = function(update)
-            P.on_session_update(instance, update)
+            self:_on_session_update(update)
         end,
 
         on_request_permission = function(request, callback)
-            instance.permission_manager:add_request(request, callback)
+            self.permission_manager:add_request(request, callback)
         end,
     }
 
-    agent:create_session(handlers, function(response, err)
+    self.agent:create_session(handlers, function(response, err)
         if err or not response then
+            vim.notify(
+                "Failed to create session: " .. (err or "unknown error"),
+                vim.log.levels.ERROR,
+                { title = "Session creation error" }
+            )
+
+            self.session_id = nil
             return
         end
 
-        instance.session_id = response.sessionId
+        self.session_id = response.sessionId
 
         -- Add initial welcome message after session is created
         -- Defer to avoid fast event context issues
         vim.schedule(function()
             local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = instance.current_provider or "unknown"
-            local session_id = instance.session_id or "unknown"
+            local provider_name = self.current_provider or "unknown"
+            local session_id = self.session_id or "unknown"
             local welcome_message = string.format(
                 "# Agentic - %s - %s\n- %s\n- ACP\n-----",
                 provider_name,
@@ -110,13 +124,20 @@ function SessionManager:new(tab_page_id)
                 timestamp
             )
 
-            instance.message_writer:write_message(
-                instance.agent:generate_user_message(welcome_message)
+            self.message_writer:write_message(
+                self.agent:generate_user_message(welcome_message)
             )
         end)
     end)
+end
 
-    return instance
+function SessionManager:_cancel_session()
+    if not self.session_id then
+        return
+    end
+
+    self.agent:cancel_session(self.session_id)
+    self.permission_manager:clear()
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -286,6 +307,42 @@ function SessionManager:_handle_input_submit(input_text)
     end)
 end
 
+---@param update agentic.acp.SessionUpdateMessage
+function SessionManager:_on_session_update(update)
+    -- order the IF blocks in order of likeliness to be called for performance
+
+    if update.sessionUpdate == "plan" then
+    elseif update.sessionUpdate == "agent_message_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "user_message_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "agent_thought_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "tool_call" then
+        self.message_writer:write_tool_call_block(update)
+    elseif update.sessionUpdate == "tool_call_update" then
+        self.message_writer:update_tool_call_block(update)
+
+        if update.status == "failed" then
+            self.permission_manager:remove_request_by_tool_call_id(
+                update.toolCallId
+            )
+        end
+    elseif update.sessionUpdate == "available_commands_update" then
+    else
+        -- TODO: Move this to Logger when confidence is high
+        vim.notify(
+            "Unknown session update type: "
+                .. tostring(
+                    ---@diagnostic disable-next-line: undefined-field -- expected it to be unknown
+                    update.sessionUpdate
+                ),
+            vim.log.levels.WARN,
+            { title = "⚠️ Unknown session update" }
+        )
+    end
+end
+
 --- Get the current visual selection as text with start and end lines
 --- @return agentic.Selection|nil
 function SessionManager:get_selected_text()
@@ -319,43 +376,6 @@ function SessionManager:get_selected_text()
         }
 
         return selection
-    end
-end
-
----@param session agentic.SessionManager
----@param update agentic.acp.SessionUpdateMessage
-function P.on_session_update(session, update)
-    -- order the IF blocks in order of likeliness to be called for performance
-
-    if update.sessionUpdate == "plan" then
-    elseif update.sessionUpdate == "agent_message_chunk" then
-        session.message_writer:write_message(update)
-    elseif update.sessionUpdate == "user_message_chunk" then
-        session.message_writer:write_message(update)
-    elseif update.sessionUpdate == "agent_thought_chunk" then
-        session.message_writer:write_message(update)
-    elseif update.sessionUpdate == "tool_call" then
-        session.message_writer:write_tool_call_block(update)
-    elseif update.sessionUpdate == "tool_call_update" then
-        session.message_writer:update_tool_call_block(update)
-
-        if update.status == "failed" then
-            session.permission_manager:remove_request_by_tool_call_id(
-                update.toolCallId
-            )
-        end
-    elseif update.sessionUpdate == "available_commands_update" then
-    else
-        -- TODO: Move this to Logger when confidence is high
-        vim.notify(
-            "Unknown session update type: "
-                .. tostring(
-                    ---@diagnostic disable-next-line: undefined-field -- expected it to be unknown
-                    update.sessionUpdate
-                ),
-            vim.log.levels.WARN,
-            { title = "⚠️ Unknown session update" }
-        )
     end
 end
 
@@ -407,12 +427,8 @@ function P.on_write_file(abs_path, content, callback)
 end
 
 function SessionManager:destroy()
-    if self.session_id then
-        self.agent:unsubscribe(self.session_id)
-    end
-    self.permission_manager:clear()
+    self:_cancel_session()
     self.widget:destroy()
-    self.message_writer:destroy()
 end
 
 return SessionManager

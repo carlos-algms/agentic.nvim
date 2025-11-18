@@ -102,9 +102,12 @@ end
 function MessageWriter:_append_lines(lines)
     vim.api.nvim_buf_set_lines(self.bufnr, -1, -1, false, lines)
 
-    BufHelpers.execute_on_buffer(self.bufnr, function()
-        vim.cmd("normal! G0")
-    end)
+    vim.defer_fn(function()
+        BufHelpers.execute_on_buffer(self.bufnr, function()
+            vim.cmd("normal! G0")
+            vim.cmd("redraw!")
+        end)
+    end, 150)
 end
 
 ---@param update agentic.acp.ToolCallMessage
@@ -402,7 +405,11 @@ function MessageWriter:remove_permission_buttons(start_row, end_row)
     end)
 end
 
-function MessageWriter:destroy()
+function MessageWriter:clear()
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
     pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, self.ns_id, 0, -1)
     pcall(
         vim.api.nvim_buf_clear_namespace,

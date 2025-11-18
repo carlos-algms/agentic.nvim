@@ -59,6 +59,7 @@ function Agentic.toggle()
     end
 end
 
+--- Add the current visual selection to the current chat session context
 function Agentic.add_selection()
     local session = get_session_for_tab_page()
     session:add_selection_to_session()
@@ -66,10 +67,28 @@ function Agentic.add_selection()
     session.widget:show()
 end
 
+--- Add the current file to the current chat session context
 function Agentic.add_file()
     local session = get_session_for_tab_page()
     session:add_file_to_session()
     session.widget:show()
+end
+
+--- Clears the current chat session and starts a new one
+function Agentic.new_session()
+    local tab_page_id = vim.api.nvim_get_current_tabpage()
+    local session = chat_widgets_by_tab[tab_page_id]
+
+    if session then
+        pcall(function()
+            session:destroy()
+        end)
+        chat_widgets_by_tab[tab_page_id] = nil
+    end
+
+    local new_session = get_session_for_tab_page()
+    new_session:add_selection_or_file_to_session()
+    new_session.widget:show()
 end
 
 local traps_set = false
