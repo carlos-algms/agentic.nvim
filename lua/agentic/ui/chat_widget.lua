@@ -1,6 +1,7 @@
 local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local Logger = require("agentic.utils.logger")
 
 ---@class agentic.ui.ChatWidget.BufNrs
 ---@field chat number
@@ -62,14 +63,20 @@ function ChatWidget:show()
 end
 
 function ChatWidget:hide()
-    if not self:is_open() then
-        return
-    end
-
     vim.cmd("stopinsert")
 
-    for _name, winid in pairs(self.win_nrs) do
-        vim.api.nvim_win_close(winid, true)
+    for name, winid in pairs(self.win_nrs) do
+        self.win_nrs[name] = nil
+        local ok = pcall(vim.api.nvim_win_close, winid, true)
+        if not ok then
+            Logger.debug(
+                string.format(
+                    "Failed to close window '%s' with id: %d",
+                    name,
+                    winid
+                )
+            )
+        end
     end
 end
 
@@ -206,6 +213,19 @@ function ChatWidget:_initialize()
                 BufHelpers.start_insert_on_last_char
             )
         end)
+    end
+
+    -- I only want to trigger a full close of the chat widget when closing the chat or the input buffers, the others are auxiliary
+    for _, bufnr in ipairs({
+        buf_nrs.chat,
+        buf_nrs.input,
+    }) do
+        vim.api.nvim_create_autocmd("BufWinLeave", {
+            buffer = bufnr,
+            callback = function()
+                self:hide()
+            end,
+        })
     end
 
     return buf_nrs
