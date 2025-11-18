@@ -102,9 +102,12 @@ end
 function MessageWriter:_append_lines(lines)
     vim.api.nvim_buf_set_lines(self.bufnr, -1, -1, false, lines)
 
-    BufHelpers.execute_on_buffer(self.bufnr, function()
-        vim.cmd("normal! G0")
-    end)
+    vim.defer_fn(function()
+        BufHelpers.execute_on_buffer(self.bufnr, function()
+            vim.cmd("normal! G0")
+            vim.cmd("redraw!")
+        end)
+    end, 150)
 end
 
 ---@param update agentic.acp.ToolCallMessage
