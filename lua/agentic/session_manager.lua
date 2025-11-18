@@ -51,11 +51,10 @@ function SessionManager:new(tab_page_id)
         instance:_handle_input_submit(input_text)
     end)
 
-    instance.message_writer =
-        MessageWriter:new(instance.widget.panels.chat.bufnr)
+    instance.message_writer = MessageWriter:new(instance.widget.buf_nrs.chat)
 
     instance.permission_manager = PermissionManager:new(
-        instance.widget.panels.chat.bufnr,
+        instance.widget.buf_nrs.chat,
         instance.message_writer
     )
 
@@ -261,6 +260,7 @@ function SessionManager:_handle_input_submit(input_text)
         end
 
         self.code_selections = {}
+        table.insert(message_lines, "\n")
     end
 
     if #self.selected_files > 0 then
@@ -279,9 +279,10 @@ function SessionManager:_handle_input_submit(input_text)
         end
 
         self.selected_files = {}
+        table.insert(message_lines, "\n")
     end
 
-    table.insert(message_lines, "\n\n" .. input_text)
+    table.insert(message_lines, input_text)
 
     table.insert(message_lines, "\n\n### Agent - " .. self.current_provider)
 

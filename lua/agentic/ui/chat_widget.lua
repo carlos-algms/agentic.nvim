@@ -42,17 +42,17 @@ end
 
 function ChatWidget:is_open()
     local win_id = self.win_nrs.chat
-
-    if not win_id then
-        return false
-    end
-
-    return vim.api.nvim_win_is_valid(win_id)
+    return win_id and vim.api.nvim_win_is_valid(win_id)
 end
 
 function ChatWidget:show()
     if not self:is_open() then
-        -- FIXIT: Add show logic
+        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {})
+        self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
+            win = self.win_nrs.chat,
+            split = "below",
+            height = Config.windows.input.height,
+        }, {})
     end
 
     self:_move_cursor_to(
@@ -116,6 +116,8 @@ function ChatWidget:render_selected_files(selected_files)
 end
 
 function ChatWidget:_submit_input()
+    vim.cmd("stopinsert")
+
     local lines = vim.api.nvim_buf_get_lines(self.buf_nrs.input, 0, -1, false)
 
     local prompt = table.concat(lines, "\n"):match("^%s*(.-)%s*$")
@@ -139,13 +141,16 @@ function ChatWidget:_submit_input()
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
     end)
 
-    vim.cmd("stopinsert")
     self.on_submit_input(prompt)
 
-    -- FIXIT: Add logic to hide other panels and leave only chat and input visible
-
-    vim.api.nvim_win_close(self.win_nrs.code, true)
-    vim.api.nvim_win_close(self.win_nrs.files, true)
+    if self.win_nrs.code then
+        vim.api.nvim_win_close(self.win_nrs.code, true)
+        self.win_nrs.code = nil
+    end
+    if self.win_nrs.files then
+        vim.api.nvim_win_close(self.win_nrs.files, true)
+        self.win_nrs.files = nil
+    end
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:_move_cursor_to(self.win_nrs.chat)
@@ -268,7 +273,7 @@ end
 --- @return integer winid
 function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
     ---@type vim.api.keyset.win_config
-    local defaults = {
+    local default_opts = {
         split = "right",
         win = -1,
         noautocmd = true,
@@ -276,7 +281,7 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
         width = self._calculate_width(Config.windows.width),
     }
 
-    local config = vim.tbl_deep_extend("force", defaults, opts)
+    local config = vim.tbl_deep_extend("force", default_opts, opts)
 
     local winid = vim.api.nvim_open_win(bufnr, enter, config)
 
