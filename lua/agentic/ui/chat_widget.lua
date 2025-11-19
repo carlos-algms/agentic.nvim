@@ -47,21 +47,32 @@ function ChatWidget:is_open()
 end
 
 function ChatWidget:show()
-    if not self:is_open() then
-        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {})
+    if
+        not self.win_nrs.chat
+        or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
+    then
+        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {
+            winfixheight = false,
+        })
+    end
 
+    if
+        not self.win_nrs.input
+        or not vim.api.nvim_win_is_valid(self.win_nrs.input)
+    then
         self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
             win = self.win_nrs.chat,
             split = "below",
             height = Config.windows.input.height,
             fixed = true,
-        }, {
-            winfixheight = true,
-        })
+        }, {})
     end
 
     if
-        not self.win_nrs.code and not self:_is_buffer_empty(self.buf_nrs.code)
+        (
+            not self.win_nrs.code
+            or not vim.api.nvim_win_is_valid(self.win_nrs.code)
+        ) and not self:_is_buffer_empty(self.buf_nrs.code)
     then
         self.win_nrs.code = self:_open_win(self.buf_nrs.code, false, {
             win = self.win_nrs.chat,
@@ -71,7 +82,10 @@ function ChatWidget:show()
     end
 
     if
-        not self.win_nrs.files and not self:_is_buffer_empty(self.buf_nrs.files)
+        (
+            not self.win_nrs.files
+            or not vim.api.nvim_win_is_valid(self.win_nrs.files)
+        ) and not self:_is_buffer_empty(self.buf_nrs.files)
     then
         self.win_nrs.files = self:_open_win(self.buf_nrs.files, false, {
             win = self.win_nrs.input,
@@ -377,6 +391,7 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
     local merged_win_opts = vim.tbl_deep_extend("force", {
         wrap = true,
         winfixbuf = true,
+        winfixheight = true,
     }, win_opts or {})
 
     for name, value in pairs(merged_win_opts) do
