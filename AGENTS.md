@@ -23,13 +23,11 @@ acp_providers = {
     command = "gemini",                    -- CLI command to spawn
     args = { "--experimental-acp" },       -- CLI arguments
     env = { GEMINI_API_KEY = "..." },      -- Environment variables
-    auth_method = "gemini-api-key",        -- Auth method identifier
   },
   ["claude-code"] = {
     command = "npx",
     args = { "@zed-industries/claude-code-acp" },
     env = { ANTHROPIC_API_KEY = "..." },
-    auth_method = "anthropic-api-key",
   },
 }
 ```
@@ -56,23 +54,16 @@ The ACP documentation can be found at:
 - Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
   `vim.*` are for this version or newer)
 
-### Dependencies
+**IMPORTANT**: For dealing with neovim native features and APIs, refer to the
+official docs:
 
-- `MunifTanjim/nui.nvim` - Text rendering, buffer splitting, and UI components
-  - For lines and text rendering read:
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/text/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/text/init.lua
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/line/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/line/init.lua
-  - For menus read:
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/menu/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/menu/init.lua
-  - For popups read:
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/popup/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/popup/init.lua
-  - For splits read:
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/split/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/split/init.lua
-  - For layout read:
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/layout/README.md
-    https://raw.githubusercontent.com/MunifTanjim/nui.nvim/refs/heads/main/lua/nui/layout/init.lua
+- Neovim Lua API:
+  https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/api.txt
+- Neovim Job Control:
+  https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/job_control.txt
+- Neovim Diff:
+  https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/diff.txt
+- Neovim Diagnostics:
+  https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/diagnostic.txt
+
+Don't be limited to these docs, explore more as needed.
