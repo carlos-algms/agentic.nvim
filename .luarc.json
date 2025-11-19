@@ -3,12 +3,9 @@
   "runtime": {
     "version": "LuaJIT",
     "pathStrict": true,
-    "special": {
-      "reload": "require"
-    }
+    "special": { "reload": "require" }
   },
   "diagnostics": {
-    "enable": true,
     "severity": {
       "undefined-global": "Error",
       "deprecated": "Warning",
@@ -23,7 +20,6 @@
     },
     "unusedLocalExclude": ["_*"],
     "globals": ["vim"],
-    "disable": [],
     "groupSeverity": {
       "strong": "Warning",
       "strict": "Warning"
@@ -53,9 +49,7 @@
     "enable": false
   },
   "typeFormat": {
-    "config": {
-      "format_line": "false"
-    }
+    "config": { "format_line": "false" }
   },
   "doc": {
     "privateName": ["_*"],
@@ -63,28 +57,7 @@
   },
   "completion": {
     "callSnippet": "Both",
-    "keywordSnippet": "Replace",
-    "postfix": "@",
-    "requireSeparator": ".",
-    "showWord": "Fallback",
-    "workspaceWord": true
-  },
-  "semantic": {
-    "enable": true,
-    "variable": true,
-    "annotation": true,
-    "keyword": true
-  },
-  "signatureHelp": {
-    "enable": true
-  },
-  "hover": {
-    "enable": true,
-    "enumsLimit": 5,
-    "previewFields": 50,
-    "viewNumber": true,
-    "viewString": true,
-    "viewStringMax": 1000
+    "keywordSnippet": "Replace"
   },
   "telemetry": {
     "enable": false
