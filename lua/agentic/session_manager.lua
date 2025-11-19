@@ -198,6 +198,9 @@ function SessionManager:_handle_input_submit(input_text)
         string.format("## User - %s", os.date("%Y-%m-%d %H:%M:%S")),
     }
 
+    table.insert(message_lines, "")
+    table.insert(message_lines, input_text)
+
     if #self.code_selections > 0 then
         table.insert(message_lines, "\n- Selected code:")
 
@@ -281,8 +284,6 @@ function SessionManager:_handle_input_submit(input_text)
         self.selected_files = {}
         table.insert(message_lines, "\n")
     end
-
-    table.insert(message_lines, input_text)
 
     table.insert(message_lines, "\n\n### Agent - " .. self.current_provider)
 

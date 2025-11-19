@@ -49,10 +49,34 @@ end
 function ChatWidget:show()
     if not self:is_open() then
         self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {})
+
         self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
             win = self.win_nrs.chat,
             split = "below",
             height = Config.windows.input.height,
+            fixed = true,
+        }, {
+            winfixheight = true,
+        })
+    end
+
+    if
+        not self.win_nrs.code and not self:_is_buffer_empty(self.buf_nrs.code)
+    then
+        self.win_nrs.code = self:_open_win(self.buf_nrs.code, false, {
+            win = self.win_nrs.chat,
+            split = "below",
+            height = 15,
+        }, {})
+    end
+
+    if
+        not self.win_nrs.files and not self:_is_buffer_empty(self.buf_nrs.files)
+    then
+        self.win_nrs.files = self:_open_win(self.buf_nrs.files, false, {
+            win = self.win_nrs.input,
+            split = "above",
+            height = 5,
         }, {})
     end
 
@@ -62,6 +86,7 @@ function ChatWidget:show()
     )
 end
 
+--- Closes all windows but keeps buffers in memory
 function ChatWidget:hide()
     vim.cmd("stopinsert")
 
@@ -80,8 +105,24 @@ function ChatWidget:hide()
     end
 end
 
+--- Cleans up all buffers and windows
+--- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
-    -- FIXIT: Add destroy logic
+    self:hide()
+
+    for name, bufnr in pairs(self.buf_nrs) do
+        self.buf_nrs[name] = nil
+        local ok = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        if not ok then
+            Logger.debug(
+                string.format(
+                    "Failed to delete buffer '%s' with id: %d",
+                    name,
+                    bufnr
+                )
+            )
+        end
+    end
 end
 
 --- @param selections agentic.Selection[]
@@ -155,11 +196,11 @@ function ChatWidget:_submit_input()
 
     self.on_submit_input(prompt)
 
-    if self.win_nrs.code then
+    if self.win_nrs.code and vim.api.nvim_win_is_valid(self.win_nrs.code) then
         vim.api.nvim_win_close(self.win_nrs.code, true)
         self.win_nrs.code = nil
     end
-    if self.win_nrs.files then
+    if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
         vim.api.nvim_win_close(self.win_nrs.files, true)
         self.win_nrs.files = nil
     end
@@ -185,23 +226,17 @@ end
 function ChatWidget:_initialize()
     local buf_nrs = self:_create_buf_nrs()
 
-    BufHelpers.keymap_set(buf_nrs.input, { "n", "i" }, "<C-s>", function()
+    BufHelpers.keymap_set(buf_nrs.input, { "n", "i", "v" }, "<C-s>", function()
         self:_submit_input()
     end)
 
-    BufHelpers.keymap_set(buf_nrs.input, "n", "<C-s>", function()
-        self:hide()
-    end)
-
-    BufHelpers.keymap_set(buf_nrs.chat, "n", "<C-s>", function()
-        self:hide()
-    end)
+    for _, bufnr in pairs(buf_nrs) do
+        BufHelpers.keymap_set(bufnr, "n", "q", function()
+            self:hide()
+        end)
+    end
 
     BufHelpers.keymap_set(buf_nrs.chat, "n", "q", function()
-        self:hide()
-    end)
-
-    BufHelpers.keymap_set(buf_nrs.input, "n", "q", function()
         self:hide()
     end)
 
@@ -234,6 +269,30 @@ function ChatWidget:_initialize()
     end)
 
     return buf_nrs
+end
+
+---@param bufnr integer
+---@return boolean
+function ChatWidget:_is_buffer_empty(bufnr)
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+    if #lines == 0 then
+        return true
+    end
+
+    -- Check if buffer contains only whitespace or a single empty line
+    if #lines == 1 and lines[1]:match("^%s*$") then
+        return true
+    end
+
+    -- Check if all lines are whitespace
+    for _, line in ipairs(lines) do
+        if line:match("%S") then
+            return false
+        end
+    end
+
+    return true
 end
 
 ---@return agentic.ui.ChatWidget.BufNrs
