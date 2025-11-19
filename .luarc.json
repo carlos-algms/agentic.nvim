@@ -1,0 +1,92 @@
+{
+  "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
+  "runtime": {
+    "version": "LuaJIT",
+    "pathStrict": true,
+    "special": {
+      "reload": "require"
+    }
+  },
+  "diagnostics": {
+    "enable": true,
+    "severity": {
+      "undefined-global": "Error",
+      "deprecated": "Warning",
+      "redundant-parameter": "Warning",
+      "redundant-value": "Warning"
+    },
+    "neededFileStatus": {
+      "codestyle-check": "None",
+      "no-unknown": "None",
+      "trailing-space": "None",
+      "redefined-local": "Any"
+    },
+    "unusedLocalExclude": ["_*"],
+    "globals": ["vim"],
+    "disable": [],
+    "groupSeverity": {
+      "strong": "Warning",
+      "strict": "Warning"
+    }
+  },
+  "workspace": {
+    "library": ["$VIMRUNTIME", "${3rd}/luv/library"],
+    "checkThirdParty": false,
+    "preloadFileSize": 1000,
+    "ignoreDir": [".git", "node_modules", ".github"]
+  },
+  "type": {
+    "checkTableShape": true,
+    "castNumberToInteger": true,
+    "weakUnionCheck": false,
+    "weakNilCheck": false
+  },
+  "hint": {
+    "enable": true,
+    "arrayIndex": "Enable",
+    "await": true,
+    "paramName": "All",
+    "paramType": true,
+    "setType": true
+  },
+  "format": {
+    "enable": false
+  },
+  "typeFormat": {
+    "config": {
+      "format_line": "false"
+    }
+  },
+  "doc": {
+    "privateName": ["_*"],
+    "protectedName": ["__*"]
+  },
+  "completion": {
+    "callSnippet": "Both",
+    "keywordSnippet": "Replace",
+    "postfix": "@",
+    "requireSeparator": ".",
+    "showWord": "Fallback",
+    "workspaceWord": true
+  },
+  "semantic": {
+    "enable": true,
+    "variable": true,
+    "annotation": true,
+    "keyword": true
+  },
+  "signatureHelp": {
+    "enable": true
+  },
+  "hover": {
+    "enable": true,
+    "enumsLimit": 5,
+    "previewFields": 50,
+    "viewNumber": true,
+    "viewString": true,
+    "viewStringMax": 1000
+  },
+  "telemetry": {
+    "enable": false
+  }
+}
