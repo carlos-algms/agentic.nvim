@@ -63,123 +63,40 @@ function SessionManager:new(tab_page_id)
     return instance
 end
 
-function SessionManager:_new_session()
-    self:_cancel_session()
-    ---@type agentic.acp.ClientHandlers
-    local handlers = {
-        on_error = function(err)
-            Logger.debug("Agent error: ", err)
+---@param update agentic.acp.SessionUpdateMessage
+function SessionManager:_on_session_update(update)
+    -- order the IF blocks in order of likeliness to be called for performance
 
-            self.message_writer:write_message(
-                self.agent:generate_agent_message({
-                    "🐞 Agent Error:",
-                    "",
-                    vim.inspect(err),
-                })
+    if update.sessionUpdate == "plan" then
+    elseif update.sessionUpdate == "agent_message_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "user_message_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "agent_thought_chunk" then
+        self.message_writer:write_message(update)
+    elseif update.sessionUpdate == "tool_call" then
+        self.message_writer:write_tool_call_block(update)
+    elseif update.sessionUpdate == "tool_call_update" then
+        self.message_writer:update_tool_call_block(update)
+
+        if update.status == "failed" then
+            self.permission_manager:remove_request_by_tool_call_id(
+                update.toolCallId
             )
-        end,
-
-        on_read_file = function(...)
-            P.on_read_file(...)
-        end,
-
-        on_write_file = function(...)
-            P.on_write_file(...)
-        end,
-
-        on_session_update = function(update)
-            self:_on_session_update(update)
-        end,
-
-        on_request_permission = function(request, callback)
-            self.permission_manager:add_request(request, callback)
-        end,
-    }
-
-    self.agent:create_session(handlers, function(response, err)
-        if err or not response then
-            vim.notify(
-                "Failed to create session: " .. (err or "unknown error"),
-                vim.log.levels.ERROR,
-                { title = "Session creation error" }
-            )
-
-            self.session_id = nil
-            return
         end
-
-        self.session_id = response.sessionId
-
-        -- Add initial welcome message after session is created
-        -- Defer to avoid fast event context issues
-        vim.schedule(function()
-            local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = self.current_provider or "unknown"
-            local session_id = self.session_id or "unknown"
-            local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n- ACP\n-----",
-                provider_name,
-                session_id,
-                timestamp
-            )
-
-            self.message_writer:write_message(
-                self.agent:generate_user_message(welcome_message)
-            )
-        end)
-    end)
-end
-
-function SessionManager:_cancel_session()
-    if not self.session_id then
-        return
+    elseif update.sessionUpdate == "available_commands_update" then
+    else
+        -- TODO: Move this to Logger when confidence is high
+        vim.notify(
+            "Unknown session update type: "
+                .. tostring(
+                    ---@diagnostic disable-next-line: undefined-field -- expected it to be unknown
+                    update.sessionUpdate
+                ),
+            vim.log.levels.WARN,
+            { title = "⚠️ Unknown session update" }
+        )
     end
-
-    self.agent:cancel_session(self.session_id)
-    self.permission_manager:clear()
-end
-
-function SessionManager:add_selection_or_file_to_session()
-    local added_selection = self:add_selection_to_session()
-
-    if not added_selection then
-        self:add_file_to_session()
-    end
-end
-
-function SessionManager:add_selection_to_session()
-    local selection = self:get_selected_text()
-
-    if selection then
-        table.insert(self.code_selections, selection)
-        self.widget:render_code_selection(self.code_selections)
-        return true
-    end
-
-    return false
-end
-
---- @param buf number|string|nil Buffer number or path, if nil the current buffer is used or `0`
-function SessionManager:add_file_to_session(buf)
-    local bufnr = buf and vim.fn.bufnr(buf) or 0
-    local buf_path = vim.api.nvim_buf_get_name(bufnr)
-
-    -- Check if file is already in selected_files
-    for _, path in ipairs(self.selected_files) do
-        if path == buf_path then
-            return true
-        end
-    end
-
-    local stat = vim.uv.fs_stat(buf_path)
-
-    if stat and stat.type == "file" then
-        table.insert(self.selected_files, buf_path)
-        self.widget:render_selected_files(self.selected_files)
-        return true
-    end
-
-    return false
 end
 
 --- @param input_text string
@@ -309,45 +226,128 @@ function SessionManager:_handle_input_submit(input_text)
     end)
 end
 
----@param update agentic.acp.SessionUpdateMessage
-function SessionManager:_on_session_update(update)
-    -- order the IF blocks in order of likeliness to be called for performance
+function SessionManager:_new_session()
+    self:_cancel_session()
+    ---@type agentic.acp.ClientHandlers
+    local handlers = {
+        on_error = function(err)
+            Logger.debug("Agent error: ", err)
 
-    if update.sessionUpdate == "plan" then
-    elseif update.sessionUpdate == "agent_message_chunk" then
-        self.message_writer:write_message(update)
-    elseif update.sessionUpdate == "user_message_chunk" then
-        self.message_writer:write_message(update)
-    elseif update.sessionUpdate == "agent_thought_chunk" then
-        self.message_writer:write_message(update)
-    elseif update.sessionUpdate == "tool_call" then
-        self.message_writer:write_tool_call_block(update)
-    elseif update.sessionUpdate == "tool_call_update" then
-        self.message_writer:update_tool_call_block(update)
-
-        if update.status == "failed" then
-            self.permission_manager:remove_request_by_tool_call_id(
-                update.toolCallId
+            self.message_writer:write_message(
+                self.agent:generate_agent_message({
+                    "🐞 Agent Error:",
+                    "",
+                    vim.inspect(err),
+                })
             )
+        end,
+
+        on_read_file = function(...)
+            P.on_read_file(...)
+        end,
+
+        on_write_file = function(...)
+            P.on_write_file(...)
+        end,
+
+        on_session_update = function(update)
+            self:_on_session_update(update)
+        end,
+
+        on_request_permission = function(request, callback)
+            self.permission_manager:add_request(request, callback)
+        end,
+    }
+
+    self.agent:create_session(handlers, function(response, err)
+        if err or not response then
+            vim.notify(
+                "Failed to create session: " .. (err or "unknown error"),
+                vim.log.levels.ERROR,
+                { title = "Session creation error" }
+            )
+
+            self.session_id = nil
+            return
         end
-    elseif update.sessionUpdate == "available_commands_update" then
-    else
-        -- TODO: Move this to Logger when confidence is high
-        vim.notify(
-            "Unknown session update type: "
-                .. tostring(
-                    ---@diagnostic disable-next-line: undefined-field -- expected it to be unknown
-                    update.sessionUpdate
-                ),
-            vim.log.levels.WARN,
-            { title = "⚠️ Unknown session update" }
-        )
+
+        self.session_id = response.sessionId
+
+        -- Add initial welcome message after session is created
+        -- Defer to avoid fast event context issues
+        vim.schedule(function()
+            local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+            local provider_name = self.current_provider or "unknown"
+            local session_id = self.session_id or "unknown"
+            local welcome_message = string.format(
+                "# Agentic - %s - %s\n- %s\n- ACP\n-----",
+                provider_name,
+                session_id,
+                timestamp
+            )
+
+            self.message_writer:write_message(
+                self.agent:generate_user_message(welcome_message)
+            )
+        end)
+    end)
+end
+
+function SessionManager:_cancel_session()
+    if not self.session_id then
+        return
     end
+
+    self.agent:cancel_session(self.session_id)
+    self.permission_manager:clear()
+end
+
+function SessionManager:add_selection_or_file_to_session()
+    local added_selection = self:add_selection_to_session()
+
+    if not added_selection then
+        self:add_file_to_session()
+    end
+end
+
+function SessionManager:add_selection_to_session()
+    local selection = self:_get_selected_text()
+
+    if selection then
+        table.insert(self.code_selections, selection)
+        self.widget:render_code_selection(self.code_selections)
+        return true
+    end
+
+    return false
+end
+
+--- @param buf number|string|nil Buffer number or path, if nil the current buffer is used or `0`
+function SessionManager:add_file_to_session(buf)
+    local bufnr = buf and vim.fn.bufnr(buf) or 0
+    local buf_path = vim.api.nvim_buf_get_name(bufnr)
+
+    -- Check if file is already in selected_files
+    for _, path in ipairs(self.selected_files) do
+        if path == buf_path then
+            return true
+        end
+    end
+
+    local stat = vim.uv.fs_stat(buf_path)
+
+    if stat and stat.type == "file" then
+        table.insert(self.selected_files, buf_path)
+        self.widget:render_selected_files(self.selected_files)
+        return true
+    end
+
+    return false
 end
 
 --- Get the current visual selection as text with start and end lines
 --- @return agentic.Selection|nil
-function SessionManager:get_selected_text()
+function SessionManager:_get_selected_text()
     local mode = vim.fn.mode()
 
     if mode == "v" or mode == "V" or mode == "" then
