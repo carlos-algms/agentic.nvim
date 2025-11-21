@@ -16,104 +16,39 @@ function M.has_diff_content(tool_call)
             return true
         end
     end
-
-    local raw = tool_call.rawInput
-    if not raw then
-        return false
-    end
-
-    local has_new = (raw.new_string ~= nil and raw.new_string ~= vim.NIL)
-    return has_new
+    return false
 end
 
 ---Extract diff blocks from ACP tool call content
----@param tool_call table Must have `content` (array) and optionally `rawInput` fields
+---@param tool_call table Must have `content` (array) field
 ---@return table<string, DiffBlock[]> diff_blocks_by_file Maps file path to list of diff blocks
 function M.extract_diff_blocks(tool_call)
     ---@type table<string, DiffBlock[]>
     local diff_blocks_by_file = {}
 
-    local raw = tool_call.rawInput
-    local should_use_raw_input = raw and raw.replace_all == true
+    for _, content_item in ipairs(tool_call.content or {}) do
+        if content_item.type == "diff" then
+            local path = content_item.path
+            local oldText = content_item.oldText
+            local newText = content_item.newText
 
-    if not should_use_raw_input then
-        for _, content_item in ipairs(tool_call.content or {}) do
-            if content_item.type == "diff" then
-                local path = content_item.path
-                local oldText = content_item.oldText
-                local newText = content_item.newText
-
-                if oldText == "" or oldText == vim.NIL or oldText == nil then
-                    local new_lines = P._normalize_text_to_lines(newText)
-                    P._add_diff_block(diff_blocks_by_file, path, P._create_new_file_diff_block(new_lines))
-                else
-                    local old_lines = P._normalize_text_to_lines(oldText)
-                    local new_lines = P._normalize_text_to_lines(newText)
-
-                    local abs_path = FileSystem.to_absolute_path(path)
-                    local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
-
-                    local blocks = P._match_or_substring_fallback(file_lines, old_lines, new_lines, false)
-                    if blocks then
-                        for _, block in ipairs(blocks) do
-                            P._add_diff_block(diff_blocks_by_file, path, block)
-                        end
-                    else
-                        Logger.debug("[ACP diff content] Failed to locate diff", { path = path })
-                    end
-                end
-            end
-        end
-    end
-
-    if raw and (should_use_raw_input or P._is_table_empty(diff_blocks_by_file)) then
-
-        local file_path = raw.file_path
-        local old_string = raw.old_string == vim.NIL and nil or raw.old_string
-        local new_string = raw.new_string == vim.NIL and nil or raw.new_string
-
-        if file_path and new_string then
-            local old_lines = P._normalize_text_to_lines(old_string)
-            local new_lines = P._normalize_text_to_lines(new_string)
-            local abs_path = FileSystem.to_absolute_path(file_path)
-            local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
-
-            if #old_lines == 0 or (#old_lines == 1 and old_lines[1] == "") then
-                diff_blocks_by_file[file_path] = { P._create_new_file_diff_block(new_lines) }
+            if oldText == "" or oldText == vim.NIL or oldText == nil then
+                local new_lines = P._normalize_text_to_lines(newText)
+                P._add_diff_block(diff_blocks_by_file, path, P._create_new_file_diff_block(new_lines))
             else
-                local replace_all = raw.replace_all
+                local old_lines = P._normalize_text_to_lines(oldText)
+                local new_lines = P._normalize_text_to_lines(newText)
 
-                if replace_all then
-                    if #old_lines == 1 and #new_lines == 1 then
-                        local found_blocks = P._find_substring_replacements(file_lines, old_lines[1], new_lines[1], true)
-                        if #found_blocks > 0 then
-                            diff_blocks_by_file[file_path] = found_blocks
-                        else
-                            Logger.debug("[ACP diff rawInput] [replace_all] No matches", { file_path = file_path })
-                        end
-                    else
-                        local matches = TextMatcher.find_all_matches(file_lines, old_lines)
-                        if #matches > 0 then
-                            diff_blocks_by_file[file_path] = {}
-                            for _, match in ipairs(matches) do
-                                P._add_diff_block(diff_blocks_by_file, file_path, {
-                                    start_line = match.start_line,
-                                    end_line = match.end_line,
-                                    old_lines = old_lines,
-                                    new_lines = new_lines,
-                                })
-                            end
-                        else
-                            Logger.debug("[ACP diff rawInput] [replace_all] No matches", { file_path = file_path })
-                        end
+                local abs_path = FileSystem.to_absolute_path(path)
+                local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
+
+                local blocks = P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+                if blocks then
+                    for _, block in ipairs(blocks) do
+                        P._add_diff_block(diff_blocks_by_file, path, block)
                     end
                 else
-                    local blocks = P._match_or_substring_fallback(file_lines, old_lines, new_lines, false)
-                    if blocks then
-                        diff_blocks_by_file[file_path] = blocks
-                    else
-                        Logger.debug("[ACP diff rawInput] Failed to locate diff", { file_path = file_path })
-                    end
+                    Logger.debug("[ACP diff] Failed to locate diff", { path = path })
                 end
             end
         end
@@ -211,33 +146,22 @@ function P._add_diff_block(diff_blocks_by_file, path, diff_block)
     table.insert(diff_blocks_by_file[path], diff_block)
 end
 
----Find and replace substring occurrences in file lines
+---Find all substring replacement occurrences in file lines
 ---@param file_lines string[] File content lines
 ---@param search_text string Text to search for
 ---@param replace_text string Text to replace with
----@param replace_all boolean If true, replace all occurrences; if false, only first match
----@return DiffBlock[] Array of diff blocks created
-function P._find_substring_replacements(file_lines, search_text, replace_text, replace_all)
+---@return DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
+function P._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
     local escaped_search = search_text:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
 
     for line_idx, line_content in ipairs(file_lines) do
         if line_content:find(search_text, 1, true) then
-            local modified_line
-            if replace_all then
-                -- Replace all occurrences in this line
-                -- Use function replacement to avoid pattern interpretation of replace_text
-                -- This ensures literal replacement (e.g., "result%1" stays as "result%1", not backreference)
-                modified_line = line_content:gsub(escaped_search, function()
-                    return replace_text
-                end)
-            else
-                -- Replace first occurrence only
-                -- Use function replacement to ensure literal text (no pattern interpretation)
-                modified_line = line_content:gsub(escaped_search, function()
-                    return replace_text
-                end, 1)
-            end
+            -- Replace first occurrence in this line
+            -- Use function replacement to ensure literal text (no pattern interpretation)
+            local modified_line = line_content:gsub(escaped_search, function()
+                return replace_text
+            end, 1)
 
             table.insert(diff_blocks, {
                 start_line = line_idx,
@@ -245,41 +169,37 @@ function P._find_substring_replacements(file_lines, search_text, replace_text, r
                 old_lines = { line_content },
                 new_lines = { modified_line },
             })
-
-            -- For single replacement mode, stop after first match
-            if not replace_all then
-                break
-            end
         end
     end
 
     return diff_blocks
 end
 
-function P._is_table_empty(tbl)
-    return next(tbl) == nil
-end
-
----Try fuzzy match, fallback to substring replacement for single-line cases
+---Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
 ---@param file_lines string[] File content lines
 ---@param old_lines string[] Old text lines
 ---@param new_lines string[] New text lines
----@param replace_all boolean If true, replace all occurrences
 ---@return DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function P._match_or_substring_fallback(file_lines, old_lines, new_lines, replace_all)
-    local start_line, end_line = TextMatcher.fuzzy_match(file_lines, old_lines)
+function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+    -- Find all matches using fuzzy matching
+    local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
-    if start_line and end_line then
-        return {{
-            start_line = start_line,
-            end_line = end_line,
-            old_lines = old_lines,
-            new_lines = new_lines,
-        }}
+    if #matches > 0 then
+        local blocks = {}
+        for _, match in ipairs(matches) do
+            table.insert(blocks, {
+                start_line = match.start_line,
+                end_line = match.end_line,
+                old_lines = old_lines,
+                new_lines = new_lines,
+            })
+        end
+        return blocks
     end
 
+    -- Fallback to substring replacement for single-line cases
     if #old_lines == 1 and #new_lines == 1 then
-        local blocks = P._find_substring_replacements(file_lines, old_lines[1], new_lines[1], replace_all)
+        local blocks = P._find_substring_replacements(file_lines, old_lines[1], new_lines[1])
         return #blocks > 0 and blocks or nil
     end
 

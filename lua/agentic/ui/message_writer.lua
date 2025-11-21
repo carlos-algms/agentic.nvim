@@ -353,9 +353,6 @@ local function extract_file_path(update)
     then
         return update.locations[1].path
     end
-    if update.rawInput and update.rawInput.file_path then
-        return update.rawInput.file_path
-    end
     return nil
 end
 
@@ -404,11 +401,6 @@ function MessageWriter:_prepare_block_lines(update, kind, title)
     local file_path = extract_file_path(update)
     local display_text = file_path or title or update.title or ""
 
-    if kind == "fetch" and update.rawInput and update.rawInput.query then
-        kind = "WebSearch"
-        display_text = update.rawInput.query
-    end
-
     local header_text = string.format(" %s %s ", kind, display_text)
     table.insert(lines, header_text)
     local header_line_count = 1
@@ -426,7 +418,6 @@ function MessageWriter:_prepare_block_lines(update, kind, title)
         if #diff_items > 0 then
             local diff_blocks = ACPDiffHandler.extract_diff_blocks({
                 content = diff_items,
-                rawInput = update.rawInput,
             })
             local formatted_lines, diff_highlights =
                 DiffFormatter.format_diff_blocks(diff_blocks)
