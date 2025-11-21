@@ -29,20 +29,6 @@ local function trim_space(text)
     return text and text:gsub("%s+", "") or text
 end
 
-local function trim_escapes(text)
-    if not text then
-        return text
-    end
-    return text:gsub("//n", "/n")
-        :gsub("//r", "/r")
-        :gsub("//t", "/t")
-        :gsub('/"', '"')
-        :gsub('\\"', '"')
-        :gsub("\\n", "\n")
-        :gsub("\\r", "\r")
-        :gsub("\\t", "\t")
-end
-
 local MATCH_STRATEGIES = {
     function(a, b)
         return a == b
@@ -52,12 +38,6 @@ local MATCH_STRATEGIES = {
     end,
     function(a, b)
         return trim_space(a) == trim_space(b)
-    end,
-    function(a, b)
-        return a == trim_escapes(b)
-    end,
-    function(a, b)
-        return trim_space(a) == trim_space(trim_escapes(b))
     end,
 }
 
@@ -122,8 +102,8 @@ function M.try_find_all_matches(original_lines, target_lines, compare_fn)
         if matches_at_position(original_lines, target_lines, i, compare_fn) then
             local end_line = i + #target_lines - 1
             table.insert(matches, { start_line = i, end_line = end_line })
-            -- Skip to the next possible start position (not past the match)
-            i = end_line
+            -- Skip past the match to avoid infinite loop
+            i = end_line + 1
         else
             i = i + 1
         end

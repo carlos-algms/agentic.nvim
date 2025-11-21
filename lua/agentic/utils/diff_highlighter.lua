@@ -4,7 +4,7 @@ local M = {}
 
 local Theme = require("agentic.theme")
 
----Find character-level changes between two lines
+---Find character-level changes between two lines (UTF-8 aware)
 ---@param old_line string
 ---@param new_line string
 ---@return {old_start: integer, old_end: integer, new_start: integer, new_end: integer}|nil
@@ -13,24 +13,35 @@ function M.find_inline_change(old_line, new_line)
         return nil
     end
 
+    -- Convert strings to grapheme arrays for UTF-8 safe comparison
+    local old_graphemes = {}
+    for g in vim.iter.graphemes(old_line) do
+        table.insert(old_graphemes, g)
+    end
+
+    local new_graphemes = {}
+    for g in vim.iter.graphemes(new_line) do
+        table.insert(new_graphemes, g)
+    end
+
+    -- Find common prefix
     local prefix_len = 0
-    local min_len = math.min(#old_line, #new_line)
+    local min_len = math.min(#old_graphemes, #new_graphemes)
     for i = 1, min_len do
-        -- Use string comparison instead of byte comparison for UTF-8 safety
-        if old_line:sub(i, i) == new_line:sub(i, i) then
-            prefix_len = i
+        if old_graphemes[i] == new_graphemes[i] then
+            prefix_len = prefix_len + #old_graphemes[i]
         else
             break
         end
     end
 
-    -- Find common suffix (after the prefix) using UTF-8 safe comparison
+    -- Find common suffix (after the prefix)
     local suffix_len = 0
     for i = 1, min_len - prefix_len do
-        local old_char = old_line:sub(#old_line - i + 1, #old_line - i + 1)
-        local new_char = new_line:sub(#new_line - i + 1, #new_line - i + 1)
+        local old_char = old_graphemes[#old_graphemes - i + 1]
+        local new_char = new_graphemes[#new_graphemes - i + 1]
         if old_char == new_char then
-            suffix_len = i
+            suffix_len = suffix_len + #old_char
         else
             break
         end

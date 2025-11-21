@@ -389,10 +389,7 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
     local lines = {}
 
     local file_path = self:_extract_file_path(update)
-    local display_text = (file_path and string.format("%s", file_path))
-        or argument
-        or update.title
-        or ""
+    local display_text = file_path or argument or update.title or ""
 
     local header_text = string.format(" %s(%s) ", kind, display_text)
     table.insert(lines, header_text)
