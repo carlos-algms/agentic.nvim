@@ -9,7 +9,7 @@ function M.format_diff_blocks(diff_blocks_by_file)
     local formatted_lines = {}
     local highlight_ranges = {}
 
-    for path, diff_blocks in pairs(diff_blocks_by_file) do
+    for _, diff_blocks in pairs(diff_blocks_by_file) do
         if #diff_blocks == 0 then
             -- Skip empty diff blocks
             goto continue
@@ -19,12 +19,6 @@ function M.format_diff_blocks(diff_blocks_by_file)
         for _, diff_block in ipairs(diff_blocks) do
             local old_count = #diff_block.old_lines
             local new_count = #diff_block.new_lines
-
-            -- Skip empty blocks
-            if old_count == 0 and new_count == 0 then
-                goto next_block
-            end
-
             local is_modification = old_count == new_count and old_count > 0
 
             -- Output old lines (to be deleted) - show as plain text with highlight
@@ -32,7 +26,8 @@ function M.format_diff_blocks(diff_blocks_by_file)
                 local line_index = #formatted_lines
                 table.insert(formatted_lines, old_line)
 
-                local new_line = is_modification and diff_block.new_lines[i] or nil
+                local new_line = is_modification and diff_block.new_lines[i]
+                    or nil
                 table.insert(highlight_ranges, {
                     line_index = line_index,
                     type = "old",
@@ -68,8 +63,6 @@ function M.format_diff_blocks(diff_blocks_by_file)
                     })
                 end
             end
-
-            ::next_block::
         end
 
         ::continue::

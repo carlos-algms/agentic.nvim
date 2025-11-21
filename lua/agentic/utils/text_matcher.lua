@@ -1,52 +1,89 @@
 ---@class agentic.utils.TextMatcher
 local M = {}
 
+---@param str string The string to trim
+---@param opts {prefix: string?, suffix: string?}? Optional table with prefix and/or suffix to remove
+---@return string trimmed
 local function trim(str, opts)
     local res = str
-    if not opts then return res end
+    if not opts then
+        return res
+    end
     if opts.suffix then
         res = res:sub(#res - #opts.suffix + 1) == opts.suffix
-            and res:sub(1, #res - #opts.suffix) or res
+                and res:sub(1, #res - #opts.suffix)
+            or res
     end
     if opts.prefix then
-        res = res:sub(1, #opts.prefix) == opts.prefix and res:sub(#opts.prefix + 1) or res
+        res = res:sub(1, #opts.prefix) == opts.prefix
+                and res:sub(#opts.prefix + 1)
+            or res
     end
     return res
 end
 
 local function trim_space(text)
-    return text and text:gsub("%s*", "") or text
+    return text and text:gsub("%s+", "") or text
 end
 
 local function trim_escapes(text)
-    if not text then return text end
-    return text:gsub("//n", "/n"):gsub("//r", "/r"):gsub("//t", "/t")
-               :gsub('/"', '"'):gsub('\\"', '"'):gsub("\\n", "\n")
-               :gsub("\\r", "\r"):gsub("\\t", "\t")
+    if not text then
+        return text
+    end
+    return text:gsub("//n", "/n")
+        :gsub("//r", "/r")
+        :gsub("//t", "/t")
+        :gsub('/"', '"')
+        :gsub('\\"', '"')
+        :gsub("\\n", "\n")
+        :gsub("\\r", "\r")
+        :gsub("\\t", "\t")
 end
 
-M.trim = trim
-M.trim_space = trim_space
-M.trim_escapes = trim_escapes
-
 local MATCH_STRATEGIES = {
-    function(a, b) return a == b end,
-    function(a, b) return trim(a, { suffix = " \t" }) == trim(b, { suffix = " \t" }) end,
-    function(a, b) return trim_space(a) == trim_space(b) end,
-    function(a, b) return a == trim_escapes(b) end,
-    function(a, b) return trim_space(a) == trim_space(trim_escapes(b)) end,
+    function(a, b)
+        return a == b
+    end,
+    function(a, b)
+        return trim(a, { suffix = " \t" }) == trim(b, { suffix = " \t" })
+    end,
+    function(a, b)
+        return trim_space(a) == trim_space(b)
+    end,
+    function(a, b)
+        return a == trim_escapes(b)
+    end,
+    function(a, b)
+        return trim_space(a) == trim_space(trim_escapes(b))
+    end,
 }
 
-function M.try_find_match(original_lines, target_lines, compare_fn)
-    for i = 1, #original_lines - #target_lines + 1 do
-        local match = true
-        for j = 1, #target_lines do
-            if not compare_fn(original_lines[i + j - 1], target_lines[j]) then
-                match = false
-                break
-            end
+---@param original_lines string[]
+---@param target_lines string[]
+---@param i integer Starting position
+---@param compare_fn function
+---@return boolean matches
+local function matches_at_position(original_lines, target_lines, i, compare_fn)
+    for j = 1, #target_lines do
+        if not compare_fn(original_lines[i + j - 1], target_lines[j]) then
+            return false
         end
-        if match then
+    end
+
+    return true
+end
+
+function M.try_find_match(original_lines, target_lines, compare_fn)
+    if
+        #original_lines == 0
+        or #target_lines == 0
+        or #target_lines > #original_lines
+    then
+        return nil, nil
+    end
+
+    for i = 1, #original_lines - #target_lines + 1 do
+        if matches_at_position(original_lines, target_lines, i, compare_fn) then
             return i, i + #target_lines - 1
         end
     end
@@ -61,26 +98,19 @@ end
 function M.try_find_all_matches(original_lines, target_lines, compare_fn)
     local matches = {}
 
-    if #original_lines == 0 or #target_lines == 0 or #target_lines > #original_lines then
+    if
+        #original_lines == 0
+        or #target_lines == 0
+        or #target_lines > #original_lines
+    then
         return matches
     end
 
     local i = 1
     while i <= #original_lines - #target_lines + 1 do
-        local match = true
-        for j = 1, #target_lines do
-            local line_a = original_lines[i + j - 1]
-            local line_b = target_lines[j]
-
-            if not line_a or not line_b or not compare_fn(line_a, line_b) then
-                match = false
-                break
-            end
-        end
-        if match then
-            local start_line = i
+        if matches_at_position(original_lines, target_lines, i, compare_fn) then
             local end_line = i + #target_lines - 1
-            table.insert(matches, { start_line = start_line, end_line = end_line })
+            table.insert(matches, { start_line = i, end_line = end_line })
             -- Skip past this match to avoid overlapping
             i = end_line + 1
         else
@@ -97,7 +127,8 @@ end
 ---@return integer|nil end_line
 function M.fuzzy_match(original_lines, target_lines)
     for _, strategy in ipairs(MATCH_STRATEGIES) do
-        local start_line, end_line = M.try_find_match(original_lines, target_lines, strategy)
+        local start_line, end_line =
+            M.try_find_match(original_lines, target_lines, strategy)
         if start_line and end_line then
             return start_line, end_line
         end
@@ -111,7 +142,8 @@ end
 ---@return table[] matches Array of {start_line, end_line} pairs, empty if no matches
 function M.find_all_matches(original_lines, target_lines)
     for _, strategy in ipairs(MATCH_STRATEGIES) do
-        local matches = M.try_find_all_matches(original_lines, target_lines, strategy)
+        local matches =
+            M.try_find_all_matches(original_lines, target_lines, strategy)
         if #matches > 0 then
             return matches
         end

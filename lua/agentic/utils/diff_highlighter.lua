@@ -17,7 +17,7 @@ function M.find_inline_change(old_line, new_line)
     local prefix_len = 0
     local min_len = math.min(#old_line, #new_line)
     for i = 1, min_len do
-        if old_line:sub(i, i) == new_line:sub(i, i) then
+        if old_line:byte(i) == new_line:byte(i) then
             prefix_len = i
         else
             break
@@ -27,8 +27,8 @@ function M.find_inline_change(old_line, new_line)
     -- Find common suffix (after the prefix)
     local suffix_len = 0
     for i = 1, min_len - prefix_len do
-        if old_line:sub(#old_line - i + 1, #old_line - i + 1)
-            == new_line:sub(#new_line - i + 1, #new_line - i + 1)
+        if
+            old_line:byte(#old_line - i + 1) == new_line:byte(#new_line - i + 1)
         then
             suffix_len = i
         else
@@ -55,20 +55,39 @@ function M.find_inline_change(old_line, new_line)
     }
 end
 
+---@param bufnr integer
+---@param line_number integer
+---@return boolean valid
+local function validate_buffer_line(bufnr, line_number)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return false
+    end
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    return line_number >= 0 and line_number < line_count
+end
+
+---@param bufnr integer
+---@param ns_id integer
+---@param line_number integer
+---@param line_content string
+local function apply_add_line_highlight(bufnr, ns_id, line_number, line_content)
+    vim.highlight.range(
+        bufnr,
+        ns_id,
+        Theme.HL_GROUPS.DIFF_ADD,
+        { line_number, 0 },
+        { line_number, #line_content }
+    )
+end
+
 ---Apply line-level and word-level highlights to a buffer using vim.highlight.range
 ---@param bufnr integer Buffer number
 ---@param ns_id integer Namespace ID for highlights
 ---@param line_number integer 0-indexed line number
 ---@param old_line string|nil Old line content (for deleted lines)
 ---@param new_line string|nil New line content (for added lines)
----@param is_modification boolean Whether this is a modification (both old and new exist)
-function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, is_modification)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-        return
-    end
-
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-    if line_number < 0 or line_number >= line_count then
+function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
+    if not validate_buffer_line(bufnr, line_number) then
         return
     end
 
@@ -84,14 +103,8 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, 
         )
     elseif new_line and not old_line then
         -- Pure addition - full line highlight
-        vim.highlight.range(
-            bufnr,
-            ns_id,
-            Theme.HL_GROUPS.DIFF_ADD,
-            { line_number, 0 },
-            { line_number, #new_line }
-        )
-    elseif old_line and new_line and is_modification then
+        apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
+    elseif old_line and new_line then
         -- Modification: apply line-level highlight for old line
         vim.highlight.range(
             bufnr,
@@ -122,24 +135,18 @@ end
 ---@param line_number integer 0-indexed line number
 ---@param old_line string Old line content
 ---@param new_line string New line content
-function M.apply_new_line_word_highlights(bufnr, ns_id, line_number, old_line, new_line)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
+function M.apply_new_line_word_highlights(
+    bufnr,
+    ns_id,
+    line_number,
+    old_line,
+    new_line
+)
+    if not validate_buffer_line(bufnr, line_number) then
         return
     end
 
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-    if line_number < 0 or line_number >= line_count then
-        return
-    end
-
-    -- Line-level highlight for new line
-    vim.highlight.range(
-        bufnr,
-        ns_id,
-        Theme.HL_GROUPS.DIFF_ADD,
-        { line_number, 0 },
-        { line_number, #new_line }
-    )
+    apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
 
     -- Find word-level changes
     local change = M.find_inline_change(old_line, new_line)

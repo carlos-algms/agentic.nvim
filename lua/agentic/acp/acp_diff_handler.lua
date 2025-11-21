@@ -32,7 +32,7 @@ function M.extract_diff_blocks(tool_call)
             local oldText = content_item.oldText
             local newText = content_item.newText
 
-            if oldText == "" or oldText == vim.NIL or oldText == nil then
+            if not oldText or oldText == "" or oldText == vim.NIL then
                 local new_lines = P._normalize_text_to_lines(newText)
                 P._add_diff_block(diff_blocks_by_file, path, P._create_new_file_diff_block(new_lines))
             else
@@ -86,22 +86,19 @@ function P.minimize_diff_blocks(diff_blocks)
                 if count_a > 0 then
                     local end_a = math.min(start_a + count_a - 1, #diff_block.old_lines)
                     minimized_block.old_lines = vim.list_slice(diff_block.old_lines, start_a, end_a)
+                    minimized_block.start_line = diff_block.start_line + start_a - 1
+                    minimized_block.end_line = minimized_block.start_line + count_a - 1
                 else
                     minimized_block.old_lines = {}
+                    -- For insertions, start_line is the position before which to insert
+                    minimized_block.start_line = diff_block.start_line + start_a
+                    minimized_block.end_line = minimized_block.start_line - 1
                 end
                 if count_b > 0 then
                     local end_b = math.min(start_b + count_b - 1, #diff_block.new_lines)
                     minimized_block.new_lines = vim.list_slice(diff_block.new_lines, start_b, end_b)
                 else
                     minimized_block.new_lines = {}
-                end
-                if count_a > 0 then
-                    minimized_block.start_line = diff_block.start_line + start_a - 1
-                    minimized_block.end_line = minimized_block.start_line + count_a - 1
-                else
-                    -- For insertions, start_line is the position before which to insert
-                    minimized_block.start_line = diff_block.start_line + start_a
-                    minimized_block.end_line = minimized_block.start_line - 1
                 end
                 table.insert(minimized, minimized_block)
             end
@@ -153,10 +150,11 @@ end
 ---@return DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
 function P._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
-    local escaped_search = search_text:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
 
     for line_idx, line_content in ipairs(file_lines) do
         if line_content:find(search_text, 1, true) then
+            -- Escape pattern for gsub
+            local escaped_search = search_text:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
             -- Replace first occurrence in this line
             -- Use function replacement to ensure literal text (no pattern interpretation)
             local modified_line = line_content:gsub(escaped_search, function()

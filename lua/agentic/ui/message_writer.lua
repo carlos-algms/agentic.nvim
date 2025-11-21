@@ -134,7 +134,7 @@ function MessageWriter:write_tool_call_block(update)
         local kind = update.kind or "tool_call"
         local argument = ""
 
-        if kind == "fetch" then
+        if kind == "fetch" and update.rawInput then
             if update.rawInput.query then
                 kind = "WebSearch"
             end
@@ -260,14 +260,10 @@ function MessageWriter:update_tool_call_block(update)
         )
             and update.content
             and #update.content > 0
+
         if
             not needs_content_update
-            and (
-                tracker.has_diff
-                or tracker.kind == "read"
-                or tracker.kind == "fetch"
-                or tracker.kind == "WebSearch"
-            )
+            and (tracker.has_diff or tracker.kind == "fetch")
         then
             if old_end_row >= vim.api.nvim_buf_line_count(bufnr) then
                 Logger.debug("Footer line index out of bounds", {
@@ -279,55 +275,23 @@ function MessageWriter:update_tool_call_block(update)
 
             tracker.status = update.status or tracker.status
 
-            for _, id in ipairs(tracker.decoration_extmark_ids) do
-                pcall(
-                    vim.api.nvim_buf_del_extmark,
-                    bufnr,
-                    self.decorations_ns_id,
-                    id
-                )
-            end
-
+            self:_clear_decoration_extmarks(bufnr, tracker)
             tracker.decoration_extmark_ids =
-                ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
-                    header_line = start_row,
-                    body_start = start_row + 1,
-                    body_end = old_end_row - 1,
-                    footer_line = old_end_row,
-                    hl_group = self.hl_group,
-                })
+                self:_render_decorations(bufnr, start_row, old_end_row)
 
-            pcall(
-                vim.api.nvim_buf_clear_namespace,
+            self:_clear_status_namespace(bufnr, start_row, old_end_row)
+            self:_apply_status_highlights_if_present(
                 bufnr,
-                self.status_ns_id,
                 start_row,
-                old_end_row + 1
+                old_end_row,
+                update.status
             )
-            if update.status then
-                self:_apply_header_highlight(bufnr, start_row, update.status)
-                self:_apply_status_footer(bufnr, old_end_row, update.status)
-            end
 
             return
         end
 
-        for _, id in ipairs(tracker.decoration_extmark_ids) do
-            pcall(
-                vim.api.nvim_buf_del_extmark,
-                bufnr,
-                self.decorations_ns_id,
-                id
-            )
-        end
-
-        pcall(
-            vim.api.nvim_buf_clear_namespace,
-            bufnr,
-            self.status_ns_id,
-            start_row,
-            old_end_row + 1
-        )
+        self:_clear_decoration_extmarks(bufnr, tracker)
+        self:_clear_status_namespace(bufnr, start_row, old_end_row)
 
         local new_lines, highlight_ranges =
             self:_prepare_block_lines(update, tracker.kind, tracker.argument)
@@ -367,20 +331,15 @@ function MessageWriter:update_tool_call_block(update)
         })
 
         tracker.decoration_extmark_ids =
-            ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
-                header_line = start_row,
-                body_start = start_row + 1,
-                body_end = new_end_row - 1,
-                footer_line = new_end_row,
-                hl_group = self.hl_group,
-            })
+            self:_render_decorations(bufnr, start_row, new_end_row)
 
         tracker.status = update.status or tracker.status
-
-        if update.status then
-            self:_apply_header_highlight(bufnr, start_row, update.status)
-            self:_apply_status_footer(bufnr, new_end_row, update.status)
-        end
+        self:_apply_status_highlights_if_present(
+            bufnr,
+            start_row,
+            new_end_row,
+            update.status
+        )
     end)
 end
 
@@ -708,8 +667,7 @@ function MessageWriter:_apply_diff_highlights(
                 self.diff_highlights_ns_id,
                 buffer_line,
                 hl_range.old_line,
-                hl_range.new_line,
-                hl_range.is_modification or false
+                hl_range.new_line
             )
         elseif hl_range.type == "new" then
             DiffHighlighter.apply_diff_highlights(
@@ -796,6 +754,57 @@ function MessageWriter:_apply_status_footer(bufnr, footer_line, status)
         },
         virt_text_pos = "overlay",
     })
+end
+
+---@param bufnr integer
+---@param tracker agentic.ui.MessageWriter.BlockTracker
+function MessageWriter:_clear_decoration_extmarks(bufnr, tracker)
+    for _, id in ipairs(tracker.decoration_extmark_ids) do
+        pcall(vim.api.nvim_buf_del_extmark, bufnr, self.decorations_ns_id, id)
+    end
+end
+
+---@param bufnr integer
+---@param start_row integer
+---@param end_row integer
+---@return integer[] decoration_extmark_ids
+function MessageWriter:_render_decorations(bufnr, start_row, end_row)
+    return ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
+        header_line = start_row,
+        body_start = start_row + 1,
+        body_end = end_row - 1,
+        footer_line = end_row,
+        hl_group = self.hl_group,
+    })
+end
+
+---@param bufnr integer
+---@param start_row integer
+---@param end_row integer
+function MessageWriter:_clear_status_namespace(bufnr, start_row, end_row)
+    pcall(
+        vim.api.nvim_buf_clear_namespace,
+        bufnr,
+        self.status_ns_id,
+        start_row,
+        end_row + 1
+    )
+end
+
+---@param bufnr integer
+---@param start_row integer
+---@param end_row integer
+---@param status string|nil
+function MessageWriter:_apply_status_highlights_if_present(
+    bufnr,
+    start_row,
+    end_row,
+    status
+)
+    if status then
+        self:_apply_header_highlight(bufnr, start_row, status)
+        self:_apply_status_footer(bufnr, end_row, status)
+    end
 end
 
 function MessageWriter:clear()
