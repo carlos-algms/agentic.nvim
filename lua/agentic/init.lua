@@ -98,6 +98,7 @@ function Agentic.new_session()
     new_session.widget:show()
 end
 
+--- Used to make sure we don't set multiple signal handlers or autocmds if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
     clear = true,
@@ -118,6 +119,19 @@ function Agentic.setup(opts)
     traps_set = true
 
     vim.treesitter.language.register("markdown", "AgenticChat")
+
+    vim.api.nvim_set_hl(0, "AgenticDiffDelete", { link = "DiffDelete" })
+    vim.api.nvim_set_hl(0, "AgenticDiffAdd", { link = "DiffAdd" })
+    vim.api.nvim_set_hl(
+        0,
+        "AgenticDiffDeleteWord",
+        { bg = "#9a3c3c", bold = true }
+    )
+    vim.api.nvim_set_hl(
+        0,
+        "AgenticDiffAddWord",
+        { bg = "#155729", bold = true }
+    )
 
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = cleanup_group,
