@@ -23,40 +23,51 @@ local COLORS = {
 
 function Theme.setup()
     -- Diff highlights
-    vim.api.nvim_set_hl(0, Theme.HL_GROUPS.DIFF_DELETE, { link = "DiffDelete" })
-    vim.api.nvim_set_hl(0, Theme.HL_GROUPS.DIFF_ADD, { link = "DiffAdd" })
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
+        Theme.HL_GROUPS.DIFF_DELETE,
+        { link = "DiffDelete" }
+    )
+    Theme._create_hl_if_not_exists(
+        Theme.HL_GROUPS.DIFF_ADD,
+        { link = "DiffAdd" }
+    )
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.DIFF_DELETE_WORD,
         { bg = COLORS.diff_delete_word_bg, bold = true }
     )
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.DIFF_ADD_WORD,
         { bg = COLORS.diff_add_word_bg, bold = true }
     )
 
     -- Status highlights
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.STATUS_PENDING,
         { bg = COLORS.status_pending_bg }
     )
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.STATUS_COMPLETED,
         { bg = COLORS.status_completed_bg }
     )
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.STATUS_FAILED,
         { bg = COLORS.status_failed_bg }
     )
-    vim.api.nvim_set_hl(
-        0,
+    Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.STATUS_REJECTED,
         { bg = COLORS.status_rejected_bg }
     )
+end
+
+---@private
+---@param group string
+---@param opts table
+function Theme._create_hl_if_not_exists(group, opts)
+    local hl = vim.api.nvim_get_hl(0, { name = group })
+    if next(hl) ~= nil then
+        return
+    end
+    vim.api.nvim_set_hl(0, group, opts)
 end
 
 return Theme
