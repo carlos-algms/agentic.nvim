@@ -56,6 +56,12 @@ local ConfigDefault = {
             height = 10,
         },
     },
+
+    status_icons = {
+        pending = "󰔛",
+        completed = "✔",
+        failed = "",
+    },
 }
 
 return ConfigDefault

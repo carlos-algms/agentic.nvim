@@ -133,6 +133,11 @@ function Agentic.setup(opts)
         { bg = "#155729", bold = true }
     )
 
+    vim.api.nvim_set_hl(0, "AgenticStatusPending", { bg = "#5f4d8f" })
+    vim.api.nvim_set_hl(0, "AgenticStatusCompleted", { bg = "#2d5a3d" })
+    vim.api.nvim_set_hl(0, "AgenticStatusFailed", { bg = "#7a2d2d" })
+    vim.api.nvim_set_hl(0, "AgenticStatusRejected", { bg = "#7a2d2d" })
+
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = cleanup_group,
         callback = function()

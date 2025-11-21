@@ -153,6 +153,12 @@ require("agentic").setup({
       height = 10, -- the height, in lines, of the prompt input area
     },
   },
+
+  status_icons = {
+    pending = "󰔛",
+    completed = "✔",
+    failed = "",
+  },
 })
 ```
 
