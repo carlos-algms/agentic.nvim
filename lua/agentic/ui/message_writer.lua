@@ -156,7 +156,13 @@ function MessageWriter:write_tool_call_block(update)
 
         vim.schedule(function()
             if vim.api.nvim_buf_is_valid(bufnr) then
-                self:_apply_diff_highlights(bufnr, start_row, highlight_ranges)
+                self:_apply_block_highlights(
+                    bufnr,
+                    start_row,
+                    end_row,
+                    kind,
+                    highlight_ranges
+                )
             end
         end)
 
@@ -246,7 +252,23 @@ function MessageWriter:update_tool_call_block(update)
     end
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        if tracker.has_diff then
+        -- For blocks without diffs (read, fetch, etc.) or blocks with diffs,
+        -- only update status highlights - don't replace content
+        -- Exception: WebSearch and read need content updates when results arrive
+        local needs_content_update = (
+            tracker.kind == "WebSearch" or tracker.kind == "read"
+        )
+            and update.content
+            and #update.content > 0
+        if
+            not needs_content_update
+            and (
+                tracker.has_diff
+                or tracker.kind == "read"
+                or tracker.kind == "fetch"
+                or tracker.kind == "WebSearch"
+            )
+        then
             if old_end_row >= vim.api.nvim_buf_line_count(bufnr) then
                 Logger.debug("Footer line index out of bounds", {
                     old_end_row = old_end_row,
@@ -328,7 +350,13 @@ function MessageWriter:update_tool_call_block(update)
         )
         vim.schedule(function()
             if vim.api.nvim_buf_is_valid(bufnr) then
-                self:_apply_diff_highlights(bufnr, start_row, highlight_ranges)
+                self:_apply_block_highlights(
+                    bufnr,
+                    start_row,
+                    new_end_row,
+                    tracker.kind,
+                    highlight_ranges
+                )
             end
         end)
 
@@ -424,12 +452,41 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
     local highlight_ranges = {}
 
     if kind == "read" then
-        --- TODO: add one empty line as body first, then add how many lines where read, use `Comment` as the hl group.
-    elseif kind == "fetch" then
-        if update.rawInput.url and update.rawInput.prompt then
-            table.insert(lines, update.rawInput.prompt)
+        -- Count lines from content, we don't want to show full content that was read
+        local line_count = 0
+        for _, content_item in ipairs(update.content or {}) do
+            if content_item.type == "content" and content_item.content then
+                local content = content_item.content
+                if content.type == "text" and content.text then
+                    local content_lines =
+                        vim.split(content.text, "\n", { plain = true })
+                    line_count = line_count + #content_lines
+                end
+            end
         end
-    else
+
+        if line_count > 0 then
+            local info_text = string.format("Read %d lines", line_count)
+            table.insert(lines, info_text)
+
+            table.insert(highlight_ranges, {
+                type = "comment",
+                line_index = #lines - 1,
+            })
+        end
+    elseif kind == "fetch" or kind == "WebSearch" then
+        -- Initial tool_call has rawInput with query/url
+        if update.rawInput then
+            if update.rawInput.prompt then
+                table.insert(lines, update.rawInput.prompt)
+            end
+            if update.rawInput.url then
+                table.insert(lines, update.rawInput.url)
+            end
+        end
+    end
+
+    if kind ~= "read" then
         local diff_items = {}
         for _, content_item in ipairs(update.content or {}) do
             if content_item.type == "diff" then
@@ -456,7 +513,7 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
             table.insert(lines, "```")
         end
 
-        for _, content_item in ipairs(update.content) do
+        for _, content_item in ipairs(update.content or {}) do
             if content_item.type == "content" and content_item.content then
                 local content = content_item.content
                 if content.type == "text" then
@@ -593,6 +650,46 @@ function MessageWriter:remove_permission_buttons(start_row, end_row)
     end)
 end
 
+---Apply highlights to block content (either diff highlights or Comment for non-edit blocks)
+---@param bufnr integer
+---@param start_row integer Header line number
+---@param end_row integer Footer line number
+---@param kind string Tool call kind
+---@param highlight_ranges table[] Diff highlight ranges
+function MessageWriter:_apply_block_highlights(
+    bufnr,
+    start_row,
+    end_row,
+    kind,
+    highlight_ranges
+)
+    if #highlight_ranges > 0 then
+        self:_apply_diff_highlights(bufnr, start_row, highlight_ranges)
+    elseif kind ~= "edit" then
+        -- Apply Comment highlight for non-edit blocks without diffs
+        for line_idx = start_row + 1, end_row - 1 do
+            local line = vim.api.nvim_buf_get_lines(
+                bufnr,
+                line_idx,
+                line_idx + 1,
+                false
+            )[1]
+            if line and #line > 0 then
+                vim.api.nvim_buf_set_extmark(
+                    bufnr,
+                    self.diff_highlights_ns_id,
+                    line_idx,
+                    0,
+                    {
+                        end_col = #line,
+                        hl_group = "Comment",
+                    }
+                )
+            end
+        end
+    end
+end
+
 function MessageWriter:_apply_diff_highlights(
     bufnr,
     start_row,
@@ -631,6 +728,26 @@ function MessageWriter:_apply_diff_highlights(
                 hl_range.old_line,
                 hl_range.new_line
             )
+        elseif hl_range.type == "comment" then
+            local line = vim.api.nvim_buf_get_lines(
+                bufnr,
+                buffer_line,
+                buffer_line + 1,
+                false
+            )[1]
+
+            if line then
+                vim.api.nvim_buf_set_extmark(
+                    bufnr,
+                    self.diff_highlights_ns_id,
+                    buffer_line,
+                    0,
+                    {
+                        end_col = #line,
+                        hl_group = "Comment",
+                    }
+                )
+            end
         end
     end
 end
