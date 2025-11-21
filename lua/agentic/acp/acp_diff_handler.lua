@@ -34,28 +34,50 @@ function M.extract_diff_blocks(tool_call)
 
             if not oldText or oldText == "" or oldText == vim.NIL then
                 local new_lines = P._normalize_text_to_lines(newText)
-                P._add_diff_block(diff_blocks_by_file, path, P._create_new_file_diff_block(new_lines))
+                P._add_diff_block(
+                    diff_blocks_by_file,
+                    path,
+                    P._create_new_file_diff_block(new_lines)
+                )
             else
                 local old_lines = P._normalize_text_to_lines(oldText)
                 local new_lines = P._normalize_text_to_lines(newText)
 
                 local abs_path = FileSystem.to_absolute_path(path)
-                local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
+                local file_lines = FileSystem.read_from_buffer_or_disk(abs_path)
+                    or {}
 
-                local blocks = P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+                local blocks = P._match_or_substring_fallback(
+                    file_lines,
+                    old_lines,
+                    new_lines
+                )
                 if blocks then
                     for _, block in ipairs(blocks) do
                         P._add_diff_block(diff_blocks_by_file, path, block)
                     end
                 else
-                    Logger.debug("[ACP diff] Failed to locate diff", { path = path })
+                    Logger.debug(
+                        "[ACP diff] Failed to locate diff",
+                        { path = path }
+                    )
+                    -- Fallback: display the diff even if we can't match it
+                    -- This ensures users can still see what changes were attempted
+                    P._add_diff_block(diff_blocks_by_file, path, {
+                        start_line = 1,
+                        end_line = #old_lines,
+                        old_lines = old_lines,
+                        new_lines = new_lines,
+                    })
                 end
             end
         end
     end
 
     for path, diff_blocks in pairs(diff_blocks_by_file) do
-        table.sort(diff_blocks, function(a, b) return a.start_line < b.start_line end)
+        table.sort(diff_blocks, function(a, b)
+            return a.start_line < b.start_line
+        end)
         diff_blocks_by_file[path] = P.minimize_diff_blocks(diff_blocks)
     end
 
@@ -84,10 +106,16 @@ function P.minimize_diff_blocks(diff_blocks)
                 local start_a, count_a, start_b, count_b = unpack(hunk)
                 local minimized_block = {}
                 if count_a > 0 then
-                    local end_a = math.min(start_a + count_a - 1, #diff_block.old_lines)
-                    minimized_block.old_lines = vim.list_slice(diff_block.old_lines, start_a, end_a)
-                    minimized_block.start_line = diff_block.start_line + start_a - 1
-                    minimized_block.end_line = minimized_block.start_line + count_a - 1
+                    local end_a =
+                        math.min(start_a + count_a - 1, #diff_block.old_lines)
+                    minimized_block.old_lines =
+                        vim.list_slice(diff_block.old_lines, start_a, end_a)
+                    minimized_block.start_line = diff_block.start_line
+                        + start_a
+                        - 1
+                    minimized_block.end_line = minimized_block.start_line
+                        + count_a
+                        - 1
                 else
                     minimized_block.old_lines = {}
                     -- For insertions, start_line is the position before which to insert
@@ -95,12 +123,20 @@ function P.minimize_diff_blocks(diff_blocks)
                     minimized_block.end_line = minimized_block.start_line - 1
                 end
                 if count_b > 0 then
-                    local end_b = math.min(start_b + count_b - 1, #diff_block.new_lines)
-                    minimized_block.new_lines = vim.list_slice(diff_block.new_lines, start_b, end_b)
+                    local end_b =
+                        math.min(start_b + count_b - 1, #diff_block.new_lines)
+                    minimized_block.new_lines =
+                        vim.list_slice(diff_block.new_lines, start_b, end_b)
                 else
                     minimized_block.new_lines = {}
                 end
                 table.insert(minimized, minimized_block)
+            end
+        else
+            -- If vim.diff returns empty patch but we have changes, include the full block
+            -- This handles edge cases where the diff algorithm doesn't detect changes
+            if old_string ~= new_string then
+                table.insert(minimized, diff_block)
             end
         end
     end
@@ -116,9 +152,10 @@ end
 ---@param new_lines string[]
 ---@return DiffBlock
 function P._create_new_file_diff_block(new_lines)
+    local line_count = #new_lines
     return {
         start_line = 1,
-        end_line = 0,
+        end_line = line_count > 0 and line_count or 1,
         old_lines = {},
         new_lines = new_lines,
     }
@@ -128,9 +165,13 @@ end
 ---@param text string|nil
 ---@return string[]
 function P._normalize_text_to_lines(text)
-    if not text or text == vim.NIL or text == "" then
+    if text == "" then
         return {}
     end
+    if not text or text == vim.NIL then
+        return {}
+    end
+
     return type(text) == "string" and vim.split(text, "\n") or {}
 end
 
@@ -154,7 +195,8 @@ function P._find_substring_replacements(file_lines, search_text, replace_text)
     for line_idx, line_content in ipairs(file_lines) do
         if line_content:find(search_text, 1, true) then
             -- Escape pattern for gsub
-            local escaped_search = search_text:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
+            local escaped_search =
+                search_text:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%1")
             -- Replace first occurrence in this line
             -- Use function replacement to ensure literal text (no pattern interpretation)
             local modified_line = line_content:gsub(escaped_search, function()
@@ -197,7 +239,11 @@ function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
 
     -- Fallback to substring replacement for single-line cases
     if #old_lines == 1 and #new_lines == 1 then
-        local blocks = P._find_substring_replacements(file_lines, old_lines[1], new_lines[1])
+        local blocks = P._find_substring_replacements(
+            file_lines,
+            old_lines[1],
+            new_lines[1]
+        )
         return #blocks > 0 and blocks or nil
     end
 

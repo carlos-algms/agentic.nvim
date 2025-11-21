@@ -10,14 +10,17 @@ local function trim(str, opts)
         return res
     end
     if opts.suffix then
-        res = res:sub(#res - #opts.suffix + 1) == opts.suffix
-                and res:sub(1, #res - #opts.suffix)
-            or res
+        -- Check length first to avoid invalid string index
+        if #res >= #opts.suffix then
+            if res:sub(#res - #opts.suffix + 1) == opts.suffix then
+                res = res:sub(1, #res - #opts.suffix)
+            end
+        end
     end
     if opts.prefix then
-        res = res:sub(1, #opts.prefix) == opts.prefix
-                and res:sub(#opts.prefix + 1)
-            or res
+        if res:sub(1, #opts.prefix) == opts.prefix then
+            res = res:sub(#opts.prefix + 1)
+        end
     end
     return res
 end
@@ -64,8 +67,16 @@ local MATCH_STRATEGIES = {
 ---@param compare_fn function
 ---@return boolean matches
 local function matches_at_position(original_lines, target_lines, i, compare_fn)
+    -- Validate bounds
+    if i < 1 or i + #target_lines - 1 > #original_lines then
+        return false
+    end
     for j = 1, #target_lines do
-        if not compare_fn(original_lines[i + j - 1], target_lines[j]) then
+        local idx = i + j - 1
+        if idx < 1 or idx > #original_lines then
+            return false
+        end
+        if not compare_fn(original_lines[idx], target_lines[j]) then
             return false
         end
     end
@@ -111,8 +122,8 @@ function M.try_find_all_matches(original_lines, target_lines, compare_fn)
         if matches_at_position(original_lines, target_lines, i, compare_fn) then
             local end_line = i + #target_lines - 1
             table.insert(matches, { start_line = i, end_line = end_line })
-            -- Skip past this match to avoid overlapping
-            i = end_line + 1
+            -- Skip to the next possible start position (not past the match)
+            i = end_line
         else
             i = i + 1
         end

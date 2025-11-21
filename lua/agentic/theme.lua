@@ -9,7 +9,6 @@ Theme.HL_GROUPS = {
     STATUS_PENDING = "AgenticStatusPending",
     STATUS_COMPLETED = "AgenticStatusCompleted",
     STATUS_FAILED = "AgenticStatusFailed",
-    STATUS_REJECTED = "AgenticStatusRejected",
 }
 
 local COLORS = {
@@ -18,7 +17,6 @@ local COLORS = {
     status_pending_bg = "#5f4d8f",
     status_completed_bg = "#2d5a3d",
     status_failed_bg = "#7a2d2d",
-    status_rejected_bg = "#7a2d2d",
 }
 
 function Theme.setup()
@@ -53,10 +51,6 @@ function Theme.setup()
         Theme.HL_GROUPS.STATUS_FAILED,
         { bg = COLORS.status_failed_bg }
     )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.STATUS_REJECTED,
-        { bg = COLORS.status_rejected_bg }
-    )
 end
 
 ---@private
@@ -64,7 +58,9 @@ end
 ---@param opts table
 function Theme._create_hl_if_not_exists(group, opts)
     local hl = vim.api.nvim_get_hl(0, { name = group })
-    if next(hl) ~= nil then
+    -- Check if highlight actually exists by checking for specific keys or count
+    -- An empty table {} would have next() == nil, but we want to check if it's truly defined
+    if vim.tbl_count(hl) > 0 then
         return
     end
     vim.api.nvim_set_hl(0, group, opts)

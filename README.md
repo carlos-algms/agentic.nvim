@@ -155,9 +155,9 @@ require("agentic").setup({
   },
 
   status_icons = {
-    pending = "󰔛",
-    completed = "✔",
-    failed = "",
+    pending = "󰔛",    -- Icon shown for tool calls with pending status
+    completed = "✔",   -- Icon shown for tool calls with completed status
+    failed = "",      -- Icon shown for tool calls with failed status
   },
 })
 ```

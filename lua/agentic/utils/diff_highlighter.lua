@@ -13,23 +13,23 @@ function M.find_inline_change(old_line, new_line)
         return nil
     end
 
-    -- Find common prefix
     local prefix_len = 0
     local min_len = math.min(#old_line, #new_line)
     for i = 1, min_len do
-        if old_line:byte(i) == new_line:byte(i) then
+        -- Use string comparison instead of byte comparison for UTF-8 safety
+        if old_line:sub(i, i) == new_line:sub(i, i) then
             prefix_len = i
         else
             break
         end
     end
 
-    -- Find common suffix (after the prefix)
+    -- Find common suffix (after the prefix) using UTF-8 safe comparison
     local suffix_len = 0
     for i = 1, min_len - prefix_len do
-        if
-            old_line:byte(#old_line - i + 1) == new_line:byte(#new_line - i + 1)
-        then
+        local old_char = old_line:sub(#old_line - i + 1, #old_line - i + 1)
+        local new_char = new_line:sub(#new_line - i + 1, #new_line - i + 1)
+        if old_char == new_char then
             suffix_len = i
         else
             break
@@ -56,7 +56,7 @@ function M.find_inline_change(old_line, new_line)
 end
 
 ---@param bufnr integer
----@param line_number integer
+---@param line_number integer 0-indexed line number
 ---@return boolean valid
 local function validate_buffer_line(bufnr, line_number)
     if not vim.api.nvim_buf_is_valid(bufnr) then
@@ -105,18 +105,19 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
         -- Pure addition - full line highlight
         apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
     elseif old_line and new_line then
-        -- Modification: apply line-level highlight for old line
-        vim.highlight.range(
-            bufnr,
-            ns_id,
-            Theme.HL_GROUPS.DIFF_DELETE,
-            { line_number, 0 },
-            { line_number, #old_line }
-        )
-
-        -- Find word-level changes
+        -- Modification: find word-level changes first to avoid redundant highlights
         local change = M.find_inline_change(old_line, new_line)
         if change and change.old_end > change.old_start then
+            -- Only apply line-level highlight if change doesn't span entire line
+            if change.old_start > 0 or change.old_end < #old_line then
+                vim.highlight.range(
+                    bufnr,
+                    ns_id,
+                    Theme.HL_GROUPS.DIFF_DELETE,
+                    { line_number, 0 },
+                    { line_number, #old_line }
+                )
+            end
             -- Word-level highlight for deleted portion (darker background, bold)
             vim.highlight.range(
                 bufnr,
@@ -124,6 +125,15 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
                 Theme.HL_GROUPS.DIFF_DELETE_WORD,
                 { line_number, change.old_start },
                 { line_number, change.old_end }
+            )
+        else
+            -- Entire line changed, apply line-level highlight only
+            vim.highlight.range(
+                bufnr,
+                ns_id,
+                Theme.HL_GROUPS.DIFF_DELETE,
+                { line_number, 0 },
+                { line_number, #old_line }
             )
         end
     end
@@ -146,11 +156,13 @@ function M.apply_new_line_word_highlights(
         return
     end
 
-    apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
-
-    -- Find word-level changes
+    -- Find word-level changes first to avoid overlapping highlights
     local change = M.find_inline_change(old_line, new_line)
     if change and change.new_end > change.new_start then
+        -- Only apply line-level highlight if change doesn't span entire line
+        if change.new_start > 0 or change.new_end < #new_line then
+            apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
+        end
         -- Word-level highlight for changed portion (darker background, bold)
         vim.highlight.range(
             bufnr,
@@ -159,6 +171,9 @@ function M.apply_new_line_word_highlights(
             { line_number, change.new_start },
             { line_number, change.new_end }
         )
+    else
+        -- Entire line changed, apply line-level highlight only
+        apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
     end
 end
 

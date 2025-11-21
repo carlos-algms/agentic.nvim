@@ -9,63 +9,65 @@ function M.format_diff_blocks(diff_blocks_by_file)
     local formatted_lines = {}
     local highlight_ranges = {}
 
-    for _, diff_blocks in pairs(diff_blocks_by_file) do
-        if #diff_blocks == 0 then
-            -- Skip empty diff blocks
-            goto continue
-        end
+    -- Sort file paths for deterministic ordering
+    local sorted_paths = {}
+    for path in pairs(diff_blocks_by_file) do
+        table.insert(sorted_paths, path)
+    end
+    table.sort(sorted_paths)
 
-        -- Process each diff block
-        for _, diff_block in ipairs(diff_blocks) do
-            local old_count = #diff_block.old_lines
-            local new_count = #diff_block.new_lines
-            local is_modification = old_count == new_count and old_count > 0
+    for _, path in ipairs(sorted_paths) do
+        local diff_blocks = diff_blocks_by_file[path]
+        if diff_blocks and #diff_blocks > 0 then
+            for _, diff_block in ipairs(diff_blocks) do
+                local old_count = #diff_block.old_lines
+                local new_count = #diff_block.new_lines
+                local is_modification = old_count == new_count and old_count > 0
 
-            -- Output old lines (to be deleted) - show as plain text with highlight
-            for i, old_line in ipairs(diff_block.old_lines) do
-                local line_index = #formatted_lines
-                table.insert(formatted_lines, old_line)
+                -- Output old lines (to be deleted) - show as plain text with highlight
+                for i, old_line in ipairs(diff_block.old_lines) do
+                    local line_index = #formatted_lines
+                    table.insert(formatted_lines, old_line)
 
-                local new_line = is_modification and diff_block.new_lines[i]
-                    or nil
-                table.insert(highlight_ranges, {
-                    line_index = line_index,
-                    type = "old",
-                    old_line = old_line,
-                    new_line = new_line,
-                    is_modification = is_modification,
-                })
-            end
-
-            -- Output new lines (incoming) - show as plain text with highlight
-            for i, new_line in ipairs(diff_block.new_lines) do
-                local line_index = #formatted_lines
-                table.insert(formatted_lines, new_line)
-
-                -- Only add highlight info if this is NOT a modification (modifications already handled above)
-                if not is_modification then
+                    local new_line = is_modification and diff_block.new_lines[i]
+                        or nil
                     table.insert(highlight_ranges, {
                         line_index = line_index,
-                        type = "new",
-                        old_line = nil,
-                        new_line = new_line,
-                        is_modification = false,
-                    })
-                else
-                    -- For modifications, we need to apply word-level highlights to the new line
-                    local old_line = diff_block.old_lines[i]
-                    table.insert(highlight_ranges, {
-                        line_index = line_index,
-                        type = "new_modification",
+                        type = "old",
                         old_line = old_line,
                         new_line = new_line,
-                        is_modification = true,
+                        is_modification = is_modification,
                     })
+                end
+
+                -- Output new lines (incoming) - show as plain text with highlight
+                for i, new_line in ipairs(diff_block.new_lines) do
+                    local line_index = #formatted_lines
+                    table.insert(formatted_lines, new_line)
+
+                    -- Only add highlight info if this is NOT a modification (modifications already handled above)
+                    if not is_modification then
+                        table.insert(highlight_ranges, {
+                            line_index = line_index,
+                            type = "new",
+                            old_line = nil,
+                            new_line = new_line,
+                            is_modification = false,
+                        })
+                    else
+                        -- For modifications, only add the new_modification type (old line already has modification flag)
+                        local old_line = diff_block.old_lines[i]
+                        table.insert(highlight_ranges, {
+                            line_index = line_index,
+                            type = "new_modification",
+                            old_line = old_line,
+                            new_line = new_line,
+                            is_modification = true,
+                        })
+                    end
                 end
             end
         end
-
-        ::continue::
     end
 
     return formatted_lines, highlight_ranges

@@ -181,17 +181,7 @@ function MessageWriter:write_tool_call_block(update)
                 right_gravity = false,
             })
 
-        local has_diff = false
-        for _, hl in ipairs(highlight_ranges) do
-            if
-                hl.type == "old"
-                or hl.type == "new"
-                or hl.type == "new_modification"
-            then
-                has_diff = true
-                break
-            end
-        end
+        local has_diff = ACPDiffHandler.has_diff_content(update)
         self.tool_call_blocks[update.toolCallId] = {
             extmark_id = extmark_id,
             decoration_extmark_ids = decoration_ids,
@@ -265,7 +255,7 @@ function MessageWriter:update_tool_call_block(update)
             not needs_content_update
             and (tracker.has_diff or tracker.kind == "fetch")
         then
-            if old_end_row >= vim.api.nvim_buf_line_count(bufnr) then
+            if old_end_row > vim.api.nvim_buf_line_count(bufnr) then
                 Logger.debug("Footer line index out of bounds", {
                     old_end_row = old_end_row,
                     line_count = vim.api.nvim_buf_line_count(bufnr),
@@ -386,7 +376,6 @@ local function get_status_hl_group(status)
         pending = Theme.HL_GROUPS.STATUS_PENDING,
         completed = Theme.HL_GROUPS.STATUS_COMPLETED,
         failed = Theme.HL_GROUPS.STATUS_FAILED,
-        rejected = Theme.HL_GROUPS.STATUS_REJECTED,
     }
     return status_hl[status] or "Comment"
 end
@@ -459,6 +448,28 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
             })
             local formatted_lines, diff_highlights =
                 DiffFormatter.format_diff_blocks(diff_blocks)
+
+            -- Add file separators for multi-file diffs
+            local file_count = 0
+            for _ in pairs(diff_blocks) do
+                file_count = file_count + 1
+            end
+
+            if file_count > 1 then
+                -- Multiple files - add separator for each file
+                local current_file = nil
+                for path, _ in pairs(diff_blocks) do
+                    if current_file then
+                        table.insert(lines, "")
+                        table.insert(
+                            lines,
+                            string.format("--- %s", current_file)
+                        )
+                        table.insert(lines, "")
+                    end
+                    current_file = path
+                end
+            end
 
             local lang = file_path and get_language_from_path(file_path) or ""
             table.insert(lines, "```" .. lang)
@@ -675,8 +686,7 @@ function MessageWriter:_apply_diff_highlights(
                 self.diff_highlights_ns_id,
                 buffer_line,
                 nil,
-                hl_range.new_line,
-                false
+                hl_range.new_line
             )
         elseif hl_range.type == "new_modification" then
             DiffHighlighter.apply_new_line_word_highlights(
