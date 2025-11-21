@@ -5,6 +5,7 @@ local DiffFormatter = require("agentic.utils.diff_formatter")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
 local Logger = require("agentic.utils.logger")
+local Theme = require("agentic.theme")
 
 ---@class agentic.ui.MessageWriter.BlockTracker
 ---@field extmark_id integer Range extmark spanning the block
@@ -402,10 +403,10 @@ end
 ---@return string hl_group
 local function get_status_hl_group(status)
     local status_hl = {
-        pending = "AgenticStatusPending",
-        completed = "AgenticStatusCompleted",
-        failed = "AgenticStatusFailed",
-        rejected = "AgenticStatusRejected",
+        pending = Theme.HL_GROUPS.STATUS_PENDING,
+        completed = Theme.HL_GROUPS.STATUS_COMPLETED,
+        failed = Theme.HL_GROUPS.STATUS_FAILED,
+        rejected = Theme.HL_GROUPS.STATUS_REJECTED,
     }
     return status_hl[status] or "Comment"
 end

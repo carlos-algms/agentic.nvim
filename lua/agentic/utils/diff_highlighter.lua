@@ -2,6 +2,8 @@
 ---@class agentic.utils.DiffHighlighter
 local M = {}
 
+local Theme = require("agentic.theme")
+
 ---Find character-level changes between two lines
 ---@param old_line string
 ---@param new_line string
@@ -76,7 +78,7 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, 
         vim.highlight.range(
             bufnr,
             ns_id,
-            "AgenticDiffDelete",
+            Theme.HL_GROUPS.DIFF_DELETE,
             { line_number, 0 },
             { line_number, #old_line }
         )
@@ -85,7 +87,7 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, 
         vim.highlight.range(
             bufnr,
             ns_id,
-            "AgenticDiffAdd",
+            Theme.HL_GROUPS.DIFF_ADD,
             { line_number, 0 },
             { line_number, #new_line }
         )
@@ -94,7 +96,7 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, 
         vim.highlight.range(
             bufnr,
             ns_id,
-            "AgenticDiffDelete",
+            Theme.HL_GROUPS.DIFF_DELETE,
             { line_number, 0 },
             { line_number, #old_line }
         )
@@ -106,7 +108,7 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line, 
             vim.highlight.range(
                 bufnr,
                 ns_id,
-                "AgenticDiffDeleteWord",
+                Theme.HL_GROUPS.DIFF_DELETE_WORD,
                 { line_number, change.old_start },
                 { line_number, change.old_end }
             )
@@ -134,7 +136,7 @@ function M.apply_new_line_word_highlights(bufnr, ns_id, line_number, old_line, n
     vim.highlight.range(
         bufnr,
         ns_id,
-        "AgenticDiffAdd",
+        Theme.HL_GROUPS.DIFF_ADD,
         { line_number, 0 },
         { line_number, #new_line }
     )
@@ -146,7 +148,7 @@ function M.apply_new_line_word_highlights(bufnr, ns_id, line_number, old_line, n
         vim.highlight.range(
             bufnr,
             ns_id,
-            "AgenticDiffAddWord",
+            Theme.HL_GROUPS.DIFF_ADD_WORD,
             { line_number, change.new_start },
             { line_number, change.new_end }
         )

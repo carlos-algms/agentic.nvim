@@ -1,5 +1,6 @@
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
+local Theme = require("agentic.theme")
 
 ---@class agentic.Agentic
 local Agentic = {}
@@ -98,7 +99,7 @@ function Agentic.new_session()
     new_session.widget:show()
 end
 
---- Used to make sure we don't set multiple signal handlers or autocmds if the user calls setup multiple times
+--- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
     clear = true,
@@ -120,23 +121,7 @@ function Agentic.setup(opts)
 
     vim.treesitter.language.register("markdown", "AgenticChat")
 
-    vim.api.nvim_set_hl(0, "AgenticDiffDelete", { link = "DiffDelete" })
-    vim.api.nvim_set_hl(0, "AgenticDiffAdd", { link = "DiffAdd" })
-    vim.api.nvim_set_hl(
-        0,
-        "AgenticDiffDeleteWord",
-        { bg = "#9a3c3c", bold = true }
-    )
-    vim.api.nvim_set_hl(
-        0,
-        "AgenticDiffAddWord",
-        { bg = "#155729", bold = true }
-    )
-
-    vim.api.nvim_set_hl(0, "AgenticStatusPending", { bg = "#5f4d8f" })
-    vim.api.nvim_set_hl(0, "AgenticStatusCompleted", { bg = "#2d5a3d" })
-    vim.api.nvim_set_hl(0, "AgenticStatusFailed", { bg = "#7a2d2d" })
-    vim.api.nvim_set_hl(0, "AgenticStatusRejected", { bg = "#7a2d2d" })
+    Theme.setup()
 
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = cleanup_group,
