@@ -1,6 +1,22 @@
----Reusable diff highlighting utility for both chat buffer and file buffer diffs
 ---@class agentic.utils.DiffHighlighter
 local M = {}
+
+--- Convert strings to arrays of UTF-8 characters with their byte positions
+local function utf8_chars(str)
+    local chars = {}
+    local byte_positions = vim.str_utf_pos(str)
+
+    for i = 1, #byte_positions - 1 do
+        local start_byte = byte_positions[i]
+        local end_byte = byte_positions[i + 1]
+        table.insert(chars, {
+            text = str:sub(start_byte + 1, end_byte),
+            byte_pos = start_byte,
+        })
+    end
+
+    return chars
+end
 
 local Theme = require("agentic.theme")
 
@@ -13,45 +29,44 @@ function M.find_inline_change(old_line, new_line)
         return nil
     end
 
-    -- Convert strings to grapheme arrays for UTF-8 safe comparison
-    local old_graphemes = {}
-    for g in vim.iter.graphemes(old_line) do
-        table.insert(old_graphemes, g)
-    end
+    local old_chars = utf8_chars(old_line)
+    local new_chars = utf8_chars(new_line)
 
-    local new_graphemes = {}
-    for g in vim.iter.graphemes(new_line) do
-        table.insert(new_graphemes, g)
-    end
-
-    -- Find common prefix
-    local prefix_len = 0
-    local min_len = math.min(#old_graphemes, #new_graphemes)
+    local prefix_chars = 0
+    local min_len = math.min(#old_chars, #new_chars)
     for i = 1, min_len do
-        if old_graphemes[i] == new_graphemes[i] then
-            prefix_len = prefix_len + #old_graphemes[i]
+        if old_chars[i].text == new_chars[i].text then
+            prefix_chars = i
         else
             break
         end
     end
 
-    -- Find common suffix (after the prefix)
-    local suffix_len = 0
-    for i = 1, min_len - prefix_len do
-        local old_char = old_graphemes[#old_graphemes - i + 1]
-        local new_char = new_graphemes[#new_graphemes - i + 1]
-        if old_char == new_char then
-            suffix_len = suffix_len + #old_char
+    -- Find common suffix (character-based)
+    local suffix_chars = 0
+    for i = 1, min_len - prefix_chars do
+        local old_char = old_chars[#old_chars - i + 1]
+        local new_char = new_chars[#new_chars - i + 1]
+        if old_char.text == new_char.text then
+            suffix_chars = i
         else
             break
         end
     end
 
-    -- Calculate change regions
-    local old_start = prefix_len
-    local old_end = #old_line - suffix_len
-    local new_start = prefix_len
-    local new_end = #new_line - suffix_len
+    -- Calculate byte positions for change regions
+    local old_start = prefix_chars > 0
+            and old_chars[prefix_chars].byte_pos + #old_chars[prefix_chars].text
+        or 0
+    local old_end = #old_chars - suffix_chars > 0
+            and old_chars[#old_chars - suffix_chars].byte_pos + #old_chars[#old_chars - suffix_chars].text
+        or 0
+    local new_start = prefix_chars > 0
+            and new_chars[prefix_chars].byte_pos + #new_chars[prefix_chars].text
+        or 0
+    local new_end = #new_chars - suffix_chars > 0
+            and new_chars[#new_chars - suffix_chars].byte_pos + #new_chars[#new_chars - suffix_chars].text
+        or 0
 
     -- If no changes found, return nil
     if old_start >= old_end and new_start >= new_end then

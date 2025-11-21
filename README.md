@@ -159,6 +159,14 @@ require("agentic").setup({
     completed = "✔",   -- Icon shown for tool calls with completed status
     failed = "",      -- Icon shown for tool calls with failed status
   },
+
+
+  permission_icons = {
+    allow_once = "",
+    allow_always = "",
+    reject_once = "",
+    reject_always = "󰜺",
+  }
 })
 ```
 

@@ -9,6 +9,7 @@ Theme.HL_GROUPS = {
     STATUS_PENDING = "AgenticStatusPending",
     STATUS_COMPLETED = "AgenticStatusCompleted",
     STATUS_FAILED = "AgenticStatusFailed",
+    CODE_BLOCK_FENCE = "AgenticCodeBlockPath",
 }
 
 local COLORS = {
@@ -50,6 +51,10 @@ function Theme.setup()
     Theme._create_hl_if_not_exists(
         Theme.HL_GROUPS.STATUS_FAILED,
         { bg = COLORS.status_failed_bg }
+    )
+    Theme._create_hl_if_not_exists(
+        Theme.HL_GROUPS.CODE_BLOCK_FENCE,
+        { link = "Directory" }
     )
 end
 

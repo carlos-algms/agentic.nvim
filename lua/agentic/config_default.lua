@@ -65,6 +65,14 @@ local ConfigDefault = {
         completed = "✔",
         failed = "",
     },
+
+    --- @class agentic.UserConfig.PermissionIcons
+    permission_icons = {
+        allow_once = "",
+        allow_always = "",
+        reject_once = "",
+        reject_always = "󰜺",
+    },
 }
 
 return ConfigDefault

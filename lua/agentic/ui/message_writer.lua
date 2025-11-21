@@ -42,13 +42,6 @@ local _PERMISSION_KIND_PRIORITY = {
     reject_always = 4,
 }
 
-local _PERMISSION_ICON = {
-    allow_once = "",
-    allow_always = "",
-    reject_once = "󰅗",
-    reject_always = "󰱝",
-}
-
 ---@param bufnr integer
 ---@return agentic.ui.MessageWriter
 function MessageWriter:new(bufnr)
@@ -58,7 +51,7 @@ function MessageWriter:new(bufnr)
 
     local instance = setmetatable({
         bufnr = bufnr,
-        hl_group = "Comment",
+        hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
         ns_id = vim.api.nvim_create_namespace("agentic_tool_blocks"),
         decorations_ns_id = vim.api.nvim_create_namespace(
             "agentic_tool_decorations"
@@ -539,7 +532,7 @@ function MessageWriter:display_permission_buttons(request)
             string.format(
                 "- [%d] %s %s",
                 i,
-                _PERMISSION_ICON[option.kind] or "",
+                Config.permission_icons[option.kind] or "",
                 option.name
             )
         )
