@@ -1,12 +1,17 @@
 local ACPDiffHandler = require("agentic.acp.acp_diff_handler")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
-local DiffFormatter = require("agentic.utils.diff_formatter")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
+
+---@class agentic.ui.MessageWriter.HighlightRange
+---@field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
+---@field line_index integer Line index relative to returned lines (0-based)
+---@field old_line? string Original line content (for diff types)
+---@field new_line? string Modified line content (for diff types)
 
 ---@class agentic.ui.MessageWriter.BlockTracker
 ---@field extmark_id integer Range extmark spanning the block
@@ -147,17 +152,13 @@ function MessageWriter:write_tool_call_block(update)
 
         local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
 
-        vim.schedule(function()
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                self:_apply_block_highlights(
-                    bufnr,
-                    start_row,
-                    end_row,
-                    kind,
-                    highlight_ranges
-                )
-            end
-        end)
+        self:_apply_block_highlights(
+            bufnr,
+            start_row,
+            end_row,
+            kind,
+            highlight_ranges
+        )
 
         local decoration_ids =
             ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
@@ -174,20 +175,17 @@ function MessageWriter:write_tool_call_block(update)
                 right_gravity = false,
             })
 
-        local has_diff = ACPDiffHandler.has_diff_content(update)
         self.tool_call_blocks[update.toolCallId] = {
             extmark_id = extmark_id,
             decoration_extmark_ids = decoration_ids,
             kind = kind,
             argument = argument,
             status = update.status,
-            has_diff = has_diff,
+            has_diff = ACPDiffHandler.has_diff_content(update),
         }
 
-        if update.status then
-            self:_apply_header_highlight(bufnr, start_row, update.status)
-            self:_apply_status_footer(bufnr, end_row, update.status)
-        end
+        self:_apply_header_highlight(bufnr, start_row, update.status)
+        self:_apply_status_footer(bufnr, end_row, update.status)
 
         self:_append_lines({ "", "" })
     end)
@@ -341,24 +339,27 @@ function MessageWriter:_extract_file_path(update)
     return nil
 end
 
+--- A lang map of extension to language identifier for markdown code fences
+--- Keep only possible unknown mappings
+local lang_map = {
+    py = "python",
+    rb = "ruby",
+    rs = "rust",
+    kt = "kotlin",
+    htm = "html",
+    yml = "yaml",
+    sh = "bash",
+}
+
 ---Get language identifier from file path for markdown code fences
 ---@param file_path string
 ---@return string language
 local function get_language_from_path(file_path)
-    local ext = file_path:match("%.([^%.]+)$")
-    if not ext then
+    local ext = vim.fn.fnamemodify(file_path, ":e")
+    if not ext or ext == "" then
         return ""
     end
 
-    local lang_map = {
-        py = "python",
-        rb = "ruby",
-        rs = "rust",
-        kt = "kotlin",
-        htm = "html",
-        yml = "yaml",
-        sh = "bash",
-    }
     return lang_map[ext] or ext
 end
 
@@ -377,16 +378,14 @@ end
 ---@param kind string Tool call kind (required for ToolCallUpdate)
 ---@param argument string Tool call title (required for ToolCallUpdate)
 ---@return string[] lines Array of lines to render
----@return table[] highlight_ranges Array of {line_index, hl_group} for highlighting (relative to returned lines)
+---@return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
 function MessageWriter:_prepare_block_lines(update, kind, argument)
     local lines = {}
 
-    local file_path = self:_extract_file_path(update)
-    local display_text = file_path or argument or update.title or ""
-
-    local header_text = string.format(" %s(%s) ", kind, display_text)
+    local header_text = string.format(" %s(%s) ", kind, argument)
     table.insert(lines, header_text)
 
+    ---@type agentic.ui.MessageWriter.HighlightRange[]
     local highlight_ranges = {}
 
     if kind == "read" then
@@ -407,10 +406,13 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
             local info_text = string.format("Read %d lines", line_count)
             table.insert(lines, info_text)
 
-            table.insert(highlight_ranges, {
+            --- @type agentic.ui.MessageWriter.HighlightRange
+            local range = {
                 type = "comment",
                 line_index = #lines - 1,
-            })
+            }
+
+            table.insert(highlight_ranges, range)
         end
     elseif kind == "fetch" or kind == "WebSearch" then
         -- Initial tool_call has rawInput with query/url
@@ -425,52 +427,90 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
     end
 
     if kind ~= "read" then
-        local diff_items = {}
-        for _, content_item in ipairs(update.content or {}) do
-            if content_item.type == "diff" then
-                table.insert(diff_items, content_item)
-            end
-        end
+        if ACPDiffHandler.has_diff_content(update) then
+            local diff_blocks = ACPDiffHandler.extract_diff_blocks(update)
 
-        if #diff_items > 0 then
-            local diff_blocks = ACPDiffHandler.extract_diff_blocks({
-                content = diff_items,
-            })
-            local formatted_lines, diff_highlights =
-                DiffFormatter.format_diff_blocks(diff_blocks)
+            local lang = get_language_from_path(argument)
 
-            -- Add file separators for multi-file diffs
-            local file_count = 0
-            for _ in pairs(diff_blocks) do
-                file_count = file_count + 1
+            -- Hack to avoid triple backtick conflicts in markdown files
+            if lang ~= "md" then
+                table.insert(lines, "```" .. lang)
             end
 
-            if file_count > 1 then
-                -- Multiple files - add separator for each file
-                local current_file = nil
-                for path, _ in pairs(diff_blocks) do
-                    if current_file then
-                        table.insert(lines, "")
-                        table.insert(
-                            lines,
-                            string.format("--- %s", current_file)
-                        )
-                        table.insert(lines, "")
+            -- Single-loop: format diff blocks and track highlights inline
+            -- Sort file paths for deterministic ordering
+            local sorted_paths = {}
+            for path in pairs(diff_blocks) do
+                table.insert(sorted_paths, path)
+            end
+            table.sort(sorted_paths)
+
+            for _, path in ipairs(sorted_paths) do
+                local blocks = diff_blocks[path]
+                if blocks and #blocks > 0 then
+                    for _, block in ipairs(blocks) do
+                        local old_count = #block.old_lines
+                        local new_count = #block.new_lines
+                        local is_modification = old_count == new_count
+                            and old_count > 0
+
+                        -- Insert old lines (removed content)
+                        for i, old_line in ipairs(block.old_lines) do
+                            local line_index = #lines
+                            table.insert(lines, old_line)
+
+                            local new_line = is_modification
+                                    and block.new_lines[i]
+                                or nil
+
+                            --- @type agentic.ui.MessageWriter.HighlightRange
+                            local range = {
+                                line_index = line_index,
+                                type = "old",
+                                old_line = old_line,
+                                new_line = new_line,
+                            }
+
+                            table.insert(highlight_ranges, range)
+                        end
+
+                        -- Insert new lines (added content)
+                        for i, new_line in ipairs(block.new_lines) do
+                            local line_index = #lines
+                            table.insert(lines, new_line)
+
+                            if not is_modification then
+                                -- Pure addition
+                                --- @type agentic.ui.MessageWriter.HighlightRange
+                                local range = {
+                                    line_index = line_index,
+                                    type = "new",
+                                    old_line = nil,
+                                    new_line = new_line,
+                                }
+
+                                table.insert(highlight_ranges, range)
+                            else
+                                -- Modification with word-level diff
+                                --- @type agentic.ui.MessageWriter.HighlightRange
+                                local range = {
+                                    line_index = line_index,
+                                    type = "new_modification",
+                                    old_line = block.old_lines[i],
+                                    new_line = new_line,
+                                }
+
+                                table.insert(highlight_ranges, range)
+                            end
+                        end
                     end
-                    current_file = path
                 end
             end
 
-            local lang = file_path and get_language_from_path(file_path) or ""
-            table.insert(lines, "```" .. lang)
-            local fence_offset = #lines
-
-            for _, hl in ipairs(diff_highlights) do
-                hl.line_index = hl.line_index + fence_offset
+            -- Close code fence if not markdown, to avoid conflicts
+            if lang ~= "md" then
+                table.insert(lines, "```")
             end
-            vim.list_extend(highlight_ranges, diff_highlights)
-            vim.list_extend(lines, formatted_lines)
-            table.insert(lines, "```")
         end
 
         for _, content_item in ipairs(update.content or {}) do
@@ -495,9 +535,7 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
         end
     end
 
-    if update.status and update.status ~= "" then
-        table.insert(lines, "")
-    end
+    table.insert(lines, "")
 
     return lines, highlight_ranges
 end
@@ -508,13 +546,11 @@ end
 ---@return integer button_end_row End row of button block
 ---@return table<integer, string> option_mapping Mapping from number (1-N) to option_id
 function MessageWriter:display_permission_buttons(request)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
-        return 0, 0, {}
-    end
-
     if not request.toolCall or not request.options or #request.options == 0 then
-        Logger.debug("MessageWriter: Invalid permission request")
+        Logger.debug(
+            "MessageWriter: Invalid permission request",
+            vim.inspect(request)
+        )
         return 0, 0, {}
     end
 
@@ -526,11 +562,20 @@ function MessageWriter:display_permission_buttons(request)
         "",
     }
 
+    local tracker = self.tool_call_blocks[request.toolCall.toolCallId]
+
+    if tracker then
+        vim.list_extend(lines_to_append, {
+            string.format(" %s(%s)", tracker.kind, tracker.argument),
+            "",
+        })
+    end
+
     for i, option in ipairs(sorted_options) do
         table.insert(
             lines_to_append,
             string.format(
-                "- [%d] %s %s",
+                "%d. %s %s",
                 i,
                 Config.permission_icons[option.kind] or "",
                 option.name
@@ -812,35 +857,17 @@ function MessageWriter:clear()
         return
     end
 
-    pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, self.ns_id, 0, -1)
-    pcall(
-        vim.api.nvim_buf_clear_namespace,
-        self.bufnr,
+    local namespaces_to_clean = {
+        self.ns_id,
         self.decorations_ns_id,
-        0,
-        -1
-    )
-    pcall(
-        vim.api.nvim_buf_clear_namespace,
-        self.bufnr,
         self.permission_buttons_ns_id,
-        0,
-        -1
-    )
-    pcall(
-        vim.api.nvim_buf_clear_namespace,
-        self.bufnr,
         self.diff_highlights_ns_id,
-        0,
-        -1
-    )
-    pcall(
-        vim.api.nvim_buf_clear_namespace,
-        self.bufnr,
         self.status_ns_id,
-        0,
-        -1
-    )
+    }
+
+    for _, ns in ipairs(namespaces_to_clean) do
+        pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, ns, 0, -1)
+    end
     self.tool_call_blocks = {}
 end
 

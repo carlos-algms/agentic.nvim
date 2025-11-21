@@ -1,5 +1,11 @@
 local P = {}
 
+---@class agentic.DiffHandler.DiffBlock
+---@field start_line integer
+---@field end_line integer
+---@field old_lines string[]
+---@field new_lines string[]
+
 ---@class agentic.acp.ACPDiffHandler
 local M = {}
 
@@ -7,7 +13,6 @@ local TextMatcher = require("agentic.utils.text_matcher")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
----Check if tool call contains diff content
 ---@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
 ---@return boolean has_diff
 function M.has_diff_content(tool_call)
@@ -19,11 +24,10 @@ function M.has_diff_content(tool_call)
     return false
 end
 
----Extract diff blocks from ACP tool call content
----@param tool_call table Must have `content` (array) field
----@return table<string, DiffBlock[]> diff_blocks_by_file Maps file path to list of diff blocks
+---@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
+---@return table<string, agentic.DiffHandler.DiffBlock[]> diff_blocks_by_file Maps file path to list of diff blocks
 function M.extract_diff_blocks(tool_call)
-    ---@type table<string, DiffBlock[]>
+    ---@type table<string, agentic.DiffHandler.DiffBlock[]>
     local diff_blocks_by_file = {}
 
     for _, content_item in ipairs(tool_call.content or {}) do
@@ -78,16 +82,16 @@ function M.extract_diff_blocks(tool_call)
         table.sort(diff_blocks, function(a, b)
             return a.start_line < b.start_line
         end)
-        diff_blocks_by_file[path] = P.minimize_diff_blocks(diff_blocks)
+        diff_blocks_by_file[path] = P._minimize_diff_blocks(diff_blocks)
     end
 
     return diff_blocks_by_file
 end
 
 ---Minimize diff blocks by removing unchanged lines using vim.diff
----@param diff_blocks DiffBlock[]
----@return DiffBlock[]
-function P.minimize_diff_blocks(diff_blocks)
+---@param diff_blocks agentic.DiffHandler.DiffBlock[]
+---@return agentic.DiffHandler.DiffBlock[]
+function P._minimize_diff_blocks(diff_blocks)
     local minimized = {}
     for _, diff_block in ipairs(diff_blocks) do
         local old_string = table.concat(diff_block.old_lines, "\n")
@@ -150,7 +154,7 @@ end
 
 ---Create a diff block for a new file
 ---@param new_lines string[]
----@return DiffBlock
+---@return agentic.DiffHandler.DiffBlock
 function P._create_new_file_diff_block(new_lines)
     local line_count = #new_lines
     return {
@@ -176,9 +180,9 @@ function P._normalize_text_to_lines(text)
 end
 
 ---Add a diff block to the collection, ensuring the path array exists
----@param diff_blocks_by_file table<string, DiffBlock[]>
+---@param diff_blocks_by_file table<string, agentic.DiffHandler.DiffBlock[]>
 ---@param path string
----@param diff_block DiffBlock
+---@param diff_block agentic.DiffHandler.DiffBlock
 function P._add_diff_block(diff_blocks_by_file, path, diff_block)
     diff_blocks_by_file[path] = diff_blocks_by_file[path] or {}
     table.insert(diff_blocks_by_file[path], diff_block)
@@ -188,7 +192,7 @@ end
 ---@param file_lines string[] File content lines
 ---@param search_text string Text to search for
 ---@param replace_text string Text to replace with
----@return DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
+---@return agentic.DiffHandler.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
 function P._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
 
@@ -219,7 +223,7 @@ end
 ---@param file_lines string[] File content lines
 ---@param old_lines string[] Old text lines
 ---@param new_lines string[] New text lines
----@return DiffBlock[]|nil blocks Array of diff blocks or nil if no match
+---@return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
 function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
     -- Find all matches using fuzzy matching
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
@@ -249,11 +253,5 @@ function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
 
     return nil
 end
-
----@class DiffBlock
----@field start_line integer
----@field end_line integer
----@field old_lines string[]
----@field new_lines string[]
 
 return M
