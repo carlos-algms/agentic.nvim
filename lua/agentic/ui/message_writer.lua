@@ -814,7 +814,7 @@ function MessageWriter:_render_decorations(bufnr, start_row, end_row)
         body_start = start_row + 1,
         body_end = end_row - 1,
         footer_line = end_row,
-        hl_group = self.hl_group,
+        hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
     })
 end
 
