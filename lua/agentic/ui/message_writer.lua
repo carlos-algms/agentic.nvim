@@ -369,32 +369,13 @@ local function get_language_from_path(file_path)
     end
 
     local lang_map = {
-        lua = "lua",
-        js = "javascript",
-        ts = "typescript",
-        jsx = "jsx",
-        tsx = "tsx",
         py = "python",
         rb = "ruby",
-        go = "go",
         rs = "rust",
-        c = "c",
-        cpp = "cpp",
-        java = "java",
         kt = "kotlin",
-        swift = "swift",
-        md = "markdown",
-        html = "html",
-        css = "css",
-        scss = "scss",
-        json = "json",
-        yaml = "yaml",
+        htm = "html",
         yml = "yaml",
-        toml = "toml",
-        xml = "xml",
         sh = "bash",
-        bash = "bash",
-        zsh = "zsh",
     }
     return lang_map[ext] or ext
 end
