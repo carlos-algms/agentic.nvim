@@ -6,6 +6,7 @@ local ConfigDefault = {
     ---@type "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
     provider = "claude-acp",
 
+    --- @class agentic.UserConfig.ACPProviders
     acp_providers = {
         ["claude-acp"] = {
             command = "claude-code-acp",
@@ -50,6 +51,7 @@ local ConfigDefault = {
         },
     },
 
+    --- @class agentic.UserConfig.Windows
     windows = {
         width = "40%",
         input = {
@@ -57,6 +59,7 @@ local ConfigDefault = {
         },
     },
 
+    --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",
         completed = "✔",

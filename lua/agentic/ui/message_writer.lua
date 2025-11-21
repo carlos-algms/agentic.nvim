@@ -1,9 +1,10 @@
-local Logger = require("agentic.utils.logger")
-local ExtmarkBlock = require("agentic.utils.extmark_block")
-local BufHelpers = require("agentic.utils.buf_helpers")
 local ACPDiffHandler = require("agentic.acp.acp_diff_handler")
+local BufHelpers = require("agentic.utils.buf_helpers")
+local Config = require("agentic.config")
 local DiffFormatter = require("agentic.utils.diff_formatter")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
+local ExtmarkBlock = require("agentic.utils.extmark_block")
+local Logger = require("agentic.utils.logger")
 
 ---@class agentic.ui.MessageWriter.BlockTracker
 ---@field extmark_id integer Range extmark spanning the block
@@ -180,6 +181,7 @@ function MessageWriter:write_tool_call_block(update)
         }
 
         if update.status then
+            self:_apply_header_highlight(bufnr, start_row, update.status)
             self:_apply_status_footer(bufnr, end_row, update.status)
         end
 
@@ -262,10 +264,11 @@ function MessageWriter:update_tool_call_block(update)
                 vim.api.nvim_buf_clear_namespace,
                 bufnr,
                 self.status_ns_id,
-                old_end_row,
+                start_row,
                 old_end_row + 1
             )
             if update.status then
+                self:_apply_header_highlight(bufnr, start_row, update.status)
                 self:_apply_status_footer(bufnr, old_end_row, update.status)
             end
 
@@ -285,7 +288,7 @@ function MessageWriter:update_tool_call_block(update)
             vim.api.nvim_buf_clear_namespace,
             bufnr,
             self.status_ns_id,
-            old_end_row,
+            start_row,
             old_end_row + 1
         )
 
@@ -332,6 +335,7 @@ function MessageWriter:update_tool_call_block(update)
         tracker.status = update.status or tracker.status
 
         if update.status then
+            self:_apply_header_highlight(bufnr, start_row, update.status)
             self:_apply_status_footer(bufnr, new_end_row, update.status)
         end
     end)
@@ -394,31 +398,16 @@ local function get_language_from_path(file_path)
     return lang_map[ext] or ext
 end
 
----Format status with icon and get highlight group
 ---@param status string
----@return string formatted_status, string hl_group
-local function format_status(status)
-    local Config = require("agentic.config")
-    local icons = Config.status_icons or {}
-
-    local status_config = {
-        pending = {
-            icon = icons.pending or "󰔛",
-            hl = "AgenticStatusPending",
-        },
-        completed = {
-            icon = icons.completed or "",
-            hl = "AgenticStatusCompleted",
-        },
-        failed = { icon = icons.failed or "󰅙", hl = "AgenticStatusFailed" },
-        rejected = {
-            icon = icons.rejected or "󰅙",
-            hl = "AgenticStatusRejected",
-        },
+---@return string hl_group
+local function get_status_hl_group(status)
+    local status_hl = {
+        pending = "AgenticStatusPending",
+        completed = "AgenticStatusCompleted",
+        failed = "AgenticStatusFailed",
+        rejected = "AgenticStatusRejected",
     }
-
-    local config = status_config[status] or { icon = "", hl = "Comment" }
-    return string.format(" %s %s ", config.icon, status), config.hl
+    return status_hl[status] or "Comment"
 end
 
 ---@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
@@ -438,7 +427,7 @@ function MessageWriter:_prepare_block_lines(update, kind, title)
         display_text = update.rawInput.query
     end
 
-    local header_text = string.format("%s %s", kind, display_text)
+    local header_text = string.format(" %s %s ", kind, display_text)
     table.insert(lines, header_text)
     local header_line_count = 1
 
@@ -651,7 +640,31 @@ function MessageWriter:_apply_diff_highlights(
     end
 end
 
----Apply status footer virtual text
+---@param bufnr integer
+---@param header_line integer 0-indexed header line number
+---@param status string Status value (pending, completed, etc.)
+function MessageWriter:_apply_header_highlight(bufnr, header_line, status)
+    if not vim.api.nvim_buf_is_valid(bufnr) or not status or status == "" then
+        return
+    end
+
+    local line = vim.api.nvim_buf_get_lines(
+        bufnr,
+        header_line,
+        header_line + 1,
+        false
+    )[1]
+    if not line then
+        return
+    end
+
+    local hl_group = get_status_hl_group(status)
+    vim.api.nvim_buf_set_extmark(bufnr, self.status_ns_id, header_line, 0, {
+        end_col = #line,
+        hl_group = hl_group,
+    })
+end
+
 ---@param bufnr integer
 ---@param footer_line integer 0-indexed footer line number
 ---@param status string Status value (pending, completed, etc.)
@@ -660,10 +673,15 @@ function MessageWriter:_apply_status_footer(bufnr, footer_line, status)
         return
     end
 
-    local formatted_text, hl_group = format_status(status)
+    local icons = Config.status_icons or {}
+
+    local config = icons[status] or ""
+    local hl_group = get_status_hl_group(status)
 
     vim.api.nvim_buf_set_extmark(bufnr, self.status_ns_id, footer_line, 0, {
-        virt_text = { { formatted_text, hl_group } },
+        virt_text = {
+            { string.format(" %s %s ", config, status), hl_group },
+        },
         virt_text_pos = "overlay",
     })
 end
