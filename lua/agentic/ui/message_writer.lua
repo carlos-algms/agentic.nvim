@@ -29,7 +29,6 @@ local Theme = require("agentic.theme")
 ---@field diff_highlights_ns_id integer Namespace for diff highlight extmarks
 ---@field status_ns_id integer Namespace for status footer extmarks
 ---@field tool_call_blocks table<string, agentic.ui.MessageWriter.BlockTracker> Map tool_call_id to extmark
----@field hl_group string
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -56,7 +55,6 @@ function MessageWriter:new(bufnr)
 
     local instance = setmetatable({
         bufnr = bufnr,
-        hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
         ns_id = vim.api.nvim_create_namespace("agentic_tool_blocks"),
         decorations_ns_id = vim.api.nvim_create_namespace(
             "agentic_tool_decorations"
@@ -132,7 +130,7 @@ function MessageWriter:write_tool_call_block(update)
         local kind = update.kind or "tool_call"
         local argument = ""
 
-        if kind == "fetch" and update.rawInput then
+        if kind == "fetch" then
             if update.rawInput.query then
                 kind = "WebSearch"
             end
@@ -142,7 +140,8 @@ function MessageWriter:write_tool_call_block(update)
                 or "unknown fetch"
         else
             local file_path = self:_extract_file_path(update)
-            argument = file_path or update.title or ""
+            local command = update.rawInput.command
+            argument = file_path or command or update.title or ""
         end
 
         local start_row = vim.api.nvim_buf_line_count(bufnr)
@@ -166,7 +165,7 @@ function MessageWriter:write_tool_call_block(update)
                 body_start = start_row + 1,
                 body_end = end_row - 1,
                 footer_line = end_row,
-                hl_group = self.hl_group,
+                hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
             })
 
         local extmark_id =
@@ -328,12 +327,8 @@ end
 ---@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
 ---@return string|nil file_path
 function MessageWriter:_extract_file_path(update)
-    if
-        update.locations
-        and #update.locations > 0
-        and update.locations[1].path
-    then
-        return FileSystem.to_smart_path(update.locations[1].path)
+    if update.rawInput.file_path then
+        return FileSystem.to_smart_path(update.rawInput.file_path)
     end
 
     return nil

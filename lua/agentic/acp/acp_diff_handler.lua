@@ -16,12 +16,11 @@ local Logger = require("agentic.utils.logger")
 ---@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
 ---@return boolean has_diff
 function M.has_diff_content(tool_call)
-    for _, content_item in ipairs(tool_call.content or {}) do
-        if content_item.type == "diff" then
-            return true
-        end
-    end
-    return false
+    -- We use rawInput for diffs. Old string might be nil for new files.
+    -- We check for file_path and new_string presence.
+    return tool_call.rawInput ~= nil
+        and tool_call.rawInput.file_path ~= nil
+        and tool_call.rawInput.new_string ~= nil
 end
 
 ---@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
@@ -30,59 +29,59 @@ function M.extract_diff_blocks(tool_call)
     ---@type table<string, agentic.DiffHandler.DiffBlock[]>
     local diff_blocks_by_file = {}
 
-    for _, content_item in ipairs(tool_call.content or {}) do
-        if content_item.type == "diff" then
-            local path = content_item.path
-            local oldText = content_item.oldText
-            local newText = content_item.newText
+    local path = tool_call.rawInput.file_path
+    local oldText = tool_call.rawInput.old_string
+    local newText = tool_call.rawInput.new_string
 
-            if not oldText or oldText == "" or oldText == vim.NIL then
-                local new_lines = P._normalize_text_to_lines(newText)
-                P._add_diff_block(
-                    diff_blocks_by_file,
-                    path,
-                    P._create_new_file_diff_block(new_lines)
-                )
-            else
-                local old_lines = P._normalize_text_to_lines(oldText)
-                local new_lines = P._normalize_text_to_lines(newText)
+    -- Default replace_all to true if not specified, unless explicitly false
+    local replace_all = tool_call.rawInput.replace_all ~= false
 
-                local abs_path = FileSystem.to_absolute_path(path)
-                local file_lines = FileSystem.read_from_buffer_or_disk(abs_path)
-                    or {}
+    if not path or not newText then
+        return diff_blocks_by_file
+    end
 
-                local blocks = P._match_or_substring_fallback(
-                    file_lines,
-                    old_lines,
-                    new_lines
-                )
-                if blocks then
-                    for _, block in ipairs(blocks) do
-                        P._add_diff_block(diff_blocks_by_file, path, block)
-                    end
-                else
-                    Logger.debug(
-                        "[ACP diff] Failed to locate diff",
-                        { path = path }
-                    )
-                    -- Fallback: display the diff even if we can't match it
-                    -- This ensures users can still see what changes were attempted
-                    P._add_diff_block(diff_blocks_by_file, path, {
-                        start_line = 1,
-                        end_line = #old_lines,
-                        old_lines = old_lines,
-                        new_lines = new_lines,
-                    })
+    if not oldText or oldText == "" then
+        local new_lines = P._normalize_text_to_lines(newText)
+        P._add_diff_block(
+            diff_blocks_by_file,
+            path,
+            P._create_new_file_diff_block(new_lines)
+        )
+    else
+        local old_lines = P._normalize_text_to_lines(oldText)
+        local new_lines = P._normalize_text_to_lines(newText)
+
+        local abs_path = FileSystem.to_absolute_path(path)
+        local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
+
+        local blocks =
+            P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+        if blocks then
+            if replace_all then
+                for _, block in ipairs(blocks) do
+                    P._add_diff_block(diff_blocks_by_file, path, block)
                 end
+            else
+                -- Only use the first match if replace_all is false
+                P._add_diff_block(diff_blocks_by_file, path, blocks[1])
             end
+        else
+            Logger.debug("[ACP diff] Failed to locate diff", { path = path })
+            -- Fallback: display the diff even if we can't match it
+            P._add_diff_block(diff_blocks_by_file, path, {
+                start_line = 1,
+                end_line = #old_lines,
+                old_lines = old_lines,
+                new_lines = new_lines,
+            })
         end
     end
 
-    for path, diff_blocks in pairs(diff_blocks_by_file) do
+    for file_path, diff_blocks in pairs(diff_blocks_by_file) do
         table.sort(diff_blocks, function(a, b)
             return a.start_line < b.start_line
         end)
-        diff_blocks_by_file[path] = P._minimize_diff_blocks(diff_blocks)
+        diff_blocks_by_file[file_path] = P._minimize_diff_blocks(diff_blocks)
     end
 
     return diff_blocks_by_file

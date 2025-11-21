@@ -1,4 +1,4 @@
-# Project Overview
+# Agents Guide
 
 agentic.nvim is a Neovim plugin that emulates Cursor AI IDE behavior, providing
 AI-driven code assistance through a chat sidebar for interactive conversations.
@@ -36,6 +36,8 @@ make NVIM=/path/to/nvim luals
 make LUALS=/path/to/lua-language-server luals
 make LUACHECK=/path/to/luacheck luacheck
 ```
+
+**Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type annotations for Lua Language Server support. These annotations should **never** be removed, only updated when the underlying types change.
 
 ### Provider System
 

@@ -2,6 +2,11 @@ local Logger = require("agentic.utils.logger")
 local transport_module = require("agentic.acp.acp_transport")
 local FileSystem = require("agentic.utils.file_system")
 
+--[[
+CRITICAL: Type annotations in this file are essential for Lua Language Server support.
+DO NOT REMOVE them. Only update them if the underlying types change.
+--]]
+
 ---@class agentic.acp.ACPClient
 ---@field provider_config agentic.acp.ClientConfig
 ---@field id_counter number
