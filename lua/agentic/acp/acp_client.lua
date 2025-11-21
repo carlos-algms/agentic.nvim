@@ -708,6 +708,7 @@ return ACPClient
 ---@field description? string
 ---@field command? string
 ---@field url? string Usually from the fetch tool
+---@field prompt? string Usually accompanying the fetch tool, not the web_search
 ---@field query? string Usually from the web_search tool
 ---@field timeout? number
 

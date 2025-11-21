@@ -4,6 +4,7 @@ local Config = require("agentic.config")
 local DiffFormatter = require("agentic.utils.diff_formatter")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
+local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
@@ -11,7 +12,7 @@ local Theme = require("agentic.theme")
 ---@field extmark_id integer Range extmark spanning the block
 ---@field decoration_extmark_ids integer[] IDs of decoration extmarks from ExtmarkBlock
 ---@field kind string Tool call kind (read, edit, etc.)
----@field title string Tool call title/command (stored for updates)
+---@field argument string Tool call title/command (stored for updates)
 ---@field status string Current status (pending, completed, etc.)
 ---@field has_diff boolean Whether this block contains diff content
 
@@ -131,11 +132,24 @@ function MessageWriter:write_tool_call_block(update)
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local kind = update.kind or "tool_call"
-        local command = update.title or ""
+        local argument = ""
+
+        if kind == "fetch" then
+            if update.rawInput.query then
+                kind = "WebSearch"
+            end
+
+            argument = update.rawInput.query
+                or update.rawInput.url
+                or "unknown fetch"
+        else
+            local file_path = self:_extract_file_path(update)
+            argument = file_path or update.title or ""
+        end
 
         local start_row = vim.api.nvim_buf_line_count(bufnr)
         local lines, highlight_ranges =
-            self:_prepare_block_lines(update, kind, command)
+            self:_prepare_block_lines(update, kind, argument)
         self:_append_lines(lines)
 
         local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
@@ -176,7 +190,7 @@ function MessageWriter:write_tool_call_block(update)
             extmark_id = extmark_id,
             decoration_extmark_ids = decoration_ids,
             kind = kind,
-            title = command,
+            argument = argument,
             status = update.status,
             has_diff = has_diff,
         }
@@ -294,7 +308,7 @@ function MessageWriter:update_tool_call_block(update)
         )
 
         local new_lines, highlight_ranges =
-            self:_prepare_block_lines(update, tracker.kind, tracker.title)
+            self:_prepare_block_lines(update, tracker.kind, tracker.argument)
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row,
@@ -345,14 +359,15 @@ end
 ---Extract file path from tool call update
 ---@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
 ---@return string|nil file_path
-local function extract_file_path(update)
+function MessageWriter:_extract_file_path(update)
     if
         update.locations
         and #update.locations > 0
         and update.locations[1].path
     then
-        return update.locations[1].path
+        return FileSystem.to_smart_path(update.locations[1].path)
     end
+
     return nil
 end
 
@@ -390,24 +405,31 @@ local function get_status_hl_group(status)
 end
 
 ---@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
----@param kind? string Tool call kind (required for ToolCallUpdate)
----@param title? string Tool call title (required for ToolCallUpdate)
+---@param kind string Tool call kind (required for ToolCallUpdate)
+---@param argument string Tool call title (required for ToolCallUpdate)
 ---@return string[] lines Array of lines to render
 ---@return table[] highlight_ranges Array of {line_index, hl_group} for highlighting (relative to returned lines)
-function MessageWriter:_prepare_block_lines(update, kind, title)
+function MessageWriter:_prepare_block_lines(update, kind, argument)
     local lines = {}
 
-    kind = kind or update.kind or "tool_call"
-    local file_path = extract_file_path(update)
-    local display_text = file_path or title or update.title or ""
+    local file_path = self:_extract_file_path(update)
+    local display_text = (file_path and string.format("%s", file_path))
+        or argument
+        or update.title
+        or ""
 
-    local header_text = string.format(" %s %s ", kind, display_text)
+    local header_text = string.format(" %s(%s) ", kind, display_text)
     table.insert(lines, header_text)
-    local header_line_count = 1
 
     local highlight_ranges = {}
 
-    if kind ~= "read" then
+    if kind == "read" then
+        --- TODO: add one empty line as body first, then add how many lines where read, use `Comment` as the hl group.
+    elseif kind == "fetch" then
+        if update.rawInput.url and update.rawInput.prompt then
+            table.insert(lines, update.rawInput.prompt)
+        end
+    else
         local diff_items = {}
         for _, content_item in ipairs(update.content or {}) do
             if content_item.type == "diff" then
@@ -648,12 +670,12 @@ function MessageWriter:_apply_status_footer(bufnr, footer_line, status)
 
     local icons = Config.status_icons or {}
 
-    local config = icons[status] or ""
+    local icon = icons[status] or ""
     local hl_group = get_status_hl_group(status)
 
     vim.api.nvim_buf_set_extmark(bufnr, self.status_ns_id, footer_line, 0, {
         virt_text = {
-            { string.format(" %s %s ", config, status), hl_group },
+            { string.format(" %s %s ", icon, status), hl_group },
         },
         virt_text_pos = "overlay",
     })
