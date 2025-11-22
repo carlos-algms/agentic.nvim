@@ -1,5 +1,6 @@
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
+local Theme = require("agentic.theme")
 
 ---@class agentic.Agentic
 local Agentic = {}
@@ -98,6 +99,7 @@ function Agentic.new_session()
     new_session.widget:show()
 end
 
+--- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
     clear = true,
@@ -118,6 +120,8 @@ function Agentic.setup(opts)
     traps_set = true
 
     vim.treesitter.language.register("markdown", "AgenticChat")
+
+    Theme.setup()
 
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = cleanup_group,

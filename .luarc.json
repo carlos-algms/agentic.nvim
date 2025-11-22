@@ -26,9 +26,9 @@
     }
   },
   "workspace": {
-    "library": ["$VIMRUNTIME", "${3rd}/luv/library"],
+    "library": ["$VIMRUNTIME", "${3rd}/luv/library", "$PWD/lua"],
     "checkThirdParty": false,
-    "preloadFileSize": 1000,
+    "preloadFileSize": 10000,
     "ignoreDir": [".git", "node_modules", ".github"]
   },
   "type": {

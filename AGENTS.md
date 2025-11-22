@@ -1,7 +1,43 @@
-# Project Overview
+# Agents Guide
 
 agentic.nvim is a Neovim plugin that emulates Cursor AI IDE behavior, providing
 AI-driven code assistance through a chat sidebar for interactive conversations.
+
+## Development & Linting
+
+Quick syntax check:
+
+```bash
+luac -p <file> [<file2> ...]  # Parse only, checks for syntax errors without compilation
+```
+
+Examples:
+
+```bash
+luac -p lua/agentic/init.lua                    # Single file
+luac -p lua/agentic/init.lua lua/agentic/ui.lua # Multiple files
+luac -p lua/agentic/*.lua                       # Using glob patterns
+```
+
+Or with Make for running Lua linting and type checking tools:
+
+### Available Make targets:
+
+- `make luals` - Run Lua Language Server headless diagnosis (type checking)
+- `make luacheck` - Run Luacheck linter (style and syntax checking)
+- `make print-vimruntime` - Display the detected VIMRUNTIME path
+
+### Tool overrides:
+
+Override default tool paths if needed:
+
+```bash
+make NVIM=/path/to/nvim luals
+make LUALS=/path/to/lua-language-server luals
+make LUACHECK=/path/to/luacheck luacheck
+```
+
+**Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type annotations for Lua Language Server support. These annotations should **never** be removed, only updated when the underlying types change.
 
 ### Provider System
 
@@ -67,3 +103,4 @@ official docs:
   https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/diagnostic.txt
 
 Don't be limited to these docs, explore more as needed.
+

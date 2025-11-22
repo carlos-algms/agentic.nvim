@@ -153,6 +153,20 @@ require("agentic").setup({
       height = 10, -- the height, in lines, of the prompt input area
     },
   },
+
+  status_icons = {
+    pending = "󰔛",    -- Icon shown for tool calls with pending status
+    completed = "✔",   -- Icon shown for tool calls with completed status
+    failed = "",      -- Icon shown for tool calls with failed status
+  },
+
+
+  permission_icons = {
+    allow_once = "",
+    allow_always = "",
+    reject_once = "",
+    reject_always = "󰜺",
+  }
 })
 ```
 

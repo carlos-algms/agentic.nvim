@@ -2,6 +2,11 @@ local Logger = require("agentic.utils.logger")
 local transport_module = require("agentic.acp.acp_transport")
 local FileSystem = require("agentic.utils.file_system")
 
+--[[
+CRITICAL: Type annotations in this file are essential for Lua Language Server support.
+DO NOT REMOVE them. Only update them if the underlying types change.
+--]]
+
 ---@class agentic.acp.ACPClient
 ---@field provider_config agentic.acp.ClientConfig
 ---@field id_counter number
@@ -708,6 +713,7 @@ return ACPClient
 ---@field description? string
 ---@field command? string
 ---@field url? string Usually from the fetch tool
+---@field prompt? string Usually accompanying the fetch tool, not the web_search
 ---@field query? string Usually from the web_search tool
 ---@field timeout? number
 
