@@ -91,23 +91,24 @@ end
 ---@param diff_blocks agentic.DiffHandler.DiffBlock[]
 ---@return agentic.DiffHandler.DiffBlock[]
 function P._minimize_diff_blocks(diff_blocks)
+    ---@type agentic.DiffHandler.DiffBlock[]
     local minimized = {}
+
     for _, diff_block in ipairs(diff_blocks) do
         local old_string = table.concat(diff_block.old_lines, "\n")
         local new_string = table.concat(diff_block.new_lines, "\n")
 
-        ---@type integer[][]
-        ---@diagnostic disable-next-line: assign-type-mismatch
         local patch = vim.diff(old_string, new_string, {
             algorithm = "histogram",
             result_type = "indices",
             ctxlen = 0,
-        })
+        }) --[[ @as integer[][] ]]
 
         if #patch > 0 then
             for _, hunk in ipairs(patch) do
                 local start_a, count_a, start_b, count_b = unpack(hunk)
                 local minimized_block = {}
+
                 if count_a > 0 then
                     local end_a =
                         math.min(start_a + count_a - 1, #diff_block.old_lines)
@@ -156,26 +157,31 @@ end
 ---@return agentic.DiffHandler.DiffBlock
 function P._create_new_file_diff_block(new_lines)
     local line_count = #new_lines
-    return {
+
+    ---@type agentic.DiffHandler.DiffBlock
+    local block = {
         start_line = 1,
         end_line = line_count > 0 and line_count or 1,
         old_lines = {},
         new_lines = new_lines,
     }
+
+    return block
 end
 
 ---Normalize text to lines array, handling nil and vim.NIL
 ---@param text string|nil
 ---@return string[]
 function P._normalize_text_to_lines(text)
-    if text == "" then
-        return {}
-    end
-    if not text or text == vim.NIL then
+    if not text or text == "" or text == vim.NIL then
         return {}
     end
 
-    return type(text) == "string" and vim.split(text, "\n") or {}
+    if type(text) == "string" then
+        return vim.split(text, "\n")
+    end
+
+    return {}
 end
 
 ---Add a diff block to the collection, ensuring the path array exists
@@ -185,6 +191,48 @@ end
 function P._add_diff_block(diff_blocks_by_file, path, diff_block)
     diff_blocks_by_file[path] = diff_blocks_by_file[path] or {}
     table.insert(diff_blocks_by_file[path], diff_block)
+end
+
+---Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
+---@param file_lines string[] File content lines
+---@param old_lines string[] Old text lines
+---@param new_lines string[] New text lines
+---@return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
+function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+    -- Find all matches using fuzzy matching
+    local matches = TextMatcher.find_all_matches(file_lines, old_lines)
+
+    if #matches > 0 then
+        ---@type agentic.DiffHandler.DiffBlock[]
+        local blocks = {}
+
+        for _, match in ipairs(matches) do
+            ---@type agentic.DiffHandler.DiffBlock
+            local block = {
+                start_line = match.start_line,
+                end_line = match.end_line,
+                old_lines = old_lines,
+                new_lines = new_lines,
+            }
+
+            table.insert(blocks, block)
+        end
+
+        return blocks
+    end
+
+    -- Fallback to substring replacement for single-line cases
+    if #old_lines == 1 and #new_lines == 1 then
+        local blocks = P._find_substring_replacements(
+            file_lines,
+            old_lines[1],
+            new_lines[1]
+        )
+
+        return #blocks > 0 and blocks or nil
+    end
+
+    return nil
 end
 
 ---Find all substring replacement occurrences in file lines
@@ -206,51 +254,19 @@ function P._find_substring_replacements(file_lines, search_text, replace_text)
                 return replace_text
             end, 1)
 
-            table.insert(diff_blocks, {
+            ---@type agentic.DiffHandler.DiffBlock
+            local block = {
                 start_line = line_idx,
                 end_line = line_idx,
                 old_lines = { line_content },
                 new_lines = { modified_line },
-            })
+            }
+
+            table.insert(diff_blocks, block)
         end
     end
 
     return diff_blocks
-end
-
----Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
----@param file_lines string[] File content lines
----@param old_lines string[] Old text lines
----@param new_lines string[] New text lines
----@return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
-    -- Find all matches using fuzzy matching
-    local matches = TextMatcher.find_all_matches(file_lines, old_lines)
-
-    if #matches > 0 then
-        local blocks = {}
-        for _, match in ipairs(matches) do
-            table.insert(blocks, {
-                start_line = match.start_line,
-                end_line = match.end_line,
-                old_lines = old_lines,
-                new_lines = new_lines,
-            })
-        end
-        return blocks
-    end
-
-    -- Fallback to substring replacement for single-line cases
-    if #old_lines == 1 and #new_lines == 1 then
-        local blocks = P._find_substring_replacements(
-            file_lines,
-            old_lines[1],
-            new_lines[1]
-        )
-        return #blocks > 0 and blocks or nil
-    end
-
-    return nil
 end
 
 return M

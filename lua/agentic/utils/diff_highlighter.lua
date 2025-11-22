@@ -2,6 +2,8 @@
 local M = {}
 
 --- Convert strings to arrays of UTF-8 characters with their byte positions
+--- @param str string
+--- @return agentic.utils.DiffHighlighter.Utf8CharPos[] chars
 local function utf8_chars(str)
     local chars = {}
     local byte_positions = vim.str_utf_pos(str)
@@ -9,10 +11,14 @@ local function utf8_chars(str)
     for i = 1, #byte_positions - 1 do
         local start_byte = byte_positions[i]
         local end_byte = byte_positions[i + 1]
-        table.insert(chars, {
+
+        --- @class agentic.utils.DiffHighlighter.Utf8CharPos
+        local pos = {
             text = str:sub(start_byte + 1, end_byte),
             byte_pos = start_byte,
-        })
+        }
+
+        table.insert(chars, pos)
     end
 
     return chars
