@@ -111,22 +111,6 @@ function M.try_find_all_matches(original_lines, target_lines, compare_fn)
     return matches
 end
 
----Fuzzy match with multiple strategies
----@param original_lines string[]
----@param target_lines string[]
----@return integer|nil start_line
----@return integer|nil end_line
-function M.fuzzy_match(original_lines, target_lines)
-    for _, strategy in ipairs(MATCH_STRATEGIES) do
-        local start_line, end_line =
-            M.try_find_match(original_lines, target_lines, strategy)
-        if start_line and end_line then
-            return start_line, end_line
-        end
-    end
-    return nil, nil
-end
-
 ---Find all matches with fuzzy matching
 ---@param original_lines string[]
 ---@param target_lines string[]
