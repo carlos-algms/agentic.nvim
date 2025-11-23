@@ -568,7 +568,7 @@ end
 ---@param start_row integer Header line number
 ---@param end_row integer Footer line number
 ---@param kind string Tool call kind
----@param highlight_ranges table[] Diff highlight ranges
+---@param highlight_ranges agentic.ui.MessageWriter.HighlightRange[] Diff highlight ranges
 function MessageWriter:_apply_block_highlights(
     bufnr,
     start_row,
@@ -603,6 +603,8 @@ function MessageWriter:_apply_block_highlights(
     end
 end
 
+--- @param start_row integer
+--- @param highlight_ranges agentic.ui.MessageWriter.HighlightRange[]
 function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
     if not highlight_ranges or #highlight_ranges == 0 then
         return
