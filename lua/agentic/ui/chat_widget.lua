@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
+local WindowDecoration = require("agentic.ui.window_decoration")
 
 ---@class agentic.ui.ChatWidget.BufNrs
 ---@field chat number
@@ -54,6 +55,7 @@ function ChatWidget:show()
         self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {
             winfixheight = false,
         })
+        self:_render_chat_header()
     end
 
     if
@@ -66,6 +68,7 @@ function ChatWidget:show()
             height = Config.windows.input.height,
             fixed = true,
         }, {})
+        self:_render_input_header()
     end
 
     if
@@ -79,6 +82,7 @@ function ChatWidget:show()
             split = "below",
             height = 15,
         }, {})
+        self:_render_code_header()
     end
 
     if
@@ -92,6 +96,7 @@ function ChatWidget:show()
             split = "above",
             height = 5,
         }, {})
+        self:_render_files_header()
     end
 
     self:_move_cursor_to(
@@ -308,28 +313,29 @@ end
 
 ---@return agentic.ui.ChatWidget.BufNrs
 function ChatWidget:_create_buf_nrs()
-    local chat = self:_create_new_buf({
+    local chat = self:_create_new_buf("󱋊 Agentic Chat", {
         filetype = "AgenticChat",
     })
 
-    local todos = self:_create_new_buf({
+    local todos = self:_create_new_buf(" TODOs", {
         filetype = "AgenticTodos",
     })
 
-    local code = self:_create_new_buf({
+    local code = self:_create_new_buf(" Selected Code Snippets", {
         filetype = "AgenticCode",
     })
 
-    local files = self:_create_new_buf({
+    local files = self:_create_new_buf(" Selected Files", {
         filetype = "AgenticFiles",
     })
 
-    local input = self:_create_new_buf({
+    local input = self:_create_new_buf("󰈚 Prompt", {
         filetype = "AgenticInput",
         modifiable = true,
     })
 
     -- Don't call it for the chat buffer as its managed somewhere else
+    pcall(vim.treesitter.start, todos, "markdown")
     pcall(vim.treesitter.start, code, "markdown")
     pcall(vim.treesitter.start, files, "markdown")
     pcall(vim.treesitter.start, input, "markdown")
@@ -346,9 +352,10 @@ function ChatWidget:_create_buf_nrs()
     return buf_nrs
 end
 
+--- @param name string
 --- @param opts table<string, any>
 --- @return integer bufnr
-function ChatWidget:_create_new_buf(opts)
+function ChatWidget:_create_new_buf(name, opts)
     local bufnr = vim.api.nvim_create_buf(false, true)
 
     local config = vim.tbl_deep_extend("force", {
@@ -360,9 +367,12 @@ function ChatWidget:_create_new_buf(opts)
         syntax = "markdown",
     }, opts)
 
-    for name, value in pairs(config) do
-        vim.api.nvim_set_option_value(name, value, { buf = bufnr })
+    vim.api.nvim_buf_set_name(bufnr, name)
+
+    for key, value in pairs(config) do
+        vim.api.nvim_set_option_value(key, value, { buf = bufnr })
     end
+
     return bufnr
 end
 
@@ -387,8 +397,10 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
 
     local merged_win_opts = vim.tbl_deep_extend("force", {
         wrap = true,
+        linebreak = true,
         winfixbuf = true,
         winfixheight = true,
+        winhighlight = "Normal:NormalFloat,WinSeparator:FloatBorder",
     }, win_opts or {})
 
     for name, value in pairs(merged_win_opts) do
@@ -426,6 +438,50 @@ function ChatWidget._calculate_width(size)
     end
 
     return value
+end
+
+function ChatWidget:_render_chat_header()
+    if not self.win_nrs.chat then
+        return
+    end
+
+    WindowDecoration.render_window_header(self.win_nrs.chat, {})
+end
+
+function ChatWidget:_render_input_header()
+    if not self.win_nrs.input then
+        return
+    end
+
+    WindowDecoration.render_window_header(self.win_nrs.input, {
+        suffix = "| <C-s>: submit",
+    })
+end
+
+function ChatWidget:_render_code_header()
+    if not self.win_nrs.code then
+        return
+    end
+
+    WindowDecoration.render_window_header(self.win_nrs.code, {})
+end
+
+function ChatWidget:_render_files_header()
+    if not self.win_nrs.files then
+        return
+    end
+
+    local lines = vim.api.nvim_buf_get_lines(self.buf_nrs.files, 0, -1, false)
+    local file_count = 0
+    for _, line in ipairs(lines) do
+        if line:match("%S") then
+            file_count = file_count + 1
+        end
+    end
+
+    WindowDecoration.render_window_header(self.win_nrs.files, {
+        suffix = string.format("(%d)", file_count),
+    })
 end
 
 return ChatWidget

@@ -284,7 +284,7 @@ function SessionManager:_new_session()
             local provider_name = self.current_provider or "unknown"
             local session_id = self.session_id or "unknown"
             local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n- ACP\n-----",
+                "# Agentic - %s - %s\n- %s\n-----",
                 provider_name,
                 session_id,
                 timestamp
