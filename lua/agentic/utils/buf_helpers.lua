@@ -46,4 +46,28 @@ function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     vim.keymap.set(mode, lhs, rhs, opts)
 end
 
+---@param bufnr integer
+---@return boolean
+function BufHelpers.is_buffer_empty(bufnr)
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+    if #lines == 0 then
+        return true
+    end
+
+    -- Check if buffer contains only whitespace or a single empty line
+    if #lines == 1 and lines[1]:match("^%s*$") then
+        return true
+    end
+
+    -- Check if all lines are whitespace
+    for _, line in ipairs(lines) do
+        if line:match("%S") then
+            return false
+        end
+    end
+
+    return true
+end
+
 return BufHelpers

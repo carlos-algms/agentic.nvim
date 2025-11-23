@@ -22,7 +22,6 @@ per tabpage**.
 - Each tabpage has independent:
   - ACP session ID (tracked by the shared provider)
   - Chat widget (buffers, windows, state)
-  - Namespaces (MUST include tabpage ID in name)
   - Status animation
   - All UI state and resources
 
@@ -55,12 +54,12 @@ When implementing ANY feature:
 
      -- Instance level (each instance has its own buffer)
      function Animation:new(bufnr)
-         return { bufnr = bufnr, ns_id = NS_ANIMATION }
+         return { bufnr = bufnr }
      end
 
-     -- Operations are buffer-specific
-     vim.api.nvim_buf_set_extmark(self.bufnr, self.ns_id, ...)
-     vim.api.nvim_buf_clear_namespace(self.bufnr, self.ns_id, 0, -1)
+     -- Operations are buffer-specific using module-level namespace
+     vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, ...)
+     vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
      ```
 
 3. **Highlight groups are GLOBAL** (shared across all tabpages)
@@ -107,6 +106,109 @@ Before submitting changes, verify isolation:
 " Verify: animations, highlights, sessions, namespaces all isolated
 ```
 
+### Class Design Guidelines
+
+When creating or modifying classes:
+
+1. **Minimize class properties** - Only include properties that:
+   - Are accessed by external code (other modules/classes)
+   - Are part of the public API
+   - Need to be accessed by subclasses or mixins
+
+2. **Prefer private fields over unnecessary public properties** - Mark internal
+   state with `_` prefix and `@private` annotation. Only expose what external
+   code needs to access.
+
+   ```lua
+   -- ❌ Bad: Unnecessary public property
+   --- @class MyClass
+   --- @field counter number  -- Exposed to external code unnecessarily
+   local MyClass = {}
+   MyClass.__index = MyClass
+
+   function MyClass:new()
+       return setmetatable({ counter = 0 }, self)
+   end
+
+   function MyClass:increment()
+       self.counter = self.counter + 1
+   end
+
+   -- ✅ Good: Private internal state
+   --- @class MyClass
+   --- @field _counter number  -- Internal implementation detail
+   --- @private
+   local MyClass = {}
+   MyClass.__index = MyClass
+
+   function MyClass:new()
+       return setmetatable({ _counter = 0 }, self)
+   end
+
+   function MyClass:increment()
+       self._counter = self._counter + 1
+   end
+
+   function MyClass:get_count()
+       return self._counter  -- Controlled access if needed
+   end
+   ```
+
+3. **Document intent with LuaCATS** - Use `@private` or `@package` annotations
+   for fields that are implementation details:
+
+   ```lua
+   --- @class MyClass
+   --- @field public_field string Public API field
+   --- @field _private_field number Private implementation detail
+   ```
+
+   **Note:** Lua Language Server is configured to treat `_*` prefixed properties
+   as private and will not show them in autocomplete for external consumers.
+
+4. **Regular cleanup** - When adding new code, review class definitions and
+   remove:
+   - Unused properties
+   - Properties that were needed during development but are no longer used
+   - Properties that could be local variables instead
+
+## Code Style
+
+### LuaCATS Annotations
+
+Use consistent formatting for LuaCATS annotations with a space after `---`:
+
+```lua
+--- Brief description of the class
+--- @class MyClass
+--- @field public_field string Public API field
+--- @field _private_field number Private implementation detail
+local MyClass = {}
+MyClass.__index = MyClass
+
+--- Creates a new instance of MyClass
+--- @param name string The name parameter
+--- @param options? table Optional configuration table
+--- @return MyClass instance The created instance
+function MyClass:new(name, options)
+    return setmetatable({ public_field = name }, self)
+end
+
+--- Performs an operation and returns success status
+--- @return boolean success Whether the operation succeeded
+function MyClass:do_something()
+    return true
+end
+```
+
+**Guidelines:**
+
+- Always include a space after `---` for both descriptions and annotations
+- Use `@private` or `@package` for internal implementation details
+- Mark optional parameters with `?` suffix (e.g., `name? string`)
+- Do NOT Provide meaningful parameter and return descriptions, unless requested
+- Group related annotations together (class fields, function params, returns)
+
 ## Development & Linting
 
 Quick syntax check:
@@ -123,9 +225,9 @@ luac -p lua/agentic/init.lua lua/agentic/ui.lua # Multiple files
 luac -p lua/agentic/*.lua                       # Using glob patterns
 ```
 
-Or with Make for running Lua linting and type checking tools:
-
 ### Available Make targets:
+
+Make for running Lua linting and type checking tools:
 
 - `make luals` - Run Lua Language Server headless diagnosis (type checking)
 - `make luacheck` - Run Luacheck linter (style and syntax checking)

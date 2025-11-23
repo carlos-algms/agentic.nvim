@@ -7,6 +7,14 @@ local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
+local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+local NS_DECORATIONS = vim.api.nvim_create_namespace("agentic_tool_decorations")
+local NS_PERMISSION_BUTTONS =
+    vim.api.nvim_create_namespace("agentic_permission_buttons")
+local NS_DIFF_HIGHLIGHTS =
+    vim.api.nvim_create_namespace("agentic_diff_highlights")
+local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
+
 ---@class agentic.ui.MessageWriter.HighlightRange
 ---@field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
 ---@field line_index integer Line index relative to returned lines (0-based)
@@ -23,11 +31,6 @@ local Theme = require("agentic.theme")
 
 ---@class agentic.ui.MessageWriter
 ---@field bufnr integer
----@field ns_id integer Namespace for range extmarks
----@field decorations_ns_id integer Namespace for decoration extmarks
----@field permission_buttons_ns_id integer Namespace for permission button extmarks
----@field diff_highlights_ns_id integer Namespace for diff highlight extmarks
----@field status_ns_id integer Namespace for status footer extmarks
 ---@field tool_call_blocks table<string, agentic.ui.MessageWriter.BlockTracker> Map tool_call_id to extmark
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
@@ -41,17 +44,6 @@ function MessageWriter:new(bufnr)
 
     local instance = setmetatable({
         bufnr = bufnr,
-        ns_id = vim.api.nvim_create_namespace("agentic_tool_blocks"),
-        decorations_ns_id = vim.api.nvim_create_namespace(
-            "agentic_tool_decorations"
-        ),
-        permission_buttons_ns_id = vim.api.nvim_create_namespace(
-            "agentic_permission_buttons"
-        ),
-        diff_highlights_ns_id = vim.api.nvim_create_namespace(
-            "agentic_diff_highlights"
-        ),
-        status_ns_id = vim.api.nvim_create_namespace("agentic_status_footer"),
         tool_call_blocks = {},
     }, self)
 
@@ -147,7 +139,7 @@ function MessageWriter:write_tool_call_block(update)
         )
 
         local decoration_ids =
-            ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
+            ExtmarkBlock.render_block(bufnr, NS_DECORATIONS, {
                 header_line = start_row,
                 body_start = start_row + 1,
                 body_end = end_row - 1,
@@ -156,7 +148,7 @@ function MessageWriter:write_tool_call_block(update)
             })
 
         local extmark_id =
-            vim.api.nvim_buf_set_extmark(bufnr, self.ns_id, start_row, 0, {
+            vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
                 end_row = end_row,
                 right_gravity = false,
             })
@@ -196,7 +188,7 @@ function MessageWriter:update_tool_call_block(update)
 
     local pos = vim.api.nvim_buf_get_extmark_by_id(
         self.bufnr,
-        self.ns_id,
+        NS_TOOL_BLOCKS,
         tracker.extmark_id,
         { details = true }
     )
@@ -274,7 +266,7 @@ function MessageWriter:update_tool_call_block(update)
         pcall(
             vim.api.nvim_buf_clear_namespace,
             bufnr,
-            self.diff_highlights_ns_id,
+            NS_DIFF_HIGHLIGHTS,
             start_row,
             old_end_row + 1
         )
@@ -290,7 +282,7 @@ function MessageWriter:update_tool_call_block(update)
             end
         end)
 
-        vim.api.nvim_buf_set_extmark(bufnr, self.ns_id, start_row, 0, {
+        vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
             id = tracker.extmark_id,
             end_row = new_end_row,
             right_gravity = false,
@@ -523,7 +515,7 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     -- Create extmark to track button block
     vim.api.nvim_buf_set_extmark(
         self.bufnr,
-        self.permission_buttons_ns_id,
+        NS_PERMISSION_BUTTONS,
         button_start_row,
         0,
         {
@@ -546,7 +538,7 @@ function MessageWriter:remove_permission_buttons(start_row, end_row)
     pcall(
         vim.api.nvim_buf_clear_namespace,
         self.bufnr,
-        self.permission_buttons_ns_id,
+        NS_PERMISSION_BUTTONS,
         start_row,
         end_row + 1
     )
@@ -590,7 +582,7 @@ function MessageWriter:_apply_block_highlights(
             if line and #line > 0 then
                 vim.api.nvim_buf_set_extmark(
                     bufnr,
-                    self.diff_highlights_ns_id,
+                    NS_DIFF_HIGHLIGHTS,
                     line_idx,
                     0,
                     {
@@ -616,7 +608,7 @@ function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
         if hl_range.type == "old" then
             DiffHighlighter.apply_diff_highlights(
                 self.bufnr,
-                self.diff_highlights_ns_id,
+                NS_DIFF_HIGHLIGHTS,
                 buffer_line,
                 hl_range.old_line,
                 hl_range.new_line
@@ -624,7 +616,7 @@ function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
         elseif hl_range.type == "new" then
             DiffHighlighter.apply_diff_highlights(
                 self.bufnr,
-                self.diff_highlights_ns_id,
+                NS_DIFF_HIGHLIGHTS,
                 buffer_line,
                 nil,
                 hl_range.new_line
@@ -632,7 +624,7 @@ function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
         elseif hl_range.type == "new_modification" then
             DiffHighlighter.apply_new_line_word_highlights(
                 self.bufnr,
-                self.diff_highlights_ns_id,
+                NS_DIFF_HIGHLIGHTS,
                 buffer_line,
                 hl_range.old_line,
                 hl_range.new_line
@@ -648,7 +640,7 @@ function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
             if line then
                 vim.api.nvim_buf_set_extmark(
                     self.bufnr,
-                    self.diff_highlights_ns_id,
+                    NS_DIFF_HIGHLIGHTS,
                     buffer_line,
                     0,
                     {
@@ -679,16 +671,10 @@ function MessageWriter:_apply_header_highlight(header_line, status)
     end
 
     local hl_group = Theme.get_status_hl_group(status)
-    vim.api.nvim_buf_set_extmark(
-        self.bufnr,
-        self.status_ns_id,
-        header_line,
-        0,
-        {
-            end_col = #line,
-            hl_group = hl_group,
-        }
-    )
+    vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, header_line, 0, {
+        end_col = #line,
+        hl_group = hl_group,
+    })
 end
 
 ---@param footer_line integer 0-indexed footer line number
@@ -707,29 +693,18 @@ function MessageWriter:_apply_status_footer(footer_line, status)
     local icon = icons[status] or ""
     local hl_group = Theme.get_status_hl_group(status)
 
-    vim.api.nvim_buf_set_extmark(
-        self.bufnr,
-        self.status_ns_id,
-        footer_line,
-        0,
-        {
-            virt_text = {
-                { string.format(" %s %s ", icon, status), hl_group },
-            },
-            virt_text_pos = "overlay",
-        }
-    )
+    vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, footer_line, 0, {
+        virt_text = {
+            { string.format(" %s %s ", icon, status), hl_group },
+        },
+        virt_text_pos = "overlay",
+    })
 end
 
 ---@param tracker agentic.ui.MessageWriter.BlockTracker
 function MessageWriter:_clear_decoration_extmarks(tracker)
     for _, id in ipairs(tracker.decoration_extmark_ids) do
-        pcall(
-            vim.api.nvim_buf_del_extmark,
-            self.bufnr,
-            self.decorations_ns_id,
-            id
-        )
+        pcall(vim.api.nvim_buf_del_extmark, self.bufnr, NS_DECORATIONS, id)
     end
 end
 
@@ -737,7 +712,7 @@ end
 ---@param end_row integer
 ---@return integer[] decoration_extmark_ids
 function MessageWriter:_render_decorations(start_row, end_row)
-    return ExtmarkBlock.render_block(self.bufnr, self.decorations_ns_id, {
+    return ExtmarkBlock.render_block(self.bufnr, NS_DECORATIONS, {
         header_line = start_row,
         body_start = start_row + 1,
         body_end = end_row - 1,
@@ -752,7 +727,7 @@ function MessageWriter:_clear_status_namespace(start_row, end_row)
     pcall(
         vim.api.nvim_buf_clear_namespace,
         self.bufnr,
-        self.status_ns_id,
+        NS_STATUS,
         start_row,
         end_row + 1
     )
@@ -778,11 +753,11 @@ function MessageWriter:clear()
     end
 
     local namespaces_to_clean = {
-        self.ns_id,
-        self.decorations_ns_id,
-        self.permission_buttons_ns_id,
-        self.diff_highlights_ns_id,
-        self.status_ns_id,
+        NS_TOOL_BLOCKS,
+        NS_DECORATIONS,
+        NS_PERMISSION_BUTTONS,
+        NS_DIFF_HIGHLIGHTS,
+        NS_STATUS,
     }
 
     for _, ns in ipairs(namespaces_to_clean) do
