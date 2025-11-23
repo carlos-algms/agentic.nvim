@@ -102,7 +102,7 @@ function P._minimize_diff_blocks(diff_blocks)
             algorithm = "histogram",
             result_type = "indices",
             ctxlen = 5,
-        }) --[[ @as integer[][] ]]
+        }) --[[ @as integer[][] -- needs type casting because LuaLS don't infer correctly for the 'histogram' algorithm ]]
 
         if #patch > 0 then
             for _, hunk in ipairs(patch) do
