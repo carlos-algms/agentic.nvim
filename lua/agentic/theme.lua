@@ -9,7 +9,7 @@ Theme.HL_GROUPS = {
     STATUS_PENDING = "AgenticStatusPending",
     STATUS_COMPLETED = "AgenticStatusCompleted",
     STATUS_FAILED = "AgenticStatusFailed",
-    CODE_BLOCK_FENCE = "AgenticCodeBlockPath",
+    CODE_BLOCK_FENCE = "AgenticCodeBlockFence",
     WIN_BAR_TITLE = "AgenticTitle",
 }
 

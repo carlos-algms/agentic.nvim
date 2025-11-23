@@ -186,7 +186,26 @@ require("agentic").setup({
 | `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                   |
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one |
 
-## 🎨 Integration with Lualine
+## 🍚 Customization (Ricing)
+
+Agentic.nvim uses custom highlight groups that you can override to match your
+colorscheme.
+
+### Available Highlight Groups
+
+| Highlight Group          | Purpose                                  | Default                             |
+| ------------------------ | ---------------------------------------- | ----------------------------------- |
+| `AgenticDiffDelete`      | Deleted lines in diff view               | Links to `DiffDelete`               |
+| `AgenticDiffAdd`         | Added lines in diff view                 | Links to `DiffAdd`                  |
+| `AgenticDiffDeleteWord`  | Word-level deletions in diff             | `bg=#9a3c3c, bold=true`             |
+| `AgenticDiffAddWord`     | Word-level additions in diff             | `bg=#155729, bold=true`             |
+| `AgenticStatusPending`   | Pending tool call status indicator       | `bg=#5f4d8f`                        |
+| `AgenticStatusCompleted` | Completed tool call status indicator     | `bg=#2d5a3d`                        |
+| `AgenticStatusFailed`    | Failed tool call status indicator        | `bg=#7a2d2d`                        |
+| `AgenticCodeBlockFence`  | The left border decoration on tool calls | Links to `Directory`                |
+| `AgenticTitle`           | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
+
+## Integration with Lualine
 
 If you're using [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) or
 similar statusline plugins, configure it to ignore Agentic windows to prevent

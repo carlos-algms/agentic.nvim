@@ -37,7 +37,24 @@ make LUALS=/path/to/lua-language-server luals
 make LUACHECK=/path/to/luacheck luacheck
 ```
 
-**Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type annotations for Lua Language Server support. These annotations should **never** be removed, only updated when the underlying types change.
+**Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type
+annotations for Lua Language Server support. These annotations should **never**
+be removed, only updated when the underlying types change.
+
+### Theme & Highlight Groups
+
+The `lua/agentic/theme.lua` file defines all custom highlight groups used by the
+plugin.
+
+**IMPORTANT:** When adding new highlight groups:
+
+1. Add the highlight group name to `Theme.HL_GROUPS` constant
+2. Define the default highlight in `Theme.setup()` function
+3. **Update the README.md** "Customization (Ricing)" section with:
+   - The new highlight group in the code example
+   - A new row in the "Available Highlight Groups" table
+
+This ensures users can customize all aspects of the plugin's appearance.
 
 ### Provider System
 
@@ -103,4 +120,3 @@ official docs:
   https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/diagnostic.txt
 
 Don't be limited to these docs, explore more as needed.
-
