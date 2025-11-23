@@ -41,7 +41,21 @@ make LUACHECK=/path/to/luacheck luacheck
 annotations for Lua Language Server support. These annotations should **never**
 be removed, only updated when the underlying types change.
 
-### Theme & Highlight Groups
+### Configuration & User Documentation
+
+#### Config File Changes
+
+The `lua/agentic/config_default.lua` file defines all user-configurable options.
+
+**IMPORTANT:** When adding or refactoring configuration options:
+
+1. Add/update the configuration in `config_default.lua` with proper LuaCATS type
+   annotations
+2. **ALWAYS update the README.md** "Configuration" section:
+   - Include default values
+   - Update the configuration table if one exists
+
+#### Theme & Highlight Groups
 
 The `lua/agentic/theme.lua` file defines all custom highlight groups used by the
 plugin.
@@ -54,7 +68,8 @@ plugin.
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
 
-This ensures users can customize all aspects of the plugin's appearance.
+These documentation updates ensure users can discover and customize all aspects
+of the plugin.
 
 ### Provider System
 

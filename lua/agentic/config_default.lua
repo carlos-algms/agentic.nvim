@@ -59,6 +59,16 @@ local ConfigDefault = {
         },
     },
 
+    --- @class agentic.UserConfig.SpinnerChars
+    --- @field generating string[]
+    --- @field thinking string[]
+    --- @field searching string[]
+    spinner_chars = {
+        generating = { "·", "✢", "✳", "∗", "✻", "✽" },
+        thinking = { "🤔", "🤨", "😐" },
+        searching = { "🔎. . .", ". 🔎. .", ". . 🔎." },
+    },
+
     --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",

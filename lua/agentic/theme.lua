@@ -1,4 +1,6 @@
----@class agentic.theme
+---@alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching"
+
+---@class agentic.Theme
 local Theme = {}
 
 Theme.HL_GROUPS = {
@@ -11,6 +13,10 @@ Theme.HL_GROUPS = {
     STATUS_FAILED = "AgenticStatusFailed",
     CODE_BLOCK_FENCE = "AgenticCodeBlockFence",
     WIN_BAR_TITLE = "AgenticTitle",
+
+    SPINNER_GENERATING = "AgenticSpinnerGenerating",
+    SPINNER_THINKING = "AgenticSpinnerThinking",
+    SPINNER_SEARCHING = "AgenticSpinnerSearching",
 }
 
 local COLORS = {
@@ -22,6 +28,10 @@ local COLORS = {
 
     title_bg = "#2787b0",
     title_fg = "#000000",
+
+    spinner_generating_fg = "#61afef",
+    spinner_thinking_fg = "#c678dd",
+    spinner_searching_fg = "#e5c07b",
 }
 
 --- A lang map of extension to language identifier for markdown code fences
@@ -42,6 +52,12 @@ local status_hl = {
     failed = Theme.HL_GROUPS.STATUS_FAILED,
 }
 
+local spinner_hl = {
+    generating = Theme.HL_GROUPS.SPINNER_GENERATING,
+    thinking = Theme.HL_GROUPS.SPINNER_THINKING,
+    searching = Theme.HL_GROUPS.SPINNER_SEARCHING,
+}
+
 function Theme.setup()
     -- stylua: ignore start
     local highlights = {
@@ -50,13 +66,20 @@ function Theme.setup()
         { Theme.HL_GROUPS.DIFF_ADD, { link = "DiffAdd" } },
         { Theme.HL_GROUPS.DIFF_DELETE_WORD, { bg = COLORS.diff_delete_word_bg, bold = true } },
         { Theme.HL_GROUPS.DIFF_ADD_WORD, { bg = COLORS.diff_add_word_bg, bold = true } },
+
         -- Status highlights
         { Theme.HL_GROUPS.STATUS_PENDING, { bg = COLORS.status_pending_bg } },
         { Theme.HL_GROUPS.STATUS_COMPLETED, { bg = COLORS.status_completed_bg } },
         { Theme.HL_GROUPS.STATUS_FAILED, { bg = COLORS.status_failed_bg } },
         { Theme.HL_GROUPS.CODE_BLOCK_FENCE, { link = "Directory" } },
+
         -- Title highlight
         { Theme.HL_GROUPS.WIN_BAR_TITLE, { bg = COLORS.title_bg, fg = COLORS.title_fg, bold = true } },
+
+        -- Spinner highlights
+        { Theme.HL_GROUPS.SPINNER_GENERATING, { fg = COLORS.spinner_generating_fg, bold = true } },
+        { Theme.HL_GROUPS.SPINNER_THINKING, { fg = COLORS.spinner_thinking_fg, bold = true } },
+        { Theme.HL_GROUPS.SPINNER_SEARCHING, { fg = COLORS.spinner_searching_fg, bold = true } },
     }
     -- stylua: ignore end
 
@@ -81,6 +104,12 @@ end
 ---@return string hl_group
 function Theme.get_status_hl_group(status)
     return status_hl[status] or "Comment"
+end
+
+---@param state agentic.Theme.SpinnerState
+---@return string hl_group
+function Theme.get_spinner_hl_group(state)
+    return spinner_hl[state] or Theme.HL_GROUPS.SPINNER_GENERATING
 end
 
 ---@private
