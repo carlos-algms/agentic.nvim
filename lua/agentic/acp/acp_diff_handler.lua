@@ -101,7 +101,7 @@ function P._minimize_diff_blocks(diff_blocks)
         local patch = vim.diff(old_string, new_string, {
             algorithm = "histogram",
             result_type = "indices",
-            ctxlen = 0,
+            ctxlen = 5,
         }) --[[ @as integer[][] ]]
 
         if #patch > 0 then

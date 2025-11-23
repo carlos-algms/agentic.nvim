@@ -137,6 +137,11 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
         -- Pure addition - full line highlight
         apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
     elseif old_line and new_line then
+        -- Skip highlighting if lines are identical
+        if old_line == new_line then
+            return
+        end
+
         -- Modification: find word-level changes first to avoid redundant highlights
         local change = M.find_inline_change(old_line, new_line)
         if change and change.old_end > change.old_start then
@@ -185,6 +190,11 @@ function M.apply_new_line_word_highlights(
     new_line
 )
     if not validate_buffer_line(bufnr, line_number) then
+        return
+    end
+
+    -- Skip highlighting if lines are identical
+    if old_line == new_line then
         return
     end
 
