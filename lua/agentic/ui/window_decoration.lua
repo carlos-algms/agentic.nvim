@@ -23,7 +23,6 @@
 ---})
 ---```
 
-local FileSystem = require("agentic.utils.file_system")
 local Theme = require("agentic.theme")
 
 --- @class agentic.ui.WindowDecoration
@@ -49,9 +48,8 @@ local function format_segment(text, highlight)
     return "%#" .. highlight .. "#" .. text
 end
 
---- Render header for a window, inferring title from buffer name
 --- @param winid integer
---- @param opts? { hl?: string, reverse_hl?: string, suffix?: string|number }
+--- @param opts? { title?: string, hl?: string, reverse_hl?: string, suffix?: string|number }
 function WindowDecoration.render_window_header(winid, opts)
     if not winid or not vim.api.nvim_win_is_valid(winid) then
         return
@@ -59,9 +57,7 @@ function WindowDecoration.render_window_header(winid, opts)
 
     opts = opts or {}
 
-    local bufnr = vim.api.nvim_win_get_buf(winid)
-    local buf_name = vim.api.nvim_buf_get_name(bufnr)
-    local title = FileSystem.base_name(buf_name)
+    local title = opts.title or ""
 
     if opts.suffix then
         title = title .. " " .. opts.suffix

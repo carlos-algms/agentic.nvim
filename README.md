@@ -154,6 +154,12 @@ require("agentic").setup({
     },
   },
 
+  spinner_chars = {
+    generating = { "·", "✢", "✳", "∗", "✻", "✽" },
+    thinking = { "🤔", "🤨", "😐" },
+    searching = { "🔎. . .", ". 🔎. .", ". . 🔎." },
+  },
+
   status_icons = {
     pending = "󰔛",    -- Icon shown for tool calls with pending status
     completed = "✔",   -- Icon shown for tool calls with completed status

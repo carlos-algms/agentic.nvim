@@ -18,6 +18,8 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 ---@field files? number
 ---@field input? number
 
+--- A sidebar-style chat widget with multiple windows stacked vertically
+--- The main chat window is the first, and contains the width, the below ones adapt to its size
 ---@class agentic.ui.ChatWidget
 ---@field tab_page_id integer
 ---@field buf_nrs agentic.ui.ChatWidget.BufNrs
@@ -316,23 +318,23 @@ end
 
 ---@return agentic.ui.ChatWidget.BufNrs
 function ChatWidget:_create_buf_nrs()
-    local chat = self:_create_new_buf("󱋊 Agentic Chat", {
+    local chat = self:_create_new_buf({
         filetype = "AgenticChat",
     })
 
-    local todos = self:_create_new_buf(" TODOs", {
+    local todos = self:_create_new_buf({
         filetype = "AgenticTodos",
     })
 
-    local code = self:_create_new_buf(" Selected Code Snippets", {
+    local code = self:_create_new_buf({
         filetype = "AgenticCode",
     })
 
-    local files = self:_create_new_buf(" Referenced Files", {
+    local files = self:_create_new_buf({
         filetype = "AgenticFiles",
     })
 
-    local input = self:_create_new_buf("󰈚 Prompt", {
+    local input = self:_create_new_buf({
         filetype = "AgenticInput",
         modifiable = true,
     })
@@ -355,10 +357,9 @@ function ChatWidget:_create_buf_nrs()
     return buf_nrs
 end
 
---- @param name string
 --- @param opts table<string, any>
 --- @return integer bufnr
-function ChatWidget:_create_new_buf(name, opts)
+function ChatWidget:_create_new_buf(opts)
     local bufnr = vim.api.nvim_create_buf(false, true)
 
     local config = vim.tbl_deep_extend("force", {
@@ -369,8 +370,6 @@ function ChatWidget:_create_new_buf(name, opts)
         modifiable = false,
         syntax = "markdown",
     }, opts)
-
-    vim.api.nvim_buf_set_name(bufnr, name)
 
     for key, value in pairs(config) do
         vim.api.nvim_set_option_value(key, value, { buf = bufnr })
@@ -402,7 +401,7 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
         linebreak = true,
         winfixbuf = true,
         winfixheight = true,
-        winhighlight = "Normal:NormalFloat,WinSeparator:FloatBorder",
+        -- winhighlight = "Normal:NormalFloat,WinSeparator:FloatBorder",
     }, win_opts or {})
 
     for name, value in pairs(merged_win_opts) do
@@ -447,7 +446,9 @@ function ChatWidget:_render_chat_header()
         return
     end
 
-    WindowDecoration.render_window_header(self.win_nrs.chat, {})
+    WindowDecoration.render_window_header(self.win_nrs.chat, {
+        title = "󰻞 Agentic Chat",
+    })
 end
 
 function ChatWidget:_render_input_header()
@@ -456,6 +457,7 @@ function ChatWidget:_render_input_header()
     end
 
     WindowDecoration.render_window_header(self.win_nrs.input, {
+        title = "󰈚 Prompt",
         suffix = "| <C-s>: submit",
     })
 end
@@ -465,7 +467,9 @@ function ChatWidget:_render_code_header()
         return
     end
 
-    WindowDecoration.render_window_header(self.win_nrs.code, {})
+    WindowDecoration.render_window_header(self.win_nrs.code, {
+        title = " Selected Code Snippets",
+    })
 end
 
 function ChatWidget:_render_files_header()
@@ -482,6 +486,7 @@ function ChatWidget:_render_files_header()
     end
 
     WindowDecoration.render_window_header(self.win_nrs.files, {
+        title = " Referenced Files",
         suffix = string.format("(%d)", file_count),
     })
 end

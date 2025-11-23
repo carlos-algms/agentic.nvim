@@ -1,7 +1,7 @@
 --- StatusAnimation module for displaying animated spinners in windows
 ---
 --- This module provides utilities to render animated state indicators (spinners)
---- in buffers using extmarks and timers. Inspired by Avante's animation system.
+--- in buffers using extmarks and timers.
 ---
 --- ## Usage
 --- ```lua
@@ -20,7 +20,7 @@ local Theme = require("agentic.theme")
 --- @field bufnr number Buffer number where animation is rendered
 --- @field namespace_id number Namespace ID for extmarks (public, generated internally)
 --- @field state? agentic.Theme.SpinnerState Current animation state
---- @field timer? table uv timer object
+--- @field timer? uv.uv_timer_t uv timer object
 --- @field spinner_idx number Current spinner frame index
 --- @field extmark_id? number Current extmark ID
 local StatusAnimation = {}

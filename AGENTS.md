@@ -3,6 +3,110 @@
 agentic.nvim is a Neovim plugin that emulates Cursor AI IDE behavior, providing
 AI-driven code assistance through a chat sidebar for interactive conversations.
 
+## 🚨 CRITICAL: Multi-Tabpage Architecture
+
+**EVERY FEATURE MUST BE MULTI-TAB SAFE** - This plugin supports **one instance
+per tabpage**.
+
+### Architecture Overview
+
+- **Tabpage instance control:** `lua/agentic/init.lua` maintains
+  `chat_widgets_by_tab` table
+- **1 ACP provider instance** (single subprocess per provider) shared across all
+  tabpages
+- **1 ACP session ID per tabpage** - The ACP protocol supports multiple sessions
+  per instance
+- **1 SessionManager + 1 ChatWidget per tabpage** - Full UI isolation between
+  tabpages
+
+- Each tabpage has independent:
+  - ACP session ID (tracked by the shared provider)
+  - Chat widget (buffers, windows, state)
+  - Namespaces (MUST include tabpage ID in name)
+  - Status animation
+  - All UI state and resources
+
+### Implementation Requirements
+
+When implementing ANY feature:
+
+1. **NEVER use module-level shared state** for per-tabpage runtime data
+   - ❌ `local current_session = nil` (single session for all tabs)
+   - ✅ Store per-tabpage state in tabpage-scoped instances
+   - ✅ Module-level constants OK for truly global config: `local CONFIG = {}`
+
+2. **Namespaces are GLOBAL but extmarks are BUFFER-SCOPED**
+   - ✅ `local NS_ID = vim.api.nvim_create_namespace("agentic_animation")` -
+     Module-level OK
+   - ✅ Namespaces can be shared across tabpages safely
+   - **Why:** Extmarks are stored per-buffer, and each tabpage has its own
+     buffers
+   - **Key insight:** `nvim_create_namespace()` is idempotent (same name = same
+     ID globally)
+   - **Clearing extmarks:** Use
+     `vim.api.nvim_buf_clear_namespace(bufnr, ns_id, start_line, end_line)`
+   - **Pattern:** Module-level namespace constants are fine - isolation comes
+     from buffer separation
+   - **Example:**
+
+     ```lua
+     -- Module level (shared namespace ID is OK)
+     local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
+
+     -- Instance level (each instance has its own buffer)
+     function Animation:new(bufnr)
+         return { bufnr = bufnr, ns_id = NS_ANIMATION }
+     end
+
+     -- Operations are buffer-specific
+     vim.api.nvim_buf_set_extmark(self.bufnr, self.ns_id, ...)
+     vim.api.nvim_buf_clear_namespace(self.bufnr, self.ns_id, 0, -1)
+     ```
+
+3. **Highlight groups are GLOBAL** (shared across all tabpages)
+   - ✅ `vim.api.nvim_set_hl(0, "AgenticTitle", {...})` - Defined once in
+     `lua/agentic/theme.lua`
+   - Highlight groups apply globally to all buffers/windows/tabpages
+   - Theme setup runs once during plugin initialization
+   - Use namespaces to control WHERE highlights appear, not to isolate highlight
+     definitions
+
+4. **Get tabpage ID correctly**
+   - In instance methods with `self.tabpage`: `self.tabpage`
+   - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
+   - Current tabpage: `vim.api.nvim_get_current_tabpage()`
+
+5. **ACP sessions are per-tabpage**
+   - Each tabpage gets its own session ID from the shared ACP provider
+   - Session state tracked independently per tabpage
+   - Never mix session IDs between tabpages
+
+6. **Buffers/windows are tabpage-specific**
+   - Each tabpage manages its own buffers and windows
+   - Never assume buffer/window exists globally
+   - Use `vim.api.nvim_tabpage_*` APIs when needed
+
+7. **Autocommands must be tabpage-aware**
+   - Prefer buffer-local: `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`
+   - Filter by tabpage in global autocommands if necessary
+
+8. **Keymaps must be buffer-local**
+   - Always use: `vim.keymap.set("n", "key", fn, { buffer = bufnr })`
+   - NEVER use global keymaps that affect all tabpages
+
+### Testing Multi-Tab Isolation
+
+Before submitting changes, verify isolation:
+
+```vim
+:tabnew          " Create second tabpage
+:AgenticChat     " Start chat in tab 2
+:tabprev         " Go back to tab 1
+:AgenticChat     " Start chat in tab 1
+" Both chats must work independently - no cross-contamination
+" Verify: animations, highlights, sessions, namespaces all isolated
+```
+
 ## Development & Linting
 
 Quick syntax check:
