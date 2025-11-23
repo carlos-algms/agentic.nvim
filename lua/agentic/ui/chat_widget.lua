@@ -277,10 +277,7 @@ function ChatWidget:_initialize()
         })
     end
 
-    vim.api.nvim_buf_call(buf_nrs.input, function()
-        -- https://cmp.saghen.dev/recipes#disable-per-filetype-buffer
-        vim.b.completion = false
-    end)
+    vim.b[buf_nrs.input].completion = false
 
     return buf_nrs
 end

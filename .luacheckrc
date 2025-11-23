@@ -24,4 +24,9 @@ read_globals = {
     "Snacks",
 }
 
-globals = {} -- Don't allow any globals beyond read_globals
+globals = {
+    -- Allow setting buffer/window local variables
+    "vim.b",
+    "vim.bo",
+    "vim.wo",
+}

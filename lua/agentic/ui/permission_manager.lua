@@ -1,5 +1,19 @@
 local Logger = require("agentic.utils.logger")
 
+-- Priority order for permission option kinds based on ACP tool-calls documentation
+-- Lower number = higher priority (appears first)
+-- Order from https://agentclientprotocol.com/protocol/tool-calls.md:
+-- 1. allow_once - Allow this operation only this time
+-- 2. allow_always - Allow this operation and remember the choice
+-- 3. reject_once - Reject this operation only this time
+-- 4. reject_always - Reject this operation and remember the choice
+local PERMISSION_KIND_PRIORITY = {
+    allow_once = 1,
+    allow_always = 2,
+    reject_once = 3,
+    reject_always = 4,
+}
+
 ---@class agentic.ui.PermissionManager
 ---@field bufnr integer Buffer number where buttons are displayed
 ---@field message_writer agentic.ui.MessageWriter Reference to MessageWriter instance
@@ -56,9 +70,13 @@ function PermissionManager:_process_next()
     local toolCallId = item[1]
     local request = item[2]
     local callback = item[3]
+    local sorted_options = self._sort_permission_options(request.options)
 
     local button_start_row, button_end_row, option_mapping =
-        self.message_writer:display_permission_buttons(request)
+        self.message_writer:display_permission_buttons(
+            request.toolCall.toolCallId,
+            sorted_options
+        )
 
     ---@class agentic.ui.PermissionManager.PermissionRequest
     self.current_request = {
@@ -71,6 +89,23 @@ function PermissionManager:_process_next()
     }
 
     self:_setup_keymaps(option_mapping)
+end
+
+---@param options agentic.acp.PermissionOption[]
+---@return agentic.acp.PermissionOption[]
+function PermissionManager._sort_permission_options(options)
+    local sorted = {}
+    for _, option in ipairs(options) do
+        table.insert(sorted, option)
+    end
+
+    table.sort(sorted, function(a, b)
+        local priority_a = PERMISSION_KIND_PRIORITY[a.kind] or 999
+        local priority_b = PERMISSION_KIND_PRIORITY[b.kind] or 999
+        return priority_a < priority_b
+    end)
+
+    return sorted
 end
 
 ---Complete the current request and process next in queue

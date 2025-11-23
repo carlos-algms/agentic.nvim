@@ -20,42 +20,61 @@ local COLORS = {
     status_failed_bg = "#7a2d2d",
 }
 
-function Theme.setup()
-    -- Diff highlights
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.DIFF_DELETE,
-        { link = "DiffDelete" }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.DIFF_ADD,
-        { link = "DiffAdd" }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.DIFF_DELETE_WORD,
-        { bg = COLORS.diff_delete_word_bg, bold = true }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.DIFF_ADD_WORD,
-        { bg = COLORS.diff_add_word_bg, bold = true }
-    )
+--- A lang map of extension to language identifier for markdown code fences
+--- Keep only possible unknown mappings
+local lang_map = {
+    py = "python",
+    rb = "ruby",
+    rs = "rust",
+    kt = "kotlin",
+    htm = "html",
+    yml = "yaml",
+    sh = "bash",
+}
 
-    -- Status highlights
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.STATUS_PENDING,
-        { bg = COLORS.status_pending_bg }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.STATUS_COMPLETED,
-        { bg = COLORS.status_completed_bg }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.STATUS_FAILED,
-        { bg = COLORS.status_failed_bg }
-    )
-    Theme._create_hl_if_not_exists(
-        Theme.HL_GROUPS.CODE_BLOCK_FENCE,
-        { link = "Directory" }
-    )
+local status_hl = {
+    pending = Theme.HL_GROUPS.STATUS_PENDING,
+    completed = Theme.HL_GROUPS.STATUS_COMPLETED,
+    failed = Theme.HL_GROUPS.STATUS_FAILED,
+}
+
+function Theme.setup()
+    -- stylua: ignore start
+    local highlights = {
+        -- Diff highlights
+        { Theme.HL_GROUPS.DIFF_DELETE, { link = "DiffDelete" } },
+        { Theme.HL_GROUPS.DIFF_ADD, { link = "DiffAdd" } },
+        { Theme.HL_GROUPS.DIFF_DELETE_WORD, { bg = COLORS.diff_delete_word_bg, bold = true } },
+        { Theme.HL_GROUPS.DIFF_ADD_WORD, { bg = COLORS.diff_add_word_bg, bold = true } },
+        -- Status highlights
+        { Theme.HL_GROUPS.STATUS_PENDING, { bg = COLORS.status_pending_bg } },
+        { Theme.HL_GROUPS.STATUS_COMPLETED, { bg = COLORS.status_completed_bg } },
+        { Theme.HL_GROUPS.STATUS_FAILED, { bg = COLORS.status_failed_bg } },
+        { Theme.HL_GROUPS.CODE_BLOCK_FENCE, { link = "Directory" } },
+    }
+    -- stylua: ignore end
+
+    for _, hl in ipairs(highlights) do
+        Theme._create_hl_if_not_exists(hl[1], hl[2])
+    end
+end
+
+---Get language identifier from file path for markdown code fences
+---@param file_path string
+---@return string language
+function Theme.get_language_from_path(file_path)
+    local ext = vim.fn.fnamemodify(file_path, ":e")
+    if not ext or ext == "" then
+        return ""
+    end
+
+    return lang_map[ext] or ext
+end
+
+---@param status string
+---@return string hl_group
+function Theme.get_status_hl_group(status)
+    return status_hl[status] or "Comment"
 end
 
 ---@private

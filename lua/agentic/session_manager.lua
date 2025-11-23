@@ -68,6 +68,8 @@ function SessionManager:_on_session_update(update)
     -- order the IF blocks in order of likeliness to be called for performance
 
     if update.sessionUpdate == "plan" then
+        -- FIXIT: implement plan handling
+        Logger.debug("Implement plan handling")
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.message_writer:write_message(update)
     elseif update.sessionUpdate == "user_message_chunk" then
@@ -85,6 +87,8 @@ function SessionManager:_on_session_update(update)
             )
         end
     elseif update.sessionUpdate == "available_commands_update" then
+        -- FIXIT: implement available slash commands handling
+        Logger.debug("Implement available_commands_update handling")
     else
         -- TODO: Move this to Logger when confidence is high
         vim.notify(

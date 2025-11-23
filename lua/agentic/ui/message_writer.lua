@@ -32,20 +32,6 @@ local Theme = require("agentic.theme")
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
--- Priority order for permission option kinds based on ACP tool-calls documentation
--- Lower number = higher priority (appears first)
--- Order from https://agentclientprotocol.com/protocol/tool-calls.md:
--- 1. allow_once - Allow this operation only this time
--- 2. allow_always - Allow this operation and remember the choice
--- 3. reject_once - Reject this operation only this time
--- 4. reject_always - Reject this operation and remember the choice
-local _PERMISSION_KIND_PRIORITY = {
-    allow_once = 1,
-    allow_always = 2,
-    reject_once = 3,
-    reject_always = 4,
-}
-
 ---@param bufnr integer
 ---@return agentic.ui.MessageWriter
 function MessageWriter:new(bufnr)
@@ -139,7 +125,8 @@ function MessageWriter:write_tool_call_block(update)
                 or update.rawInput.url
                 or "unknown fetch"
         else
-            local file_path = self:_extract_file_path(update)
+            local file_path = update.rawInput.file_path
+                and FileSystem.to_smart_path(update.rawInput.file_path)
             local command = update.rawInput.command
             argument = file_path or command or update.title or ""
         end
@@ -183,8 +170,8 @@ function MessageWriter:write_tool_call_block(update)
             has_diff = ACPDiffHandler.has_diff_content(update),
         }
 
-        self:_apply_header_highlight(bufnr, start_row, update.status)
-        self:_apply_status_footer(bufnr, end_row, update.status)
+        self:_apply_header_highlight(start_row, update.status)
+        self:_apply_status_footer(end_row, update.status)
 
         self:_append_lines({ "", "" })
     end)
@@ -255,13 +242,12 @@ function MessageWriter:update_tool_call_block(update)
 
             tracker.status = update.status or tracker.status
 
-            self:_clear_decoration_extmarks(bufnr, tracker)
+            self:_clear_decoration_extmarks(tracker)
             tracker.decoration_extmark_ids =
-                self:_render_decorations(bufnr, start_row, old_end_row)
+                self:_render_decorations(start_row, old_end_row)
 
-            self:_clear_status_namespace(bufnr, start_row, old_end_row)
+            self:_clear_status_namespace(start_row, old_end_row)
             self:_apply_status_highlights_if_present(
-                bufnr,
                 start_row,
                 old_end_row,
                 update.status
@@ -270,8 +256,8 @@ function MessageWriter:update_tool_call_block(update)
             return
         end
 
-        self:_clear_decoration_extmarks(bufnr, tracker)
-        self:_clear_status_namespace(bufnr, start_row, old_end_row)
+        self:_clear_decoration_extmarks(tracker)
+        self:_clear_status_namespace(start_row, old_end_row)
 
         local new_lines, highlight_ranges =
             self:_prepare_block_lines(update, tracker.kind, tracker.argument)
@@ -311,62 +297,15 @@ function MessageWriter:update_tool_call_block(update)
         })
 
         tracker.decoration_extmark_ids =
-            self:_render_decorations(bufnr, start_row, new_end_row)
+            self:_render_decorations(start_row, new_end_row)
 
         tracker.status = update.status or tracker.status
         self:_apply_status_highlights_if_present(
-            bufnr,
             start_row,
             new_end_row,
             update.status
         )
     end)
-end
-
----Extract file path from tool call update
----@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
----@return string|nil file_path
-function MessageWriter:_extract_file_path(update)
-    if update.rawInput.file_path then
-        return FileSystem.to_smart_path(update.rawInput.file_path)
-    end
-
-    return nil
-end
-
---- A lang map of extension to language identifier for markdown code fences
---- Keep only possible unknown mappings
-local lang_map = {
-    py = "python",
-    rb = "ruby",
-    rs = "rust",
-    kt = "kotlin",
-    htm = "html",
-    yml = "yaml",
-    sh = "bash",
-}
-
----Get language identifier from file path for markdown code fences
----@param file_path string
----@return string language
-local function get_language_from_path(file_path)
-    local ext = vim.fn.fnamemodify(file_path, ":e")
-    if not ext or ext == "" then
-        return ""
-    end
-
-    return lang_map[ext] or ext
-end
-
----@param status string
----@return string hl_group
-local function get_status_hl_group(status)
-    local status_hl = {
-        pending = Theme.HL_GROUPS.STATUS_PENDING,
-        completed = Theme.HL_GROUPS.STATUS_COMPLETED,
-        failed = Theme.HL_GROUPS.STATUS_FAILED,
-    }
-    return status_hl[status] or "Comment"
 end
 
 ---@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
@@ -425,7 +364,7 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
         if ACPDiffHandler.has_diff_content(update) then
             local diff_blocks = ACPDiffHandler.extract_diff_blocks(update)
 
-            local lang = get_language_from_path(argument)
+            local lang = Theme.get_language_from_path(argument)
 
             -- Hack to avoid triple backtick conflicts in markdown files
             if lang ~= "md" then
@@ -536,28 +475,19 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
 end
 
 ---Display permission request buttons at the end of the buffer
----@param request agentic.acp.RequestPermission
+---@param options agentic.acp.PermissionOption[]
 ---@return integer button_start_row Start row of button block
 ---@return integer button_end_row End row of button block
 ---@return table<integer, string> option_mapping Mapping from number (1-N) to option_id
-function MessageWriter:display_permission_buttons(request)
-    if not request.toolCall or not request.options or #request.options == 0 then
-        Logger.debug(
-            "MessageWriter: Invalid permission request",
-            vim.inspect(request)
-        )
-        return 0, 0, {}
-    end
-
+function MessageWriter:display_permission_buttons(tool_call_id, options)
     local option_mapping = {}
-    local sorted_options = self._sort_permission_options(request.options)
 
     local lines_to_append = {
         string.format("### Waiting for your response:  "),
         "",
     }
 
-    local tracker = self.tool_call_blocks[request.toolCall.toolCallId]
+    local tracker = self.tool_call_blocks[tool_call_id]
 
     if tracker then
         vim.list_extend(lines_to_append, {
@@ -566,7 +496,7 @@ function MessageWriter:display_permission_buttons(request)
         })
     end
 
-    for i, option in ipairs(sorted_options) do
+    for i, option in ipairs(options) do
         table.insert(
             lines_to_append,
             string.format(
@@ -603,23 +533,6 @@ function MessageWriter:display_permission_buttons(request)
     )
 
     return button_start_row, button_end_row, option_mapping
-end
-
----@param options agentic.acp.PermissionOption[]
----@return agentic.acp.PermissionOption[]
-function MessageWriter._sort_permission_options(options)
-    local sorted = {}
-    for _, option in ipairs(options) do
-        table.insert(sorted, option)
-    end
-
-    table.sort(sorted, function(a, b)
-        local priority_a = _PERMISSION_KIND_PRIORITY[a.kind] or 999
-        local priority_b = _PERMISSION_KIND_PRIORITY[b.kind] or 999
-        return priority_a < priority_b
-    end)
-
-    return sorted
 end
 
 ---@param start_row integer Start row of button block
@@ -664,7 +577,7 @@ function MessageWriter:_apply_block_highlights(
     highlight_ranges
 )
     if #highlight_ranges > 0 then
-        self:_apply_diff_highlights(bufnr, start_row, highlight_ranges)
+        self:_apply_diff_highlights(start_row, highlight_ranges)
     elseif kind ~= "edit" then
         -- Apply Comment highlight for non-edit blocks without diffs
         for line_idx = start_row + 1, end_row - 1 do
@@ -690,11 +603,7 @@ function MessageWriter:_apply_block_highlights(
     end
 end
 
-function MessageWriter:_apply_diff_highlights(
-    bufnr,
-    start_row,
-    highlight_ranges
-)
+function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
     if not highlight_ranges or #highlight_ranges == 0 then
         return
     end
@@ -704,7 +613,7 @@ function MessageWriter:_apply_diff_highlights(
 
         if hl_range.type == "old" then
             DiffHighlighter.apply_diff_highlights(
-                bufnr,
+                self.bufnr,
                 self.diff_highlights_ns_id,
                 buffer_line,
                 hl_range.old_line,
@@ -712,7 +621,7 @@ function MessageWriter:_apply_diff_highlights(
             )
         elseif hl_range.type == "new" then
             DiffHighlighter.apply_diff_highlights(
-                bufnr,
+                self.bufnr,
                 self.diff_highlights_ns_id,
                 buffer_line,
                 nil,
@@ -720,7 +629,7 @@ function MessageWriter:_apply_diff_highlights(
             )
         elseif hl_range.type == "new_modification" then
             DiffHighlighter.apply_new_line_word_highlights(
-                bufnr,
+                self.bufnr,
                 self.diff_highlights_ns_id,
                 buffer_line,
                 hl_range.old_line,
@@ -728,7 +637,7 @@ function MessageWriter:_apply_diff_highlights(
             )
         elseif hl_range.type == "comment" then
             local line = vim.api.nvim_buf_get_lines(
-                bufnr,
+                self.bufnr,
                 buffer_line,
                 buffer_line + 1,
                 false
@@ -736,7 +645,7 @@ function MessageWriter:_apply_diff_highlights(
 
             if line then
                 vim.api.nvim_buf_set_extmark(
-                    bufnr,
+                    self.bufnr,
                     self.diff_highlights_ns_id,
                     buffer_line,
                     0,
@@ -750,16 +659,15 @@ function MessageWriter:_apply_diff_highlights(
     end
 end
 
----@param bufnr integer
 ---@param header_line integer 0-indexed header line number
 ---@param status string Status value (pending, completed, etc.)
-function MessageWriter:_apply_header_highlight(bufnr, header_line, status)
-    if not vim.api.nvim_buf_is_valid(bufnr) or not status or status == "" then
+function MessageWriter:_apply_header_highlight(header_line, status)
+    if not status or status == "" then
         return
     end
 
     local line = vim.api.nvim_buf_get_lines(
-        bufnr,
+        self.bufnr,
         header_line,
         header_line + 1,
         false
@@ -768,48 +676,66 @@ function MessageWriter:_apply_header_highlight(bufnr, header_line, status)
         return
     end
 
-    local hl_group = get_status_hl_group(status)
-    vim.api.nvim_buf_set_extmark(bufnr, self.status_ns_id, header_line, 0, {
-        end_col = #line,
-        hl_group = hl_group,
-    })
+    local hl_group = Theme.get_status_hl_group(status)
+    vim.api.nvim_buf_set_extmark(
+        self.bufnr,
+        self.status_ns_id,
+        header_line,
+        0,
+        {
+            end_col = #line,
+            hl_group = hl_group,
+        }
+    )
 end
 
----@param bufnr integer
 ---@param footer_line integer 0-indexed footer line number
 ---@param status string Status value (pending, completed, etc.)
-function MessageWriter:_apply_status_footer(bufnr, footer_line, status)
-    if not vim.api.nvim_buf_is_valid(bufnr) or not status or status == "" then
+function MessageWriter:_apply_status_footer(footer_line, status)
+    if
+        not vim.api.nvim_buf_is_valid(self.bufnr)
+        or not status
+        or status == ""
+    then
         return
     end
 
     local icons = Config.status_icons or {}
 
     local icon = icons[status] or ""
-    local hl_group = get_status_hl_group(status)
+    local hl_group = Theme.get_status_hl_group(status)
 
-    vim.api.nvim_buf_set_extmark(bufnr, self.status_ns_id, footer_line, 0, {
-        virt_text = {
-            { string.format(" %s %s ", icon, status), hl_group },
-        },
-        virt_text_pos = "overlay",
-    })
+    vim.api.nvim_buf_set_extmark(
+        self.bufnr,
+        self.status_ns_id,
+        footer_line,
+        0,
+        {
+            virt_text = {
+                { string.format(" %s %s ", icon, status), hl_group },
+            },
+            virt_text_pos = "overlay",
+        }
+    )
 end
 
----@param bufnr integer
 ---@param tracker agentic.ui.MessageWriter.BlockTracker
-function MessageWriter:_clear_decoration_extmarks(bufnr, tracker)
+function MessageWriter:_clear_decoration_extmarks(tracker)
     for _, id in ipairs(tracker.decoration_extmark_ids) do
-        pcall(vim.api.nvim_buf_del_extmark, bufnr, self.decorations_ns_id, id)
+        pcall(
+            vim.api.nvim_buf_del_extmark,
+            self.bufnr,
+            self.decorations_ns_id,
+            id
+        )
     end
 end
 
----@param bufnr integer
 ---@param start_row integer
 ---@param end_row integer
 ---@return integer[] decoration_extmark_ids
-function MessageWriter:_render_decorations(bufnr, start_row, end_row)
-    return ExtmarkBlock.render_block(bufnr, self.decorations_ns_id, {
+function MessageWriter:_render_decorations(start_row, end_row)
+    return ExtmarkBlock.render_block(self.bufnr, self.decorations_ns_id, {
         header_line = start_row,
         body_start = start_row + 1,
         body_end = end_row - 1,
@@ -818,32 +744,29 @@ function MessageWriter:_render_decorations(bufnr, start_row, end_row)
     })
 end
 
----@param bufnr integer
 ---@param start_row integer
 ---@param end_row integer
-function MessageWriter:_clear_status_namespace(bufnr, start_row, end_row)
+function MessageWriter:_clear_status_namespace(start_row, end_row)
     pcall(
         vim.api.nvim_buf_clear_namespace,
-        bufnr,
+        self.bufnr,
         self.status_ns_id,
         start_row,
         end_row + 1
     )
 end
 
----@param bufnr integer
 ---@param start_row integer
 ---@param end_row integer
 ---@param status string|nil
 function MessageWriter:_apply_status_highlights_if_present(
-    bufnr,
     start_row,
     end_row,
     status
 )
     if status then
-        self:_apply_header_highlight(bufnr, start_row, status)
-        self:_apply_status_footer(bufnr, end_row, status)
+        self:_apply_header_highlight(start_row, status)
+        self:_apply_status_footer(end_row, status)
     end
 end
 
