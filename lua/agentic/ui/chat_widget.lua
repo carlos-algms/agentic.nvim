@@ -52,7 +52,10 @@ function ChatWidget:show()
         not self.win_nrs.chat
         or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
     then
-        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {}, {
+        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {
+            -- Only the top most needs a fixed width, others adapt to available space
+            width = self._calculate_width(Config.windows.width),
+        }, {
             winfixheight = false,
         })
         self:_render_chat_header()
@@ -325,7 +328,7 @@ function ChatWidget:_create_buf_nrs()
         filetype = "AgenticCode",
     })
 
-    local files = self:_create_new_buf(" Selected Files", {
+    local files = self:_create_new_buf(" Referenced Files", {
         filetype = "AgenticFiles",
     })
 
@@ -388,7 +391,6 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
         win = -1,
         noautocmd = true,
         style = "minimal",
-        width = self._calculate_width(Config.windows.width),
     }
 
     local config = vim.tbl_deep_extend("force", default_opts, opts)

@@ -10,6 +10,7 @@ Theme.HL_GROUPS = {
     STATUS_COMPLETED = "AgenticStatusCompleted",
     STATUS_FAILED = "AgenticStatusFailed",
     CODE_BLOCK_FENCE = "AgenticCodeBlockPath",
+    WIN_BAR_TITLE = "AgenticTitle",
 }
 
 local COLORS = {
@@ -18,6 +19,9 @@ local COLORS = {
     status_pending_bg = "#5f4d8f",
     status_completed_bg = "#2d5a3d",
     status_failed_bg = "#7a2d2d",
+
+    title_bg = "#2787b0",
+    title_fg = "#000000",
 }
 
 --- A lang map of extension to language identifier for markdown code fences
@@ -51,6 +55,8 @@ function Theme.setup()
         { Theme.HL_GROUPS.STATUS_COMPLETED, { bg = COLORS.status_completed_bg } },
         { Theme.HL_GROUPS.STATUS_FAILED, { bg = COLORS.status_failed_bg } },
         { Theme.HL_GROUPS.CODE_BLOCK_FENCE, { link = "Directory" } },
+        -- Title highlight
+        { Theme.HL_GROUPS.WIN_BAR_TITLE, { bg = COLORS.title_bg, fg = COLORS.title_fg, bold = true } },
     }
     -- stylua: ignore end
 

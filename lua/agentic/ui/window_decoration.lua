@@ -24,6 +24,7 @@
 ---```
 
 local FileSystem = require("agentic.utils.file_system")
+local Theme = require("agentic.theme")
 
 --- @class agentic.ui.WindowDecoration
 local WindowDecoration = {}
@@ -35,8 +36,8 @@ local WindowDecoration = {}
 --- @field reverse_hl? string Highlight group for the separator
 local default_config = {
     enabled = true,
-    align = "left",
-    hl = "NormalFloat",
+    align = "center",
+    hl = Theme.HL_GROUPS.WIN_BAR_TITLE,
     reverse_hl = "NormalFloat",
 }
 
@@ -68,7 +69,6 @@ function WindowDecoration.render_window_header(winid, opts)
 
     WindowDecoration._render_header(winid, title, {
         enabled = true,
-        align = "left",
         hl = opts.hl,
         reverse_hl = opts.reverse_hl,
     })
@@ -88,7 +88,7 @@ function WindowDecoration._render_header(winid, text, opts)
     local header_text = format_segment(" " .. text .. " ", opts.hl)
 
     local winbar_text
-    local separator_hl = opts.reverse_hl or "Normal"
+    local separator_hl = opts.reverse_hl or "NormalFloat"
 
     if opts.align == "left" then
         winbar_text = header_text .. "%=" .. format_segment("", separator_hl)
