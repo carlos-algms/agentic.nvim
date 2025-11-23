@@ -5,21 +5,21 @@ local GLYPHS = {
     VERTICAL = "│",
 }
 
----@class agentic.utils.ExtmarkBlock
+--- @class agentic.utils.ExtmarkBlock
 local ExtmarkBlock = {}
 
----@class agentic.utils.ExtmarkBlock.RenderBlockOpts
----@field header_line integer 0-indexed line number for header
----@field body_start? integer 0-indexed start line for body (optional)
----@field body_end? integer 0-indexed end line for body (optional)
----@field footer_line? integer 0-indexed line number for footer (optional)
----@field hl_group string Highlight group name
+--- @class agentic.utils.ExtmarkBlock.RenderBlockOpts
+--- @field header_line integer 0-indexed line number for header
+--- @field body_start? integer 0-indexed start line for body (optional)
+--- @field body_end? integer 0-indexed end line for body (optional)
+--- @field footer_line? integer 0-indexed line number for footer (optional)
+--- @field hl_group string Highlight group name
 
----Renders a complete block with header, optional body, and optional footer
----@param bufnr integer
----@param ns_id integer
----@param opts agentic.utils.ExtmarkBlock.RenderBlockOpts
----@return integer[]
+--- Renders a complete block with header, optional body, and optional footer
+--- @param bufnr integer
+--- @param ns_id integer
+--- @param opts agentic.utils.ExtmarkBlock.RenderBlockOpts
+--- @return integer[]
 function ExtmarkBlock.render_block(bufnr, ns_id, opts)
     local decoration_ids = {}
 

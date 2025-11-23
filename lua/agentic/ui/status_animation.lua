@@ -18,6 +18,13 @@ local Theme = require("agentic.theme")
 
 local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
 
+--- @type table<agentic.Theme.SpinnerState, number>
+local TIMING = {
+    generating = 200,
+    thinking = 600,
+    searching = 600,
+}
+
 --- @class agentic.ui.StatusAnimation
 --- @field bufnr number Buffer number where animation is rendered
 --- @field state? agentic.Theme.SpinnerState Current animation state
@@ -44,6 +51,10 @@ end
 --- Start the animation with the given state
 --- @param state agentic.Theme.SpinnerState
 function StatusAnimation:start(state)
+    if self.state == state then
+        return
+    end
+
     self:stop()
 
     self.state = state
@@ -104,6 +115,8 @@ function StatusAnimation:_render_frame()
         )
     end
 
+    local delay = TIMING[self.state] or TIMING.generating
+
     self.extmark_id =
         vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, line_num, 0, {
             id = self.extmark_id, -- Reuse existing extmark ID to update in-place
@@ -114,8 +127,7 @@ function StatusAnimation:_render_frame()
 
     self.timer = vim.defer_fn(function()
         self:_render_frame()
-    end, 160)
+    end, delay)
 end
 
 return StatusAnimation
-

@@ -4,6 +4,7 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
 
@@ -58,10 +59,7 @@ function SessionManager:new(tab_page_id)
     instance.status_animation =
         StatusAnimation:new(instance.widget.buf_nrs.chat)
 
-    instance.permission_manager = PermissionManager:new(
-        instance.widget.buf_nrs.chat,
-        instance.message_writer
-    )
+    instance.permission_manager = PermissionManager:new(instance.message_writer)
 
     instance:_new_session()
 
@@ -71,6 +69,8 @@ end
 ---@param update agentic.acp.SessionUpdateMessage
 function SessionManager:_on_session_update(update)
     -- order the IF blocks in order of likeliness to be called for performance
+
+    self.status_animation:start("generating")
 
     if update.sessionUpdate == "plan" then
         -- FIXIT: implement plan handling
@@ -224,7 +224,7 @@ function SessionManager:_handle_input_submit(input_text)
         self.agent:generate_user_message(message_lines)
     )
 
-    self.status_animation:start("generating")
+    self.status_animation:start("thinking")
 
     self.agent:send_prompt(self.session_id, prompt, function(_response, err)
         vim.schedule(function()
@@ -450,7 +450,7 @@ function P.on_write_file(abs_path, content, callback)
 
         if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
             pcall(function()
-                vim.api.nvim_buf_call(bufnr, function()
+                BufHelpers.execute_on_buffer(bufnr, function()
                     local view = vim.fn.winsaveview()
                     vim.cmd("checktime")
                     vim.fn.winrestview(view)

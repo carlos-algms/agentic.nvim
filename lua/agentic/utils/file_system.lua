@@ -1,11 +1,11 @@
----@class agentic.utils.FileSystem
+--- @class agentic.utils.FileSystem
 local FileSystem = {}
 
 --- Read the file content from a buffer if loaded, to get unsaved changes,
 --- or from disk otherwise
----@param abs_path string
----@return string[]|nil lines
----@return string|nil error
+--- @param abs_path string
+--- @return string[]|nil lines
+--- @return string|nil error
 function FileSystem.read_from_buffer_or_disk(abs_path)
     local bufnr = vim.fn.bufnr(abs_path)
 

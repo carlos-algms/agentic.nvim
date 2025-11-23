@@ -90,7 +90,7 @@ When implementing ANY feature:
    - Filter by tabpage in global autocommands if necessary
 
 8. **Keymaps must be buffer-local**
-   - Always use: `vim.keymap.set("n", "key", fn, { buffer = bufnr })`
+   - Always use: `BufHelpers.keymap_set(bufnr, "n", "key", fn)`
    - NEVER use global keymaps that affect all tabpages
 
 ### Testing Multi-Tab Isolation

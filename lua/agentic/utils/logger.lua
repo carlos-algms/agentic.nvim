@@ -1,6 +1,6 @@
 local Config = require("agentic.config")
 
----@class agentic.utils.Logger
+--- @class agentic.utils.Logger
 local Logger = {}
 
 function Logger.get_timestamp()

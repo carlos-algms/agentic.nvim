@@ -1,4 +1,4 @@
----@class agentic.utils.DiffHighlighter
+--- @class agentic.utils.DiffHighlighter
 local M = {}
 
 --- Convert strings to arrays of UTF-8 characters with their byte positions
@@ -26,10 +26,10 @@ end
 
 local Theme = require("agentic.theme")
 
----Find character-level changes between two lines (UTF-8 aware)
----@param old_line string
----@param new_line string
----@return {old_start: integer, old_end: integer, new_start: integer, new_end: integer}|nil
+--- Find character-level changes between two lines (UTF-8 aware)
+--- @param old_line string
+--- @param new_line string
+--- @return { old_start: integer, old_end: integer, new_start: integer, new_end: integer }|nil
 function M.find_inline_change(old_line, new_line)
     if old_line == new_line then
         return nil
@@ -87,9 +87,9 @@ function M.find_inline_change(old_line, new_line)
     }
 end
 
----@param bufnr integer
----@param line_number integer 0-indexed line number
----@return boolean valid
+--- @param bufnr integer
+--- @param line_number integer 0-indexed line number
+--- @return boolean valid
 local function validate_buffer_line(bufnr, line_number)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return false
@@ -98,10 +98,10 @@ local function validate_buffer_line(bufnr, line_number)
     return line_number >= 0 and line_number < line_count
 end
 
----@param bufnr integer
----@param ns_id integer
----@param line_number integer
----@param line_content string
+--- @param bufnr integer
+--- @param ns_id integer
+--- @param line_number integer
+--- @param line_content string
 local function apply_add_line_highlight(bufnr, ns_id, line_number, line_content)
     vim.highlight.range(
         bufnr,
@@ -112,12 +112,12 @@ local function apply_add_line_highlight(bufnr, ns_id, line_number, line_content)
     )
 end
 
----Apply line-level and word-level highlights to a buffer using vim.highlight.range
----@param bufnr integer Buffer number
----@param ns_id integer Namespace ID for highlights
----@param line_number integer 0-indexed line number
----@param old_line string|nil Old line content (for deleted lines)
----@param new_line string|nil New line content (for added lines)
+--- Apply line-level and word-level highlights to a buffer using vim.highlight.range
+--- @param bufnr integer Buffer number
+--- @param ns_id integer Namespace ID for highlights
+--- @param line_number integer 0-indexed line number
+--- @param old_line string|nil Old line content (for deleted lines)
+--- @param new_line string|nil New line content (for added lines)
 function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
     if not validate_buffer_line(bufnr, line_number) then
         return
@@ -176,12 +176,12 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
     end
 end
 
----Apply word-level highlight for new line (used when new line is on separate line)
----@param bufnr integer Buffer number
----@param ns_id integer Namespace ID for highlights
----@param line_number integer 0-indexed line number
----@param old_line string Old line content
----@param new_line string New line content
+--- Apply word-level highlight for new line (used when new line is on separate line)
+--- @param bufnr integer Buffer number
+--- @param ns_id integer Namespace ID for highlights
+--- @param line_number integer 0-indexed line number
+--- @param old_line string Old line content
+--- @param new_line string New line content
 function M.apply_new_line_word_highlights(
     bufnr,
     ns_id,

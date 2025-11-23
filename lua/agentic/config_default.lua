@@ -1,4 +1,4 @@
----@class agentic.UserConfig
+--- @class agentic.UserConfig
 local ConfigDefault = {
     --- Enable printing debug messages which can be read via `:messages`
     debug = false,

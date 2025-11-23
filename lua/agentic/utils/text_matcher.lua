@@ -1,9 +1,9 @@
----@class agentic.utils.TextMatcher
+--- @class agentic.utils.TextMatcher
 local M = {}
 
----@param str string The string to trim
----@param opts { prefix: string?, suffix: string? }? Optional table with prefix and/or suffix to remove
----@return string trimmed
+--- @param str string The string to trim
+--- @param opts { prefix: string?, suffix: string? }? Optional table with prefix and/or suffix to remove
+--- @return string trimmed
 local function trim(str, opts)
     local res = str
 
@@ -33,11 +33,11 @@ local function trim_space(text)
     return text and text:gsub("%s+", "") or text
 end
 
----@param original_lines string[]
----@param target_lines string[]
----@param i integer Starting position
----@param compare_fn function
----@return boolean matches
+--- @param original_lines string[]
+--- @param target_lines string[]
+--- @param i integer Starting position
+--- @param compare_fn function
+--- @return boolean matches
 local function matches_at_position(original_lines, target_lines, i, compare_fn)
     -- Validate bounds
     if i < 1 or i + #target_lines - 1 > #original_lines then
@@ -73,10 +73,10 @@ local MATCH_STRATEGIES = {
     end,
 }
 
----Find all matches with fuzzy matching
----@param original_lines string[]
----@param target_lines string[]
----@return table[] matches Array of {start_line, end_line} pairs, empty if no matches
+--- Find all matches with fuzzy matching
+--- @param original_lines string[]
+--- @param target_lines string[]
+--- @return table[] matches Array of {start_line, end_line} pairs, empty if no matches
 function M.find_all_matches(original_lines, target_lines)
     for _, strategy in ipairs(MATCH_STRATEGIES) do
         local matches =
@@ -90,11 +90,11 @@ function M.find_all_matches(original_lines, target_lines)
     return {}
 end
 
----Find all matches using compare function
----@param original_lines string[]
----@param target_lines string[]
----@param compare_fn fun(line_a: string, line_b: string): boolean
----@return table[] matches Array of {start_line, end_line} pairs
+--- Find all matches using compare function
+--- @param original_lines string[]
+--- @param target_lines string[]
+--- @param compare_fn fun(line_a: string, line_b: string): boolean
+--- @return table[] matches Array of {start_line, end_line} pairs
 function M._try_find_all_matches(original_lines, target_lines, compare_fn)
     local matches = {}
 
