@@ -6,21 +6,42 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"
 
----@alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
----@alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
+--- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
+--- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
+
+--- @type table<agentic.ui.ChatWidget.PanelNames, { title: string, suffix?: string|fun(self: agentic.ui.ChatWidget): string }>
+local WINDOW_HEADERS = {
+    chat = { title = "󰻞 Agentic Chat" },
+    input = { title = "󰦨 Prompt", suffix = "| <C-s>: submit" },
+    code = { title = "󰪸 Selected Code Snippets" },
+    files = {
+        title = " Referenced Files",
+        suffix = function(self)
+            local lines =
+                vim.api.nvim_buf_get_lines(self.buf_nrs.files, 0, -1, false)
+            local file_count = 0
+            for _, line in ipairs(lines) do
+                if line:match("%S") then
+                    file_count = file_count + 1
+                end
+            end
+            return string.format("(%d)", file_count)
+        end,
+    },
+}
 
 --- A sidebar-style chat widget with multiple windows stacked vertically
 --- The main chat window is the first, and contains the width, the below ones adapt to its size
----@class agentic.ui.ChatWidget
----@field tab_page_id integer
----@field buf_nrs agentic.ui.ChatWidget.BufNrs
----@field win_nrs agentic.ui.ChatWidget.WinNrs
----@field on_submit_input fun(prompt: string) external callback to be called when user submits the input
+--- @class agentic.ui.ChatWidget
+--- @field tab_page_id integer
+--- @field buf_nrs agentic.ui.ChatWidget.BufNrs
+--- @field win_nrs agentic.ui.ChatWidget.WinNrs
+--- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
----@param tab_page_id integer
----@param on_submit_input fun(prompt: string)
+--- @param tab_page_id integer
+--- @param on_submit_input fun(prompt: string)
 function ChatWidget:new(tab_page_id, on_submit_input)
     local instance = setmetatable({
         win_nrs = {},
@@ -223,8 +244,8 @@ function ChatWidget:_submit_input()
     self:_move_cursor_to(self.win_nrs.chat)
 end
 
----@param winid? integer
----@param callback? fun()
+--- @param winid? integer
+--- @param callback? fun()
 function ChatWidget:_move_cursor_to(winid, callback)
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
@@ -282,7 +303,7 @@ function ChatWidget:_initialize()
     return buf_nrs
 end
 
----@return agentic.ui.ChatWidget.BufNrs
+--- @return agentic.ui.ChatWidget.BufNrs
 function ChatWidget:_create_buf_nrs()
     local chat = self:_create_new_buf({
         filetype = "AgenticChat",
@@ -311,7 +332,7 @@ function ChatWidget:_create_buf_nrs()
     pcall(vim.treesitter.start, files, "markdown")
     pcall(vim.treesitter.start, input, "markdown")
 
-    ---@type agentic.ui.ChatWidget.BufNrs
+    --- @type agentic.ui.ChatWidget.BufNrs
     local buf_nrs = {
         chat = chat,
         todos = todos,
@@ -350,7 +371,7 @@ end
 --- @param win_opts table<string, any>
 --- @return integer winid
 function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
-    ---@type vim.api.keyset.win_config
+    --- @type vim.api.keyset.win_config
     local default_opts = {
         split = "right",
         win = -1,
@@ -379,8 +400,8 @@ end
 
 --- Calculate width based on editor dimensions
 --- Accepts percentage strings ("30%"), decimals (0.3), or absolute numbers (80)
----@param size number|string
----@return integer width
+--- @param size number|string
+--- @return integer width
 function ChatWidget._calculate_width(size)
     local editor_width = vim.o.columns
 
@@ -407,28 +428,7 @@ function ChatWidget._calculate_width(size)
     return value
 end
 
---- @type table<string, { title: string, suffix?: string|fun(self: agentic.ui.ChatWidget): string }>
-local WINDOW_HEADERS = {
-    chat = { title = "󰻞 Agentic Chat" },
-    input = { title = "󰦨 Prompt", suffix = "| <C-s>: submit" },
-    code = { title = "󰪸 Selected Code Snippets" },
-    files = {
-        title = " Referenced Files",
-        suffix = function(self)
-            local lines =
-                vim.api.nvim_buf_get_lines(self.buf_nrs.files, 0, -1, false)
-            local file_count = 0
-            for _, line in ipairs(lines) do
-                if line:match("%S") then
-                    file_count = file_count + 1
-                end
-            end
-            return string.format("(%d)", file_count)
-        end,
-    },
-}
-
---- @param window_name "chat"|"input"|"code"|"files"
+--- @param window_name agentic.ui.ChatWidget.PanelNames
 function ChatWidget:_render_header(window_name)
     local winid = self.win_nrs[window_name]
     if not winid then
