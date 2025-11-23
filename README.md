@@ -186,6 +186,26 @@ require("agentic").setup({
 | `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                   |
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one |
 
+## 🎨 Integration with Lualine
+
+If you're using [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) or
+similar statusline plugins, configure it to ignore Agentic windows to prevent
+conflicts with custom window decorations:
+
+```lua
+require('lualine').setup({
+  options = {
+    disabled_filetypes = {
+      statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
+      winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
+    }
+  }
+})
+```
+
+This ensures that Agentic's custom window titles and statuslines render
+correctly without interference from your statusline plugin.
+
 ## 🔧 Development
 
 ### Debug Mode
