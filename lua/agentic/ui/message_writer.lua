@@ -30,8 +30,11 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field has_diff boolean Whether this block contains diff content
 
 --- @class agentic.ui.MessageWriter.ChunkQueueItem
---- @field text string Text content to append
---- @field message_type string Message type (agent_message_chunk, etc.)
+--- @field type "text_chunk"|"tool_call_block"|"tool_call_update"|"permission_buttons"
+--- @field text? string Text content (for text_chunk)
+--- @field message_type? string Message type (for text_chunk)
+--- @field update? agentic.acp.ToolCallMessage|agentic.acp.ToolCallUpdate Tool call data
+--- @field permission_data? {tool_call_id: string, options: agentic.acp.PermissionOption[], callback: function} Permission button data
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -68,21 +71,6 @@ function MessageWriter:new(bufnr)
     return instance
 end
 
---- Queue a chunk for processing to avoid race conditions
---- @private
---- @param text string Text content to append
---- @param message_type string Message type (agent_message_chunk, etc.)
-function MessageWriter:_queue_chunk(text, message_type)
-    table.insert(self._chunk_queue, {
-        text = text,
-        message_type = message_type,
-    })
-
-    if not self._is_processing_queue then
-        self:_process_next_chunk()
-    end
-end
-
 --- @private
 function MessageWriter:_process_next_chunk()
     if #self._chunk_queue == 0 then
@@ -93,24 +81,72 @@ function MessageWriter:_process_next_chunk()
     self._is_processing_queue = true
 
     local item = table.remove(self._chunk_queue, 1)
-    local text = item.text
-    local message_type = item.message_type
 
     BufHelpers.with_modifiable(self.bufnr, function()
-        -- If message type changed, finalize previous stream first
-        if self._is_streaming and self._stream_type ~= message_type then
-            self:finalize_streaming()
+        if item.type == "text_chunk" then
+            -- Append text to stream (starts new stream if needed)
+            self:_append_to_stream(item.text, item.message_type)
+
+            vim.defer_fn(function()
+                BufHelpers.execute_on_buffer(self.bufnr, function()
+                    vim.cmd("normal! G0")
+                    vim.cmd("redraw!")
+                end)
+            end, 150)
+        elseif item.type == "tool_call_block" then
+            -- Finalize streaming before writing tool block
+            if self._is_streaming then
+                local end_line = self._stream_line + 1
+                vim.api.nvim_buf_set_lines(
+                    self.bufnr,
+                    end_line,
+                    end_line,
+                    false,
+                    { "", "" }
+                )
+
+                self._is_streaming = false
+                self._stream_type = nil
+                self._stream_start_line = nil
+                self._stream_line = nil
+                self._stream_col = nil
+            end
+
+            -- Write tool call block directly
+            self:_write_tool_call_block_internal(item.update)
+        elseif item.type == "tool_call_update" then
+            -- Tool updates don't interfere with streaming
+            self:_update_tool_call_block_internal(item.update)
+        elseif item.type == "permission_buttons" then
+            -- Finalize streaming before displaying buttons
+            if self._is_streaming then
+                local end_line = self._stream_line + 1
+                vim.api.nvim_buf_set_lines(
+                    self.bufnr,
+                    end_line,
+                    end_line,
+                    false,
+                    { "", "" }
+                )
+
+                self._is_streaming = false
+                self._stream_type = nil
+                self._stream_start_line = nil
+                self._stream_line = nil
+                self._stream_col = nil
+            end
+
+            -- Display permission buttons
+            local result = self:_display_permission_buttons_internal(
+                item.permission_data.tool_call_id,
+                item.permission_data.options
+            )
+
+            -- Call callback with result
+            if item.permission_data.callback then
+                item.permission_data.callback(result)
+            end
         end
-
-        -- Append text to stream (starts new stream if needed)
-        self:_append_to_stream(text, message_type)
-
-        vim.defer_fn(function()
-            BufHelpers.execute_on_buffer(self.bufnr, function()
-                vim.cmd("normal! G0")
-                vim.cmd("redraw!")
-            end)
-        end, 150)
     end)
 
     self:_process_next_chunk()
@@ -125,23 +161,11 @@ function MessageWriter:_start_streaming(message_type)
 
     local line_count = vim.api.nvim_buf_line_count(self.bufnr)
 
-    if line_count == 0 then
-        vim.api.nvim_buf_set_lines(self.bufnr, 0, 0, false, { "" })
-        line_count = 1
-    end
-
-    local last_line = vim.api.nvim_buf_get_lines(
-        self.bufnr,
-        line_count - 1,
-        line_count,
-        false
-    )[1] or ""
-
     self._is_streaming = true
     self._stream_type = message_type
-    self._stream_start_line = line_count - 1
-    self._stream_line = line_count - 1 -- 0-indexed
-    self._stream_col = #last_line
+    self._stream_start_line = line_count
+    self._stream_line = line_count
+    self._stream_col = 0
 end
 
 --- @private
@@ -151,13 +175,6 @@ function MessageWriter:_append_to_stream(text, message_type)
     if not self._is_streaming then
         self:_start_streaming(message_type)
     end
-
-    local current_line = vim.api.nvim_buf_get_lines(
-        self.bufnr,
-        self._stream_line,
-        self._stream_line + 1,
-        false
-    )[1] or ""
 
     local parts = vim.split(text, "\n", { plain = true, trimempty = false })
 
@@ -176,6 +193,14 @@ function MessageWriter:_append_to_stream(text, message_type)
 
         self._stream_col = self._stream_col + #text
     else
+        -- Read current line fresh right before using it
+        local current_line = vim.api.nvim_buf_get_lines(
+            self.bufnr,
+            self._stream_line,
+            self._stream_line + 1,
+            false
+        )[1] or ""
+
         local remaining_on_line = current_line:sub(self._stream_col + 1)
 
         -- First part: append to current line
@@ -211,31 +236,13 @@ function MessageWriter:_append_to_stream(text, message_type)
 end
 
 --- Finalizes the current streaming message by adding empty lines
---- Processes all queued chunks first before finalizing
 --- Should be called when a turn completes or message type changes
 function MessageWriter:finalize_streaming()
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+    if not self._is_streaming then
         return
     end
 
     BufHelpers.with_modifiable(self.bufnr, function()
-        while #self._chunk_queue > 0 do
-            local item = table.remove(self._chunk_queue, 1)
-            if
-                self._is_streaming
-                and self._stream_type ~= item.message_type
-            then
-                -- Type changed mid-queue, finalize current and restart
-                break
-            end
-            self:_append_to_stream(item.text, item.message_type)
-        end
-
-        if not self._is_streaming then
-            return
-        end
-
-        -- Add empty lines after the streamed message
         local end_line = self._stream_line + 1
         vim.api.nvim_buf_set_lines(
             self.bufnr,
@@ -276,116 +283,147 @@ function MessageWriter:write_message(update)
 
     local message_type = update.sessionUpdate
 
-    self:_queue_chunk(text, message_type)
-end
+    table.insert(self._chunk_queue, {
+        type = "text_chunk",
+        text = text,
+        message_type = message_type,
+    })
 
---- @param lines string[]
---- @return nil
-function MessageWriter:_append_lines(lines)
-    vim.api.nvim_buf_set_lines(self.bufnr, -1, -1, false, lines)
-
-    vim.defer_fn(function()
-        BufHelpers.execute_on_buffer(self.bufnr, function()
-            vim.cmd("normal! G0")
-            vim.cmd("redraw!")
-        end)
-    end, 150)
+    if not self._is_processing_queue then
+        self:_process_next_chunk()
+    end
 end
 
 --- @param update agentic.acp.ToolCallMessage
 function MessageWriter:write_tool_call_block(update)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
+    if
+        (not update.content or #update.content == 0)
+        and (not update.rawInput or vim.tbl_isempty(update.rawInput))
+    then
+        -- Skipping tool call with empty content and rawInput,
+        -- The agent will send another one
         return
     end
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        local kind = update.kind or "tool_call"
-        local argument = ""
+    table.insert(self._chunk_queue, {
+        type = "tool_call_block",
+        update = update,
+    })
 
-        if kind == "fetch" then
-            if update.rawInput.query then
-                kind = "WebSearch"
-            end
+    if not self._is_processing_queue then
+        self:_process_next_chunk()
+    end
+end
 
-            argument = update.rawInput.query
-                or update.rawInput.url
-                or "unknown fetch"
-        else
-            local file_path = update.rawInput.file_path
-                and FileSystem.to_smart_path(update.rawInput.file_path)
-            local command = update.rawInput.command
+--- @private
+--- @param update agentic.acp.ToolCallMessage
+function MessageWriter:_write_tool_call_block_internal(update)
+    local bufnr = self.bufnr
+    local kind = update.kind or "tool_call"
+    local argument = ""
 
-            if type(command) == "table" then
-                command = table.concat(command, " ")
-            end
-
-            argument = file_path or command or update.title or ""
+    if kind == "fetch" then
+        if update.rawInput and update.rawInput.query then
+            kind = "WebSearch"
         end
 
-        local start_row = vim.api.nvim_buf_line_count(bufnr)
-        local lines, highlight_ranges =
-            self:_prepare_block_lines(update, kind, argument)
-        self:_append_lines(lines)
+        argument = (update.rawInput and update.rawInput.query)
+            or (update.rawInput and update.rawInput.url)
+            or "unknown fetch"
+    else
+        local file_path = update.rawInput and update.rawInput.file_path
 
-        local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
+        if file_path and file_path ~= "" then
+            argument = FileSystem.to_smart_path(file_path)
+        else
+            local command = update.rawInput and update.rawInput.command
 
-        self:_apply_block_highlights(
-            bufnr,
-            start_row,
-            end_row,
-            kind,
-            highlight_ranges
-        )
+            if command and command ~= "" then
+                if type(command) == "table" then
+                    command = table.concat(command, " ")
+                end
+                argument = command
+            else
+                argument = update.title or "unknown argument"
+            end
+        end
+    end
 
-        local decoration_ids =
-            ExtmarkBlock.render_block(bufnr, NS_DECORATIONS, {
-                header_line = start_row,
-                body_start = start_row + 1,
-                body_end = end_row - 1,
-                footer_line = end_row,
-                hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
-            })
+    local start_row = vim.api.nvim_buf_line_count(bufnr)
+    local lines, highlight_ranges =
+        self:_prepare_block_lines(update, kind, argument)
 
-        local extmark_id =
-            vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
-                end_row = end_row,
-                right_gravity = false,
-            })
+    -- Append lines directly (we're already in with_modifiable context)
+    vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, lines)
 
-        self.tool_call_blocks[update.toolCallId] = {
-            extmark_id = extmark_id,
-            decoration_extmark_ids = decoration_ids,
-            kind = kind,
-            argument = argument,
-            status = update.status,
-            has_diff = ACPDiffHandler.has_diff_content(update),
-        }
+    local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
 
-        self:_apply_header_highlight(start_row, update.status)
-        self:_apply_status_footer(end_row, update.status)
-    end)
+    self:_apply_block_highlights(
+        bufnr,
+        start_row,
+        end_row,
+        kind,
+        highlight_ranges
+    )
+
+    local decoration_ids = ExtmarkBlock.render_block(bufnr, NS_DECORATIONS, {
+        header_line = start_row,
+        body_start = start_row + 1,
+        body_end = end_row - 1,
+        footer_line = end_row,
+        hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
+    })
+
+    local extmark_id =
+        vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
+            end_row = end_row,
+            right_gravity = false,
+        })
+
+    self.tool_call_blocks[update.toolCallId] = {
+        extmark_id = extmark_id,
+        decoration_extmark_ids = decoration_ids,
+        kind = kind,
+        argument = argument,
+        status = update.status,
+        has_diff = ACPDiffHandler.has_diff_content(update),
+    }
+
+    self:_apply_header_highlight(start_row, update.status)
+    self:_apply_status_footer(end_row, update.status)
+
+    -- Apply empty lines after tool call block to guarantee separation
+    vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "", "" })
 end
 
 --- @param update agentic.acp.ToolCallUpdate
 function MessageWriter:update_tool_call_block(update)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
-        return
-    end
+    table.insert(self._chunk_queue, {
+        type = "tool_call_update",
+        update = update,
+    })
 
+    if not self._is_processing_queue then
+        self:_process_next_chunk()
+    end
+end
+
+--- @private
+--- @param update agentic.acp.ToolCallUpdate
+function MessageWriter:_update_tool_call_block_internal(update)
+    local bufnr = self.bufnr
     local tracker = self.tool_call_blocks[update.toolCallId]
+
     if not tracker then
         Logger.debug(
             "Tool call block not found",
             { tool_call_id = update.toolCallId }
         )
-
         return
     end
 
     local pos = vim.api.nvim_buf_get_extmark_by_id(
-        self.bufnr,
+        bufnr,
         NS_TOOL_BLOCKS,
         tracker.extmark_id,
         { details = true }
@@ -407,95 +445,92 @@ function MessageWriter:update_tool_call_block(update)
         )
         return
     end
+    -- For blocks without diffs (read, fetch, etc.) or blocks with diffs,
+    -- only update status highlights - don't replace content
+    -- Exception: WebSearch and read need content updates when results arrive
+    local needs_content_update = (
+        tracker.kind == "WebSearch" or tracker.kind == "read"
+    )
+        and update.content
+        and #update.content > 0
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        -- For blocks without diffs (read, fetch, etc.) or blocks with diffs,
-        -- only update status highlights - don't replace content
-        -- Exception: WebSearch and read need content updates when results arrive
-        local needs_content_update = (
-            tracker.kind == "WebSearch" or tracker.kind == "read"
-        )
-            and update.content
-            and #update.content > 0
-
-        if
-            not needs_content_update
-            and (tracker.has_diff or tracker.kind == "fetch")
-        then
-            if old_end_row > vim.api.nvim_buf_line_count(bufnr) then
-                Logger.debug("Footer line index out of bounds", {
-                    old_end_row = old_end_row,
-                    line_count = vim.api.nvim_buf_line_count(bufnr),
-                })
-                return
-            end
-
-            tracker.status = update.status or tracker.status
-
-            self:_clear_decoration_extmarks(tracker)
-            tracker.decoration_extmark_ids =
-                self:_render_decorations(start_row, old_end_row)
-
-            self:_clear_status_namespace(start_row, old_end_row)
-            self:_apply_status_highlights_if_present(
-                start_row,
-                old_end_row,
-                update.status
-            )
-
+    if
+        not needs_content_update
+        and (tracker.has_diff or tracker.kind == "fetch")
+    then
+        if old_end_row > vim.api.nvim_buf_line_count(bufnr) then
+            Logger.debug("Footer line index out of bounds", {
+                old_end_row = old_end_row,
+                line_count = vim.api.nvim_buf_line_count(bufnr),
+            })
             return
         end
 
-        self:_clear_decoration_extmarks(tracker)
-        self:_clear_status_namespace(start_row, old_end_row)
-
-        local new_lines, highlight_ranges =
-            self:_prepare_block_lines(update, tracker.kind, tracker.argument)
-        vim.api.nvim_buf_set_lines(
-            bufnr,
-            start_row,
-            old_end_row + 1,
-            false,
-            new_lines
-        )
-
-        local new_end_row = start_row + #new_lines - 1
-
-        pcall(
-            vim.api.nvim_buf_clear_namespace,
-            bufnr,
-            NS_DIFF_HIGHLIGHTS,
-            start_row,
-            old_end_row + 1
-        )
-        vim.schedule(function()
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                self:_apply_block_highlights(
-                    bufnr,
-                    start_row,
-                    new_end_row,
-                    tracker.kind,
-                    highlight_ranges
-                )
-            end
-        end)
-
-        vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
-            id = tracker.extmark_id,
-            end_row = new_end_row,
-            right_gravity = false,
-        })
-
-        tracker.decoration_extmark_ids =
-            self:_render_decorations(start_row, new_end_row)
-
         tracker.status = update.status or tracker.status
+
+        self:_clear_decoration_extmarks(tracker)
+        tracker.decoration_extmark_ids =
+            self:_render_decorations(start_row, old_end_row)
+
+        self:_clear_status_namespace(start_row, old_end_row)
         self:_apply_status_highlights_if_present(
             start_row,
-            new_end_row,
+            old_end_row,
             update.status
         )
+
+        return
+    end
+
+    self:_clear_decoration_extmarks(tracker)
+    self:_clear_status_namespace(start_row, old_end_row)
+
+    local new_lines, highlight_ranges =
+        self:_prepare_block_lines(update, tracker.kind, tracker.argument)
+    vim.api.nvim_buf_set_lines(
+        bufnr,
+        start_row,
+        old_end_row + 1,
+        false,
+        new_lines
+    )
+
+    local new_end_row = start_row + #new_lines - 1
+
+    pcall(
+        vim.api.nvim_buf_clear_namespace,
+        bufnr,
+        NS_DIFF_HIGHLIGHTS,
+        start_row,
+        old_end_row + 1
+    )
+    vim.schedule(function()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            self:_apply_block_highlights(
+                bufnr,
+                start_row,
+                new_end_row,
+                tracker.kind,
+                highlight_ranges
+            )
+        end
     end)
+
+    vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
+        id = tracker.extmark_id,
+        end_row = new_end_row,
+        right_gravity = false,
+    })
+
+    tracker.decoration_extmark_ids =
+        self:_render_decorations(start_row, new_end_row)
+
+    tracker.status = update.status or tracker.status
+    self:_apply_status_highlights_if_present(
+        start_row,
+        new_end_row,
+        update.status
+    )
 end
 
 --- @param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
@@ -666,14 +701,37 @@ end
 
 --- Display permission request buttons at the end of the buffer
 --- @param options agentic.acp.PermissionOption[]
---- @return integer button_start_row Start row of button block
---- @return integer button_end_row End row of button block
---- @return table<integer, string> option_mapping Mapping from number (1-N) to option_id
-function MessageWriter:display_permission_buttons(tool_call_id, options)
+--- @param callback? function Optional callback to receive result {button_start_row, button_end_row, option_mapping}
+function MessageWriter:display_permission_buttons(
+    tool_call_id,
+    options,
+    callback
+)
+    table.insert(self._chunk_queue, {
+        type = "permission_buttons",
+        permission_data = {
+            tool_call_id = tool_call_id,
+            options = options,
+            callback = callback,
+        },
+    })
+
+    if not self._is_processing_queue then
+        self:_process_next_chunk()
+    end
+end
+
+--- @private
+--- @param options agentic.acp.PermissionOption[]
+--- @return {button_start_row: integer, button_end_row: integer, option_mapping: table<integer, string>}
+function MessageWriter:_display_permission_buttons_internal(
+    tool_call_id,
+    options
+)
     local option_mapping = {}
 
     local lines_to_append = {
-        string.format("### Waiting for your response:  "),
+        "### Waiting for your response:",
         "",
     }
 
@@ -699,14 +757,15 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
         option_mapping[i] = option.optionId
     end
 
-    table.insert(lines_to_append, "--- ---")
+    table.insert(lines_to_append, "")
+    table.insert(lines_to_append, "---")
     table.insert(lines_to_append, "")
 
+    -- Read button_start_row fresh (we're already in with_modifiable from queue processor)
     local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function()
-        self:_append_lines(lines_to_append)
-    end)
+    -- Append lines directly
+    vim.api.nvim_buf_set_lines(self.bufnr, -1, -1, false, lines_to_append)
 
     local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
 
@@ -722,7 +781,19 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
         }
     )
 
-    return button_start_row, button_end_row, option_mapping
+    -- Scroll to bottom after displaying buttons
+    vim.defer_fn(function()
+        BufHelpers.execute_on_buffer(self.bufnr, function()
+            vim.cmd("normal! G0")
+            vim.cmd("redraw!")
+        end)
+    end, 150)
+
+    return {
+        button_start_row = button_start_row,
+        button_end_row = button_end_row,
+        option_mapping = option_mapping,
+    }
 end
 
 --- @param start_row integer Start row of button block

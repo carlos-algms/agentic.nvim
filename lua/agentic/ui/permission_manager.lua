@@ -66,23 +66,23 @@ function PermissionManager:_process_next()
     local callback = item[3]
     local sorted_options = self._sort_permission_options(request.options)
 
-    local button_start_row, button_end_row, option_mapping =
-        self.message_writer:display_permission_buttons(
-            request.toolCall.toolCallId,
-            sorted_options
-        )
+    self.message_writer:display_permission_buttons(
+        request.toolCall.toolCallId,
+        sorted_options,
+        function(result)
+            ---@class agentic.ui.PermissionManager.PermissionRequest
+            self.current_request = {
+                toolCallId = toolCallId,
+                request = request,
+                callback = callback,
+                button_start_row = result.button_start_row,
+                button_end_row = result.button_end_row,
+                option_mapping = result.option_mapping,
+            }
 
-    ---@class agentic.ui.PermissionManager.PermissionRequest
-    self.current_request = {
-        toolCallId = toolCallId,
-        request = request,
-        callback = callback,
-        button_start_row = button_start_row,
-        button_end_row = button_end_row,
-        option_mapping = option_mapping,
-    }
-
-    self:_setup_keymaps(option_mapping)
+            self:_setup_keymaps(result.option_mapping)
+        end
+    )
 end
 
 --- @param options agentic.acp.PermissionOption[]

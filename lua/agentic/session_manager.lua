@@ -83,7 +83,6 @@ function SessionManager:_on_session_update(update)
         self.status_animation:start("thinking")
         self.message_writer:write_message(update)
     elseif update.sessionUpdate == "tool_call" then
-        self.message_writer:finalize_streaming()
         self.message_writer:write_tool_call_block(update)
     elseif update.sessionUpdate == "tool_call_update" then
         self.message_writer:update_tool_call_block(update)
@@ -235,7 +234,7 @@ function SessionManager:_handle_input_submit(input_text)
             self.message_writer:finalize_streaming()
 
             local finish_message = string.format(
-                "### 🏁 %s\n-----",
+                "### 🏁 %s\n-----\n",
                 os.date("%Y-%m-%d %H:%M:%S")
             )
 
@@ -396,6 +395,11 @@ function SessionManager:_get_selected_text()
         local end_pos = vim.fn.getpos(".")
         local start_line = start_pos[2]
         local end_line = end_pos[2]
+
+        -- Ensure start_line is always smaller than end_line (handle backward selection)
+        if start_line > end_line then
+            start_line, end_line = end_line, start_line
+        end
 
         local lines = vim.api.nvim_buf_get_lines(
             0,
