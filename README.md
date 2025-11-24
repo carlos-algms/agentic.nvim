@@ -176,9 +176,10 @@ require("agentic").setup({
 | [codex-acp][codex-acp]             | `npm i -g @zed-industries/codex-acp`<br/>`brew install --cask codex`<br/>[Download binary][codex-acp-releases]                          |
 | [opencode][opencode]               | `npm i -g opencode-ai`<br/>`brew install opencode`<br/>`curl -fsSL https://opencode.ai/install \| bash`                                 |
 
-> [!WARNING] These install commands are here for convenience — please always
-> refer to the official installation instructions from the respective ACP
-> provider.
+> [!WARNING]  
+> These install commands are here for convenience,
+> please always refer to the official installation instructions
+> from the respective ACP provider.
 
 ## 🚀 Usage (Public Lua API)
 
