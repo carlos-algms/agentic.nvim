@@ -1,14 +1,17 @@
+--- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
+
 --- @class agentic.UserConfig
 local ConfigDefault = {
     --- Enable printing debug messages which can be read via `:messages`
     debug = false,
 
-    ---@type "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
+    --- @type agentic.UserConfig.ProviderName
     provider = "claude-acp",
 
-    --- @class agentic.UserConfig.ACPProviders
+    --- @type table<agentic.UserConfig.ProviderName, agentic.acp.ProviderConfig>
     acp_providers = {
         ["claude-acp"] = {
+            name = "Claude ACP",
             command = "claude-code-acp",
             -- command = "pnpm",
             -- args = {
@@ -23,6 +26,7 @@ local ConfigDefault = {
         },
 
         ["gemini-acp"] = {
+            name = "Gemini ACP",
             command = "gemini",
             args = { "--experimental-acp" },
             env = {
@@ -32,6 +36,7 @@ local ConfigDefault = {
         },
 
         ["codex-acp"] = {
+            name = "Codex ACP",
             -- https://github.com/zed-industries/codex-acp/releases
             -- xattr -dr com.apple.quarantine ~/.local/bin/codex-acp
             command = "codex-acp",
@@ -42,6 +47,7 @@ local ConfigDefault = {
         },
 
         ["opencode-acp"] = {
+            name = "OpenCode ACP",
             command = "opencode",
             args = { "acp" },
             env = {

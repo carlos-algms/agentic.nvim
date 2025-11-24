@@ -11,16 +11,16 @@ local FileSystem = require("agentic.utils.file_system")
 ---@class agentic._SessionManagerPrivate
 local P = {}
 
----@class agentic.SessionManager
----@field session_id string|nil
----@field widget agentic.ui.ChatWidget
----@field agent agentic.acp.ACPClient
----@field message_writer agentic.ui.MessageWriter
----@field permission_manager agentic.ui.PermissionManager
----@field status_animation agentic.ui.StatusAnimation
----@field current_provider string
----@field selected_files string[]
----@field code_selections agentic.Selection[]
+--- @class agentic.SessionManager
+--- @field session_id string|nil
+--- @field widget agentic.ui.ChatWidget
+--- @field agent agentic.acp.ACPClient
+--- @field message_writer agentic.ui.MessageWriter
+--- @field permission_manager agentic.ui.PermissionManager
+--- @field status_animation agentic.ui.StatusAnimation
+--- @field current_provider string
+--- @field selected_files string[]
+--- @field code_selections agentic.Selection[]
 local SessionManager = {}
 
 ---@param tab_page_id integer
@@ -79,8 +79,11 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "user_message_chunk" then
         self.message_writer:write_message(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
+        -- FIXIT: Add thought rendering with different style
+        self.status_animation:start("thinking")
         self.message_writer:write_message(update)
     elseif update.sessionUpdate == "tool_call" then
+        self.message_writer:finalize_streaming()
         self.message_writer:write_tool_call_block(update)
     elseif update.sessionUpdate == "tool_call_update" then
         self.message_writer:update_tool_call_block(update)
@@ -228,6 +231,7 @@ function SessionManager:_handle_input_submit(input_text)
     self.agent:send_prompt(self.session_id, prompt, function(_response, err)
         vim.schedule(function()
             self.status_animation:stop()
+            self.message_writer:finalize_streaming()
 
             local finish_message = string.format(
                 "### 🏁 %s\n-----",
@@ -236,7 +240,7 @@ function SessionManager:_handle_input_submit(input_text)
 
             if err then
                 finish_message = string.format(
-                    "### ❌ Agent finished with error: %s\n%s",
+                    "### ❌ Agent finished with error: %s\n%s\n",
                     vim.inspect(err),
                     finish_message
                 )
@@ -316,7 +320,7 @@ function SessionManager:_new_session()
             local provider_name = self.current_provider or "unknown"
             local session_id = self.session_id or "unknown"
             local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n-----",
+                "# Agentic - %s - %s\n- %s\n-----\n\n",
                 provider_name,
                 session_id,
                 timestamp

@@ -6,18 +6,18 @@
 
 local Config = require("agentic.config")
 
----@class agentic.acp.AgentInstance
----@field chat_widget agentic.ui.ChatWidget
----@field agent_client agentic.acp.ACPClient
+--- @class agentic.acp.AgentInstance
+--- @field chat_widget agentic.ui.ChatWidget
+--- @field agent_client agentic.acp.ACPClient
 
----@class agentic.acp.AgentInstance
+--- @class agentic.acp.AgentInstance
 local AgentInstance = {}
 
 --- A Keyed list of agent instances by name
----@type table<string, agentic.acp.ACPClient>
+--- @type table<string, agentic.acp.ACPClient>
 AgentInstance.instances = {}
 
----@param provider_name string
+--- @param provider_name string
 function AgentInstance.get_instance(provider_name)
     local Client = require("agentic.acp.acp_client")
 
@@ -25,7 +25,7 @@ function AgentInstance.get_instance(provider_name)
         return AgentInstance.instances[provider_name]
     end
 
-    local provider_config = Config.acp_providers[provider_name]
+    local provider_config = Config.acp_providers[provider_name] --[[@as agentic.acp.ProviderConfig|nil ]]
 
     if not provider_config then
         error("No ACP provider configuration found for: " .. provider_name)
@@ -39,9 +39,9 @@ function AgentInstance.get_instance(provider_name)
     return agent_client
 end
 
----Cleanup all active instances and processes
----This is called automatically on VimLeavePre and signal handlers
----Can also be called manually if needed
+--- Cleanup all active instances and processes
+--- This is called automatically on VimLeavePre and signal handlers
+--- Can also be called manually if needed
 function AgentInstance:cleanup_all()
     for _name, instance in pairs(self.instances) do
         if instance then
