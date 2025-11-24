@@ -76,9 +76,8 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
         self.message_writer:write_message_chunk(update)
-    elseif update.sessionUpdate == "user_message_chunk" then
-        self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
+        self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "tool_call" then
         self.message_writer:write_tool_call_block(update)
@@ -216,7 +215,7 @@ function SessionManager:_handle_input_submit(input_text)
 
     table.insert(
         message_lines,
-        "\n\n### 󱚠 Agent - " .. self.current_provider
+        "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name
     )
 
     self.message_writer:write_message(
@@ -313,7 +312,7 @@ function SessionManager:_new_session()
         -- Defer to avoid fast event context issues
         vim.schedule(function()
             local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = self.current_provider or "unknown"
+            local provider_name = self.agent.provider_config.name
             local session_id = self.session_id or "unknown"
             local welcome_message = string.format(
                 "# Agentic - %s - %s\n- %s\n--- --",

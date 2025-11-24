@@ -81,13 +81,8 @@ function MessageWriter:write_message_chunk(update)
     end
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        local line_count = vim.api.nvim_buf_line_count(bufnr)
-        if line_count == 0 then
-            vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
-            line_count = 1
-        end
+        local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
-        local last_line = line_count - 1
         local current_line = vim.api.nvim_buf_get_lines(
             bufnr,
             last_line,
