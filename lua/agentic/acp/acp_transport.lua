@@ -14,7 +14,7 @@ local M = {}
 ---@class agentic.acp.StdioTransportConfig
 ---@field command string Command to spawn agent
 ---@field args? string[] Arguments for agent command
----@field env? table<string, string> Environment variables
+---@field env? table<string, string|nil> Environment variables
 ---@field enable_reconnect? boolean Enable auto-reconnect
 ---@field max_reconnect_attempts? number Maximum reconnection attempts
 

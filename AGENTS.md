@@ -211,25 +211,22 @@ end
 
 ## Development & Linting
 
-Quick syntax check:
+### Type Checking
+
+**Always use `make luals` for full project type checks.** This runs Lua Language
+Server headless diagnosis across all files in the project and provides
+comprehensive type checking.
 
 ```bash
-luac -p <file> [<file2> ...]  # Parse only, checks for syntax errors without compilation
-```
-
-Examples:
-
-```bash
-luac -p lua/agentic/init.lua                    # Single file
-luac -p lua/agentic/init.lua lua/agentic/ui.lua # Multiple files
-luac -p lua/agentic/*.lua                       # Using glob patterns
+make luals  # Run full project type checking
 ```
 
 ### Available Make targets:
 
 Make for running Lua linting and type checking tools:
 
-- `make luals` - Run Lua Language Server headless diagnosis (type checking)
+- `make luals` - Run Lua Language Server headless diagnosis (type checking) -
+  **Use this for full project type checks**
 - `make luacheck` - Run Luacheck linter (style and syntax checking)
 - `make print-vimruntime` - Display the detected VIMRUNTIME path
 

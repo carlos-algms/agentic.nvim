@@ -15,28 +15,28 @@ local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 
----@class agentic.ui.MessageWriter.HighlightRange
----@field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
----@field line_index integer Line index relative to returned lines (0-based)
----@field old_line? string Original line content (for diff types)
----@field new_line? string Modified line content (for diff types)
+--- @class agentic.ui.MessageWriter.HighlightRange
+--- @field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
+--- @field line_index integer Line index relative to returned lines (0-based)
+--- @field old_line? string Original line content (for diff types)
+--- @field new_line? string Modified line content (for diff types)
 
----@class agentic.ui.MessageWriter.BlockTracker
----@field extmark_id integer Range extmark spanning the block
----@field decoration_extmark_ids integer[] IDs of decoration extmarks from ExtmarkBlock
----@field kind string Tool call kind (read, edit, etc.)
----@field argument string Tool call title/command (stored for updates)
----@field status string Current status (pending, completed, etc.)
----@field has_diff boolean Whether this block contains diff content
+--- @class agentic.ui.MessageWriter.BlockTracker
+--- @field extmark_id integer Range extmark spanning the block
+--- @field decoration_extmark_ids integer[] IDs of decoration extmarks from ExtmarkBlock
+--- @field kind string Tool call kind (read, edit, etc.)
+--- @field argument string Tool call title/command (stored for updates)
+--- @field status string Current status (pending, completed, etc.)
+--- @field has_diff boolean Whether this block contains diff content
 
----@class agentic.ui.MessageWriter
----@field bufnr integer
----@field tool_call_blocks table<string, agentic.ui.MessageWriter.BlockTracker> Map tool_call_id to extmark
+--- @class agentic.ui.MessageWriter
+--- @field bufnr integer
+--- @field tool_call_blocks table<string, agentic.ui.MessageWriter.BlockTracker> Map tool_call_id to extmark
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
----@param bufnr integer
----@return agentic.ui.MessageWriter
+--- @param bufnr integer
+--- @return agentic.ui.MessageWriter
 function MessageWriter:new(bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         error("Invalid buffer number: " .. tostring(bufnr))
@@ -50,27 +50,12 @@ function MessageWriter:new(bufnr)
     return instance
 end
 
----@param update agentic.acp.SessionUpdateMessage
+--- Writes a full message to the chat buffer and append two blank lines after
+--- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
-        return
-    end
-
-    local text = nil
-    if
-        update.content
+    local text = update.content
         and update.content.type == "text"
         and update.content.text
-    then
-        text = update.content.text
-    else
-        -- For now, only handle text content
-        Logger.debug(
-            "MessageWriter: Skipping non-text content or missing content"
-        )
-        return
-    end
 
     if not text or text == "" then
         return
@@ -84,10 +69,59 @@ function MessageWriter:write_message(update)
     end)
 end
 
----@param lines string[]
----@return nil
+--- Appends message chunks to the last line and column in the chat buffer
+--- Some ACP providers stream chunks instead of full messages
+--- @param update agentic.acp.SessionUpdateMessage
+function MessageWriter:write_message_chunk(update)
+    local text = update.content
+        and update.content.type == "text"
+        and update.content.text
+    if not text or text == "" then
+        return
+    end
+
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+        local line_count = vim.api.nvim_buf_line_count(bufnr)
+        if line_count == 0 then
+            vim.api.nvim_buf_set_lines(bufnr, 0, 0, false, { "" })
+            line_count = 1
+        end
+
+        local last_line = line_count - 1
+        local current_line = vim.api.nvim_buf_get_lines(
+            bufnr,
+            last_line,
+            last_line + 1,
+            false
+        )[1] or ""
+        local start_col = #current_line
+
+        local lines_to_write = vim.split(text, "\n", { plain = true })
+
+        vim.api.nvim_buf_set_text(
+            bufnr,
+            last_line,
+            start_col,
+            last_line,
+            start_col,
+            lines_to_write
+        )
+
+        vim.defer_fn(function()
+            BufHelpers.execute_on_buffer(bufnr, function()
+                vim.cmd("normal! G0")
+                vim.cmd("redraw!")
+            end)
+        end, 150)
+    end)
+end
+
+--- @param lines string[]
+--- @return nil
 function MessageWriter:_append_lines(lines)
-    vim.api.nvim_buf_set_lines(self.bufnr, -1, -1, false, lines)
+    local start_line = BufHelpers.is_buffer_empty(self.bufnr) and 0 or -1
+
+    vim.api.nvim_buf_set_lines(self.bufnr, start_line, -1, false, lines)
 
     vim.defer_fn(function()
         BufHelpers.execute_on_buffer(self.bufnr, function()
@@ -97,10 +131,14 @@ function MessageWriter:_append_lines(lines)
     end, 150)
 end
 
----@param update agentic.acp.ToolCallMessage
+--- @param update agentic.acp.ToolCallMessage
 function MessageWriter:write_tool_call_block(update)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
+    if
+        (not update.content or #update.content == 0)
+        and (not update.rawInput or vim.tbl_isempty(update.rawInput))
+    then
+        -- Skipping tool call with empty content and rawInput,
+        -- The agent will send another one
         return
     end
 
@@ -123,9 +161,13 @@ function MessageWriter:write_tool_call_block(update)
             argument = file_path or command or update.title or ""
         end
 
+        -- Always add a leading blank line for spacing the previous message chunk
+        self:_append_lines({ "" })
+
         local start_row = vim.api.nvim_buf_line_count(bufnr)
         local lines, highlight_ranges =
             self:_prepare_block_lines(update, kind, argument)
+
         self:_append_lines(lines)
 
         local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
@@ -169,13 +211,8 @@ function MessageWriter:write_tool_call_block(update)
     end)
 end
 
----@param update agentic.acp.ToolCallUpdate
+--- @param update agentic.acp.ToolCallUpdate
 function MessageWriter:update_tool_call_block(update)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
-        return
-    end
-
     local tracker = self.tool_call_blocks[update.toolCallId]
     if not tracker then
         Logger.debug(
@@ -300,18 +337,18 @@ function MessageWriter:update_tool_call_block(update)
     end)
 end
 
----@param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
----@param kind string Tool call kind (required for ToolCallUpdate)
----@param argument string Tool call title (required for ToolCallUpdate)
----@return string[] lines Array of lines to render
----@return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
+--- @param update agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
+--- @param kind string Tool call kind (required for ToolCallUpdate)
+--- @param argument string Tool call title (required for ToolCallUpdate)
+--- @return string[] lines Array of lines to render
+--- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
 function MessageWriter:_prepare_block_lines(update, kind, argument)
     local lines = {}
 
     local header_text = string.format(" %s(%s) ", kind, argument)
     table.insert(lines, header_text)
 
-    ---@type agentic.ui.MessageWriter.HighlightRange[]
+    --- @type agentic.ui.MessageWriter.HighlightRange[]
     local highlight_ranges = {}
 
     if kind == "read" then
@@ -466,11 +503,11 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
     return lines, highlight_ranges
 end
 
----Display permission request buttons at the end of the buffer
----@param options agentic.acp.PermissionOption[]
----@return integer button_start_row Start row of button block
----@return integer button_end_row End row of button block
----@return table<integer, string> option_mapping Mapping from number (1-N) to option_id
+--- Display permission request buttons at the end of the buffer
+--- @param options agentic.acp.PermissionOption[]
+--- @return integer button_start_row Start row of button block
+--- @return integer button_end_row End row of button block
+--- @return table<integer, string> option_mapping Mapping from number (1-N) to option_id
 function MessageWriter:display_permission_buttons(tool_call_id, options)
     local option_mapping = {}
 
@@ -501,7 +538,7 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
         option_mapping[i] = option.optionId
     end
 
-    table.insert(lines_to_append, "------")
+    table.insert(lines_to_append, "--- ---")
     table.insert(lines_to_append, "")
 
     local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
@@ -527,14 +564,9 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     return button_start_row, button_end_row, option_mapping
 end
 
----@param start_row integer Start row of button block
----@param end_row integer End row of button block
+--- @param start_row integer Start row of button block
+--- @param end_row integer End row of button block
 function MessageWriter:remove_permission_buttons(start_row, end_row)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        Logger.debug("MessageWriter: Buffer is no longer valid")
-        return
-    end
-
     pcall(
         vim.api.nvim_buf_clear_namespace,
         self.bufnr,
@@ -550,17 +582,19 @@ function MessageWriter:remove_permission_buttons(start_row, end_row)
             start_row,
             end_row + 1,
             false,
-            {}
+            {
+                "", -- a leading as separator from previous content
+            }
         )
     end)
 end
 
----Apply highlights to block content (either diff highlights or Comment for non-edit blocks)
----@param bufnr integer
----@param start_row integer Header line number
----@param end_row integer Footer line number
----@param kind string Tool call kind
----@param highlight_ranges agentic.ui.MessageWriter.HighlightRange[] Diff highlight ranges
+--- Apply highlights to block content (either diff highlights or Comment for non-edit blocks)
+--- @param bufnr integer
+--- @param start_row integer Header line number
+--- @param end_row integer Footer line number
+--- @param kind string Tool call kind
+--- @param highlight_ranges agentic.ui.MessageWriter.HighlightRange[] Diff highlight ranges
 function MessageWriter:_apply_block_highlights(
     bufnr,
     start_row,
@@ -653,8 +687,8 @@ function MessageWriter:_apply_diff_highlights(start_row, highlight_ranges)
     end
 end
 
----@param header_line integer 0-indexed header line number
----@param status string Status value (pending, completed, etc.)
+--- @param header_line integer 0-indexed header line number
+--- @param status string Status value (pending, completed, etc.)
 function MessageWriter:_apply_header_highlight(header_line, status)
     if not status or status == "" then
         return
@@ -677,8 +711,8 @@ function MessageWriter:_apply_header_highlight(header_line, status)
     })
 end
 
----@param footer_line integer 0-indexed footer line number
----@param status string Status value (pending, completed, etc.)
+--- @param footer_line integer 0-indexed footer line number
+--- @param status string Status value (pending, completed, etc.)
 function MessageWriter:_apply_status_footer(footer_line, status)
     if
         not vim.api.nvim_buf_is_valid(self.bufnr)
@@ -701,16 +735,16 @@ function MessageWriter:_apply_status_footer(footer_line, status)
     })
 end
 
----@param tracker agentic.ui.MessageWriter.BlockTracker
+--- @param tracker agentic.ui.MessageWriter.BlockTracker
 function MessageWriter:_clear_decoration_extmarks(tracker)
     for _, id in ipairs(tracker.decoration_extmark_ids) do
         pcall(vim.api.nvim_buf_del_extmark, self.bufnr, NS_DECORATIONS, id)
     end
 end
 
----@param start_row integer
----@param end_row integer
----@return integer[] decoration_extmark_ids
+--- @param start_row integer
+--- @param end_row integer
+--- @return integer[] decoration_extmark_ids
 function MessageWriter:_render_decorations(start_row, end_row)
     return ExtmarkBlock.render_block(self.bufnr, NS_DECORATIONS, {
         header_line = start_row,
@@ -721,8 +755,8 @@ function MessageWriter:_render_decorations(start_row, end_row)
     })
 end
 
----@param start_row integer
----@param end_row integer
+--- @param start_row integer
+--- @param end_row integer
 function MessageWriter:_clear_status_namespace(start_row, end_row)
     pcall(
         vim.api.nvim_buf_clear_namespace,
@@ -733,9 +767,9 @@ function MessageWriter:_clear_status_namespace(start_row, end_row)
     )
 end
 
----@param start_row integer
----@param end_row integer
----@param status string|nil
+--- @param start_row integer
+--- @param end_row integer
+--- @param status string|nil
 function MessageWriter:_apply_status_highlights_if_present(
     start_row,
     end_row,

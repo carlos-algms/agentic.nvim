@@ -75,11 +75,11 @@ function SessionManager:_on_session_update(update)
         Logger.debug("Implement plan handling")
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
-        self.message_writer:write_message(update)
+        self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "user_message_chunk" then
-        self.message_writer:write_message(update)
+        self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
-        self.message_writer:write_message(update)
+        self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "tool_call" then
         self.message_writer:write_tool_call_block(update)
     elseif update.sessionUpdate == "tool_call_update" then
@@ -116,7 +116,6 @@ end
 
 --- @param input_text string
 function SessionManager:_handle_input_submit(input_text)
-    --- The message to be sent to the agent
     --- @type agentic.acp.Content[]
     local prompt = {
         {
@@ -217,7 +216,7 @@ function SessionManager:_handle_input_submit(input_text)
         table.insert(message_lines, "\n")
     end
 
-    table.insert(message_lines, "\n### 󱚠 Agent - " .. self.current_provider)
+    table.insert(message_lines, "### 󱚠 Agent - " .. self.current_provider)
 
     self.message_writer:write_message(
         self.agent:generate_user_message(message_lines)
@@ -230,13 +229,13 @@ function SessionManager:_handle_input_submit(input_text)
             self.status_animation:stop()
 
             local finish_message = string.format(
-                "### 🏁 %s\n--- --",
+                "\n### 🏁 %s\n-----",
                 os.date("%Y-%m-%d %H:%M:%S")
             )
 
             if err then
                 finish_message = string.format(
-                    "### ❌ Agent finished with error: %s\n%s",
+                    "\n### ❌ Agent finished with error: %s\n%s",
                     vim.inspect(err),
                     finish_message
                 )
