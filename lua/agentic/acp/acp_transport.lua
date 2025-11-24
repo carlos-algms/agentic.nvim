@@ -27,6 +27,7 @@ local IGNORE_STDERR_PATTERNS = {
     "does not appear in the file:",
     "Experiments loaded", -- from Gemini
     "No onPostToolUseHook found", -- from Claude
+    "You have exhausted your capacity on this model", -- from Gemini
 }
 
 ---Create stdio transport for ACP communication

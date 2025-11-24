@@ -716,6 +716,11 @@ return ACPClient
 --- @field prompt? string Usually accompanying the fetch tool, not the web_search
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
+--- @field parsed_cmd? {
+---   cmd?: string|nil,
+---   path?: string|nil,
+---   query?: string|nil|vim.NIL,
+---   type?: string|nil }[] First seem from Codex
 
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string

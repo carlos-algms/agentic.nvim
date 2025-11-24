@@ -290,6 +290,8 @@ function SessionManager:_new_session()
                 end
             end
 
+            -- FIXIT: I might have to generate a tool call block
+            -- Codex ask for permission before sending the `edit` tool call
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
