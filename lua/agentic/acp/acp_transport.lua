@@ -162,6 +162,7 @@ function M.create_stdio_transport(config, callbacks)
                         or data:match("Spawning Claude Code process")
                         or data:match("does not appear in the file:")
                         or data:match("Experiments loaded") -- from Gemini
+                        or data:match("No onPostToolUseHook found") -- from Claude
                     )
                 then
                     vim.schedule(function()

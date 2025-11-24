@@ -137,7 +137,8 @@ function SessionManager:_handle_input_submit(input_text)
     table.insert(message_lines, input_text)
 
     if #self.code_selections > 0 then
-        table.insert(message_lines, "\n- Selected code:")
+        table.insert(message_lines, "")
+        table.insert(message_lines, "- Selected code:")
 
         table.insert(prompt, {
             type = "text",
@@ -198,11 +199,11 @@ function SessionManager:_handle_input_submit(input_text)
         end
 
         self.code_selections = {}
-        table.insert(message_lines, "\n")
     end
 
     if #self.selected_files > 0 then
-        table.insert(message_lines, "\n- Referenced files:")
+        table.insert(message_lines, "")
+        table.insert(message_lines, "- Referenced files:")
 
         for _, file_path in ipairs(self.selected_files) do
             table.insert(
@@ -217,10 +218,10 @@ function SessionManager:_handle_input_submit(input_text)
         end
 
         self.selected_files = {}
-        table.insert(message_lines, "\n")
     end
 
-    table.insert(message_lines, "\n### 󱚠 Agent - " .. self.current_provider)
+    table.insert(message_lines, "")
+    table.insert(message_lines, "### 󱚠 Agent - " .. self.current_provider)
 
     self.message_writer:write_message(
         self.agent:generate_user_message(message_lines)

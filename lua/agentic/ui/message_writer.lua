@@ -315,6 +315,11 @@ function MessageWriter:write_tool_call_block(update)
             local file_path = update.rawInput.file_path
                 and FileSystem.to_smart_path(update.rawInput.file_path)
             local command = update.rawInput.command
+
+            if type(command) == "table" then
+                command = table.concat(command, " ")
+            end
+
             argument = file_path or command or update.title or ""
         end
 
@@ -359,8 +364,6 @@ function MessageWriter:write_tool_call_block(update)
 
         self:_apply_header_highlight(start_row, update.status)
         self:_apply_status_footer(end_row, update.status)
-
-        self:_append_lines({ "", "" })
     end)
 end
 
