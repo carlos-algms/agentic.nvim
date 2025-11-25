@@ -129,12 +129,13 @@ end
 --- @param update agentic.acp.ToolCallMessage
 function MessageWriter:write_tool_call_block(update)
     if
-        (not update.content or vim.tbl_isempty(update.content))
+        (
+            not update.content
+            ---@diagnostic disable-next-line: invisible -- that's the only way to identify Claude empty tool calls for now
+            or (vim.tbl_isempty(update.content) or update._meta ~= nil)
+        )
         and (not update.rawInput or vim.tbl_isempty(update.rawInput))
     then
-        -- FIXIT: I need to revisit this, Gemini sends empty content and rawInput with kind and title for search
-        -- Skipping tool call with empty content and rawInput,
-        -- The agent will send another one
         return
     end
 
@@ -182,7 +183,14 @@ function MessageWriter:write_tool_call_block(update)
             local cmd = update.rawInput.parsed_cmd
                 and update.rawInput.parsed_cmd[1]
                 and update.rawInput.parsed_cmd[1].cmd
-            argument = cmd or "unknown search"
+
+            -- Codex runs `ls` to "search" for files, normalizing to "execute" for clarity
+            if cmd and cmd == "ls" then
+                kind = "execute"
+                argument = cmd
+            else
+                argument = cmd or update.title or "unknown search"
+            end
         else
             local command = update.rawInput.command
             if type(command) == "table" then

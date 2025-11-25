@@ -778,6 +778,7 @@ return ACPClient
 --- @field locations? agentic.acp.ToolCallLocation[]
 --- @field rawInput? agentic.acp.RawInput
 --- @field rawOutput? table
+--- @field _meta? table|nil Claude ACP is sending it
 
 --- @class agentic.acp.ToolCallUpdate
 --- @field sessionUpdate "tool_call_update"
