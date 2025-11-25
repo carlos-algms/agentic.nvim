@@ -49,8 +49,6 @@ function SessionManager:new(tab_page_id)
         return
     end
 
-    instance.slash_commands = SlashCommands:new()
-
     instance.agent = agent
 
     instance.widget = ChatWidget:new(tab_page_id, function(input_text)
@@ -64,6 +62,8 @@ function SessionManager:new(tab_page_id)
         StatusAnimation:new(instance.widget.buf_nrs.chat)
 
     instance.permission_manager = PermissionManager:new(instance.message_writer)
+
+    instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
 
     instance:_new_session()
 
