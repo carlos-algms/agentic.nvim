@@ -172,7 +172,99 @@ When creating or modifying classes:
    - Properties that were needed during development but are no longer used
    - Properties that could be local variables instead
 
+## Utility Modules
+
+### Logger (`lua/agentic/utils/logger.lua`)
+
+Debug logging utility controlled by `Config.debug` setting.
+
+**Public Methods:**
+
+- **`Logger.get_timestamp()`** - Returns current timestamp string
+  (`YYYY-MM-DD HH:MM:SS`)
+
+- **`Logger.debug(...)`** - Print debug messages that can be retrieved with the
+  command `:messages`
+  - Only outputs when `Config.debug = true`
+  - Accepts multiple arguments (strings or tables)
+  - Automatically includes timestamp, caller module, and line number
+  - Tables are formatted with `vim.inspect()`
+  - Example: `Logger.debug("Session created", session_id)`
+
+- **`Logger.debug_to_file(...)`** - Append debug messages to log file
+  - Only writes when `Config.debug = true`
+  - Log file location: `~/.cache/nvim/agentic_debug.log` (Mac/Linux)
+  - Same formatting as `Logger.debug()`
+  - Includes separator lines between entries
+  - Example: `Logger.debug_to_file("Complex state:", state_table)`
+
+**Important Notes:**
+
+- ⚠️ Logger only has `debug()` and `debug_to_file()` methods - no `warn()`,
+  `error()`, or `info()` methods
+- All debug output is conditional on `Config.debug` setting
+
+**When adding new public methods to Logger:**
+
+When adding new public methods to the Logger class (or any other commonly used
+utility module), **ALWAYS update this AGENTS.md documentation** with:
+
+1. Method signature and brief description
+2. What the method does
+3. Usage examples
+4. Any important notes or gotchas
+
+This prevents confusion and ensures agents know what methods are available.
+
 ## Code Style
+
+### Lua Class Pattern
+
+Use this standard pattern for creating Lua classes:
+
+```lua
+--- @class Animal
+local Animal = {}
+Animal.__index = Animal
+
+function Animal:new()
+    local instance = setmetatable({}, self)
+    return instance
+end
+```
+
+**Key points:**
+
+- Set `__index` to `self` for inheritance
+- Use `setmetatable` to create instances
+- Return the instance from constructor
+
+**Example with inheritance:**
+
+```lua
+-- Dog class extends Animal
+--- @class Dog : Animal
+local Dog = setmetatable({}, {__index = Animal})
+Dog.__index = Dog
+
+function Dog:new()
+    local instance = setmetatable({}, self)
+    return instance
+end
+
+function Dog:move()
+    Animal.move(self)  -- Call parent method
+    print("Dog runs on four legs")
+end
+
+function Dog:bark()
+    print("Woof!")
+end
+
+-- Usage
+local dog = Dog:new()
+dog:move()
+```
 
 ### LuaCATS Annotations
 
@@ -338,3 +430,4 @@ official docs:
   https://raw.githubusercontent.com/neovim/neovim/refs/tags/v0.11.5/runtime/doc/diagnostic.txt
 
 Don't be limited to these docs, explore more as needed.
+

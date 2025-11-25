@@ -110,8 +110,6 @@ local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
 ---@param opts agentic.UserConfig
 function Agentic.setup(opts)
     deep_merge_into(Config, opts or {})
-    ---FIXIT: remove the debug override before release
-    Config.debug = true
 
     if traps_set then
         return

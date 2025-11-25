@@ -21,7 +21,9 @@ local P = {}
 --- @field current_provider string
 --- @field selected_files string[]
 --- @field code_selections agentic.Selection[]
+--- @field slash_commands agentic.acp.SlashCommands
 local SessionManager = {}
+SessionManager.__index = SessionManager
 
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
@@ -31,6 +33,7 @@ function SessionManager:new(tab_page_id)
     local MessageWriter = require("agentic.ui.message_writer")
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
+    local SlashCommands = require("agentic.acp.slash_commands")
 
     local instance = setmetatable({
         session_id = nil,
@@ -38,7 +41,6 @@ function SessionManager:new(tab_page_id)
         selected_files = {},
         code_selections = {},
     }, self)
-    self.__index = self
 
     local agent = AgentInstance.get_instance(Config.provider)
 
@@ -46,6 +48,8 @@ function SessionManager:new(tab_page_id)
         -- no log, it was already logged in AgentInstance
         return
     end
+
+    instance.slash_commands = SlashCommands:new()
 
     instance.agent = agent
 
@@ -97,8 +101,14 @@ function SessionManager:_on_session_update(update)
             end
         end
     elseif update.sessionUpdate == "available_commands_update" then
-        -- FIXIT: implement available slash commands handling
-        Logger.debug("Implement available_commands_update handling")
+        self.slash_commands:setCommands(update.availableCommands)
+        Logger.debug(
+            string.format(
+                "Updated %d slash commands for session %s",
+                #self.slash_commands.commands,
+                self.session_id or "unknown"
+            )
+        )
     else
         -- TODO: Move this to Logger when confidence is high
         vim.notify(
@@ -337,6 +347,7 @@ function SessionManager:_cancel_session()
 
     self.agent:cancel_session(self.session_id)
     self.permission_manager:clear()
+    self.slash_commands:setCommands({})
 end
 
 function SessionManager:add_selection_or_file_to_session()
