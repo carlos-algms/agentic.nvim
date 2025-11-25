@@ -291,10 +291,13 @@ function MessageWriter:update_tool_call_block(update)
         -- only update status highlights - don't replace content
         -- Exception: WebSearch and read need content updates when results arrive
         local needs_content_update = (
-            tracker.kind == "WebSearch" or tracker.kind == "read"
+            tracker.kind == "WebSearch"
+            or tracker.kind == "fetch"
+            or tracker.kind == "read"
+            or tracker.kind == "search"
         )
             and update.content
-            and #update.content > 0
+            and not vim.tbl_isempty(update.content)
 
         if
             not needs_content_update
@@ -382,6 +385,7 @@ end
 --- @return string[] lines Array of lines to render
 --- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
 function MessageWriter:_prepare_block_lines(update, kind, argument)
+    -- FIXIT: Codex is sending multiple updates with different values, and formats, causing the blocks to get empty
     local lines = {}
 
     local header_text = string.format(" %s(%s) ", kind, argument)
