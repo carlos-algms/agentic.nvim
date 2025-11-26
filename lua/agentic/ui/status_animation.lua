@@ -50,12 +50,9 @@ function StatusAnimation:new(bufnr)
 end
 
 --- Start the animation with the given state
+--- Always stops and restarts to avoid overlapping with new content
 --- @param state agentic.Theme.SpinnerState
 function StatusAnimation:start(state)
-    if self.state == state then
-        return
-    end
-
     self:stop()
 
     self.state = state
@@ -65,8 +62,12 @@ end
 
 function StatusAnimation:stop()
     if self.timer then
-        self.timer:stop()
-        self.timer:close()
+        pcall(function()
+            self.timer:stop()
+        end)
+        pcall(function()
+            self.timer:close()
+        end)
         self.timer = nil
     end
 
@@ -118,12 +119,17 @@ function StatusAnimation:_render_frame()
 
     local delay = TIMING[self.state] or TIMING.generating
 
+    local virt_lines = {
+        { { "" } }, -- Empty line above
+        virt_text, -- Animation in middle
+        { { "" } }, -- Empty line below
+    }
+
     self.extmark_id =
         vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, line_num, 0, {
             id = self.extmark_id, -- Reuse existing extmark ID to update in-place
-            virt_text = virt_text,
-            virt_text_pos = "overlay",
-            hl_mode = "combine",
+            virt_lines = virt_lines,
+            virt_lines_above = false,
         })
 
     self.timer = vim.defer_fn(function()
