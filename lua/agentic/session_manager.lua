@@ -320,9 +320,7 @@ function SessionManager:new_session()
     }
 
     self.agent:create_session(handlers, function(response, err)
-        vim.schedule(function()
-            self.status_animation:stop()
-        end)
+        self.status_animation:stop()
 
         if err or not response then
             vim.notify(

@@ -144,6 +144,7 @@ require("agentic").setup({
     generating = { "·", "✢", "✳", "∗", "✻", "✽" },
     thinking = { "🤔", "🤨", "😐" },
     searching = { "🔎. . .", ". 🔎. .", ". . 🔎." },
+    busy = { "⡀", "⠄", "⠂", "⠁", "⠈", "⠐", "⠠", "⢀", "⣀", "⢄", "⢂", "⢁", "⢈", "⢐", "⢠", "⣠", "⢤", "⢢", "⢡", "⢨", "⢰", "⣰", "⢴", "⢲", "⢱", "⢸", "⣸", "⢼", "⢺", "⢹", "⣹", "⢽", "⢻", "⣻", "⢿", "⣿", },
   },
 
   status_icons = {
@@ -177,9 +178,8 @@ require("agentic").setup({
 | [opencode][opencode]               | `npm i -g opencode-ai`<br/>`brew install opencode`<br/>`curl -fsSL https://opencode.ai/install \| bash`                                 |
 
 > [!WARNING]  
-> These install commands are here for convenience,
-> please always refer to the official installation instructions
-> from the respective ACP provider.
+> These install commands are here for convenience, please always refer to the
+> official installation instructions from the respective ACP provider.
 
 ## 🚀 Usage (Public Lua API)
 

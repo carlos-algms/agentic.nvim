@@ -82,7 +82,7 @@ function WindowDecoration._render_header(winid, text, opts)
     end
 
     local winbar_text
-    
+
     if opts.align == "left" then
         winbar_text = format_segment(" " .. text .. " %=", opts.hl)
     elseif opts.align == "center" then

@@ -70,6 +70,7 @@ local ConfigDefault = {
     --- @field generating string[]
     --- @field thinking string[]
     --- @field searching string[]
+    --- @field busy string[]
     spinner_chars = {
         generating = { "·", "✢", "✳", "∗", "✻", "✽" },
         thinking = { "🤔", "🤨" },
