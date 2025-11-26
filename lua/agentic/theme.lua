@@ -1,4 +1,4 @@
----@alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching"
+---@alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching" | "busy"
 
 ---@class agentic.Theme
 local Theme = {}
@@ -17,6 +17,7 @@ Theme.HL_GROUPS = {
     SPINNER_GENERATING = "AgenticSpinnerGenerating",
     SPINNER_THINKING = "AgenticSpinnerThinking",
     SPINNER_SEARCHING = "AgenticSpinnerSearching",
+    SPINNER_BUSY = "AgenticSpinnerBusy",
 }
 
 local COLORS = {
@@ -59,6 +60,7 @@ local spinner_hl = {
     generating = Theme.HL_GROUPS.SPINNER_GENERATING,
     thinking = Theme.HL_GROUPS.SPINNER_THINKING,
     searching = Theme.HL_GROUPS.SPINNER_SEARCHING,
+    busy = Theme.HL_GROUPS.SPINNER_BUSY,
 }
 
 function Theme.setup()
@@ -83,6 +85,7 @@ function Theme.setup()
         { Theme.HL_GROUPS.SPINNER_GENERATING, { fg = COLORS.spinner_generating_fg, bold = true } },
         { Theme.HL_GROUPS.SPINNER_THINKING, { fg = COLORS.spinner_thinking_fg, bold = true } },
         { Theme.HL_GROUPS.SPINNER_SEARCHING, { fg = COLORS.spinner_searching_fg, bold = true } },
+        { Theme.HL_GROUPS.SPINNER_BUSY, { link = "Comment" } },
     }
     -- stylua: ignore end
 

@@ -284,7 +284,7 @@ MyClass.__index = MyClass
 
 --- Creates a new instance of MyClass
 --- @param name string The name parameter
---- @param options? table Optional configuration table
+--- @param options table|nil Optional configuration table
 --- @return MyClass instance The created instance
 function MyClass:new(name, options)
     return setmetatable({ public_field = name }, self)
@@ -301,7 +301,10 @@ end
 
 - Always include a space after `---` for both descriptions and annotations
 - Use `@private` or `@package` for internal implementation details
-- Mark optional parameters with `?` suffix (e.g., `name? string`)
+- **IMPORTANT:** Optional types MUST use explicit union syntax `type|nil`, NOT the `?` suffix
+  - ❌ Wrong: `@param winid? number` or `@field _state? string`
+  - ✅ Correct: `@param winid number|nil` or `@field _state string|nil`
+  - Reason: Lua Language Server may not properly validate the `?` suffix syntax in all contexts
 - Do NOT Provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 

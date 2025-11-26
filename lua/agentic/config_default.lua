@@ -65,15 +65,18 @@ local ConfigDefault = {
         },
     },
 
+    -- stylua: ignore start
     --- @class agentic.UserConfig.SpinnerChars
     --- @field generating string[]
     --- @field thinking string[]
     --- @field searching string[]
     spinner_chars = {
         generating = { "·", "✢", "✳", "∗", "✻", "✽" },
-        thinking = { "🤔", "🤨", "😐" },
+        thinking = { "🤔", "🤨" },
         searching = { "🔎. . .", ". 🔎. .", ". . 🔎." },
+        busy = { "⡀", "⠄", "⠂", "⠁", "⠈", "⠐", "⠠", "⢀", "⣀", "⢄", "⢂", "⢁", "⢈", "⢐", "⢠", "⣠", "⢤", "⢢", "⢡", "⢨", "⢰", "⣰", "⢴", "⢲", "⢱", "⢸", "⣸", "⢼", "⢺", "⢹", "⣹", "⢽", "⢻", "⣻", "⢿", "⣿", },
     },
+    -- stylua: ignore end
 
     --- @class agentic.UserConfig.StatusIcons
     status_icons = {

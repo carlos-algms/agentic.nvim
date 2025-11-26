@@ -271,6 +271,8 @@ function SessionManager:new_session()
     self.widget:clear()
     self:_cancel_session()
 
+    self.status_animation:start("busy")
+
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
@@ -318,6 +320,10 @@ function SessionManager:new_session()
     }
 
     self.agent:create_session(handlers, function(response, err)
+        vim.schedule(function()
+            self.status_animation:stop()
+        end)
+
         if err or not response then
             vim.notify(
                 "Failed to create session: " .. (err or "unknown error"),

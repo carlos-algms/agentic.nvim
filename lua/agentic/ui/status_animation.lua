@@ -23,14 +23,15 @@ local TIMING = {
     generating = 200,
     thinking = 600,
     searching = 600,
+    busy = 100,
 }
 
 --- @class agentic.ui.StatusAnimation
 --- @field bufnr number Buffer number where animation is rendered
---- @field state? agentic.Theme.SpinnerState Current animation state
---- @field timer? uv.uv_timer_t uv timer object
+--- @field state agentic.Theme.SpinnerState|nil Current animation state
+--- @field timer uv.uv_timer_t|nil uv timer object
 --- @field spinner_idx number Current spinner frame index
---- @field extmark_id? number Current extmark ID
+--- @field extmark_id number|nil Current extmark ID
 local StatusAnimation = {}
 StatusAnimation.__index = StatusAnimation
 

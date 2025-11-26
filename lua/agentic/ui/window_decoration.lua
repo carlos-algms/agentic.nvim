@@ -35,7 +35,7 @@ local WindowDecoration = {}
 --- @field reverse_hl? string Highlight group for the separator
 local default_config = {
     enabled = true,
-    align = "center",
+    align = "left",
     hl = Theme.HL_GROUPS.WIN_BAR_TITLE,
     reverse_hl = "NormalFloat",
 }
