@@ -120,7 +120,7 @@ function ChatWidget:show()
         self:render_header("files")
     end
 
-    self:_move_cursor_to(
+    self:move_cursor_to(
         self.win_nrs.input,
         BufHelpers.start_insert_on_last_char
     )
@@ -214,19 +214,6 @@ function ChatWidget:render_code_selection(selections)
     end)
 end
 
---- @param selected_files string[]
-function ChatWidget:render_selected_files(selected_files)
-    local lines = {}
-
-    for _, file in ipairs(selected_files) do
-        table.insert(lines, "-  " .. FileSystem.to_smart_path(file))
-    end
-
-    BufHelpers.with_modifiable(self.buf_nrs.files, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-    end)
-end
-
 function ChatWidget:_submit_input()
     vim.cmd("stopinsert")
 
@@ -255,22 +242,16 @@ function ChatWidget:_submit_input()
 
     self.on_submit_input(prompt)
 
-    if self.win_nrs.code and vim.api.nvim_win_is_valid(self.win_nrs.code) then
-        vim.api.nvim_win_close(self.win_nrs.code, true)
-        self.win_nrs.code = nil
-    end
-    if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
-        vim.api.nvim_win_close(self.win_nrs.files, true)
-        self.win_nrs.files = nil
-    end
+    self:close_code_window()
+    self:close_files_window()
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
-    self:_move_cursor_to(self.win_nrs.chat)
+    self:move_cursor_to(self.win_nrs.chat)
 end
 
 --- @param winid? integer
 --- @param callback? fun()
-function ChatWidget:_move_cursor_to(winid, callback)
+function ChatWidget:move_cursor_to(winid, callback)
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_set_current_win(winid)
@@ -303,7 +284,7 @@ function ChatWidget:_initialize()
     -- Add keybindings to chat buffer to jump back to input and start insert mode
     for _, key in ipairs({ "a", "A", "o", "O", "i", "I", "c", "C" }) do
         BufHelpers.keymap_set(buf_nrs.chat, "n", key, function()
-            self:_move_cursor_to(
+            self:move_cursor_to(
                 self.win_nrs.input,
                 BufHelpers.start_insert_on_last_char
             )
@@ -476,6 +457,20 @@ function ChatWidget:render_header(window_name)
     end
 
     WindowDecoration.render_window_header(winid, opts)
+end
+
+function ChatWidget:close_code_window()
+    if self.win_nrs.code and vim.api.nvim_win_is_valid(self.win_nrs.code) then
+        vim.api.nvim_win_close(self.win_nrs.code, true)
+        self.win_nrs.code = nil
+    end
+end
+
+function ChatWidget:close_files_window()
+    if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
+        vim.api.nvim_win_close(self.win_nrs.files, true)
+        self.win_nrs.files = nil
+    end
 end
 
 return ChatWidget

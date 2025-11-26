@@ -65,9 +65,17 @@ function SessionManager:new(tab_page_id)
 
     instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
 
-    instance.file_list = FileList:new(instance.widget.buf_nrs.files, function()
-        instance.widget:render_header("files")
-    end)
+    instance.file_list = FileList:new(
+        instance.widget.buf_nrs.files,
+        function(file_list)
+            if file_list:is_empty() then
+                instance.widget:close_files_window()
+                instance.widget:move_cursor_to(instance.widget.win_nrs.input)
+            else
+                instance.widget:render_header("files")
+            end
+        end
+    )
 
     instance:new_session()
 

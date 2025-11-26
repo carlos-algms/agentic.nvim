@@ -4,12 +4,13 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 --- @class agentic.ui.FileList
 --- @field _files string[]
 --- @field _bufnr integer the same buffer number as the ChatWidget's files buffer
---- @field _on_change fun()
+--- @field _on_change fun(fileList: agentic.ui.FileList)
+--- @field _on_empty fun()|nil
 local FileList = {}
 FileList.__index = FileList
 
 --- @param bufnr integer The files buffer number from ChatWidget
---- @param on_change fun() Callback to trigger when file list changes (e.g., update header)
+--- @param on_change fun(fileList: agentic.ui.FileList) Callback to trigger when file list changes (e.g., update header)
 --- @return agentic.ui.FileList
 function FileList:new(bufnr, on_change)
     local instance = setmetatable({
@@ -75,14 +76,18 @@ function FileList:_render()
 
     for _, file in ipairs(self._files) do
         -- FIXIT: ADD Icon to the file list
-        table.insert(lines, "- " .. FileSystem.to_smart_path(file))
+        table.insert(lines, "-   " .. FileSystem.to_smart_path(file))
     end
 
     BufHelpers.with_modifiable(self._bufnr, function(bufnr)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
     end)
 
-    self._on_change()
+    self._on_change(self)
+
+    if #self._files == 0 and self._on_empty then
+        self._on_empty()
+    end
 end
 
 --- @private
