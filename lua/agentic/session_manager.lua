@@ -125,7 +125,9 @@ end
 
 --- @param input_text string
 function SessionManager:_handle_input_submit(input_text)
-    -- Intercept /new command to start new session locally
+    -- Intercept /new command to start new session locally, cancelling existing one
+    -- Its necessary to avoid race conditions and make sure everything is cleaned properly,
+    -- the Agent might not send an identifiable response that could be acted upon
     if input_text:match("^/new%s*") then
         self:new_session()
         return
