@@ -19,7 +19,7 @@ local P = {}
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field current_provider string
---- @field selected_files string[]
+--- @field file_list agentic.ui.FileList
 --- @field code_selections agentic.Selection[]
 --- @field slash_commands agentic.acp.SlashCommands
 local SessionManager = {}
@@ -34,11 +34,11 @@ function SessionManager:new(tab_page_id)
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
     local SlashCommands = require("agentic.acp.slash_commands")
+    local FileList = require("agentic.ui.file_list")
 
     local instance = setmetatable({
         session_id = nil,
         current_provider = Config.provider,
-        selected_files = {},
         code_selections = {},
     }, self)
 
@@ -64,6 +64,10 @@ function SessionManager:new(tab_page_id)
     instance.permission_manager = PermissionManager:new(instance.message_writer)
 
     instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
+
+    instance.file_list = FileList:new(instance.widget.buf_nrs.files, function()
+        instance.widget:render_header("files")
+    end)
 
     instance:new_session()
 
@@ -213,10 +217,13 @@ function SessionManager:_handle_input_submit(input_text)
         self.code_selections = {}
     end
 
-    if #self.selected_files > 0 then
+    if not self.file_list:is_empty() then
         table.insert(message_lines, "\n- **Referenced files**:")
 
-        for _, file_path in ipairs(self.selected_files) do
+        local files = self.file_list:get_files()
+        self.file_list:clear()
+
+        for _, file_path in ipairs(files) do
             table.insert(
                 prompt,
                 self.agent:create_resource_link_content(file_path)
@@ -227,8 +234,6 @@ function SessionManager:_handle_input_submit(input_text)
                 string.format("  - @%s", FileSystem.to_smart_path(file_path))
             )
         end
-
-        self.selected_files = {}
     end
 
     table.insert(
@@ -361,7 +366,7 @@ function SessionManager:_cancel_session()
     end
 
     self.session_id = nil
-    self.selected_files = {}
+    self.file_list:clear()
     self.code_selections = {}
 
     self.permission_manager:clear()
@@ -393,22 +398,7 @@ function SessionManager:add_file_to_session(buf)
     local bufnr = buf and vim.fn.bufnr(buf) or 0
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
-    -- Check if file is already in selected_files
-    for _, path in ipairs(self.selected_files) do
-        if path == buf_path then
-            return true
-        end
-    end
-
-    local stat = vim.uv.fs_stat(buf_path)
-
-    if stat and stat.type == "file" then
-        table.insert(self.selected_files, buf_path)
-        self.widget:render_selected_files(self.selected_files)
-        return true
-    end
-
-    return false
+    return self.file_list:add(buf_path)
 end
 
 --- Get the current visual selection as text with start and end lines

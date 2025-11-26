@@ -70,9 +70,10 @@ function ChatWidget:show()
             width = self._calculate_width(Config.windows.width),
         }, {
             winfixheight = false,
-            scrolloff = 4,  -- Keep 4 lines visible above/below cursor (keeps animation visible)
+            scrolloff = 4, -- Keep 4 lines visible above/below cursor (keeps animation visible)
         })
-        self:_render_header("chat")
+
+        self:render_header("chat")
     end
 
     if
@@ -85,7 +86,8 @@ function ChatWidget:show()
             height = Config.windows.input.height,
             fixed = true,
         }, {})
-        self:_render_header("input")
+
+        self:render_header("input")
     end
 
     if
@@ -99,7 +101,8 @@ function ChatWidget:show()
             split = "below",
             height = 15,
         }, {})
-        self:_render_header("code")
+
+        self:render_header("code")
     end
 
     if
@@ -113,7 +116,8 @@ function ChatWidget:show()
             split = "above",
             height = 5,
         }, {})
-        self:_render_header("files")
+
+        self:render_header("files")
     end
 
     self:_move_cursor_to(
@@ -270,6 +274,7 @@ function ChatWidget:_move_cursor_to(winid, callback)
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_set_current_win(winid)
+            vim.cmd("normal! G0zb")
             if callback then
                 callback()
             end
@@ -449,7 +454,7 @@ function ChatWidget._calculate_width(size)
 end
 
 --- @param window_name agentic.ui.ChatWidget.PanelNames
-function ChatWidget:_render_header(window_name)
+function ChatWidget:render_header(window_name)
     local winid = self.win_nrs[window_name]
     if not winid then
         return

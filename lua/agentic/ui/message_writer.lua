@@ -102,7 +102,7 @@ function MessageWriter:write_message_chunk(update)
             lines_to_write
         )
 
-        self:_auto_scroll_if_near_bottom(bufnr)
+        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -113,21 +113,16 @@ function MessageWriter:_append_lines(lines)
 
     vim.api.nvim_buf_set_lines(self.bufnr, start_line, -1, false, lines)
 
-    self:_auto_scroll_if_near_bottom(self.bufnr)
+    self:_auto_scroll(self.bufnr)
 end
 
 --- Auto-scrolls buffer to bottom only if cursor is near the end
 --- @param bufnr integer Buffer number to scroll
 --- @private
-function MessageWriter:_auto_scroll_if_near_bottom(bufnr)
+function MessageWriter:_auto_scroll(bufnr)
     vim.defer_fn(function()
         BufHelpers.execute_on_buffer(bufnr, function()
-            -- Only auto-scroll if cursor is within X lines of bottom
-            local cursor_line = vim.api.nvim_win_get_cursor(0)[1]
-            local total_lines = vim.api.nvim_buf_line_count(bufnr)
-            if total_lines - cursor_line <= 3 then
-                vim.cmd("normal! G0zb")
-            end
+            vim.cmd("normal! G0zb")
         end)
     end, 150)
 end
