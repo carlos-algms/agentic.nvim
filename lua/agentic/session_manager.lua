@@ -352,7 +352,7 @@ function SessionManager:new_session()
 end
 
 function SessionManager:_cancel_session()
-    if not self.session_id then
+    if self.session_id then
         self.agent:cancel_session(self.session_id)
     end
 

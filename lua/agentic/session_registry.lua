@@ -1,3 +1,4 @@
+local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
 
 --- @class agentic.SessionRegistry
@@ -24,13 +25,17 @@ end
 --- @param tab_page_id integer|nil
 --- @return agentic.SessionManager
 function SessionRegistry.new_session(tab_page_id)
-    tab_page_id = vim.api.nvim_get_current_tabpage()
+    tab_page_id = tab_page_id ~= nil and tab_page_id
+        or vim.api.nvim_get_current_tabpage()
     local session = SessionRegistry.sessions[tab_page_id]
 
     if session then
-        pcall(function()
+        local ok, err = pcall(function()
             session:destroy()
         end)
+        if not ok then
+            Logger.debug("Session destroy error:", err)
+        end
         SessionRegistry.sessions[tab_page_id] = nil
     end
 
