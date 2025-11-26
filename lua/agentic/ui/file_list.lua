@@ -97,7 +97,7 @@ function FileList:_setup_keybindings()
         if line_content and line_content:match("%S") then -- Check if line is not empty
             self:remove_file_at(line)
         end
-    end)
+    end, { nowait = true })
 
     BufHelpers.keymap_set(self._bufnr, "v", "d", function()
         local start_pos = vim.fn.getpos("'<")
@@ -125,7 +125,7 @@ function FileList:_setup_keybindings()
             "n",
             false
         )
-    end)
+    end, { nowait = true })
 end
 
 return FileList
