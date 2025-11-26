@@ -105,10 +105,15 @@ function FileList:_setup_keybindings()
     end, { nowait = true })
 
     BufHelpers.keymap_set(self._bufnr, "v", "d", function()
-        local start_pos = vim.fn.getpos("'<")
-        local end_pos = vim.fn.getpos("'>")
+        local start_pos = vim.fn.getpos("v")
+        local end_pos = vim.fn.getpos(".")
         local start_line = start_pos[2]
         local end_line = end_pos[2]
+
+        -- Ensure start_line is always smaller than end_line (handle backward selection)
+        if start_line > end_line then
+            start_line, end_line = end_line, start_line
+        end
 
         -- Remove files in reverse order to maintain correct indices
         for line = end_line, start_line, -1 do
@@ -127,7 +132,7 @@ function FileList:_setup_keybindings()
         -- Exit visual mode
         vim.api.nvim_feedkeys(
             vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
-            "n",
+            "nx",
             false
         )
     end, { nowait = true })

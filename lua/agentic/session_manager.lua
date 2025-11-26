@@ -20,7 +20,7 @@ local P = {}
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field current_provider string
 --- @field file_list agentic.ui.FileList
---- @field code_selections agentic.Selection[]
+--- @field code_selection agentic.ui.CodeSelection
 --- @field slash_commands agentic.acp.SlashCommands
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -35,11 +35,11 @@ function SessionManager:new(tab_page_id)
     local StatusAnimation = require("agentic.ui.status_animation")
     local SlashCommands = require("agentic.acp.slash_commands")
     local FileList = require("agentic.ui.file_list")
+    local CodeSelection = require("agentic.ui.code_selection")
 
     local instance = setmetatable({
         session_id = nil,
         current_provider = Config.provider,
-        code_selections = {},
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider)
@@ -73,6 +73,18 @@ function SessionManager:new(tab_page_id)
                 instance.widget:move_cursor_to(instance.widget.win_nrs.input)
             else
                 instance.widget:render_header("files")
+            end
+        end
+    )
+
+    instance.code_selection = CodeSelection:new(
+        instance.widget.buf_nrs.code,
+        function(code_selection)
+            if code_selection:is_empty() then
+                instance.widget:close_code_window()
+                instance.widget:move_cursor_to(instance.widget.win_nrs.input)
+            else
+                instance.widget:render_header("code")
             end
         end
     )
@@ -161,7 +173,7 @@ function SessionManager:_handle_input_submit(input_text)
     table.insert(message_lines, "")
     table.insert(message_lines, input_text)
 
-    if #self.code_selections > 0 then
+    if not self.code_selection:is_empty() then
         table.insert(message_lines, "\n- **Selected code**:\n")
 
         table.insert(prompt, {
@@ -175,7 +187,10 @@ function SessionManager:_handle_input_submit(input_text)
             }, "\n"),
         })
 
-        for _, selection in ipairs(self.code_selections) do
+        local selections = self.code_selection:get_selections()
+        self.code_selection:clear()
+
+        for _, selection in ipairs(selections) do
             if selection and #selection.lines > 0 then
                 -- Add line numbers to each line in the snippet
                 local numbered_lines = {}
@@ -221,8 +236,6 @@ function SessionManager:_handle_input_submit(input_text)
                 )
             end
         end
-
-        self.code_selections = {}
     end
 
     if not self.file_list:is_empty() then
@@ -375,7 +388,7 @@ function SessionManager:_cancel_session()
 
     self.session_id = nil
     self.file_list:clear()
-    self.code_selections = {}
+    self.code_selection:clear()
 
     self.permission_manager:clear()
     self.slash_commands:setCommands({})
@@ -390,11 +403,10 @@ function SessionManager:add_selection_or_file_to_session()
 end
 
 function SessionManager:add_selection_to_session()
-    local selection = self:_get_selected_text()
+    local selection = self.code_selection.get_selected_text()
 
     if selection then
-        table.insert(self.code_selections, selection)
-        self.widget:render_code_selection(self.code_selections)
+        self.code_selection:add(selection)
         return true
     end
 
@@ -407,47 +419,6 @@ function SessionManager:add_file_to_session(buf)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
     return self.file_list:add(buf_path)
-end
-
---- Get the current visual selection as text with start and end lines
---- @return agentic.Selection|nil
-function SessionManager:_get_selected_text()
-    local mode = vim.fn.mode()
-
-    if mode == "v" or mode == "V" or mode == "" then
-        local start_pos = vim.fn.getpos("v")
-        local end_pos = vim.fn.getpos(".")
-        local start_line = start_pos[2]
-        local end_line = end_pos[2]
-
-        -- Ensure start_line is always smaller than end_line (handle backward selection)
-        if start_line > end_line then
-            start_line, end_line = end_line, start_line
-        end
-
-        local lines = vim.api.nvim_buf_get_lines(
-            0,
-            start_line - 1, -- 0-indexed
-            end_line, -- exclusive
-            false
-        )
-
-        -- exit visual mode to avoid issues with the input buffer
-        local esc_key =
-            vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
-        vim.api.nvim_feedkeys(esc_key, "nx", false)
-
-        --- @class agentic.Selection
-        local selection = {
-            lines = lines,
-            start_line = start_line,
-            end_line = end_line,
-            file_path = FileSystem.to_smart_path(vim.api.nvim_buf_get_name(0)),
-            file_type = vim.bo[0].filetype,
-        }
-
-        return selection
-    end
 end
 
 --- @type agentic.acp.ClientHandlers.on_read_file
