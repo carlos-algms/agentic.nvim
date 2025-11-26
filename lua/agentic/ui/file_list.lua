@@ -5,7 +5,6 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 --- @field _files string[]
 --- @field _bufnr integer the same buffer number as the ChatWidget's files buffer
 --- @field _on_change fun(fileList: agentic.ui.FileList)
---- @field _on_empty fun()|nil
 local FileList = {}
 FileList.__index = FileList
 
@@ -84,10 +83,6 @@ function FileList:_render()
     end)
 
     self._on_change(self)
-
-    if #self._files == 0 and self._on_empty then
-        self._on_empty()
-    end
 end
 
 --- @private

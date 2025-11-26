@@ -1,5 +1,4 @@
 local Config = require("agentic.config")
-local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
@@ -182,36 +181,6 @@ function ChatWidget:destroy()
             )
         end
     end
-end
-
---- @param selections agentic.Selection[]
-function ChatWidget:render_code_selection(selections)
-    --- @type string[]
-    local text_block = {}
-
-    for _, selection in ipairs(selections) do
-        if selection and #selection.lines > 0 then
-            table.insert(
-                text_block,
-                string.format(
-                    "```%s %s:%d-%d",
-                    selection.file_type,
-                    selection.file_path,
-                    selection.start_line,
-                    selection.end_line
-                )
-            )
-
-            vim.list_extend(text_block, selection.lines)
-
-            table.insert(text_block, "```")
-            table.insert(text_block, "")
-        end
-    end
-
-    BufHelpers.with_modifiable(self.buf_nrs.code, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, text_block)
-    end)
 end
 
 function ChatWidget:_submit_input()

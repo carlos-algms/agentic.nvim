@@ -116,7 +116,6 @@ function MessageWriter:_append_lines(lines)
     self:_auto_scroll(self.bufnr)
 end
 
---- Auto-scrolls buffer to bottom only if cursor is near the end
 --- @param bufnr integer Buffer number to scroll
 --- @private
 function MessageWriter:_auto_scroll(bufnr)

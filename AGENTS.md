@@ -243,6 +243,46 @@ end
 - Use `setmetatable` to create instances
 - Return the instance from constructor
 
+**Method definition syntax:**
+
+- `function Class:method()` - Instance method, receives `self` implicitly
+  - Called as: `instance:method()` or `instance.method(instance)`
+  - Use for methods that need access to instance state
+
+- `function Class.method()` - Module function, does NOT receive `self`
+  - Called as: `Class.method()` or `instance.method()` (both work, but no
+    `self`)
+  - Use for utility functions, constructors, or static helpers
+  - **Important:** Instances can call these too via `instance.method()`, but no
+    `self` is passed
+
+```lua
+--- @class Utils
+local Utils = {}
+Utils.__index = Utils
+
+-- Constructor: module function (no self)
+function Utils.new()
+    return setmetatable({}, Utils)
+end
+
+-- Instance method (receives self)
+function Utils:get_value()
+    return self.value  -- Has access to self
+end
+
+-- Module function (no self)
+function Utils.helper()
+    return "static"  -- No access to self
+end
+
+-- Usage:
+local u = Utils.new()           -- Constructor: no self needed
+local val = u:get_value()       -- Instance method: self passed implicitly
+local help = u.helper()         -- Module function: called on instance BUT no self
+local help2 = Utils.helper()    -- Module function: called on class, same result
+```
+
 **Example with inheritance:**
 
 ```lua
@@ -301,10 +341,12 @@ end
 
 - Always include a space after `---` for both descriptions and annotations
 - Use `@private` or `@package` for internal implementation details
-- **IMPORTANT:** Optional types MUST use explicit union syntax `type|nil`, NOT the `?` suffix
+- **IMPORTANT:** Optional types MUST use explicit union syntax `type|nil`, NOT
+  the `?` suffix
   - ❌ Wrong: `@param winid? number` or `@field _state? string`
   - ✅ Correct: `@param winid number|nil` or `@field _state string|nil`
-  - Reason: Lua Language Server may not properly validate the `?` suffix syntax in all contexts
+  - Reason: Lua Language Server may not properly validate the `?` suffix syntax
+    in all contexts
 - Do NOT Provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 

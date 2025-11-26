@@ -2,6 +2,8 @@ local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Theme = require("agentic.theme")
 
+local CODE_FENCE_QUERY = "(fenced_code_block) @code_fence"
+
 --- @class agentic.ui.CodeSelection
 --- @field _selections agentic.Selection[]
 --- @field _bufnr integer the same buffer number as the ChatWidget's code selection buffer
@@ -34,23 +36,13 @@ end
 
 --- @param line integer The cursor line number
 function CodeSelection:remove_at_cursor(line)
-    local parser = vim.treesitter.get_parser(self._bufnr, "markdown")
-    if not parser then
+    local root = self:_get_tree_root()
+    if not root then
         return
     end
-
-    local tree = parser:parse()[1]
-    if not tree then
-        return
-    end
-
-    local root = tree:root()
 
     -- Find the code fence block that contains the cursor line
-    local query = vim.treesitter.query.parse(
-        "markdown",
-        "(fenced_code_block) @code_fence"
-    )
+    local query = vim.treesitter.query.parse("markdown", CODE_FENCE_QUERY)
 
     local fence_index = nil
     local match_count = 0
@@ -75,23 +67,12 @@ end
 --- @param start_line integer
 --- @param end_line integer
 function CodeSelection:remove_range(start_line, end_line)
-    local parser = vim.treesitter.get_parser(self._bufnr, "markdown")
-
-    if not parser then
+    local root = self:_get_tree_root()
+    if not root then
         return
     end
 
-    local tree = parser:parse()[1]
-    if not tree then
-        return
-    end
-
-    local root = tree:root()
-
-    local query = vim.treesitter.query.parse(
-        "markdown",
-        "(fenced_code_block) @code_fence"
-    )
+    local query = vim.treesitter.query.parse("markdown", CODE_FENCE_QUERY)
 
     -- Collect indices of fences that overlap with the selection range
     local indices_to_remove = {}
@@ -140,7 +121,31 @@ function CodeSelection:is_empty()
 end
 
 --- @private
+--- @return table|nil root
+function CodeSelection:_get_tree_root()
+    local parser = vim.treesitter.get_parser(self._bufnr, "markdown")
+    if not parser then
+        return nil
+    end
+
+    local tree = parser:parse()[1]
+    if not tree then
+        return nil
+    end
+
+    return tree:root()
+end
+
+--- @private
 function CodeSelection:_render()
+    if #self._selections == 0 then
+        BufHelpers.with_modifiable(self._bufnr, function(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+        end)
+        self._on_change(self)
+        return
+    end
+
     local lines = {}
 
     for _, selection in ipairs(self._selections) do
