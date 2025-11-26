@@ -140,7 +140,26 @@ function ChatWidget:hide()
     end
 end
 
---- Cleans up all buffers and windows
+--- Cleans up all buffers content without destroying them
+function ChatWidget:clear()
+    for name, bufnr in pairs(self.buf_nrs) do
+        BufHelpers.with_modifiable(bufnr, function()
+            local ok =
+                pcall(vim.api.nvim_buf_set_lines, bufnr, 0, -1, false, { "" })
+            if not ok then
+                Logger.debug(
+                    string.format(
+                        "Failed to clear buffer '%s' with id: %d",
+                        name,
+                        bufnr
+                    )
+                )
+            end
+        end)
+    end
+end
+
+--- Deletes all buffers and removes them from memory
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
     self:hide()

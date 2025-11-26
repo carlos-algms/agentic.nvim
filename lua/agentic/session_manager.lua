@@ -1,4 +1,4 @@
--- The session manager class glue together the Chat widget, the agent instance, and the message writer.
+-- The session manager class glues together the Chat widget, the agent instance, and the message writer.
 -- It is responsible for managing the session state, routing messages between components, and handling user interactions.
 -- When the user creates a new session, the SessionManager should be responsible for cleaning the existing session (if any) and initializing a new one.
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
@@ -65,7 +65,7 @@ function SessionManager:new(tab_page_id)
 
     instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
 
-    instance:_new_session()
+    instance:new_session()
 
     return instance
 end
@@ -125,6 +125,12 @@ end
 
 --- @param input_text string
 function SessionManager:_handle_input_submit(input_text)
+    -- Intercept /new command to start new session locally
+    if input_text:match("^/new%s*") then
+        self:new_session()
+        return
+    end
+
     --- @type agentic.acp.Content[]
     local prompt = {
         {
@@ -258,8 +264,11 @@ function SessionManager:_handle_input_submit(input_text)
     end)
 end
 
-function SessionManager:_new_session()
+--- Create a new session, cancelling any existing one and clearing buffers content
+function SessionManager:new_session()
+    self.widget:clear()
     self:_cancel_session()
+
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
@@ -342,10 +351,13 @@ end
 
 function SessionManager:_cancel_session()
     if not self.session_id then
-        return
+        self.agent:cancel_session(self.session_id)
     end
 
-    self.agent:cancel_session(self.session_id)
+    self.session_id = nil
+    self.selected_files = {}
+    self.code_selections = {}
+
     self.permission_manager:clear()
     self.slash_commands:setCommands({})
 end

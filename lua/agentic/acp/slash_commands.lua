@@ -25,12 +25,24 @@ end
 
 --- Replace all commands with new list in completion format
 --- Validates each command has required fields, skips invalid commands and commands with spaces
+--- Filters out `clear` command (handled by specific agents internally)
+--- Automatically adds `/new` command if not provided by agent
 --- @param commands agentic.acp.AvailableCommand[]
 function SlashCommands:setCommands(commands)
     self.commands = {}
+    local has_new_command = false
 
     for _, cmd in ipairs(commands) do
-        if cmd.name and cmd.description and not cmd.name:match("%s") then
+        if
+            cmd.name
+            and cmd.description
+            and not cmd.name:match("%s")
+            and cmd.name ~= "clear"
+        then
+            if cmd.name == "new" then
+                has_new_command = true
+            end
+
             --- @type agentic.acp.CompletionItem
             local completion_item = {
                 word = cmd.name,
@@ -40,6 +52,18 @@ function SlashCommands:setCommands(commands)
             }
             table.insert(self.commands, completion_item)
         end
+    end
+
+    -- Add /new command if not provided by agent
+    if not has_new_command then
+        --- @type agentic.acp.CompletionItem
+        local new_command = {
+            word = "new",
+            menu = "Start a new session",
+            kind = "Slash",
+            icase = 1,
+        }
+        table.insert(self.commands, new_command)
     end
 end
 

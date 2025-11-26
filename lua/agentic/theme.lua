@@ -44,6 +44,9 @@ local lang_map = {
     htm = "html",
     yml = "yaml",
     sh = "bash",
+    typescriptreact = "tsx",
+    javascriptreact = "jsx",
+    markdown = "md",
 }
 
 local status_hl = {

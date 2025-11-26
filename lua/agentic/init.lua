@@ -1,6 +1,7 @@
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
+local SessionRegistry = require("agentic.session_registry")
 
 ---@class agentic.Agentic
 local Agentic = {}
@@ -18,25 +19,10 @@ local function deep_merge_into(target, ...)
     return target
 end
 
----@type table<integer, agentic.SessionManager|nil>
-local chat_widgets_by_tab = {}
-
-local function get_session_for_tab_page()
-    local tab_page_id = vim.api.nvim_get_current_tabpage()
-    local instance = chat_widgets_by_tab[tab_page_id]
-
-    if not instance then
-        instance = require("agentic.session_manager"):new(tab_page_id)
-        chat_widgets_by_tab[tab_page_id] = instance
-    end
-
-    return instance --[[@as agentic.SessionManager]]
-end
-
 --- Opens the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.open()
-    local session = get_session_for_tab_page()
+    local session = SessionRegistry.get_session_for_tab_page()
     session:add_selection_or_file_to_session()
     session.widget:show()
 end
@@ -44,13 +30,13 @@ end
 --- Closes the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.close()
-    get_session_for_tab_page().widget:hide()
+    SessionRegistry.get_session_for_tab_page().widget:hide()
 end
 
 --- Toggles the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.toggle()
-    local session = get_session_for_tab_page()
+    local session = SessionRegistry.get_session_for_tab_page()
 
     if session.widget:is_open() then
         session.widget:hide()
@@ -62,7 +48,7 @@ end
 
 --- Add the current visual selection to the Chat context
 function Agentic.add_selection()
-    local session = get_session_for_tab_page()
+    local session = SessionRegistry.get_session_for_tab_page()
     session:add_selection_to_session()
 
     session.widget:show()
@@ -70,33 +56,23 @@ end
 
 --- Add the current file to the Chat context
 function Agentic.add_file()
-    local session = get_session_for_tab_page()
+    local session = SessionRegistry.get_session_for_tab_page()
     session:add_file_to_session()
     session.widget:show()
 end
 
 --- Add either the current visual selection or the current file to the Chat context
 function Agentic.add_selection_or_file_to_context()
-    local session = get_session_for_tab_page()
+    local session = SessionRegistry.get_session_for_tab_page()
     session:add_selection_or_file_to_session()
     session.widget:show()
 end
 
---- Clears the current chat session and starts a new one
+--- Destroys the current Chat session and starts a new one
 function Agentic.new_session()
-    local tab_page_id = vim.api.nvim_get_current_tabpage()
-    local session = chat_widgets_by_tab[tab_page_id]
-
-    if session then
-        pcall(function()
-            session:destroy()
-        end)
-        chat_widgets_by_tab[tab_page_id] = nil
-    end
-
-    local new_session = get_session_for_tab_page()
-    new_session:add_selection_or_file_to_session()
-    new_session.widget:show()
+    local session = SessionRegistry.new_session()
+    session:add_selection_or_file_to_session()
+    session.widget:show()
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
@@ -134,12 +110,7 @@ function Agentic.setup(opts)
         group = cleanup_group,
         callback = function(ev)
             local tab_id = tonumber(ev.match)
-            if tab_id and chat_widgets_by_tab[tab_id] then
-                pcall(function()
-                    chat_widgets_by_tab[tab_id]:destroy()
-                end)
-                chat_widgets_by_tab[tab_id] = nil
-            end
+            SessionRegistry.destroy_session(tab_id)
         end,
         desc = "Cleanup Agentic processes on tab close",
     })
