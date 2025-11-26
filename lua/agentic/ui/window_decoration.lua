@@ -35,7 +35,7 @@ local WindowDecoration = {}
 --- @field reverse_hl? string Highlight group for the separator
 local default_config = {
     enabled = true,
-    align = "left",
+    align = "center",
     hl = Theme.HL_GROUPS.WIN_BAR_TITLE,
     reverse_hl = "NormalFloat",
 }
@@ -81,19 +81,14 @@ function WindowDecoration._render_header(winid, text, opts)
         return
     end
 
-    local header_text = format_segment(" " .. text .. " ", opts.hl)
-
     local winbar_text
-    local separator_hl = opts.reverse_hl or "NormalFloat"
-
+    
     if opts.align == "left" then
-        winbar_text = header_text .. "%=" .. format_segment("", separator_hl)
+        winbar_text = format_segment(" " .. text .. " %=", opts.hl)
     elseif opts.align == "center" then
-        winbar_text = format_segment("%=", separator_hl)
-            .. header_text
-            .. format_segment("%=", separator_hl)
+        winbar_text = format_segment("%= " .. text .. " %=", opts.hl)
     elseif opts.align == "right" then
-        winbar_text = format_segment("%=", separator_hl) .. header_text
+        winbar_text = format_segment("%=" .. text .. " ", opts.hl)
     end
 
     vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
