@@ -70,6 +70,7 @@ function ChatWidget:show()
             width = self._calculate_width(Config.windows.width),
         }, {
             winfixheight = false,
+            scrolloff = 4,  -- Keep 4 lines visible above/below cursor (keeps animation visible)
         })
         self:_render_header("chat")
     end

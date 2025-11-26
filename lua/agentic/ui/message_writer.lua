@@ -104,7 +104,7 @@ function MessageWriter:write_message_chunk(update)
 
         vim.defer_fn(function()
             BufHelpers.execute_on_buffer(bufnr, function()
-                vim.cmd("normal! G0")
+                vim.cmd("normal! G0zb")
             end)
         end, 150)
     end)
@@ -119,7 +119,7 @@ function MessageWriter:_append_lines(lines)
 
     vim.defer_fn(function()
         BufHelpers.execute_on_buffer(self.bufnr, function()
-            vim.cmd("normal! G0")
+            vim.cmd("normal! G0zb")
         end)
     end, 150)
 end
