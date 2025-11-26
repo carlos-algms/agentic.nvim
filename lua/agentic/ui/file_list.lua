@@ -33,7 +33,7 @@ function FileList:add(file_path)
         end
     end
 
-    local stat = vim.uv.fs_stat(file_path)
+    local _ok, stat = pcall(vim.uv.fs_stat, file_path)
 
     if stat and stat.type == "file" then
         table.insert(self._files, file_path)

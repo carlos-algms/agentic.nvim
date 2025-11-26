@@ -176,7 +176,7 @@ end
 function CodeSelection.get_selected_text()
     local mode = vim.fn.mode()
 
-    if mode == "v" or mode == "V" or mode == "" then
+    if mode == "v" or mode == "V" then
         local start_pos = vim.fn.getpos("v")
         local end_pos = vim.fn.getpos(".")
         local start_line = start_pos[2]
