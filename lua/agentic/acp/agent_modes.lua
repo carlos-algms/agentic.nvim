@@ -37,6 +37,10 @@ function AgentModes:setModes(modes_info)
 end
 
 function AgentModes:show_mode_selector()
+    if #self._modes == 0 then
+        return
+    end
+
     vim.ui.select(self._modes, {
         prompt = "Select Agent Mode:",
         format_item = function(item)
