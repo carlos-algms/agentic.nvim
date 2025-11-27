@@ -12,7 +12,7 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 local WINDOW_HEADERS = {
     chat = { title = "󰻞 Agentic Chat" },
     input = { title = "󰦨 Prompt", suffix = "| <C-s>: submit" },
-    code = { title = "󰪸 Selected Code Snippets" },
+    code = { title = "󰪸 Selected Code Snippets | d: remove block" },
     files = {
         title = " Referenced Files",
         suffix = function(self)
@@ -24,7 +24,7 @@ local WINDOW_HEADERS = {
                     file_count = file_count + 1
                 end
             end
-            return string.format("(%d)", file_count)
+            return string.format("(%d) | d: remove file", file_count)
         end,
     },
 }

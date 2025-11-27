@@ -70,4 +70,12 @@ function BufHelpers.is_buffer_empty(bufnr)
     return true
 end
 
+function BufHelpers.feed_ESC_key()
+    vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
+        "nx",
+        false
+    )
+end
+
 return BufHelpers

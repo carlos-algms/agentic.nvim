@@ -121,7 +121,7 @@ function CodeSelection:is_empty()
 end
 
 --- @private
---- @return table|nil root
+--- @return TSNode|nil root
 function CodeSelection:_get_tree_root()
     local parser = vim.treesitter.get_parser(self._bufnr, "markdown")
     if not parser then
@@ -195,9 +195,8 @@ function CodeSelection.get_selected_text()
         )
 
         -- exit visual mode to avoid issues with the input buffer
-        local esc_key =
-            vim.api.nvim_replace_termcodes("<Esc>", true, false, true)
-        vim.api.nvim_feedkeys(esc_key, "nx", false)
+        BufHelpers.feed_ESC_key()
+
         local buf_name = vim.api.nvim_buf_get_name(0)
 
         --- @class agentic.Selection
@@ -236,11 +235,7 @@ function CodeSelection:_setup_keybindings()
         self:remove_range(start_line, end_line)
 
         -- Exit visual mode
-        vim.api.nvim_feedkeys(
-            vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
-            "nx",
-            false
-        )
+        BufHelpers.feed_ESC_key()
     end, { nowait = true })
 end
 

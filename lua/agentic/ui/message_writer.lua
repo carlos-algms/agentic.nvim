@@ -439,7 +439,8 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
             local lang = Theme.get_language_from_path(argument)
 
             -- Hack to avoid triple backtick conflicts in markdown files
-            if lang ~= "md" then
+            local has_fences = lang ~= "md" and lang ~= "markdown"
+            if has_fences then
                 table.insert(lines, "```" .. lang)
             end
 
@@ -513,8 +514,8 @@ function MessageWriter:_prepare_block_lines(update, kind, argument)
                 end
             end
 
-            -- Close code fence if not markdown, to avoid conflicts
-            if lang ~= "md" then
+            -- Close code fences, if not markdown, to avoid conflicts
+            if has_fences then
                 table.insert(lines, "```")
             end
         end

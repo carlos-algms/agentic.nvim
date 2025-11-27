@@ -125,11 +125,7 @@ function FileList:_setup_keybindings()
         end
 
         -- Exit visual mode
-        vim.api.nvim_feedkeys(
-            vim.api.nvim_replace_termcodes("<Esc>", true, false, true),
-            "nx",
-            false
-        )
+        BufHelpers.feed_ESC_key()
     end, { nowait = true })
 end
 
