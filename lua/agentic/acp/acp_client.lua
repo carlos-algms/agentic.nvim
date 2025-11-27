@@ -440,7 +440,7 @@ function ACPClient:_authenticate(method_id)
 end
 
 --- @param handlers agentic.acp.ClientHandlers
---- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
+--- @param callback fun(result: agentic.acp.SessionCreationResponse|nil, err: agentic.acp.ACPError|nil)
 function ACPClient:create_session(handlers, callback)
     local cwd = vim.fn.getcwd()
 
@@ -472,6 +472,7 @@ function ACPClient:create_session(handlers, callback)
             self:_subscribe(result.sessionId, handlers)
         end
 
+        --- @cast result agentic.acp.SessionCreationResponse
         callback(result, err)
     end)
 end
@@ -755,6 +756,29 @@ return ACPClient
 --- @field name string
 --- @field description string
 --- @field input? table<string, any>
+
+--- @class agentic.acp.AgentMode
+--- @field id string
+--- @field name string
+--- @field description string
+
+--- @class agentic.acp.Model
+--- @field modelId string
+--- @field name string
+--- @field description string
+
+--- @class agentic.acp.ModesInfo
+--- @field availableModes agentic.acp.AgentMode[]
+--- @field currentModeId string
+
+--- @class agentic.acp.ModelsInfo
+--- @field availableModels agentic.acp.Model[]
+--- @field currentModelId string
+
+--- @class agentic.acp.SessionCreationResponse
+--- @field sessionId string
+--- @field modes agentic.acp.ModesInfo|nil
+--- @field models agentic.acp.ModelsInfo|nil
 
 --- @class agentic.acp.UserMessageChunk
 --- @field sessionUpdate "user_message_chunk"

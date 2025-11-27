@@ -23,6 +23,7 @@ local P = {}
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field slash_commands agentic.acp.SlashCommands
+--- @field agent_modes agentic.acp.AgentModes
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -35,6 +36,7 @@ function SessionManager:new(tab_page_id)
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
     local SlashCommands = require("agentic.acp.slash_commands")
+    local AgentModes = require("agentic.acp.agent_modes")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
 
@@ -66,6 +68,8 @@ function SessionManager:new(tab_page_id)
     instance.permission_manager = PermissionManager:new(instance.message_writer)
 
     instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
+
+    instance.agent_modes = AgentModes:new(instance.widget.buf_nrs)
 
     instance.file_list = FileList:new(
         instance.widget.buf_nrs.files,
@@ -372,6 +376,10 @@ function SessionManager:new_session()
         end
 
         self.session_id = response.sessionId
+
+        if response.modes then
+            self.agent_modes:setModes(response.modes)
+        end
 
         -- Reset first message flag for new session, so system info is added again for this session
         self._is_first_message = true
