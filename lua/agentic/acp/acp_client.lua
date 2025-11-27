@@ -517,6 +517,18 @@ function ACPClient:send_prompt(session_id, prompt, callback)
     return self:_send_request("session/prompt", params, callback)
 end
 
+--- Set the agent mode for a session
+--- @param session_id string
+--- @param mode_id string
+--- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
+function ACPClient:set_mode(session_id, mode_id, callback)
+    local params = {
+        sessionId = session_id,
+        modeId = mode_id,
+    }
+    return self:_send_request("session/set_mode", params, callback)
+end
+
 --- @param session_id string
 function ACPClient:cancel_session(session_id)
     if not session_id then

@@ -40,7 +40,7 @@ function SessionManager:new(tab_page_id)
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
 
-    local instance = setmetatable({
+    self = setmetatable({
         session_id = nil,
         _is_first_message = true,
         current_provider = Config.provider,
@@ -53,51 +53,45 @@ function SessionManager:new(tab_page_id)
         return
     end
 
-    instance.agent = agent
+    self.agent = agent
 
-    instance.widget = ChatWidget:new(tab_page_id, function(input_text)
-        --- @diagnostic disable-next-line: invisible
-        instance:_handle_input_submit(input_text)
+    self.widget = ChatWidget:new(tab_page_id, function(input_text)
+        self:_handle_input_submit(input_text)
     end)
 
-    instance.message_writer = MessageWriter:new(instance.widget.buf_nrs.chat)
+    self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
+    self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
+    self.permission_manager = PermissionManager:new(self.message_writer)
+    self.slash_commands = SlashCommands:new(self.widget.buf_nrs.input)
 
-    instance.status_animation =
-        StatusAnimation:new(instance.widget.buf_nrs.chat)
+    self.agent_modes = AgentModes:new(self.widget.buf_nrs, function(mode_id)
+        self:_handle_mode_change(mode_id)
+    end)
 
-    instance.permission_manager = PermissionManager:new(instance.message_writer)
-
-    instance.slash_commands = SlashCommands:new(instance.widget.buf_nrs.input)
-
-    instance.agent_modes = AgentModes:new(instance.widget.buf_nrs)
-
-    instance.file_list = FileList:new(
-        instance.widget.buf_nrs.files,
-        function(file_list)
-            if file_list:is_empty() then
-                instance.widget:close_files_window()
-                instance.widget:move_cursor_to(instance.widget.win_nrs.input)
-            else
-                instance.widget:render_header("files")
-            end
+    self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
+        if file_list:is_empty() then
+            self.widget:close_files_window()
+            self.widget:move_cursor_to(self.widget.win_nrs.input)
+        else
+            self.widget:render_header("files")
         end
-    )
+    end)
 
-    instance.code_selection = CodeSelection:new(
-        instance.widget.buf_nrs.code,
+    self.code_selection = CodeSelection:new(
+        self.widget.buf_nrs.code,
         function(code_selection)
             if code_selection:is_empty() then
-                instance.widget:close_code_window()
-                instance.widget:move_cursor_to(instance.widget.win_nrs.input)
+                self.widget:close_code_window()
+                self.widget:move_cursor_to(self.widget.win_nrs.input)
             else
-                instance.widget:render_header("code")
+                self.widget:render_header("code")
             end
         end
     )
 
-    instance:new_session()
+    self:new_session()
 
-    return instance
+    return self
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
@@ -151,6 +145,33 @@ function SessionManager:_on_session_update(update)
             { title = "⚠️ Unknown session update" }
         )
     end
+end
+
+--- @param mode_id string
+function SessionManager:_handle_mode_change(mode_id)
+    if not self.session_id then
+        return
+    end
+
+    self.agent:set_mode(self.session_id, mode_id, function(_result, err)
+        vim.schedule(function()
+            if err then
+                vim.notify(
+                    "Failed to change mode: " .. err.message,
+                    vim.log.levels.ERROR
+                )
+            else
+                self.agent_modes.current_mode_id = mode_id
+                vim.notify(
+                    "Mode changed to: " .. mode_id,
+                    vim.log.levels.INFO,
+                    {
+                        title = "Agentic Mode changed",
+                    }
+                )
+            end
+        end)
+    end)
 end
 
 --- @param input_text string
