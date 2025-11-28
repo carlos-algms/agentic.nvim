@@ -94,7 +94,7 @@ local ConfigDefault = {
                 "<CR>",
                 {
                     "<C-s>",
-                    mode = { "i", "v" },
+                    mode = { "i", "n", "v" },
                 },
             },
         },
