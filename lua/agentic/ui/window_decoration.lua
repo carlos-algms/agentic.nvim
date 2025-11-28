@@ -40,14 +40,6 @@ local default_config = {
     reverse_hl = "NormalFloat",
 }
 
---- Format a text segment with highlight group
---- @param text string
---- @param highlight string
---- @return string
-local function format_segment(text, highlight)
-    return "%#" .. highlight .. "#" .. text
-end
-
 --- @param winid integer
 --- @param opts? { title?: string, hl?: string, reverse_hl?: string, suffix?: string|number }
 function WindowDecoration.render_window_header(winid, opts)
@@ -83,15 +75,17 @@ function WindowDecoration._render_header(winid, text, opts)
         return
     end
 
-    local winbar_text
+    local winbar_text = string.format("%%#%s# %s %%#Normal#", opts.hl, text)
 
     if opts.align == "left" then
-        winbar_text = format_segment(" " .. text .. " %=", opts.hl)
+        winbar_text = winbar_text .. "%="
     elseif opts.align == "center" then
-        winbar_text = format_segment("%= " .. text .. " %=", opts.hl)
+        winbar_text = "%=" .. winbar_text .. "%="
     elseif opts.align == "right" then
-        winbar_text = format_segment("%=" .. text .. " ", opts.hl)
+        winbar_text = "%=" .. winbar_text
     end
+
+    winbar_text = "%#Normal#" .. winbar_text
 
     vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
 end
