@@ -99,7 +99,7 @@ Click to expand:
 </summary>
 
 ```lua
-require("agentic").setup({
+{
   --- Enable printing debug messages which can be read via `:messages`
   debug = false,
 
@@ -129,6 +129,7 @@ require("agentic").setup({
       command = "codex-acp",
       args = {},
       env = {
+        NODE_NO_WARNINGS = "1",
         IS_AI_TERMINAL = "1",
       },
     },
@@ -139,6 +140,34 @@ require("agentic").setup({
       env = {
         NODE_NO_WARNINGS = "1",
         IS_AI_TERMINAL = "1",
+      },
+    },
+  },
+
+  -- Custom actions to be used with keymaps (optional)
+  actions = {},
+
+  -- Customize keymaps for the chat widget
+  keymaps = {
+    -- Keybindings for ALL buffers in the widget
+    widget = {
+      close = "q",
+      change_mode = {
+        {
+          "<S-Tab>",
+          mode = { "i", "n", "v" },
+        },
+      },
+    },
+
+    -- Keybindings for the prompt buffer only
+    prompt = {
+      submit = {
+        "<CR>",
+        {
+          "<C-s>",
+          mode = { "i", "v" },
+        },
       },
     },
   },
@@ -170,7 +199,7 @@ require("agentic").setup({
     reject_once = "",
     reject_always = "󰜺",
   }
-})
+}
 ```
 
 </details>
@@ -219,8 +248,55 @@ These keybindings are automatically set in Agentic buffers:
 | Keybinding | Mode  | Description                                                   |
 | ---------- | ----- | ------------------------------------------------------------- |
 | `<S-Tab>`  | n/v/i | Switch agent mode (only available if provider supports modes) |
+| `<CR>`     | n     | Submit prompt                                                 |
+| `<C-s>`    | n/v/i | Submit prompt                                                 |
+| `q`        | n     | Close chat widget                                             |
 | `d`        | n     | Remove file or code selection at cursor                       |
 | `d`        | v     | Remove multiple selected files or code selections             |
+
+#### Customizing Keybindings
+
+You can customize the default keybindings by configuring the `keymaps` option in
+your setup:
+
+```lua
+{
+  keymaps = {
+    -- Keybindings for ALL buffers in the widget (chat, prompt, code, files)
+    widget = {
+      close = "q",  -- String for a single keybinding
+      change_mode = {
+        {
+          "<S-Tab>",
+          mode = { "i", "n", "v" },  -- Specify modes for this keybinding
+        },
+      },
+    },
+
+    -- Keybindings for the prompt buffer only
+    prompt = {
+      submit = {
+        "<CR>",  -- Normal mode by default
+        {
+          "<C-s>",
+          mode = { "n", "v", "i" },
+        },
+      },
+    },
+  },
+}
+```
+
+**Keymap Configuration Format:**
+
+- **String:** `close = "q"` - Simple keybinding (normal mode by default)
+- **Array:** `submit = { "<CR>", "<C-s>" }` - Multiple keybindings (normal mode
+  only)
+- **Table with mode:** `{ "<C-s>", mode = { "i", "v" } }` - Keybinding with
+  specific modes
+
+The header text in the chat and prompt buffers will automatically update to show
+the appropriate keybinding for the current mode.
 
 ### Slash Commands
 
@@ -297,11 +373,11 @@ correctly without interference from your statusline plugin.
 Enable debug logging to troubleshoot issues:
 
 ```lua
-require("agentic").setup({
+{
   debug = true,
 
   --- ... rest of config
-})
+}
 ```
 
 View logs with `:messages`
@@ -336,4 +412,3 @@ the the acknowledgments 😊.
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
-
