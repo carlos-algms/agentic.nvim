@@ -147,6 +147,7 @@ function SessionManager:_on_session_update(update)
     end
 end
 
+--- Send the newly selected mode to the agent and handle the response
 --- @param mode_id string
 function SessionManager:_handle_mode_change(mode_id)
     if not self.session_id then
@@ -162,6 +163,8 @@ function SessionManager:_handle_mode_change(mode_id)
                 )
             else
                 self.agent_modes.current_mode_id = mode_id
+                self:_set_mode_to_chat_header(mode_id)
+
                 vim.notify(
                     "Mode changed to: " .. mode_id,
                     vim.log.levels.INFO,
@@ -172,6 +175,15 @@ function SessionManager:_handle_mode_change(mode_id)
             end
         end)
     end)
+end
+
+--- @param mode_id string
+function SessionManager:_set_mode_to_chat_header(mode_id)
+    local mode = self.agent_modes:get_mode(mode_id)
+    self.widget.headers.chat.suffix =
+        string.format("| Mode: %s", mode and mode.name or mode_id)
+
+    self.widget:render_header("chat")
 end
 
 --- @param input_text string
@@ -399,7 +411,8 @@ function SessionManager:new_session()
         self.session_id = response.sessionId
 
         if response.modes then
-            self.agent_modes:setModes(response.modes)
+            self.agent_modes:set_modes(response.modes)
+            self:_set_mode_to_chat_header(response.modes.currentModeId)
         end
 
         -- Reset first message flag for new session, so system info is added again for this session

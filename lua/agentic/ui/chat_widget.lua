@@ -7,8 +7,9 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 
 --- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
+--- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, { title: string, suffix?: string|fun(self: agentic.ui.ChatWidget): string }>
 
---- @type table<agentic.ui.ChatWidget.PanelNames, { title: string, suffix?: string|fun(self: agentic.ui.ChatWidget): string }>
+--- @type agentic.ui.ChatWidget.Headers
 local WINDOW_HEADERS = {
     chat = { title = "󰻞 Agentic Chat" },
     input = { title = "󰦨 Prompt", suffix = "| <C-s>: submit" },
@@ -35,6 +36,7 @@ local WINDOW_HEADERS = {
 --- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
+--- @field headers agentic.ui.ChatWidget.Headers
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -42,16 +44,17 @@ ChatWidget.__index = ChatWidget
 --- @param tab_page_id integer
 --- @param on_submit_input fun(prompt: string)
 function ChatWidget:new(tab_page_id, on_submit_input)
-    local instance = setmetatable({
-        win_nrs = {},
-    }, ChatWidget)
+    self = setmetatable({}, self)
 
-    instance.on_submit_input = on_submit_input
-    instance.tab_page_id = tab_page_id
+    self.headers = vim.deepcopy(WINDOW_HEADERS)
+    self.win_nrs = {}
 
-    instance.buf_nrs = instance:_initialize()
+    self.on_submit_input = on_submit_input
+    self.tab_page_id = tab_page_id
 
-    return instance
+    self.buf_nrs = self:_initialize()
+
+    return self
 end
 
 function ChatWidget:is_open()
@@ -410,7 +413,7 @@ function ChatWidget:render_header(window_name)
         return
     end
 
-    local config = WINDOW_HEADERS[window_name]
+    local config = self.headers[window_name]
     if not config then
         return
     end

@@ -31,9 +31,18 @@ end
 
 --- Replace all modes with new list
 --- @param modes_info agentic.acp.ModesInfo
-function AgentModes:setModes(modes_info)
+function AgentModes:set_modes(modes_info)
     self._modes = modes_info.availableModes
     self.current_mode_id = modes_info.currentModeId
+end
+
+function AgentModes:get_mode(mode_id)
+    for _, mode in ipairs(self._modes) do
+        if mode.id == mode_id then
+            return mode
+        end
+    end
+    return nil
 end
 
 function AgentModes:show_mode_selector()
@@ -44,7 +53,7 @@ function AgentModes:show_mode_selector()
     vim.ui.select(self._modes, {
         prompt = "Select Agent Mode:",
         format_item = function(item)
-            --- @cast item agentic.acp.AgentMode
+            --- @cast item agentic.acp.AgentMode -- need to cast because `select` has a Generic, but not for `format_item`
             local prefix = item.id == self.current_mode_id and "● " or "  "
             return string.format(
                 "%s%s: %s",

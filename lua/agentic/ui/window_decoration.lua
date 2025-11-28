@@ -51,23 +51,25 @@ end
 --- @param winid integer
 --- @param opts? { title?: string, hl?: string, reverse_hl?: string, suffix?: string|number }
 function WindowDecoration.render_window_header(winid, opts)
-    if not winid or not vim.api.nvim_win_is_valid(winid) then
-        return
-    end
+    vim.schedule(function()
+        if not winid or not vim.api.nvim_win_is_valid(winid) then
+            return
+        end
 
-    opts = opts or {}
+        opts = opts or {}
 
-    local title = opts.title or ""
+        local title = opts.title or ""
 
-    if opts.suffix then
-        title = title .. " " .. opts.suffix
-    end
+        if opts.suffix then
+            title = title .. " " .. opts.suffix
+        end
 
-    WindowDecoration._render_header(winid, title, {
-        enabled = true,
-        hl = opts.hl,
-        reverse_hl = opts.reverse_hl,
-    })
+        WindowDecoration._render_header(winid, title, {
+            enabled = true,
+            hl = opts.hl,
+            reverse_hl = opts.reverse_hl,
+        })
+    end)
 end
 
 --- Render a header/title for a window using winbar
