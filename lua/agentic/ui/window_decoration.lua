@@ -43,6 +43,7 @@ local default_config = {
 --- @param pieces string[]
 function WindowDecoration.render_window_header(winid, pieces)
     vim.schedule(function()
+        -- win_is_valid needs the schedule wrapper
         if not winid or not vim.api.nvim_win_is_valid(winid) then
             return
         end
