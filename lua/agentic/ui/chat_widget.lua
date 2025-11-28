@@ -7,13 +7,22 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 
 --- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
---- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, { title: string, suffix?: string|fun(self: agentic.ui.ChatWidget): string }>
+--- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, {
+---   title: string,
+---   suffix?: (string|fun(self: agentic.ui.ChatWidget): string),
+---   persistent?: string|nil }>
 
 --- @type agentic.ui.ChatWidget.Headers
 local WINDOW_HEADERS = {
-    chat = { title = "󰻞 Agentic Chat" },
-    input = { title = "󰦨 Prompt", suffix = "| <C-s>: submit" },
-    code = { title = "󰪸 Selected Code Snippets | d: remove block" },
+    chat = {
+        title = "󰻞 Agentic Chat",
+        persistent = "<S-Tab>: change mode",
+    },
+    input = { title = "󰦨 Prompt", persistent = "<C-s>: submit" },
+    code = {
+        title = "󰪸 Selected Code Snippets",
+        persistent = "d: remove block",
+    },
     files = {
         title = " Referenced Files",
         suffix = function(self)
@@ -25,8 +34,9 @@ local WINDOW_HEADERS = {
                     file_count = file_count + 1
                 end
             end
-            return string.format("(%d) | d: remove file", file_count)
+            return string.format("(%d)", file_count)
         end,
+        persistent = "d: remove file",
     },
 }
 
@@ -418,13 +428,16 @@ function ChatWidget:render_header(window_name)
         return
     end
 
-    local opts = { title = config.title }
+    local opts = {
+        config.title,
+        config.persistent,
+    }
 
     if config.suffix then
         if type(config.suffix) == "function" then
-            opts.suffix = config.suffix(self)
+            table.insert(opts, 2, config.suffix(self))
         else
-            opts.suffix = config.suffix
+            table.insert(opts, 2, config.suffix)
         end
     end
 

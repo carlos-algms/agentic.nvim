@@ -181,7 +181,7 @@ end
 function SessionManager:_set_mode_to_chat_header(mode_id)
     local mode = self.agent_modes:get_mode(mode_id)
     self.widget.headers.chat.suffix =
-        string.format("| Mode: %s", mode and mode.name or mode_id)
+        string.format("Mode: %s", mode and mode.name or mode_id)
 
     self.widget:render_header("chat")
 end

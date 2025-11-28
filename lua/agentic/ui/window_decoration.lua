@@ -30,7 +30,6 @@ local WindowDecoration = {}
 
 --- @class agentic.ui.WindowDecoration.Config
 --- @field align? "left"|"center"|"right" Header text alignment
---- @field enabled? boolean Whether to enable the header
 --- @field hl? string Highlight group for the header text
 --- @field reverse_hl? string Highlight group for the separator
 local default_config = {
@@ -41,53 +40,31 @@ local default_config = {
 }
 
 --- @param winid integer
---- @param opts? { title?: string, hl?: string, reverse_hl?: string, suffix?: string|number }
-function WindowDecoration.render_window_header(winid, opts)
+--- @param pieces string[]
+function WindowDecoration.render_window_header(winid, pieces)
     vim.schedule(function()
         if not winid or not vim.api.nvim_win_is_valid(winid) then
             return
         end
 
-        opts = opts or {}
+        local text = table.concat(pieces, " | ")
 
-        local title = opts.title or ""
+        local opts = default_config
 
-        if opts.suffix then
-            title = title .. " " .. opts.suffix
+        local winbar_text = string.format("%%#%s# %s %%#Normal#", opts.hl, text)
+
+        if opts.align == "left" then
+            winbar_text = winbar_text .. "%="
+        elseif opts.align == "center" then
+            winbar_text = "%=" .. winbar_text .. "%="
+        elseif opts.align == "right" then
+            winbar_text = "%=" .. winbar_text
         end
 
-        WindowDecoration._render_header(winid, title, {
-            enabled = true,
-            hl = opts.hl,
-            reverse_hl = opts.reverse_hl,
-        })
+        winbar_text = "%#Normal#" .. winbar_text
+
+        vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
     end)
-end
-
---- Render a header/title for a window using winbar
---- @param winid integer
---- @param text string Header text to display
---- @param opts? agentic.ui.WindowDecoration.Config
-function WindowDecoration._render_header(winid, text, opts)
-    opts = vim.tbl_extend("force", default_config, opts or {}) --[[@as agentic.ui.WindowDecoration.Config ]]
-
-    if not opts.enabled then
-        return
-    end
-
-    local winbar_text = string.format("%%#%s# %s %%#Normal#", opts.hl, text)
-
-    if opts.align == "left" then
-        winbar_text = winbar_text .. "%="
-    elseif opts.align == "center" then
-        winbar_text = "%=" .. winbar_text .. "%="
-    elseif opts.align == "right" then
-        winbar_text = "%=" .. winbar_text
-    end
-
-    winbar_text = "%#Normal#" .. winbar_text
-
-    vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
 end
 
 return WindowDecoration
