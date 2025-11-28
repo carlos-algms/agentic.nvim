@@ -434,43 +434,40 @@ local function find_keymap(keymaps, mode)
     end
 end
 
+--- Binds events to change the persistent header texts based on current mode keymaps
+--- For the Chat and Input buffers only
+--- @private
 function ChatWidget:_bind_events_to_change_headers()
-    local function handle_mode_change()
-        vim.schedule(function()
-            local mode = vim.fn.mode()
-            local change_mode_key =
-                find_keymap(Config.keymaps.widget.change_mode, mode)
-
-            if change_mode_key ~= nil then
-                self.headers.chat.persistent =
-                    string.format("%s: change mode", change_mode_key)
-            else
-                self.headers.chat.persistent = nil
-            end
-
-            local submit_key = find_keymap(Config.keymaps.prompt.submit, mode)
-
-            if submit_key ~= nil then
-                self.headers.input.persistent =
-                    string.format("%s: submit", submit_key)
-            else
-                self.headers.input.persistent = nil
-            end
-
-            self:render_header("chat")
-            self:render_header("input")
-        end)
-    end
-
     for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
-        vim.api.nvim_create_autocmd("InsertEnter", {
+        vim.api.nvim_create_autocmd("ModeChanged", {
             buffer = bufnr,
-            callback = handle_mode_change,
-        })
+            callback = function()
+                vim.schedule(function()
+                    local mode = vim.fn.mode()
+                    local change_mode_key =
+                        find_keymap(Config.keymaps.widget.change_mode, mode)
 
-        vim.api.nvim_create_autocmd("InsertLeavePre", {
-            buffer = bufnr,
-            callback = handle_mode_change,
+                    if change_mode_key ~= nil then
+                        self.headers.chat.persistent =
+                            string.format("%s: change mode", change_mode_key)
+                    else
+                        self.headers.chat.persistent = nil
+                    end
+
+                    local submit_key =
+                        find_keymap(Config.keymaps.prompt.submit, mode)
+
+                    if submit_key ~= nil then
+                        self.headers.input.persistent =
+                            string.format("%s: submit", submit_key)
+                    else
+                        self.headers.input.persistent = nil
+                    end
+
+                    self:render_header("chat")
+                    self:render_header("input")
+                end)
+            end,
         })
     end
 end
