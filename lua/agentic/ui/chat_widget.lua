@@ -52,6 +52,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self.tab_page_id = tab_page_id
 
     self:_initialize()
+    self:_bind_events_to_change_headers()
 
     return self
 end
@@ -404,6 +405,74 @@ function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
     end
 
     return winid
+end
+
+--- @param keymaps  agentic.UserConfig.KeymapValue
+--- @param mode string
+local function find_keymap(keymaps, mode)
+    if type(keymaps) == "string" then
+        return keymaps
+    end
+
+    for _, keymap in ipairs(keymaps) do
+        if type(keymap) == "string" and mode == "n" then
+            return keymap
+        elseif type(keymap) == "table" then
+            if keymap.mode == mode then
+                return keymap[1]
+            end
+
+            if type(keymap.mode) == "table" then
+                ---@diagnostic disable-next-line: param-type-mismatch
+                for _, m in ipairs(keymap.mode) do
+                    if m == mode then
+                        return keymap[1]
+                    end
+                end
+            end
+        end
+    end
+end
+
+function ChatWidget:_bind_events_to_change_headers()
+    local function handle_mode_change()
+        vim.schedule(function()
+            local mode = vim.fn.mode()
+            local change_mode_key =
+                find_keymap(Config.keymaps.widget.change_mode, mode)
+
+            if change_mode_key ~= nil then
+                self.headers.chat.persistent =
+                    string.format("%s: change mode", change_mode_key)
+            else
+                self.headers.chat.persistent = nil
+            end
+
+            local submit_key = find_keymap(Config.keymaps.prompt.submit, mode)
+
+            if submit_key ~= nil then
+                self.headers.input.persistent =
+                    string.format("%s: submit", submit_key)
+            else
+                self.headers.input.persistent = nil
+            end
+
+            self:render_header("chat")
+            self:render_header("input")
+        end)
+    end
+
+    for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
+        vim.api.nvim_create_autocmd("InsertEnter", {
+            buffer = bufnr,
+            callback = handle_mode_change,
+        })
+
+        vim.api.nvim_create_autocmd("InsertLeavePre", {
+            buffer = bufnr,
+            callback = handle_mode_change,
+        })
+    end
 end
 
 --- Calculate width based on editor dimensions
