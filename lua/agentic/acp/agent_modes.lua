@@ -5,8 +5,8 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 
 --- @class agentic.acp.AgentModes
 --- @field _modes agentic.acp.AgentMode[]
---- @field current_mode_id string|nil
 --- @field _set_mode_callback fun(mode_id: string) called when the user selects a new mode from the selector
+--- @field current_mode_id string|nil
 local AgentModes = {}
 AgentModes.__index = AgentModes
 
@@ -16,8 +16,8 @@ AgentModes.__index = AgentModes
 function AgentModes:new(buffers, set_mode_callback)
     local instance = setmetatable({
         _modes = {},
-        _current_mode_id = nil,
         _set_mode_callback = set_mode_callback,
+        current_mode_id = nil,
     }, self)
 
     for _, bufnr in pairs(buffers) do
@@ -36,6 +36,7 @@ function AgentModes:set_modes(modes_info)
     self.current_mode_id = modes_info.currentModeId
 end
 
+--- @param mode_id string
 function AgentModes:get_mode(mode_id)
     for _, mode in ipairs(self._modes) do
         if mode.id == mode_id then

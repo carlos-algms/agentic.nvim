@@ -73,6 +73,7 @@ function SessionManager:new(tab_page_id)
             self.widget:close_files_window()
             self.widget:move_cursor_to(self.widget.win_nrs.input)
         else
+            self.widget.headers.files.suffix = tostring(#file_list:get_files())
             self.widget:render_header("files")
         end
     end)
@@ -84,6 +85,8 @@ function SessionManager:new(tab_page_id)
                 self.widget:close_code_window()
                 self.widget:move_cursor_to(self.widget.win_nrs.input)
             else
+                self.widget.headers.code.suffix =
+                    tostring(#code_selection:get_selections())
                 self.widget:render_header("code")
             end
         end

@@ -9,7 +9,7 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
 --- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, {
 ---   title: string,
----   suffix?: (string|fun(self: agentic.ui.ChatWidget): string),
+---   suffix?: string,
 ---   persistent?: string|nil }>
 
 --- @type agentic.ui.ChatWidget.Headers
@@ -25,17 +25,6 @@ local WINDOW_HEADERS = {
     },
     files = {
         title = " Referenced Files",
-        suffix = function(self)
-            local lines =
-                vim.api.nvim_buf_get_lines(self.buf_nrs.files, 0, -1, false)
-            local file_count = 0
-            for _, line in ipairs(lines) do
-                if line:match("%S") then
-                    file_count = file_count + 1
-                end
-            end
-            return string.format("(%d)", file_count)
-        end,
         persistent = "d: remove file",
     },
 }
@@ -430,15 +419,14 @@ function ChatWidget:render_header(window_name)
 
     local opts = {
         config.title,
-        config.persistent,
     }
 
-    if config.suffix then
-        if type(config.suffix) == "function" then
-            table.insert(opts, 2, config.suffix(self))
-        else
-            table.insert(opts, 2, config.suffix)
-        end
+    if config.suffix ~= nil then
+        table.insert(opts, config.suffix)
+    end
+
+    if config.persistent ~= nil then
+        table.insert(opts, config.persistent)
     end
 
     WindowDecoration.render_window_header(winid, opts)
