@@ -1,5 +1,15 @@
 ---@alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
 
+--- @class agentic.UserConfig.KeymapEntry
+--- @field [1] string The key binding
+--- @field mode string|string[] The mode(s) for this binding
+
+--- @alias agentic.UserConfig.KeymapValue string | string[] | (string | agentic.UserConfig.KeymapEntry)[]
+
+--- @class agentic.UserConfig.Keymaps
+--- @field widget table<string, agentic.UserConfig.KeymapValue>
+--- @field prompt table<string, agentic.UserConfig.KeymapValue>
+
 --- @class agentic.UserConfig
 local ConfigDefault = {
     --- Enable printing debug messages which can be read via `:messages`
@@ -37,6 +47,7 @@ local ConfigDefault = {
             command = "codex-acp",
             args = {},
             env = {
+                NODE_NO_WARNINGS = "1",
                 IS_AI_TERMINAL = "1",
             },
         },
@@ -60,6 +71,35 @@ local ConfigDefault = {
         },
     },
 
+    --- Custom actions to be used with keymaps
+    --- @class agentic.UserConfig.Actions
+    actions = {},
+
+    --- @type agentic.UserConfig.Keymaps
+    keymaps = {
+        --- Keys bindings for ALL buffers in the widget
+        widget = {
+            close = "q",
+            change_mode = {
+                {
+                    "<S-Tab>",
+                    mode = { "i", "n", "v" },
+                },
+            },
+        },
+
+        --- Keys bindings for the prompt buffer
+        prompt = {
+            submit = {
+                "<CR>",
+                {
+                    "<C-s>",
+                    mode = { "i", "v" },
+                },
+            },
+        },
+    },
+
     -- stylua: ignore start
     --- @class agentic.UserConfig.SpinnerChars
     --- @field generating string[]
@@ -74,6 +114,7 @@ local ConfigDefault = {
     },
     -- stylua: ignore end
 
+    --- Icons used to identify tool call states
     --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",

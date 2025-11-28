@@ -51,7 +51,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
 
-    self.buf_nrs = self:_initialize()
+    self:_initialize()
 
     return self
 end
@@ -234,38 +234,15 @@ function ChatWidget:move_cursor_to(winid, callback)
     end)
 end
 
---- @return agentic.ui.ChatWidget.BufNrs
 function ChatWidget:_initialize()
-    local buf_nrs = self:_create_buf_nrs()
+    self.buf_nrs = self:_create_buf_nrs()
 
-    BufHelpers.keymap_set(buf_nrs.input, { "n", "i", "v" }, "<C-s>", function()
-        self:_submit_input()
-    end)
-
-    for _, bufnr in pairs(buf_nrs) do
-        BufHelpers.keymap_set(bufnr, "n", "q", function()
-            self:hide()
-        end)
-    end
-
-    BufHelpers.keymap_set(buf_nrs.chat, "n", "q", function()
-        self:hide()
-    end)
-
-    -- Add keybindings to chat buffer to jump back to input and start insert mode
-    for _, key in ipairs({ "a", "A", "o", "O", "i", "I", "c", "C" }) do
-        BufHelpers.keymap_set(buf_nrs.chat, "n", key, function()
-            self:move_cursor_to(
-                self.win_nrs.input,
-                BufHelpers.start_insert_on_last_char
-            )
-        end)
-    end
+    self:_bind_keymaps()
 
     -- I only want to trigger a full close of the chat widget when closing the chat or the input buffers, the others are auxiliary
     for _, bufnr in ipairs({
-        buf_nrs.chat,
-        buf_nrs.input,
+        self.buf_nrs.chat,
+        self.buf_nrs.input,
     }) do
         vim.api.nvim_create_autocmd("BufWinLeave", {
             buffer = bufnr,
@@ -275,9 +252,63 @@ function ChatWidget:_initialize()
         })
     end
 
-    vim.b[buf_nrs.input].completion = false
+    vim.b[self.buf_nrs.input].completion = false
+end
 
-    return buf_nrs
+function ChatWidget:_bind_keymaps()
+    local submit = Config.keymaps.prompt.submit
+
+    if type(submit) == "string" then
+        submit = { submit }
+    end
+
+    for _, key in ipairs(submit) do
+        local modes = "n"
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            key = key[1]
+        end
+
+        BufHelpers.keymap_set(self.buf_nrs.input, modes, key, function()
+            self:_submit_input()
+        end, {
+            desc = "Agentic: Submit prompt",
+        })
+    end
+
+    local close = Config.keymaps.widget.close
+
+    if type(close) == "string" then
+        close = { close }
+    end
+
+    for _, key in ipairs(close) do
+        local modes = "n"
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            key = key[1]
+        end
+
+        for _, bufnr in pairs(self.buf_nrs) do
+            BufHelpers.keymap_set(bufnr, modes, key, function()
+                self:hide()
+            end, {
+                desc = "Agentic: Close Chat widget",
+            })
+        end
+    end
+
+    -- Add keybindings to chat buffer to jump back to input and start insert mode
+    for _, key in ipairs({ "a", "A", "o", "O", "i", "I", "c", "C", "x", "X" }) do
+        BufHelpers.keymap_set(self.buf_nrs.chat, "n", key, function()
+            self:move_cursor_to(
+                self.win_nrs.input,
+                BufHelpers.start_insert_on_last_char
+            )
+        end)
+    end
 end
 
 --- @return agentic.ui.ChatWidget.BufNrs
