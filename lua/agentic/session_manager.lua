@@ -39,6 +39,7 @@ function SessionManager:new(tab_page_id)
     local AgentModes = require("agentic.acp.agent_modes")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
+    local FilePicker = require("agentic.acp.file_picker")
 
     self = setmetatable({
         session_id = nil,
@@ -67,6 +68,7 @@ function SessionManager:new(tab_page_id)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
     self.slash_commands = SlashCommands:new(self.widget.buf_nrs.input)
+    FilePicker.new(self.widget.buf_nrs.input)
 
     self.agent_modes = AgentModes:new(self.widget.buf_nrs, function(mode_id)
         self:_handle_mode_change(mode_id)

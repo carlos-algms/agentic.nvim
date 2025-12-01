@@ -129,6 +129,11 @@ local ConfigDefault = {
         reject_once = "",
         reject_always = "󰜺",
     },
+
+    --- @class agentic.UserConfig.FilePicker
+    file_picker = {
+        enabled = true,
+    },
 }
 
 return ConfigDefault

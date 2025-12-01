@@ -36,6 +36,8 @@ https://github.com/user-attachments/assets/4b33bb18-95f7-4fea-bc12-9a9208823911
   fuzzy filtering
   - Every slash command your provider has access too will apear when you type
     `/` in the prompt as the first character
+- **📁 File Picker** - Type `@` to trigger autocomplete for workspace files
+  - Reference multiple files: `@file1.lua @file2.lua`
 - **🔄 Agent Mode Switching** - Switch between ACP-supported agent modes with
   Shift-Tab (Similar to Claude, Gemini, Cursor-agent, etc)
   - `Default`, `Auto Accept`, `Plan mode`, etc... (depends on the provider)
@@ -198,6 +200,10 @@ Click to expand:
     allow_always = "",
     reject_once = "",
     reject_always = "󰜺",
+  },
+
+  file_picker = {
+    enabled = true,   -- Enable @ file completion in the input prompt buffer
   }
 }
 ```
@@ -305,6 +311,16 @@ auto-completion.
 
 The `/new` command is always available to start a new session, other commands
 are provided by your ACP provider.
+
+### File Picker
+
+Type `@` in the Prompt buffer to trigger file path completion:
+
+- **Automatic scanning**: Uses `rg`, `fd`, `git ls-files`, or glob fallback
+- **Fuzzy filtering**: Neovim's native completion handles filtering
+- **Multiple files**: Reference multiple files in one prompt:
+  `@file1.lua @file2.lua`
+- **Smart paths**: Shows relative paths from git root or current directory
 
 ### System Information
 
