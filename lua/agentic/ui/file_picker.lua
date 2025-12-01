@@ -2,7 +2,7 @@ local FileSystem = require("agentic.utils.file_system")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
---- @class agentic.acp.FilePicker
+--- @class agentic.ui.FilePicker
 --- @field _files table[]
 local FilePicker = {}
 FilePicker.__index = FilePicker
@@ -11,13 +11,13 @@ FilePicker.__index = FilePicker
 local instances_by_buffer = setmetatable({}, { __mode = "v" })
 
 --- @param bufnr number
---- @return agentic.acp.FilePicker|nil
+--- @return agentic.ui.FilePicker|nil
 function FilePicker.new(bufnr)
     if not Config.file_picker.enabled then
         return nil
     end
 
-    --- @type agentic.acp.FilePicker
+    --- @type agentic.ui.FilePicker
     local instance = setmetatable({ _files = {} }, FilePicker)
     instance:_setup_completion(bufnr)
     return instance
@@ -27,7 +27,7 @@ end
 --- @param bufnr number
 function FilePicker:_setup_completion(bufnr)
     vim.bo[bufnr].omnifunc =
-        "v:lua.require'agentic.acp.file_picker'._complete_func"
+        "v:lua.require'agentic.ui.file_picker'._complete_func"
     vim.bo[bufnr].iskeyword = vim.bo[bufnr].iskeyword .. ",@"
     instances_by_buffer[bufnr] = self
 
@@ -62,7 +62,6 @@ function FilePicker:_setup_completion(bufnr)
                 or before_cursor:match("[%s]@[^%s]*$")
 
             if at_match then
-                -- Find @ position
                 local at_pos = before_cursor:reverse():find("@")
                 local current_pos = cursor[2] - at_pos
 
@@ -72,9 +71,9 @@ function FilePicker:_setup_completion(bufnr)
                     self:_scan_files()
                 end
 
-                -- Set popup menu width to 50% of editor width
+                -- Set popup menu width a % of editor width
                 -- Neovim will auto-reposition ("nudge") the menu to fit on screen
-                vim.opt_local.pumwidth = math.floor(vim.o.columns * 0.5)
+                vim.opt_local.pumwidth = math.floor(vim.o.columns * 0.6)
 
                 vim.api.nvim_feedkeys(
                     vim.api.nvim_replace_termcodes(
@@ -87,7 +86,6 @@ function FilePicker:_setup_completion(bufnr)
                     false
                 )
             else
-                -- Reset when @ context is left
                 last_at_pos = nil
             end
         end,
@@ -125,14 +123,15 @@ function FilePicker:_scan_files()
                     })
                 end
             end
+
             self._files = files
-            Logger.debug("[FilePicker] Parsed", #files, "files")
         end
     else
         Logger.debug("[FilePicker] Using glob fallback (synchronous)")
         local files = {}
         local glob_files = vim.fn.glob(scan_root .. "/**/*", false, true)
         Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
+
         for _, path in ipairs(glob_files) do
             if
                 vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path)
@@ -146,14 +145,13 @@ function FilePicker:_scan_files()
                 })
             end
         end
+
         self._files = files
-        Logger.debug("[FilePicker] Glob scan completed, files:", #files)
     end
 end
 
---- Builds the most efficient file scanning command available
 --- @param scan_root string
---- @return table|nil command Command parts table for jobstart or nil for glob fallback
+--- @return table|nil command
 function FilePicker:_build_scan_command(scan_root)
     if vim.fn.executable("rg") == 1 then
         return {
@@ -185,7 +183,7 @@ function FilePicker:_build_scan_command(scan_root)
     end
 
     if vim.fn.executable("git") == 1 then
-        local git_check = vim.fn.system("git rev-parse --git-dir 2>/dev/null")
+        local _ = vim.fn.system("git rev-parse --git-dir 2>/dev/null")
         if vim.v.shell_error == 0 then
             return { "git", "ls-files", "-co", "--exclude-standard" }
         end
@@ -194,18 +192,42 @@ function FilePicker:_build_scan_command(scan_root)
     return nil
 end
 
---- Checks if path should be excluded from completion
+--- used exclusively with glob fallback to exclude common unwanted files
+local exclude_patterns = {
+    "%.git/",
+    "node_modules/",
+    "%.pyc$",
+    "%.swp$",
+    "__pycache__/",
+    "dist/",
+    "build/",
+    "vendor/",
+    "%.next/",
+    -- Java/JVM
+    "target/",
+    "%.gradle/",
+    "%.m2/",
+    -- Ruby
+    "%.bundle/",
+    -- Build/Cache
+    "%.cache/",
+    ".turbo/",
+    "out/",
+    -- Coverage
+    "coverage/",
+    ".nyc_output/",
+    -- Package managers
+    "%.npm/",
+    "%.yarn/",
+    "%.pnpm%-store/",
+    "bower_components/",
+}
+
+--- Checks if path should be excluded from the file list
+--- Necessary when using glob fallback, since it can't exclude files
 --- @param path string
 --- @return boolean
 function FilePicker:_should_exclude(path)
-    local exclude_patterns = {
-        "%.git/",
-        "node_modules/",
-        "%.pyc$",
-        "%.swp$",
-        "__pycache__/",
-    }
-
     for _, pattern in ipairs(exclude_patterns) do
         if path:match(pattern) then
             return true
@@ -227,26 +249,22 @@ end
 
 --- Omnifunc completion function (called by Neovim)
 --- @param findstart number 1 for finding start position, 0 for returning matches
---- @param base string The text to complete
+--- @param _base string The text to complete
 --- @return number|table
-function FilePicker._complete_func(findstart, base)
+function FilePicker._complete_func(findstart, _base)
     if findstart == 1 then
-        Logger.debug("[FilePicker] omnifunc findstart phase")
         local line = vim.api.nvim_get_current_line()
         local cursor = vim.api.nvim_win_get_cursor(0)
         local before_cursor = line:sub(1, cursor[2])
 
-        -- Find the @ position
         local at_pos = before_cursor:reverse():find("@")
         if at_pos then
             local start_col = cursor[2] - at_pos
-            Logger.debug("[FilePicker] Found @ at column:", start_col)
             return start_col
         end
-        Logger.debug("[FilePicker] No @ found, canceling completion")
-        return -3 -- Cancel completion
+        -- Return -3: Cancel silently and leave completion mode (see :h complete-functions)
+        return -3
     else
-        Logger.debug("[FilePicker] omnifunc returning matches for base:", base)
         local bufnr = vim.api.nvim_get_current_buf()
         local instance = instances_by_buffer[bufnr]
         if not instance then
@@ -254,7 +272,6 @@ function FilePicker._complete_func(findstart, base)
             return {}
         end
 
-        Logger.debug("[FilePicker] Returning", #instance._files, "files")
         -- Return all files - Neovim handles fuzzy filtering
         return instance._files
     end

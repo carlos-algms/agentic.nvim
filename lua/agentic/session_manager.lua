@@ -39,7 +39,7 @@ function SessionManager:new(tab_page_id)
     local AgentModes = require("agentic.acp.agent_modes")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
-    local FilePicker = require("agentic.acp.file_picker")
+    local FilePicker = require("agentic.ui.file_picker")
 
     self = setmetatable({
         session_id = nil,

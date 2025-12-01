@@ -314,13 +314,16 @@ are provided by your ACP provider.
 
 ### File Picker
 
-Type `@` in the Prompt buffer to trigger file path completion:
+You can reference and add files to the context by typing `@` in the Prompt.  
+It will trigger the native Neovim completion menu with a list of all files in
+the current workspace.
 
-- **Automatic scanning**: Uses `rg`, `fd`, `git ls-files`, or glob fallback
-- **Fuzzy filtering**: Neovim's native completion handles filtering
-- **Multiple files**: Reference multiple files in one prompt:
+- **Automatic scanning**: Uses `rg`, `fd`, `git ls-files`, or lua globs as
+  fallback
+- **Fuzzy filtering**: uses Neovim's native completion to filter results as you
+  type
+- **Multiple files**: You can reference multiple files in one prompt:
   `@file1.lua @file2.lua`
-- **Smart paths**: Shows relative paths from git root or current directory
 
 ### System Information
 
