@@ -264,14 +264,19 @@ function ChatWidget:_bind_keymaps()
     end
 
     for _, key in ipairs(submit) do
+        --- @type string|string[]
         local modes = "n"
+        --- @type string
+        local keymap
 
         if type(key) == "table" and key.mode then
             modes = key.mode
-            key = key[1]
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
         end
 
-        BufHelpers.keymap_set(self.buf_nrs.input, modes, key, function()
+        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
             self:_submit_input()
         end, {
             desc = "Agentic: Submit prompt",
@@ -285,15 +290,20 @@ function ChatWidget:_bind_keymaps()
     end
 
     for _, key in ipairs(close) do
+        --- @type string|string[]
         local modes = "n"
+        --- @type string
+        local keymap
 
         if type(key) == "table" and key.mode then
             modes = key.mode
-            key = key[1]
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
         end
 
         for _, bufnr in pairs(self.buf_nrs) do
-            BufHelpers.keymap_set(bufnr, modes, key, function()
+            BufHelpers.keymap_set(bufnr, modes, keymap, function()
                 self:hide()
             end, {
                 desc = "Agentic: Close Chat widget",

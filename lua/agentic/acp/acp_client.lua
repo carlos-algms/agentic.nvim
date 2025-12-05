@@ -19,6 +19,7 @@ DO NOT REMOVE them. Only update them if the underlying types change.
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
 local ACPClient = {}
+ACPClient.__index = ACPClient
 
 --- ACP Error codes
 ACPClient.ERROR_CODES = {
@@ -59,7 +60,7 @@ function ACPClient:new(config, on_ready)
         _on_ready = on_ready,
     }
 
-    local client = setmetatable(instance, { __index = self }) --[[@as agentic.acp.ACPClient]]
+    local client = setmetatable(instance, self)
 
     client:_setup_transport()
     client:_connect()
@@ -124,11 +125,12 @@ function ACPClient:_set_state(state)
     self.state = state
 end
 
+--- @protected
 --- @param code number
 --- @param message string
 --- @param data any?
 --- @return agentic.acp.ACPError
-function ACPClient:_create_error(code, message, data)
+function ACPClient:__create_error(code, message, data)
     return {
         code = code,
         message = message,
@@ -389,7 +391,7 @@ function ACPClient:_connect()
     self.transport:start()
 
     if self.state ~= "connected" then
-        local error = self:_create_error(
+        local error = self:__create_error(
             self.ERROR_CODES.PROTOCOL_ERROR,
             "Cannot initialize: client not connected"
         )
@@ -463,7 +465,7 @@ function ACPClient:create_session(handlers, callback)
         end
 
         if not result then
-            err = self:_create_error(
+            err = self:__create_error(
                 self.ERROR_CODES.PROTOCOL_ERROR,
                 "Failed to create session: missing result"
             )
