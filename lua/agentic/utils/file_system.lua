@@ -1,3 +1,5 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
+
 --- @class agentic.utils.FileSystem
 local FileSystem = {}
 
@@ -49,6 +51,58 @@ function FileSystem.save_to_disk(abs_path, content)
     end
 
     return false, nil
+end
+
+--- @param abs_path string
+--- @param content string
+--- @param callback fun(error: string|nil)
+function FileSystem.write_file(abs_path, content, callback)
+    local saved = FileSystem.save_to_disk(abs_path, content)
+
+    if saved then
+        local bufnr = vim.fn.bufnr(FileSystem.to_absolute_path(abs_path))
+
+        if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
+            pcall(function()
+                BufHelpers.execute_on_buffer(bufnr, function()
+                    local view = vim.fn.winsaveview()
+                    vim.cmd("checktime")
+                    vim.fn.winrestview(view)
+                end)
+            end)
+        end
+
+        callback(nil)
+        return
+    end
+
+    callback("Failed to write file: " .. abs_path)
+end
+
+--- @param abs_path string
+--- @param line integer|nil
+--- @param limit integer|nil
+--- @param callback fun(content: string|nil)
+function FileSystem.read_file(abs_path, line, limit, callback)
+    local lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
+    lines = lines or {}
+
+    if err ~= nil then
+        vim.notify(
+            "Agent file read error: " .. err,
+            vim.log.levels.ERROR,
+            { title = " Read file error" }
+        )
+        callback(nil)
+        return
+    end
+
+    if line ~= nil and limit ~= nil then
+        lines = vim.list_slice(lines, line, line + limit)
+    end
+
+    local content = table.concat(lines, "\n")
+    callback(content)
 end
 
 --- @param path string

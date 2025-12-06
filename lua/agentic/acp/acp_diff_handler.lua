@@ -1,5 +1,3 @@
-local P = {}
-
 ---@class agentic.DiffHandler.DiffBlock
 ---@field start_line integer
 ---@field end_line integer
@@ -23,52 +21,45 @@ function M.has_diff_content(tool_call)
         and tool_call.rawInput.new_string ~= nil
 end
 
----@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
----@return table<string, agentic.DiffHandler.DiffBlock[]> diff_blocks_by_file Maps file path to list of diff blocks
-function M.extract_diff_blocks(tool_call)
-    ---@type table<string, agentic.DiffHandler.DiffBlock[]>
-    local diff_blocks_by_file = {}
-
-    local path = tool_call.rawInput.file_path
-    local oldText = tool_call.rawInput.old_string
-    local newText = tool_call.rawInput.new_string
-
-    -- Default replace_all to true if not specified, unless explicitly false
-    local replace_all = tool_call.rawInput.replace_all ~= false
+--- @param path string
+--- @param oldText string[]
+--- @param newText string[]
+--- @param replace_all boolean|nil
+--- @return agentic.DiffHandler.DiffBlock[] diff_blocks Maps file path to list of diff blocks
+function M.extract_diff_blocks(path, oldText, newText, replace_all)
+    ---@type agentic.DiffHandler.DiffBlock[]
+    local diff_blocks = {}
 
     if not path or not newText then
-        return diff_blocks_by_file
+        return diff_blocks
     end
 
     if not oldText or oldText == "" then
-        local new_lines = P._normalize_text_to_lines(newText)
-        P._add_diff_block(
-            diff_blocks_by_file,
-            path,
-            P._create_new_file_diff_block(new_lines)
-        )
+        local new_lines = M._normalize_text_to_lines(newText)
+        table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
-        local old_lines = P._normalize_text_to_lines(oldText)
-        local new_lines = P._normalize_text_to_lines(newText)
+        local old_lines = M._normalize_text_to_lines(oldText)
+        local new_lines = M._normalize_text_to_lines(newText)
 
         local abs_path = FileSystem.to_absolute_path(path)
         local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
 
         local blocks =
-            P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+            M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+
         if blocks then
             if replace_all then
                 for _, block in ipairs(blocks) do
-                    P._add_diff_block(diff_blocks_by_file, path, block)
+                    table.insert(diff_blocks, block)
                 end
             else
                 -- Only use the first match if replace_all is false
-                P._add_diff_block(diff_blocks_by_file, path, blocks[1])
+                table.insert(diff_blocks, blocks[1])
             end
         else
             Logger.debug("[ACP diff] Failed to locate diff", { path = path })
             -- Fallback: display the diff even if we can't match it
-            P._add_diff_block(diff_blocks_by_file, path, {
+            table.insert(diff_blocks, {
                 start_line = 1,
                 end_line = #old_lines,
                 old_lines = old_lines,
@@ -77,20 +68,15 @@ function M.extract_diff_blocks(tool_call)
         end
     end
 
-    for file_path, diff_blocks in pairs(diff_blocks_by_file) do
-        table.sort(diff_blocks, function(a, b)
-            return a.start_line < b.start_line
-        end)
-        diff_blocks_by_file[file_path] = P._minimize_diff_blocks(diff_blocks)
-    end
+    diff_blocks = vim.tbl_map(M._minimize_diff_blocks, diff_blocks)
 
-    return diff_blocks_by_file
+    return diff_blocks
 end
 
 ---Minimize diff blocks by removing unchanged lines using vim.diff
 ---@param diff_blocks agentic.DiffHandler.DiffBlock[]
 ---@return agentic.DiffHandler.DiffBlock[]
-function P._minimize_diff_blocks(diff_blocks)
+function M._minimize_diff_blocks(diff_blocks)
     ---@type agentic.DiffHandler.DiffBlock[]
     local minimized = {}
 
@@ -155,7 +141,7 @@ end
 ---Create a diff block for a new file
 ---@param new_lines string[]
 ---@return agentic.DiffHandler.DiffBlock
-function P._create_new_file_diff_block(new_lines)
+function M._create_new_file_diff_block(new_lines)
     local line_count = #new_lines
 
     ---@type agentic.DiffHandler.DiffBlock
@@ -170,9 +156,9 @@ function P._create_new_file_diff_block(new_lines)
 end
 
 ---Normalize text to lines array, handling nil and vim.NIL
----@param text string|nil
+---@param text string|string[]|nil
 ---@return string[]
-function P._normalize_text_to_lines(text)
+function M._normalize_text_to_lines(text)
     if not text or text == "" or text == vim.NIL then
         return {}
     end
@@ -181,16 +167,7 @@ function P._normalize_text_to_lines(text)
         return vim.split(text, "\n")
     end
 
-    return {}
-end
-
----Add a diff block to the collection, ensuring the path array exists
----@param diff_blocks_by_file table<string, agentic.DiffHandler.DiffBlock[]>
----@param path string
----@param diff_block agentic.DiffHandler.DiffBlock
-function P._add_diff_block(diff_blocks_by_file, path, diff_block)
-    diff_blocks_by_file[path] = diff_blocks_by_file[path] or {}
-    table.insert(diff_blocks_by_file[path], diff_block)
+    return text
 end
 
 ---Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
@@ -198,7 +175,7 @@ end
 ---@param old_lines string[] Old text lines
 ---@param new_lines string[] New text lines
 ---@return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
+function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
     -- Find all matches using fuzzy matching
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
@@ -223,7 +200,7 @@ function P._match_or_substring_fallback(file_lines, old_lines, new_lines)
 
     -- Fallback to substring replacement for single-line cases
     if #old_lines == 1 and #new_lines == 1 then
-        local blocks = P._find_substring_replacements(
+        local blocks = M._find_substring_replacements(
             file_lines,
             old_lines[1],
             new_lines[1]
@@ -240,7 +217,7 @@ end
 ---@param search_text string Text to search for
 ---@param replace_text string Text to replace with
 ---@return agentic.DiffHandler.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
-function P._find_substring_replacements(file_lines, search_text, replace_text)
+function M._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
 
     for line_idx, line_content in ipairs(file_lines) do

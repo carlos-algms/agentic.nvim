@@ -4,7 +4,6 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
-local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
 
@@ -114,8 +113,6 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
-    elseif update.sessionUpdate == "tool_call" then
-        self.message_writer:write_tool_call_block(update)
     elseif update.sessionUpdate == "tool_call_update" then
         self.message_writer:update_tool_call_block(update)
 
@@ -368,16 +365,12 @@ function SessionManager:new_session()
             )
         end,
 
-        on_read_file = function(...)
-            P.on_read_file(...)
-        end,
-
-        on_write_file = function(...)
-            P.on_write_file(...)
-        end,
-
         on_session_update = function(update)
             self:_on_session_update(update)
+        end,
+
+        on_tool_call = function(tool_call)
+            self.message_writer:write_tool_call_block(tool_call)
         end,
 
         on_request_permission = function(request, callback)
@@ -484,53 +477,6 @@ function SessionManager:add_file_to_session(buf)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
     return self.file_list:add(buf_path)
-end
-
---- @type agentic.acp.ClientHandlers.on_read_file
-function P.on_read_file(abs_path, line, limit, callback)
-    local lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
-    lines = lines or {}
-
-    if err ~= nil then
-        vim.notify(
-            "Agent file read error: " .. err,
-            vim.log.levels.ERROR,
-            { title = " Read file error" }
-        )
-        callback(nil)
-        return
-    end
-
-    if line ~= nil and limit ~= nil then
-        lines = vim.list_slice(lines, line, line + limit)
-    end
-
-    local content = table.concat(lines, "\n")
-    callback(content)
-end
-
---- @type agentic.acp.ClientHandlers.on_write_file
-function P.on_write_file(abs_path, content, callback)
-    local saved = FileSystem.save_to_disk(abs_path, content)
-
-    if saved then
-        local bufnr = vim.fn.bufnr(FileSystem.to_absolute_path(abs_path))
-
-        if bufnr ~= -1 and vim.api.nvim_buf_is_valid(bufnr) then
-            pcall(function()
-                BufHelpers.execute_on_buffer(bufnr, function()
-                    local view = vim.fn.winsaveview()
-                    vim.cmd("checktime")
-                    vim.fn.winrestview(view)
-                end)
-            end)
-        end
-
-        callback(nil)
-        return
-    end
-
-    callback("Failed to write file: " .. abs_path)
 end
 
 function SessionManager:_get_system_info()

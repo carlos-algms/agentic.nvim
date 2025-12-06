@@ -73,9 +73,10 @@ function ACPClient:_subscribe(session_id, handlers)
     self.subscribers[session_id] = handlers
 end
 
+--- @protected
 --- @param session_id string
 --- @return agentic.acp.ClientHandlers|nil
-function ACPClient:_get_subscriber(session_id)
+function ACPClient:__get_subscriber(session_id)
     return self.subscribers[session_id]
 end
 
@@ -241,7 +242,7 @@ end
 --- @param params table
 function ACPClient:_handle_notification(message_id, method, params)
     if method == "session/update" then
-        self:_handle_session_update(params)
+        self:__handle_session_update(params)
     elseif method == "session/request_permission" then
         --- @diagnostic disable-next-line: param-type-mismatch
         self:_handle_request_permission(message_id, params)
@@ -257,8 +258,9 @@ function ACPClient:_handle_notification(message_id, method, params)
     end
 end
 
+--- @protected
 --- @param params table
-function ACPClient:_handle_session_update(params)
+function ACPClient:__handle_session_update(params)
     local session_id = params.sessionId
     local update = params.update
 
@@ -278,7 +280,7 @@ function ACPClient:_handle_session_update(params)
         return
     end
 
-    local subscriber = self:_get_subscriber(session_id)
+    local subscriber = self:__get_subscriber(session_id)
     if not subscriber then
         Logger.debug("No subscriber found for session_id: " .. session_id)
         return
@@ -298,7 +300,7 @@ function ACPClient:_handle_request_permission(message_id, request)
     end
 
     local session_id = request.sessionId
-    local subscriber = self:_get_subscriber(session_id)
+    local subscriber = self:__get_subscriber(session_id)
     if not subscriber then
         Logger.debug("No subscriber found for session_id: " .. session_id)
         return
@@ -333,14 +335,14 @@ function ACPClient:_handle_read_text_file(message_id, params)
         return
     end
 
-    local subscriber = self:_get_subscriber(session_id)
+    local subscriber = self:__get_subscriber(session_id)
     if not subscriber then
         Logger.debug("No subscriber found for session_id: " .. session_id)
         return
     end
 
     vim.schedule(function()
-        subscriber.on_read_file(
+        FileSystem.read_file(
             path,
             params.line ~= vim.NIL and params.line or nil,
             params.limit ~= vim.NIL and params.limit or nil,
@@ -366,14 +368,14 @@ function ACPClient:_handle_write_text_file(message_id, params)
         return
     end
 
-    local subscriber = self:_get_subscriber(session_id)
+    local subscriber = self:__get_subscriber(session_id)
     if not subscriber then
         Logger.debug("No subscriber found for session_id: " .. session_id)
         return
     end
 
     vim.schedule(function()
-        subscriber.on_write_file(path, content, function(error)
+        FileSystem.write_file(path, content, function(error)
             self:_send_result(message_id, error == nil and vim.NIL or error)
         end)
     end)
@@ -661,15 +663,40 @@ return ACPClient
 --- @field name string
 --- @field value string
 
---- @alias agentic.acp.StopReason "end_turn" | "max_tokens" | "max_turn_requests" | "refusal" | "cancelled"
+--- @alias agentic.acp.StopReason
+--- | "end_turn"
+--- | "max_tokens"
+--- | "max_turn_requests"
+--- | "refusal"
+--- | "cancelled"
 
---- @alias agentic.acp.ToolKind "read" | "edit" | "delete" | "move" | "search" | "execute" | "think" | "fetch" | "other"
+--- @alias agentic.acp.ToolKind
+--- | "read"
+--- | "edit"
+--- | "delete"
+--- | "move"
+--- | "search"
+--- | "execute"
+--- | "think"
+--- | "fetch"
+--- | "WebSearch"
+--- | "other"
 
---- @alias agentic.acp.ToolCallStatus "pending" | "in_progress" | "completed" | "failed"
+--- @alias agentic.acp.ToolCallStatus
+--- | "pending"
+--- | "in_progress"
+--- | "completed"
+--- | "failed"
 
---- @alias agentic.acp.PlanEntryStatus "pending" | "in_progress" | "completed"
+--- @alias agentic.acp.PlanEntryStatus
+--- | "pending"
+--- | "in_progress"
+--- | "completed"
 
---- @alias agentic.acp.PlanEntryPriority "high" | "medium" | "low"
+--- @alias agentic.acp.PlanEntryPriority
+--- | "high"
+--- | "medium"
+--- | "low"
 
 --- @class agentic.acp.TextContent
 --- @field type "text"
@@ -741,6 +768,8 @@ return ACPClient
 ---   query?: string|nil|vim.NIL,
 ---   type?: string|nil }[] First seem from Codex
 
+--- FIXIT: this might be wrong, it might need to be merged ti ToolCallMessage
+---
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string
 --- @field rawInput? agentic.acp.RawInput
@@ -813,8 +842,8 @@ return ACPClient
 --- @class agentic.acp.ToolCallMessage
 --- @field sessionUpdate "tool_call"
 --- @field toolCallId string
---- @field title? string most likely the command to be executed
---- @field kind? agentic.acp.ToolKind
+--- @field title string most likely the command to be executed
+--- @field kind agentic.acp.ToolKind
 --- @field status agentic.acp.ToolCallStatus
 --- @field content? agentic.acp.ACPToolCallContent[]
 --- @field locations? agentic.acp.ToolCallLocation[]
@@ -868,8 +897,6 @@ return ACPClient
 
 --- @alias agentic.acp.ClientHandlers.on_session_update fun(update: agentic.acp.SessionUpdateMessage): nil
 --- @alias agentic.acp.ClientHandlers.on_request_permission fun(request: agentic.acp.RequestPermission, callback: fun(option_id: string | nil)): nil
---- @alias agentic.acp.ClientHandlers.on_read_file fun(path: string, line: integer | nil, limit: integer | nil, callback: fun(content: string|nil)): nil
---- @alias agentic.acp.ClientHandlers.on_write_file fun(path: string, content: string, callback: fun(error: string|nil)): nil
 --- @alias agentic.acp.ClientHandlers.on_error fun(err: agentic.acp.ACPError): nil
 
 --- @class agentic.Selection
@@ -883,9 +910,8 @@ return ACPClient
 --- @class agentic.acp.ClientHandlers
 --- @field on_session_update agentic.acp.ClientHandlers.on_session_update
 --- @field on_request_permission agentic.acp.ClientHandlers.on_request_permission
---- @field on_read_file agentic.acp.ClientHandlers.on_read_file
---- @field on_write_file agentic.acp.ClientHandlers.on_write_file
 --- @field on_error agentic.acp.ClientHandlers.on_error
+--- @field on_tool_call fun(tool_call: agentic.ui.MessageWriter.ToolCallBlock): nil
 
 --- @class agentic.acp.ACPProviderConfig
 --- @field name string Provider name
