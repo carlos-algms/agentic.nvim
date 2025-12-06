@@ -8,7 +8,7 @@ local M = {}
 
 ---@class agentic.acp.TransportCallbacks
 ---@field on_state_change fun(state: agentic.acp.ClientConnectionState): nil The transport state like "connecting", "connected", "disconnected", "error"
----@field on_message fun(message: table): nil
+---@field on_message fun(message: agentic.acp.ResponseRaw): nil
 ---@field on_reconnect fun(): nil
 
 ---@class agentic.acp.StdioTransportConfig

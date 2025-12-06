@@ -217,11 +217,15 @@ function ACPClient:_send_error(id, message, code)
 end
 
 --- Handles raw JSON-RPC message received from the transport
---- @param message table
+--- @param message agentic.acp.ResponseRaw
 function ACPClient:_handle_message(message)
     -- NOT log agent messages chunk to avoid huge logs file
     if
-        not (message.params and message.sessionUpdate == "agent_message_chunk")
+        not (
+            message.params
+            and message.params.update
+            and message.params.update.sessionUpdate == "agent_message_chunk"
+        )
     then
         Logger.debug_to_file(self.provider_config.name, "response: ", message)
     end
@@ -817,6 +821,14 @@ return ACPClient
 --- @field sessionId string
 --- @field modes agentic.acp.ModesInfo|nil
 --- @field models agentic.acp.ModelsInfo|nil
+
+--- @class agentic.acp.ResponseRaw
+--- @field id number|nil
+--- @field jsonrpc string
+--- @field method string
+--- @field result table|nil
+--- @field params { sessionId: string, update: agentic.acp.SessionUpdateMessage }|nil
+--- @field error agentic.acp.ACPError|nil
 
 --- @class agentic.acp.UserMessageChunk
 --- @field sessionUpdate "user_message_chunk"
