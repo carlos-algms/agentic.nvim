@@ -22,23 +22,25 @@ end
 
 --- @param params table
 function ClaudeACPAdapter:__handle_session_update(params)
-    if params.update.sessionUpdate ~= "tool_call" then
+    if params.update.sessionUpdate == "tool_call" then
+        self:_handle_tool_call(params.sessionId, params.update)
+    else
         ACPClient.__handle_session_update(self, params)
-        return
     end
+end
 
-    local update = params.update --[[@as agentic.acp.ToolCallMessage]]
-
+--- @param session_id string
+--- @param update agentic.acp.ToolCallMessage
+function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     -- expected state, claude is sending an empty content first, followed by the actual content
     if vim.tbl_isempty(update.content) then
         return
     end
 
-    local session_id = params.sessionId
-
     local kind = update.kind
     local status = update.status
     local argument
+    -- FIXIT: check if some tool calls have body
 
     if kind == "read" or kind == "edit" then
         argument = FileSystem.to_smart_path(update.rawInput.file_path)
