@@ -113,21 +113,6 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "agent_thought_chunk" then
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
-    elseif update.sessionUpdate == "tool_call_update" then
-        self.message_writer:update_tool_call_block(update)
-
-        if update.status == "failed" then
-            self.permission_manager:remove_request_by_tool_call_id(
-                update.toolCallId
-            )
-
-            if
-                not self.permission_manager.current_request
-                and #self.permission_manager.queue == 0
-            then
-                self.status_animation:start("generating")
-            end
-        end
     elseif update.sessionUpdate == "available_commands_update" then
         self.slash_commands:setCommands(update.availableCommands)
         Logger.debug(
@@ -371,6 +356,23 @@ function SessionManager:new_session()
 
         on_tool_call = function(tool_call)
             self.message_writer:write_tool_call_block(tool_call)
+        end,
+
+        on_tool_call_update = function(tool_call_update)
+            self.message_writer:update_tool_call_block(tool_call_update)
+
+            if tool_call_update.status == "failed" then
+                self.permission_manager:remove_request_by_tool_call_id(
+                    tool_call_update.tool_call_id
+                )
+
+                if
+                    not self.permission_manager.current_request
+                    and #self.permission_manager.queue == 0
+                then
+                    self.status_animation:start("generating")
+                end
+            end
         end,
 
         on_request_permission = function(request, callback)

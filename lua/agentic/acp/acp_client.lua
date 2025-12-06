@@ -75,9 +75,18 @@ end
 
 --- @protected
 --- @param session_id string
---- @return agentic.acp.ClientHandlers|nil
-function ACPClient:__get_subscriber(session_id)
-    return self.subscribers[session_id]
+--- @param callback fun(sub: agentic.acp.ClientHandlers): nil
+function ACPClient:__with_subscriber(session_id, callback)
+    local subscriber = self.subscribers[session_id]
+
+    if not subscriber then
+        Logger.debug("No subscriber found for session_id: " .. session_id)
+        return
+    end
+
+    vim.schedule(function()
+        callback(subscriber)
+    end)
 end
 
 function ACPClient:_setup_transport()
@@ -210,7 +219,12 @@ end
 --- Handles raw JSON-RPC message received from the transport
 --- @param message table
 function ACPClient:_handle_message(message)
-    Logger.debug_to_file(self.provider_config.name, "response: ", message)
+    -- NOT log agent messages chunk to avoid huge logs file
+    if
+        not (message.params and message.sessionUpdate == "agent_message_chunk")
+    then
+        Logger.debug_to_file(self.provider_config.name, "response: ", message)
+    end
 
     -- Check if this is a notification (has method but no id, or has both method and id for notifications)
     if message.method and not message.result and not message.error then
@@ -280,13 +294,7 @@ function ACPClient:__handle_session_update(params)
         return
     end
 
-    local subscriber = self:__get_subscriber(session_id)
-    if not subscriber then
-        Logger.debug("No subscriber found for session_id: " .. session_id)
-        return
-    end
-
-    vim.schedule(function()
+    self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_session_update(update)
     end)
 end
@@ -300,13 +308,8 @@ function ACPClient:_handle_request_permission(message_id, request)
     end
 
     local session_id = request.sessionId
-    local subscriber = self:__get_subscriber(session_id)
-    if not subscriber then
-        Logger.debug("No subscriber found for session_id: " .. session_id)
-        return
-    end
 
-    vim.schedule(function()
+    self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_request_permission(request, function(option_id)
             self:_send_result(
                 message_id,
@@ -335,13 +338,7 @@ function ACPClient:_handle_read_text_file(message_id, params)
         return
     end
 
-    local subscriber = self:__get_subscriber(session_id)
-    if not subscriber then
-        Logger.debug("No subscriber found for session_id: " .. session_id)
-        return
-    end
-
-    vim.schedule(function()
+    self:__with_subscriber(session_id, function()
         FileSystem.read_file(
             path,
             params.line ~= vim.NIL and params.line or nil,
@@ -368,13 +365,7 @@ function ACPClient:_handle_write_text_file(message_id, params)
         return
     end
 
-    local subscriber = self:__get_subscriber(session_id)
-    if not subscriber then
-        Logger.debug("No subscriber found for session_id: " .. session_id)
-        return
-    end
-
-    vim.schedule(function()
+    self:__with_subscriber(session_id, function()
         FileSystem.write_file(path, content, function(error)
             self:_send_result(message_id, error == nil and vim.NIL or error)
         end)
@@ -853,9 +844,9 @@ return ACPClient
 
 --- @class agentic.acp.ToolCallUpdate
 --- @field sessionUpdate "tool_call_update"
---- @field status agentic.acp.ToolCallStatus
---- @field content agentic.acp.ACPToolCallContent[]
 --- @field toolCallId string
+--- @field status? agentic.acp.ToolCallStatus
+--- @field content? agentic.acp.ACPToolCallContent[]
 
 --- @class agentic.acp.PlanUpdate
 --- @field sessionUpdate "plan"
@@ -912,6 +903,7 @@ return ACPClient
 --- @field on_request_permission agentic.acp.ClientHandlers.on_request_permission
 --- @field on_error agentic.acp.ClientHandlers.on_error
 --- @field on_tool_call fun(tool_call: agentic.ui.MessageWriter.ToolCallBlock): nil
+--- @field on_tool_call_update fun(tool_call: agentic.ui.MessageWriter.ToolCallBase): nil
 
 --- @class agentic.acp.ACPProviderConfig
 --- @field name string Provider name

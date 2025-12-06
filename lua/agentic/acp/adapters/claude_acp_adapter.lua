@@ -22,8 +22,12 @@ end
 
 --- @param params table
 function ClaudeACPAdapter:__handle_session_update(params)
-    if params.update.sessionUpdate == "tool_call" then
+    local type = params.update.sessionUpdate
+
+    if type == "tool_call" then
         self:_handle_tool_call(params.sessionId, params.update)
+    elseif type == "tool_call_update" then
+        self:_handle_tool_call_update(params.sessionId, params.update)
     else
         ACPClient.__handle_session_update(self, params)
     end
@@ -33,14 +37,14 @@ end
 --- @param update agentic.acp.ToolCallMessage
 function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     -- expected state, claude is sending an empty content first, followed by the actual content
-    if vim.tbl_isempty(update.content) then
+    if not update.rawInput or vim.tbl_isempty(update.rawInput) then
         return
     end
 
     local kind = update.kind
     local status = update.status
     local argument
-    -- FIXIT: check if some tool calls have body
+    -- FIXIT: edit with diff has body, Handle IT
 
     if kind == "read" or kind == "edit" then
         argument = FileSystem.to_smart_path(update.rawInput.file_path)
@@ -52,6 +56,8 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
         argument = update.rawInput.query
             or update.rawInput.url
             or "unknown fetch"
+    elseif kind == "search" then
+        argument = update.title
     else
         local command = update.rawInput.command
         if type(command) == "table" then
@@ -69,14 +75,39 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
         argument = argument,
     }
 
-    local subscriber = self:__get_subscriber(session_id)
-    if not subscriber then
-        Logger.debug("No subscriber found for session_id: " .. session_id)
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call(message)
+    end)
+end
+
+--- @param session_id string
+--- @param update agentic.acp.ToolCallUpdate
+function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
+    if not update.status then
         return
     end
 
-    vim.schedule(function()
-        subscriber.on_tool_call(message)
+    --- @type agentic.ui.MessageWriter.ToolCallBase
+    local message = {
+        tool_call_id = update.toolCallId,
+        status = update.status,
+    }
+
+    if update.content and update.content[1] then
+        local content = update.content[1]
+
+        if content.type == "content" then
+            message.body = vim.split(content.content.text, "\n")
+        else
+            Logger.debug(
+                "Unknown tool call update content type: "
+                    .. tostring(content.type)
+            )
+        end
+    end
+
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call_update(message)
     end)
 end
 

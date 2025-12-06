@@ -20,13 +20,15 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field old_line? string Original line content (for diff types)
 --- @field new_line? string Modified line content (for diff types)
 
---- @class agentic.ui.MessageWriter.ToolCallBlock
+--- @class agentic.ui.MessageWriter.ToolCallBase
 --- @field tool_call_id string
---- @field kind agentic.acp.ToolKind
---- @field argument string
 --- @field status agentic.acp.ToolCallStatus
 --- @field body string[]|nil
 --- @field diff { new: string[], old: string[], all: boolean|nil }|nil
+
+--- @class agentic.ui.MessageWriter.ToolCallBlock : agentic.ui.MessageWriter.ToolCallBase
+--- @field kind agentic.acp.ToolKind
+--- @field argument string
 --- @field extmark_id integer|nil Range extmark spanning the block
 --- @field decoration_extmark_ids integer[]|nil IDs of decoration extmarks from ExtmarkBlock
 
@@ -131,14 +133,13 @@ end
 function MessageWriter:write_tool_call_block(tool_call_block)
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local kind = tool_call_block.kind
-        local argument = ""
 
         -- Always add a leading blank line for spacing the previous message chunk
         self:_append_lines({ "" })
 
         local start_row = vim.api.nvim_buf_line_count(bufnr)
         local lines, highlight_ranges =
-            self:_prepare_block_lines(tool_call_block, kind, argument)
+            self:_prepare_block_lines(tool_call_block)
 
         self:_append_lines(lines)
 
@@ -176,7 +177,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     end)
 end
 
---- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBase
 function MessageWriter:update_tool_call_block(tool_call_block)
     local tracker = self.tool_call_blocks[tool_call_block.tool_call_id]
 
@@ -202,7 +203,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     if not pos or not pos[1] then
         Logger.debug(
             "Extmark not found",
-            { tool_call_id = tool_call_block.tool_call_id }
+            { tool_call_id = tracker.tool_call_id }
         )
         return
     end
@@ -214,7 +215,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     if not old_end_row then
         Logger.debug(
             "Could not determine end row of tool call block",
-            { tool_call_id = tool_call_block.tool_call_id, details = details }
+            { tool_call_id = tracker.tool_call_id, details = details }
         )
         return
     end
@@ -237,8 +238,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 return
             end
 
-            tracker.status = tool_call_block.status or tracker.status
-
             self:_clear_decoration_extmarks(tracker)
             tracker.decoration_extmark_ids =
                 self:_render_decorations(start_row, old_end_row)
@@ -247,7 +246,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             self:_apply_status_highlights_if_present(
                 start_row,
                 old_end_row,
-                tool_call_block.status
+                tracker.status
             )
 
             return
@@ -256,11 +255,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
         self:_clear_status_namespace(start_row, old_end_row)
 
-        local new_lines, highlight_ranges = self:_prepare_block_lines(
-            tool_call_block,
-            tracker.kind,
-            tracker.argument
-        )
+        local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
         vim.api.nvim_buf_set_lines(
             bufnr,
@@ -301,21 +296,21 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         tracker.decoration_extmark_ids =
             self:_render_decorations(start_row, new_end_row)
 
-        tracker.status = tool_call_block.status or tracker.status
         self:_apply_status_highlights_if_present(
             start_row,
             new_end_row,
-            tool_call_block.status
+            tracker.status
         )
     end)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
---- @param kind string Tool call kind (required for ToolCallUpdate)
---- @param argument string Tool call title (required for ToolCallUpdate)
 --- @return string[] lines Array of lines to render
 --- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
-function MessageWriter:_prepare_block_lines(tool_call_block, kind, argument)
+function MessageWriter:_prepare_block_lines(tool_call_block)
+    local kind = tool_call_block.kind
+    local argument = tool_call_block.argument
+
     -- FIXIT: Codex is sending multiple updates with different values, and formats, causing the blocks to get empty
     local lines = {
         string.format(" %s(%s) ", kind, argument),
@@ -326,7 +321,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block, kind, argument)
 
     if kind == "read" then
         -- Count lines from content, we don't want to show full content that was read
-        local line_count = #tool_call_block.body
+        local line_count = tool_call_block.body and #tool_call_block.body or 0
 
         if line_count > 0 then
             local info_text = string.format("Read %d lines", line_count)
