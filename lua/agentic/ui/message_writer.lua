@@ -221,15 +221,9 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     end
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        -- For blocks without diffs (read, fetch, etc.) or blocks with diffs,
+        -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
-        -- Exception: WebSearch and read need content updates when results arrive
-        local needs_content_update = tracker.body and #tracker.body > 0
-
-        if
-            not needs_content_update
-            and (tracker.diff or tracker.kind == "fetch")
-        then
+        if tracker.diff then
             if old_end_row > vim.api.nvim_buf_line_count(bufnr) then
                 Logger.debug("Footer line index out of bounds", {
                     old_end_row = old_end_row,
@@ -335,8 +329,12 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
             table.insert(highlight_ranges, range)
         end
-    elseif kind == "fetch" or kind == "WebSearch" then
-        -- Initial tool_call has rawInput with query/url
+    elseif
+        kind == "fetch"
+        or kind == "WebSearch"
+        or kind == "execute"
+        or kind == "search"
+    then
         if tool_call_block.body then
             vim.list_extend(lines, tool_call_block.body)
         end
@@ -414,6 +412,12 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         if has_fences then
             table.insert(lines, "```")
         end
+    else
+        vim.notify(
+            "Unknown tool call kind or missing diff/body: " .. kind,
+            vim.log.levels.WARN,
+            { title = "Agentic MessageWriter" }
+        )
     end
 
     table.insert(lines, "")
