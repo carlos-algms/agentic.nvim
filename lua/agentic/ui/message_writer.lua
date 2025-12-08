@@ -232,7 +232,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 return
             end
 
-            self:_clear_decoration_extmarks(tracker)
+            self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
             tracker.decoration_extmark_ids =
                 self:_render_decorations(start_row, old_end_row)
 

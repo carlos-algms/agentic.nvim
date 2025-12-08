@@ -68,7 +68,7 @@ function M.extract_diff_blocks(path, oldText, newText, replace_all)
         end
     end
 
-    diff_blocks = vim.tbl_map(M._minimize_diff_blocks, diff_blocks)
+    diff_blocks = M._minimize_diff_blocks(diff_blocks)
 
     return diff_blocks
 end
@@ -81,52 +81,69 @@ function M._minimize_diff_blocks(diff_blocks)
     local minimized = {}
 
     for _, diff_block in ipairs(diff_blocks) do
-        local old_string = table.concat(diff_block.old_lines, "\n")
-        local new_string = table.concat(diff_block.new_lines, "\n")
-
-        local patch = vim.diff(old_string, new_string, {
-            algorithm = "histogram",
-            result_type = "indices",
-            ctxlen = 5,
-        }) --[[ @as integer[][] -- needs type casting because LuaLS don't infer correctly for the 'histogram' algorithm ]]
-
-        if #patch > 0 then
-            for _, hunk in ipairs(patch) do
-                local start_a, count_a, start_b, count_b = unpack(hunk)
-                local minimized_block = {}
-
-                if count_a > 0 then
-                    local end_a =
-                        math.min(start_a + count_a - 1, #diff_block.old_lines)
-                    minimized_block.old_lines =
-                        vim.list_slice(diff_block.old_lines, start_a, end_a)
-                    minimized_block.start_line = diff_block.start_line
-                        + start_a
-                        - 1
-                    minimized_block.end_line = minimized_block.start_line
-                        + count_a
-                        - 1
-                else
-                    minimized_block.old_lines = {}
-                    -- For insertions, start_line is the position before which to insert
-                    minimized_block.start_line = diff_block.start_line + start_a
-                    minimized_block.end_line = minimized_block.start_line - 1
-                end
-                if count_b > 0 then
-                    local end_b =
-                        math.min(start_b + count_b - 1, #diff_block.new_lines)
-                    minimized_block.new_lines =
-                        vim.list_slice(diff_block.new_lines, start_b, end_b)
-                else
-                    minimized_block.new_lines = {}
-                end
-                table.insert(minimized, minimized_block)
-            end
+        -- Skip minification for already-minimal single-line blocks
+        if #diff_block.old_lines == 1 and #diff_block.new_lines == 1 then
+            table.insert(minimized, diff_block)
         else
-            -- If vim.diff returns empty patch but we have changes, include the full block
-            -- This handles edge cases where the diff algorithm doesn't detect changes
-            if old_string ~= new_string then
-                table.insert(minimized, diff_block)
+            local old_string = table.concat(diff_block.old_lines, "\n")
+            local new_string = table.concat(diff_block.new_lines, "\n")
+
+            local patch = vim.diff(old_string, new_string, {
+                algorithm = "histogram",
+                result_type = "indices",
+                ctxlen = 0,
+            }) --[[ @as integer[][] -- needs type casting because LuaLS don't infer correctly for the 'histogram' algorithm ]]
+
+            if #patch > 0 then
+                for _, hunk in ipairs(patch) do
+                    local start_a, count_a, start_b, count_b = unpack(hunk)
+
+                    ---@type agentic.DiffHandler.DiffBlock
+                    local minimized_block = {
+                        start_line = 0,
+                        end_line = 0,
+                        old_lines = {},
+                        new_lines = {},
+                    }
+
+                    if count_a > 0 then
+                        local end_a = math.min(
+                            start_a + count_a - 1,
+                            #diff_block.old_lines
+                        )
+                        minimized_block.old_lines =
+                            vim.list_slice(diff_block.old_lines, start_a, end_a)
+                        minimized_block.start_line = diff_block.start_line
+                            + start_a
+                            - 1
+                        minimized_block.end_line = minimized_block.start_line
+                            + count_a
+                            - 1
+                    else
+                        -- For insertions, start_line is the position before which to insert
+                        minimized_block.start_line = diff_block.start_line
+                            + start_a
+                        minimized_block.end_line = minimized_block.start_line
+                            - 1
+                    end
+
+                    if count_b > 0 then
+                        local end_b = math.min(
+                            start_b + count_b - 1,
+                            #diff_block.new_lines
+                        )
+                        minimized_block.new_lines =
+                            vim.list_slice(diff_block.new_lines, start_b, end_b)
+                    end
+
+                    table.insert(minimized, minimized_block)
+                end
+            else
+                -- If vim.diff returns empty patch but we have changes, include the full block
+                -- This handles edge cases where the diff algorithm doesn't detect changes
+                if old_string ~= new_string then
+                    table.insert(minimized, diff_block)
+                end
             end
         end
     end

@@ -42,38 +42,40 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     end
 
     local kind = update.kind
-    local status = update.status
-    local argument
-    -- FIXIT: edit with diff has body, Handle IT
+    --- @type agentic.ui.MessageWriter.ToolCallBlock
+    local message = {
+        tool_call_id = update.toolCallId,
+        kind = kind,
+        status = update.status,
+        argument = update.title,
+    }
 
     if kind == "read" or kind == "edit" then
-        argument = FileSystem.to_smart_path(update.rawInput.file_path)
+        message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
+
+        if kind == "edit" then
+            message.diff = {
+                new = vim.split(update.rawInput.new_string, "\n"),
+                old = vim.split(update.rawInput.old_string, "\n"),
+                all = update.rawInput.replace_all or false,
+            }
+        end
     elseif kind == "fetch" then
         if update.rawInput.query then
             kind = "WebSearch"
         end
 
-        argument = update.rawInput.query
+        message.argument = update.rawInput.query
             or update.rawInput.url
             or "unknown fetch"
-    elseif kind == "search" then
-        argument = update.title
     else
         local command = update.rawInput.command
         if type(command) == "table" then
             command = table.concat(command, " ")
         end
 
-        argument = command or update.title or ""
+        message.argument = command or update.title or ""
     end
-
-    --- @type agentic.ui.MessageWriter.ToolCallBlock
-    local message = {
-        tool_call_id = update.toolCallId,
-        kind = kind,
-        status = status,
-        argument = argument,
-    }
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call(message)
