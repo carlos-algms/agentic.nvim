@@ -54,20 +54,37 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
         message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
 
         if kind == "edit" then
+            local new_string = update.rawInput.new_string or ""
+            local old_string = update.rawInput.old_string or ""
+
+            if update.rawInput.content then
+                message.kind = "create"
+                new_string = update.rawInput.content or ""
+            end
+
             message.diff = {
-                new = vim.split(update.rawInput.new_string, "\n"),
-                old = vim.split(update.rawInput.old_string, "\n"),
+                new = vim.split(new_string, "\n"),
+                old = vim.split(old_string, "\n"),
                 all = update.rawInput.replace_all or false,
             }
         end
     elseif kind == "fetch" then
         if update.rawInput.query then
-            kind = "WebSearch"
-        end
+            message.kind = "WebSearch"
+            message.argument = update.rawInput.query
+        elseif update.rawInput.url then
+            message.argument = update.rawInput.url
 
-        message.argument = update.rawInput.query
-            or update.rawInput.url
-            or "unknown fetch"
+            if update.rawInput.prompt then
+                message.argument = string.format(
+                    "%s %s",
+                    message.argument,
+                    update.rawInput.prompt
+                )
+            end
+        else
+            message.argument = "unknown fetch"
+        end
     else
         local command = update.rawInput.command
         if type(command) == "table" then

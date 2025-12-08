@@ -34,13 +34,15 @@ function M.extract_diff_blocks(path, oldText, newText, replace_all)
         return diff_blocks
     end
 
-    if not oldText or oldText == "" then
-        local new_lines = M._normalize_text_to_lines(newText)
+    local old_lines = M._normalize_text_to_lines(oldText)
+    local new_lines = M._normalize_text_to_lines(newText)
+
+    local is_new_file = #old_lines == 0
+        or (#old_lines == 1 and old_lines[1] == "")
+
+    if is_new_file then
         table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
-        local old_lines = M._normalize_text_to_lines(oldText)
-        local new_lines = M._normalize_text_to_lines(newText)
-
         local abs_path = FileSystem.to_absolute_path(path)
         local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
 

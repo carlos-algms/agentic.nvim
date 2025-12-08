@@ -676,6 +676,7 @@ return ACPClient
 --- | "fetch"
 --- | "WebSearch"
 --- | "other"
+--- | "create"
 
 --- @alias agentic.acp.ToolCallStatus
 --- | "pending"
@@ -748,6 +749,7 @@ return ACPClient
 
 --- @class agentic.acp.RawInput
 --- @field file_path string
+--- @field content? string Claude can send it when creating new files instead of new_string
 --- @field new_string? string
 --- @field old_string? string
 --- @field replace_all? boolean

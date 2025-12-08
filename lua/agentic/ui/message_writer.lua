@@ -357,53 +357,61 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         for _, block in ipairs(diff_blocks) do
             local old_count = #block.old_lines
             local new_count = #block.new_lines
+            local is_new_file = old_count == 0
             local is_modification = old_count == new_count and old_count > 0
 
-            -- Insert old lines (removed content)
-            for i, old_line in ipairs(block.old_lines) do
-                local line_index = #lines
-                table.insert(lines, old_line)
+            if is_new_file then
+                for _, new_line in ipairs(block.new_lines) do
+                    table.insert(lines, new_line)
+                end
+            else
+                -- Insert old lines (removed content)
+                for i, old_line in ipairs(block.old_lines) do
+                    local line_index = #lines
+                    table.insert(lines, old_line)
 
-                local new_line = is_modification and block.new_lines[i] or nil
+                    local new_line = is_modification and block.new_lines[i]
+                        or nil
 
-                --- @type agentic.ui.MessageWriter.HighlightRange
-                local range = {
-                    line_index = line_index,
-                    type = "old",
-                    old_line = old_line,
-                    new_line = new_line,
-                }
-
-                table.insert(highlight_ranges, range)
-            end
-
-            -- Insert new lines (added content)
-            for i, new_line in ipairs(block.new_lines) do
-                local line_index = #lines
-                table.insert(lines, new_line)
-
-                if not is_modification then
-                    -- Pure addition
                     --- @type agentic.ui.MessageWriter.HighlightRange
                     local range = {
                         line_index = line_index,
-                        type = "new",
-                        old_line = nil,
+                        type = "old",
+                        old_line = old_line,
                         new_line = new_line,
                     }
 
                     table.insert(highlight_ranges, range)
-                else
-                    -- Modification with word-level diff
-                    --- @type agentic.ui.MessageWriter.HighlightRange
-                    local range = {
-                        line_index = line_index,
-                        type = "new_modification",
-                        old_line = block.old_lines[i],
-                        new_line = new_line,
-                    }
+                end
 
-                    table.insert(highlight_ranges, range)
+                -- Insert new lines (added content)
+                for i, new_line in ipairs(block.new_lines) do
+                    local line_index = #lines
+                    table.insert(lines, new_line)
+
+                    if not is_modification then
+                        -- Pure addition
+                        --- @type agentic.ui.MessageWriter.HighlightRange
+                        local range = {
+                            line_index = line_index,
+                            type = "new",
+                            old_line = nil,
+                            new_line = new_line,
+                        }
+
+                        table.insert(highlight_ranges, range)
+                    else
+                        -- Modification with word-level diff
+                        --- @type agentic.ui.MessageWriter.HighlightRange
+                        local range = {
+                            line_index = line_index,
+                            type = "new_modification",
+                            old_line = block.old_lines[i],
+                            new_line = new_line,
+                        }
+
+                        table.insert(highlight_ranges, range)
+                    end
                 end
             end
         end
