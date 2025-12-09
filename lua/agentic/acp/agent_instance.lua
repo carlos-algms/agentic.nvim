@@ -46,6 +46,10 @@ function AgentInstance.get_instance(provider_name, on_ready)
         local ClaudeACPAdapter =
             require("agentic.acp.adapters.claude_acp_adapter")
         client = ClaudeACPAdapter:new(config, on_ready)
+    elseif provider_name == "codex-acp" then
+        local CodexACPAdapter =
+            require("agentic.acp.adapters.codex_acp_adapter")
+        client = CodexACPAdapter:new(config, on_ready)
     else
         error("Unsupported ACP provider: " .. provider_name)
     end

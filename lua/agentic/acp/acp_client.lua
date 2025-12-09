@@ -224,7 +224,11 @@ function ACPClient:_handle_message(message)
         not (
             message.params
             and message.params.update
-            and message.params.update.sessionUpdate == "agent_message_chunk"
+            and (
+                message.params.update.sessionUpdate == "agent_message_chunk"
+                or message.params.update.sessionUpdate
+                    == "agent_thought_chunk"
+            )
         )
     then
         Logger.debug_to_file(self.provider_config.name, "response: ", message)
@@ -853,7 +857,6 @@ return ACPClient
 --- @field content? agentic.acp.ACPToolCallContent[]
 --- @field locations? agentic.acp.ToolCallLocation[]
 --- @field rawInput? agentic.acp.RawInput
---- @field rawOutput? table
 --- @field _meta? table|nil Claude ACP is sending it
 
 --- @class agentic.acp.ToolCallUpdate
@@ -861,6 +864,7 @@ return ACPClient
 --- @field toolCallId string
 --- @field status? agentic.acp.ToolCallStatus
 --- @field content? agentic.acp.ACPToolCallContent[]
+--- @field rawOutput? table
 
 --- @class agentic.acp.PlanUpdate
 --- @field sessionUpdate "plan"

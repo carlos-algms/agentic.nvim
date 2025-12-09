@@ -2,26 +2,26 @@ local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
---- Claude-specific adapter that extends ACPClient with Claude-specific behaviors
---- @class agentic.acp.ClaudeACPAdapter : agentic.acp.ACPClient
-local ClaudeACPAdapter = setmetatable({}, { __index = ACPClient })
-ClaudeACPAdapter.__index = ClaudeACPAdapter
+--- Codex-specific adapter that extends ACPClient with Codex-specific behaviors
+--- @class agentic.acp.CodexACPAdapter : agentic.acp.ACPClient
+local CodexACPAdapter = setmetatable({}, { __index = ACPClient })
+CodexACPAdapter.__index = CodexACPAdapter
 
 --- @param config agentic.acp.ACPProviderConfig
 --- @param on_ready fun(client: agentic.acp.ACPClient)
---- @return agentic.acp.ClaudeACPAdapter
-function ClaudeACPAdapter:new(config, on_ready)
+--- @return agentic.acp.CodexACPAdapter
+function CodexACPAdapter:new(config, on_ready)
     -- Call parent constructor with parent class
     self = ACPClient.new(ACPClient, config, on_ready)
 
     -- Re-metatable to child class for proper inheritance chain
-    self = setmetatable(self, ClaudeACPAdapter) --[[@as agentic.acp.ClaudeACPAdapter]]
+    self = setmetatable(self, CodexACPAdapter) --[[@as agentic.acp.CodexACPAdapter]]
 
     return self
 end
 
 --- @param params table
-function ClaudeACPAdapter:__handle_session_update(params)
+function CodexACPAdapter:__handle_session_update(params)
     local type = params.update.sessionUpdate
 
     if type == "tool_call" then
@@ -35,12 +35,7 @@ end
 
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function ClaudeACPAdapter:_handle_tool_call(session_id, update)
-    -- expected state, claude is sending an empty content first, followed by the actual content
-    if not update.rawInput or vim.tbl_isempty(update.rawInput) then
-        return
-    end
-
+function CodexACPAdapter:_handle_tool_call(session_id, update)
     local kind = update.kind
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
@@ -51,39 +46,26 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     }
 
     if kind == "read" or kind == "edit" then
-        message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
+        local path = update.locations
+                and update.locations[1]
+                and update.locations[1].path
+            or ""
 
-        if kind == "edit" then
-            local new_string = update.rawInput.new_string or ""
-            local old_string = update.rawInput.old_string or ""
+        message.argument = FileSystem.to_smart_path(path)
 
-            if update.rawInput.content then
-                new_string = update.rawInput.content or ""
-            end
+        if kind == "edit" and update.content and update.content[1] then
+            local content = update.content[1]
+            local new_string = content.newText or ""
+            local old_string = content.oldText or ""
 
             message.diff = {
                 new = vim.split(new_string, "\n"),
                 old = vim.split(old_string, "\n"),
-                all = update.rawInput.replace_all or false,
             }
         end
-    elseif kind == "fetch" then
-        if update.rawInput.query then
-            message.kind = "WebSearch"
-            message.argument = update.rawInput.query
-        elseif update.rawInput.url then
-            message.argument = update.rawInput.url
-
-            if update.rawInput.prompt then
-                message.argument = string.format(
-                    "%s %s",
-                    message.argument,
-                    update.rawInput.prompt
-                )
-            end
-        else
-            message.argument = "unknown fetch"
-        end
+    elseif update.rawInput.parsed_cmd and update.rawInput.parsed_cmd[1] then
+        message.argument = update.rawInput.parsed_cmd[1].cmd or ""
+        message.argument = message.argument:gsub("\n", "\\n")
     else
         local command = update.rawInput.command
         if type(command) == "table" then
@@ -100,7 +82,7 @@ end
 
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
+function CodexACPAdapter:_handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end
@@ -116,12 +98,17 @@ function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
 
         if content.type == "content" then
             message.body = vim.split(content.content.text, "\n")
+        elseif content.type == "diff" then
+            -- ignore, already handled in tool call, we don't want to rerender diffs, as they don't change during updates
         else
             Logger.debug(
                 "Unknown tool call update content type: "
+                    ---@diagnostic disable-next-line: undefined-field -- it's expected this to be unknown
                     .. tostring(content.type)
             )
         end
+    elseif update.rawOutput then
+        message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
     end
 
     self:__with_subscriber(session_id, function(subscriber)
@@ -129,4 +116,4 @@ function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
     end)
 end
 
-return ClaudeACPAdapter
+return CodexACPAdapter

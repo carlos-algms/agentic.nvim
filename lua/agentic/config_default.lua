@@ -44,7 +44,10 @@ local ConfigDefault = {
             -- https://github.com/zed-industries/codex-acp/releases
             -- xattr -dr com.apple.quarantine ~/.local/bin/codex-acp
             command = "codex-acp",
-            args = {},
+            args = {
+                "-c",
+                "features.web_search_request=true",
+            },
             env = {
                 NODE_NO_WARNINGS = "1",
                 IS_AI_TERMINAL = "1",
