@@ -191,10 +191,11 @@ function ACPClient:_send_notification(method, params)
     self.transport:send(data)
 end
 
+--- @protected
 --- @param id number
 --- @param result table | string | vim.NIL | nil
 --- @return nil
-function ACPClient:_send_result(id, result)
+function ACPClient:__send_result(id, result)
     local message = { jsonrpc = "2.0", id = id, result = result }
 
     local data = vim.json.encode(message)
@@ -267,7 +268,7 @@ function ACPClient:_handle_notification(message_id, method, params)
         self:__handle_session_update(params)
     elseif method == "session/request_permission" then
         --- @diagnostic disable-next-line: param-type-mismatch
-        self:_handle_request_permission(message_id, params)
+        self:__handle_request_permission(message_id, params)
     elseif method == "fs/read_text_file" then
         self:_handle_read_text_file(message_id, params)
     elseif method == "fs/write_text_file" then
@@ -307,9 +308,10 @@ function ACPClient:__handle_session_update(params)
     end)
 end
 
+--- @protected
 --- @param message_id number
 --- @param request agentic.acp.RequestPermission
-function ACPClient:_handle_request_permission(message_id, request)
+function ACPClient:__handle_request_permission(message_id, request)
     if not request.sessionId or not request.toolCall then
         error("Invalid request_permission")
         return
@@ -319,7 +321,7 @@ function ACPClient:_handle_request_permission(message_id, request)
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_request_permission(request, function(option_id)
-            self:_send_result(
+            self:__send_result(
                 message_id,
                 { --- @type agentic.acp.RequestPermissionOutcome
                     outcome = {
@@ -352,7 +354,7 @@ function ACPClient:_handle_read_text_file(message_id, params)
             params.line ~= vim.NIL and params.line or nil,
             params.limit ~= vim.NIL and params.limit or nil,
             function(content)
-                self:_send_result(message_id, { content = content })
+                self:__send_result(message_id, { content = content })
             end
         )
     end)
@@ -375,7 +377,7 @@ function ACPClient:_handle_write_text_file(message_id, params)
 
     self:__with_subscriber(session_id, function()
         FileSystem.write_file(path, content, function(error)
-            self:_send_result(message_id, error == nil and vim.NIL or error)
+            self:__send_result(message_id, error == nil and vim.NIL or error)
         end)
     end)
 end
@@ -774,7 +776,11 @@ return ACPClient
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string
 --- @field rawInput? agentic.acp.RawInput
----
+--- @field kind? agentic.acp.ToolKind -- Gemini is sending it
+--- @field locations? agentic.acp.ToolCallLocation[] -- Gemini is sending it
+--- @field content? agentic.acp.ACPToolCallContent[] -- Gemini is sending it
+--- @field status? agentic.acp.ToolCallStatus -- Gemini is sending it
+--- @field title? string -- Gemini is sending it
 
 --- @class agentic.acp.ToolCallRegularContent
 --- @field type "content"
@@ -924,7 +930,7 @@ return ACPClient
 --- @field on_tool_call_update fun(tool_call: agentic.ui.MessageWriter.ToolCallBase): nil
 
 --- @class agentic.acp.ACPProviderConfig
---- @field name string Provider name
+--- @field name? string Provider name
 --- @field transport_type? agentic.acp.TransportType
 --- @field command? string Command to spawn agent (for stdio)
 --- @field args? string[] Arguments for agent command
