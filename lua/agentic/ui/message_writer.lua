@@ -435,11 +435,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             table.insert(lines, "```")
         end
     else
-        vim.notify(
-            "Unknown tool call kind or missing diff/body: " .. kind,
-            vim.log.levels.WARN,
-            { title = "Agentic MessageWriter" }
-        )
+        Logger.debug("Unknown tool call kind or missing diff: " .. kind)
     end
 
     table.insert(lines, "")

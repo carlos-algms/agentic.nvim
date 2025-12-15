@@ -1,4 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
+local FileSystem = require("agentic.utils.file_system")
 
 --- Gemini-specific adapter that extends ACPClient with Gemini-specific behaviors
 --- @class agentic.acp.GeminiACPAdapter : agentic.acp.ACPClient
@@ -63,6 +64,11 @@ function GeminiACPAdapter:_handle_tool_call(session_id, update)
                 new = vim.split(new_string, "\n"),
                 old = vim.split(old_string, "\n"),
             }
+        end
+
+        local location = update.locations and update.locations[1]
+        if location then
+            message.argument = FileSystem.to_smart_path(location.path)
         end
     elseif kind == "execute" then
         --- Gemini "execute" title format:
