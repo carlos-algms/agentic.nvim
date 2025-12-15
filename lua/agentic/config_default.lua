@@ -45,8 +45,8 @@ local ConfigDefault = {
             -- xattr -dr com.apple.quarantine ~/.local/bin/codex-acp
             command = "codex-acp",
             args = {
-                "-c",
-                "features.web_search_request=true",
+                -- "-c",
+                -- "features.web_search_request=true", -- disabled as it doesn't send proper tool call messages
             },
             env = {
                 NODE_NO_WARNINGS = "1",

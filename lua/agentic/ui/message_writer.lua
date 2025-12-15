@@ -35,6 +35,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
+--- @field _last_message_type string|nil
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -48,6 +49,7 @@ function MessageWriter:new(bufnr)
     local instance = setmetatable({
         bufnr = bufnr,
         tool_call_blocks = {},
+        _last_message_type = nil,
     }, self)
 
     return instance
@@ -79,9 +81,21 @@ function MessageWriter:write_message_chunk(update)
     local text = update.content
         and update.content.type == "text"
         and update.content.text
+
     if not text or text == "" then
         return
     end
+
+    if
+        self._last_message_type == "agent_thought_chunk"
+        and update.sessionUpdate == "agent_message_chunk"
+    then
+        -- Different message type, add newline before appending, to create visual separation
+        -- only for thought -> message
+        text = "\n\n" .. text
+    end
+
+    self._last_message_type = update.sessionUpdate
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
