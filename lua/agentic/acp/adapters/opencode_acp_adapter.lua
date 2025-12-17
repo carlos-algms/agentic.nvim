@@ -50,6 +50,8 @@ function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
         -- hack to keep consistency with other Providers
         -- OpenCode uses `read`, it the message writer will omit it's output if we keept it as read.
         message.kind = "search"
+    elseif update.title == "websearch" then
+        message.kind = "WebSearch"
     end
 
     self:__with_subscriber(session_id, function(subscriber)
@@ -102,6 +104,8 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
                 }
             elseif update.rawInput.url then -- fetch command
                 message.argument = update.rawInput.url
+            elseif update.rawInput.query then -- WebSearch command
+                message.body = vim.split(update.rawInput.query, "\n")
             elseif update.rawInput.command then
                 message.argument = update.rawInput.command:gsub("\n", "\\n")
 
@@ -114,6 +118,8 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
         elseif update.rawOutput then -- rawOutput doesn't seem standard, also we don't have types
             if update.rawOutput.output then
                 message.body = vim.split(update.rawOutput.output, "\n")
+            elseif update.rawOutput.error then
+                message.body = vim.split(update.rawInput.error, "\n")
             end
         end
     end
