@@ -25,6 +25,8 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field status agentic.acp.ToolCallStatus
 --- @field body string[]|nil
 --- @field diff { new: string[], old: string[], all: boolean|nil }|nil
+--- @field kind agentic.acp.ToolKind|nil
+--- @field argument string|nil
 
 --- @class agentic.ui.MessageWriter.ToolCallBlock : agentic.ui.MessageWriter.ToolCallBase
 --- @field kind agentic.acp.ToolKind
@@ -197,12 +199,15 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
     if not tracker then
         Logger.debug(
-            "Tool call block not found",
-            { tool_call_id = tool_call_block.tool_call_id }
+            "Tool call block not found, ID: ",
+            tool_call_block.tool_call_id
         )
 
         return
     end
+
+    -- Some ACP providers don't send the diff on the first tool_call
+    local already_has_diff = tracker.diff ~= nil
 
     tracker = vim.tbl_deep_extend("force", tracker, tool_call_block)
     self.tool_call_blocks[tool_call_block.tool_call_id] = tracker
@@ -237,7 +242,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
-        if tracker.diff then
+        if already_has_diff then
             if old_end_row > vim.api.nvim_buf_line_count(bufnr) then
                 Logger.debug("Footer line index out of bounds", {
                     old_end_row = old_end_row,
