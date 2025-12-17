@@ -870,7 +870,7 @@ return ACPClient
 --- @field toolCallId string
 --- @field status? agentic.acp.ToolCallStatus
 --- @field content? agentic.acp.ACPToolCallContent[]
---- @field rawOutput? table
+--- @field rawOutput? table Not all providers are sending it, seems non standard
 
 --- @class agentic.acp.PlanUpdate
 --- @field sessionUpdate "plan"

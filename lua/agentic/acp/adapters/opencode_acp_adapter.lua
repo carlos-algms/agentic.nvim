@@ -1,6 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
-local Logger = require("agentic.utils.logger")
 
 --- OpenCode-specific adapter that extends ACPClient with OpenCode-specific behaviors
 --- @class agentic.acp.OpenCodeACPAdapter : agentic.acp.ACPClient
@@ -44,8 +43,14 @@ function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
         tool_call_id = update.toolCallId,
         kind = update.kind,
         status = update.status,
-        argument = "pending...",
+        argument = update.title or "pending...",
     }
+
+    if update.title == "list" then
+        -- hack to keep consistency with other Providers
+        -- OpenCode uses `read`, it the message writer will omit it's output if we keept it as read.
+        message.kind = "search"
+    end
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call(message)
@@ -57,6 +62,7 @@ end
 --- @field newString? string
 --- @field oldString? string
 --- @field replaceAll? boolean
+--- @field error? string
 
 --- @class agentic.acp.ToolCallUpdateOpenCode : agentic.acp.ToolCallUpdate
 --- @field rawInput? agentic.acp.ToolCallRawInputOpenCode
@@ -77,7 +83,12 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
     }
 
     if update.status == "completed" or update.status == "failed" then
-        -- TODO: need to handle body and result of commands
+        if update.content and update.content[1] then
+            local content = update.content[1].content
+            if content and content.text then
+                message.body = vim.split(content.text, "\n")
+            end
+        end
     else
         if update.rawInput then
             if update.rawInput.newString then
@@ -89,6 +100,20 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
                     old = vim.split(update.rawInput.oldString or "", "\n"),
                     all = update.rawInput.replaceAll or false,
                 }
+            elseif update.rawInput.url then -- fetch command
+                message.argument = update.rawInput.url
+            elseif update.rawInput.command then
+                message.argument = update.rawInput.command:gsub("\n", "\\n")
+
+                if update.rawInput.description then
+                    message.body = vim.split(update.rawInput.description, "\n")
+                end
+            elseif update.rawInput.error then
+                message.body = vim.split(update.rawInput.error, "\n")
+            end
+        elseif update.rawOutput then -- rawOutput doesn't seem standard, also we don't have types
+            if update.rawOutput.output then
+                message.body = vim.split(update.rawOutput.output, "\n")
             end
         end
     end
