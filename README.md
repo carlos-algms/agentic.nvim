@@ -15,8 +15,8 @@ interface, your colors, and your keymaps.
 
 - **⚡ Performance First** - Optimized for minimal overhead and fast response
   times
-- **🔌 Multiple ACP Providers** - Support for Claude, Gemini, Codex, OpenCode,
-  and any other ACP-compliant provider
+- **🔌 Multiple ACP Providers** - Support for Claude, Gemini, Codex, and
+  OpenCode
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -105,20 +105,17 @@ You don't have to copy and paste anything from the default config, linking it
 here for ease access and reference:
 [`lua/agentic/config_default.lua`](lua/agentic/config_default.lua).
 
-### Adding or Overriding ACP Providers
+### Customizing ACP Providers
 
-You can add custom ACP providers or override existing ones by configuring the
-`acp_providers` property:
+You can customize the supported ACP providers by configuring the `acp_providers`
+property:
 
 > [!NOTE]  
-> You don't have to override anything, or include these into your setup.  
-> This is just an example of how you can customize existing providers or add new
-> ones.
+> You don't have to override anything or include these in your setup.  
+> This is only needed if you want to customize existing providers.
 
 ```lua
 {
-  provider = "my-custom-acp",
-
   acp_providers = {
     -- Override existing provider (e.g., add API key)
     -- Agentic.nvim don't require API keys, only add it if that's how you prefer to authenticate
@@ -128,20 +125,9 @@ You can add custom ACP providers or override existing ones by configuring the
       },
     },
 
-
-    -- override the ACP command to suit your installation
+    -- Override the ACP command to suit your installation
     ["codex-acp"] = {
       command = "~/.local/bin/codex-acp",
-    },
-
-    -- Add a new custom provider
-    ["my-custom-acp"] = {
-      name = "My Custom ACP Provider",     -- Display name
-      command = "my-acp-cli",              -- CLI command to spawn
-      args = { "--acp-mode" },             -- Optional command arguments
-      env = {                              -- Optional environment variables
-        API_KEY = os.getenv("MY_API_KEY")  -- Optional, only if your provider needs it
-      },
     },
   },
 }
@@ -149,17 +135,13 @@ You can add custom ACP providers or override existing ones by configuring the
 
 **Provider Configuration Fields:**
 
-- `name` (string) - Display name shown in the UI
 - `command` (string) - The CLI command to execute (must be in PATH or absolute
   path)
 - `args` (table, optional) - Array of command-line arguments
 - `env` (table, optional) - Environment variables to set for the process
 
-**Notes:**
-
-- Overriding a provider only requires specifying the fields you want to change
-- All providers must be ACP-compliant and communicate via stdio
-- The provider CLI tool must be installed and accessible in your system PATH
+**Notes:** Customizing a provider only requires specifying the fields you want
+to change, not the entire configuration.
 
 ## 📋 Requirements
 
