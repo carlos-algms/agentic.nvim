@@ -54,6 +54,10 @@ function AgentInstance.get_instance(provider_name, on_ready)
         local GeminiACPAdapter =
             require("agentic.acp.adapters.gemini_acp_adapter")
         client = GeminiACPAdapter:new(config, on_ready)
+    elseif provider_name == "opencode-acp" then
+        local OpenCodeACPAdapter =
+            require("agentic.acp.adapters.opencode_acp_adapter")
+        client = OpenCodeACPAdapter:new(config, on_ready)
     else
         error("Unsupported ACP provider: " .. provider_name)
     end
