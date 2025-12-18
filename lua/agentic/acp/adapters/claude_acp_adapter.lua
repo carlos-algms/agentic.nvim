@@ -57,6 +57,7 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
             local new_string = update.rawInput.new_string or ""
             local old_string = update.rawInput.old_string or ""
 
+            -- Claude might send content when creating new files
             new_string = update.rawInput.content or new_string
 
             message.diff = {
@@ -119,10 +120,12 @@ function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
         then
             message.body = vim.split(content.content.text, "\n")
         else
-            Logger.debug(
-                "Unknown tool call update content type: "
-                    .. tostring(content.type)
-            )
+            Logger.debug("Unknown tool call update content type", {
+                content_type = content.type,
+                content = content.content,
+                session_id = session_id,
+                tool_call_id = update.toolCallId,
+            })
         end
     end
 
