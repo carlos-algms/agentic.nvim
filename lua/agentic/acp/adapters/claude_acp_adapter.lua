@@ -57,9 +57,7 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
             local new_string = update.rawInput.new_string or ""
             local old_string = update.rawInput.old_string or ""
 
-            if update.rawInput.content then
-                new_string = update.rawInput.content or ""
-            end
+            new_string = update.rawInput.content or new_string
 
             message.diff = {
                 new = vim.split(new_string, "\n"),
@@ -114,7 +112,11 @@ function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
     if update.content and update.content[1] then
         local content = update.content[1]
 
-        if content.type == "content" then
+        if
+            content.type == "content"
+            and content.content
+            and content.content.text
+        then
             message.body = vim.split(content.content.text, "\n")
         else
             Logger.debug(

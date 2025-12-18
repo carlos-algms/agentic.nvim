@@ -25,7 +25,7 @@ end
 --- @param oldText string[]
 --- @param newText string[]
 --- @param replace_all boolean|nil
---- @return agentic.DiffHandler.DiffBlock[] diff_blocks Maps file path to list of diff blocks
+--- @return agentic.DiffHandler.DiffBlock[] diff_blocks List of diff blocks for the given file
 function M.extract_diff_blocks(path, oldText, newText, replace_all)
     ---@type agentic.DiffHandler.DiffBlock[]
     local diff_blocks = {}
@@ -63,7 +63,7 @@ function M.extract_diff_blocks(path, oldText, newText, replace_all)
             -- Fallback: display the diff even if we can't match it
             table.insert(diff_blocks, {
                 start_line = 1,
-                end_line = #old_lines,
+                end_line = math.max(1, #old_lines),
                 old_lines = old_lines,
                 new_lines = new_lines,
             })

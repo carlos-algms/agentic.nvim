@@ -94,7 +94,8 @@ function GeminiACPAdapter:_handle_tool_call_update(session_id, update)
         local content = update.content[1]
 
         if content.type == "content" then
-            message.body = vim.split(content.content.text, "\n")
+            message.body = content.content
+                and vim.split(content.content.text, "\n")
         end
     end
 
@@ -103,9 +104,19 @@ function GeminiACPAdapter:_handle_tool_call_update(session_id, update)
     end)
 end
 
+--- @class agentic.acp.GeminiToolCall : agentic.acp.ToolCall
+--- @field kind? agentic.acp.ToolKind -- Gemini is sending it
+--- @field locations? agentic.acp.ToolCallLocation[] -- Gemini is sending it
+--- @field content? agentic.acp.ACPToolCallContent[] -- Gemini is sending it
+--- @field status? agentic.acp.ToolCallStatus -- Gemini is sending it
+--- @field title? string -- Gemini is sending it
+
+--- @class agentic.acp.GeminiRequestPermission : agentic.acp.RequestPermission
+--- @field toolCall agentic.acp.GeminiToolCall
+
 --- @protected
 --- @param message_id number
---- @param request agentic.acp.RequestPermission
+--- @param request agentic.acp.GeminiRequestPermission
 function GeminiACPAdapter:__handle_request_permission(message_id, request)
     -- Gemini asks for permission first, for edit, execute, etc,
     -- and send diff block for the first time in the same message

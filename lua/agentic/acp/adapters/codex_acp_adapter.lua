@@ -63,7 +63,11 @@ function CodexACPAdapter:_handle_tool_call(session_id, update)
                 old = vim.split(old_string, "\n"),
             }
         end
-    elseif update.rawInput.parsed_cmd and update.rawInput.parsed_cmd[1] then
+    elseif
+        update.rawInput
+        and update.rawInput.parsed_cmd
+        and update.rawInput.parsed_cmd[1]
+    then
         message.argument = update.rawInput.parsed_cmd[1].cmd or ""
         message.argument = message.argument:gsub("\n", "\\n")
     else
@@ -98,7 +102,7 @@ function CodexACPAdapter:_handle_tool_call_update(session_id, update)
 
         if content.type == "content" then
             message.body = vim.split(content.content.text, "\n")
-        elseif content.type == "diff" then
+        elseif content.type == "diff" then -- luacheck: ignore 542 -- intentional empty block
             -- ignore, already handled in tool call, we don't want to rerender diffs, as they don't change during updates
         else
             Logger.debug(

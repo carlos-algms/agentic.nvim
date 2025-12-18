@@ -261,6 +261,7 @@ function ACPClient:_handle_message(message)
     end
 end
 
+--- @param message_id number
 --- @param method string
 --- @param params table
 function ACPClient:_handle_notification(message_id, method, params)
@@ -771,16 +772,9 @@ return ACPClient
 ---   query?: string|nil|vim.NIL,
 ---   type?: string|nil }[] First seem from Codex
 
---- FIXIT: this might be wrong, it might need to be merged ti ToolCallMessage
----
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string
 --- @field rawInput? agentic.acp.RawInput
---- @field kind? agentic.acp.ToolKind -- Gemini is sending it
---- @field locations? agentic.acp.ToolCallLocation[] -- Gemini is sending it
---- @field content? agentic.acp.ACPToolCallContent[] -- Gemini is sending it
---- @field status? agentic.acp.ToolCallStatus -- Gemini is sending it
---- @field title? string -- Gemini is sending it
 
 --- @class agentic.acp.ToolCallRegularContent
 --- @field type "content"

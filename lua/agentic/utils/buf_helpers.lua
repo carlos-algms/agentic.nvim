@@ -12,19 +12,21 @@ function BufHelpers.with_modifiable(bufnr, callback)
     vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
     local ok, response = pcall(callback, bufnr)
 
+    vim.api.nvim_set_option_value(
+        "modifiable",
+        original_modifiable,
+        { buf = bufnr }
+    )
+
     if not ok then
         vim.notify(
             "Error in with_modifiable: \n" .. tostring(response),
             vim.log.levels.ERROR,
             { title = "🐞 Error with modifiable callback" }
         )
+        return nil
     end
 
-    vim.api.nvim_set_option_value(
-        "modifiable",
-        original_modifiable,
-        { buf = bufnr }
-    )
     return response
 end
 

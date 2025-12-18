@@ -50,14 +50,14 @@ function FileSystem.save_to_disk(abs_path, content)
         end
     end
 
-    return false, nil
+    return false, "Failed to open file for writing: " .. abs_path
 end
 
 --- @param abs_path string
 --- @param content string
 --- @param callback fun(error: string|nil)
 function FileSystem.write_file(abs_path, content, callback)
-    local saved = FileSystem.save_to_disk(abs_path, content)
+    local saved, err = FileSystem.save_to_disk(abs_path, content)
 
     if saved then
         local bufnr = vim.fn.bufnr(FileSystem.to_absolute_path(abs_path))
@@ -76,7 +76,7 @@ function FileSystem.write_file(abs_path, content, callback)
         return
     end
 
-    callback("Failed to write file: " .. abs_path)
+    callback(err or ("Failed to write file: " .. abs_path))
 end
 
 --- @param abs_path string

@@ -119,7 +119,7 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
             if update.rawOutput.output then
                 message.body = vim.split(update.rawOutput.output, "\n")
             elseif update.rawOutput.error then
-                message.body = vim.split(update.rawInput.error, "\n")
+                message.body = vim.split(update.rawOutput.error, "\n")
             end
         end
     end
