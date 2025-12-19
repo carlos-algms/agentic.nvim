@@ -1,5 +1,7 @@
 # Agentic.nvim
 
+![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
+
 > ⚡ A blazingly fast Chat interface for ACP providers in Neovim
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
@@ -364,3 +366,4 @@ the the acknowledgments 😊.
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
+

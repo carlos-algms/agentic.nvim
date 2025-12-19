@@ -1,0 +1,107 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lua/**'
+      - 'Makefile'
+      - '.luarc.json'
+      - 'stylua.toml'
+      - '.github/workflows/pr-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lua/**'
+      - 'Makefile'
+      - '.luarc.json'
+      - 'stylua.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LUALS_VERSION: '3.13.6'
+  STYLUA_VERSION: '2.0.2'
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache StyLua
+        id: cache-stylua
+        uses: actions/cache@v4
+        with:
+          path: .local/bin/stylua
+          key: stylua-${{ runner.os }}-${{ env.STYLUA_VERSION }}
+
+      - name: Install StyLua
+        if: steps.cache-stylua.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .local/bin
+          curl -sL "https://github.com/JohnnyMorganz/StyLua/releases/download/v${{ env.STYLUA_VERSION }}/stylua-linux-x86_64.zip" -o stylua.zip
+          unzip -q stylua.zip -d .local/bin/
+          chmod +x .local/bin/stylua
+
+      - name: Check formatting
+        run: |
+          export PATH="$PWD/.local/bin:$PATH"
+          make format-check
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y luacheck
+
+      - name: Run luacheck
+        run: make luacheck
+
+  typecheck:
+    runs-on: ubuntu-latest
+    # TODO: Enable matrix testing when unit tests are added
+    # strategy:
+    #   matrix:
+    #     neovim-version: ['v0.11.5', 'nightly']
+    steps:
+      - uses: actions/checkout@v4
+
+      # TODO: Install Neovim when unit tests are added
+      # - name: Cache Neovim
+      #   uses: actions/cache@v4
+      #   with:
+      #     path: .local
+      #     key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
+      #
+      # - name: Install Neovim
+      #   if: steps.cache-neovim.outputs.cache-hit != 'true'
+      #   run: |
+      #     mkdir -p .local
+      #     curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux64.tar.gz" | tar xzf - --strip-components=1 -C .local
+
+      - name: Cache LuaLS
+        id: cache-luals
+        uses: actions/cache@v4
+        with:
+          path: .local/luals
+          key: luals-${{ runner.os }}-${{ env.LUALS_VERSION }}
+
+      - name: Install LuaLS
+        if: steps.cache-luals.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .local/luals .local/bin
+          curl -sL "https://github.com/LuaLS/lua-language-server/releases/download/${{ env.LUALS_VERSION }}/lua-language-server-${{ env.LUALS_VERSION }}-linux-x64.tar.gz" | tar xzf - -C .local/luals
+
+      - name: Run type check
+        run: |
+          ln -sf "$PWD/.local/luals/bin/lua-language-server" .local/bin/lua-language-server
+          export PATH="$PWD/.local/bin:$PATH"
+          make luals
