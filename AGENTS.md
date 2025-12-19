@@ -115,14 +115,17 @@ When creating or modifying classes:
    - Are part of the public API
    - Need to be accessed by subclasses or mixins
 
-2. **Prefer private fields over unnecessary public properties** - Mark internal
-   state with `_` prefix and `@private` annotation. Only expose what external
-   code needs to access.
+2. **Use visibility prefixes for encapsulation** - Control what external code can access:
+
+   **Visibility levels (configured in `.luarc.json`):**
+   - `_*` → **Private** - Hidden from external consumers
+   - `__*` → **Protected** - Visible to subclasses, hidden from external consumers
+   - No prefix → **Public** - Visible everywhere
 
    ```lua
-   -- ❌ Bad: Unnecessary public property
+   -- ❌ Bad: Unnecessary public exposure
    --- @class MyClass
-   --- @field counter number  -- Exposed to external code unnecessarily
+   --- @field counter number  -- Exposed unnecessarily
    local MyClass = {}
    MyClass.__index = MyClass
 
@@ -130,13 +133,9 @@ When creating or modifying classes:
        return setmetatable({ counter = 0 }, self)
    end
 
-   function MyClass:increment()
-       self.counter = self.counter + 1
-   end
-
-   -- ✅ Good: Private internal state
+   -- ✅ Good: Proper visibility control
    --- @class MyClass
-   --- @field _counter number  -- Internal implementation detail
+   --- @field _counter number Internal state
    --- @private
    local MyClass = {}
    MyClass.__index = MyClass
@@ -145,26 +144,30 @@ When creating or modifying classes:
        return setmetatable({ _counter = 0 }, self)
    end
 
-   function MyClass:increment()
-       self._counter = self._counter + 1
+   function MyClass:get_count()
+       return self._counter  -- Controlled access
    end
 
-   function MyClass:get_count()
-       return self._counter  -- Controlled access if needed
+   --- @class Parent
+   --- @field __protected_state table For subclasses only
+   --- @protected
+
+   --- @class Child : Parent
+   function Child:use_parent_state()
+       self:__protected_method()  -- Accessible to child
    end
    ```
 
-3. **Document intent with LuaCATS** - Use `@private` or `@package` annotations
-   for fields that are implementation details:
+3. **Document intent with LuaCATS** - Use visibility annotations:
 
    ```lua
    --- @class MyClass
-   --- @field public_field string Public API field
-   --- @field _private_field number Private implementation detail
+   --- @field public_field string Public API
+   --- @field __protected_field table For subclasses
+   --- @protected
+   --- @field _private_field number Internal only
+   --- @private
    ```
-
-   **Note:** Lua Language Server is configured to treat `_*` prefixed properties
-   as private and will not show them in autocomplete for external consumers.
 
 4. **Regular cleanup** - When adding new code, review class definitions and
    remove:
@@ -220,7 +223,7 @@ This prevents confusion and ensures agents know what methods are available.
 
 ### Lua Class Pattern
 
-Use this standard pattern for creating Lua classes:
+**Basic class structure:**
 
 ```lua
 --- @class Animal
@@ -238,7 +241,6 @@ end
 ```
 
 **Key points:**
-
 - Set `__index` to `self` for inheritance
 - Use `setmetatable` to create instances
 - Return the instance from constructor
@@ -250,64 +252,63 @@ end
   - Use for methods that need access to instance state
 
 - `function Class.method()` - Module function, does NOT receive `self`
-  - Called as: `Class.method()` or `instance.method()` (both work, but no
-    `self`)
+  - Called as: `Class.method()` or `instance.method()` (both work, but no `self`)
   - Use for utility functions, constructors, or static helpers
-  - **Important:** Instances can call these too via `instance.method()`, but no
-    `self` is passed
+
+#### Inheritance Pattern
+
+**Class setup (module-level):**
 
 ```lua
---- @class Utils
-local Utils = {}
-Utils.__index = Utils
+local Parent = {}
+Parent.__index = Parent
 
--- Constructor: module function (no self)
-function Utils.new()
-    return setmetatable({}, Utils)
-end
-
--- Instance method (receives self)
-function Utils:get_value()
-    return self.value  -- Has access to self
-end
-
--- Module function (no self)
-function Utils.helper()
-    return "static"  -- No access to self
-end
-
--- Usage:
-local u = Utils.new()           -- Constructor: no self needed
-local val = u:get_value()       -- Instance method: self passed implicitly
-local help = u.helper()         -- Module function: called on instance BUT no self
-local help2 = Utils.helper()    -- Module function: called on class, same result
+--- @class Child : Parent
+local Child = setmetatable({}, { __index = Parent })
+Child.__index = Child
 ```
 
-**Example with inheritance:**
+**Constructor with parent initialization:**
 
 ```lua
--- Dog class extends Animal
---- @class Dog : Animal
-local Dog = setmetatable({}, {__index = Animal})
-Dog.__index = Dog
-
-function Dog:new()
-    local instance = setmetatable({}, self)
-    return instance
+function Parent:new(name)
+    local instance = {
+        name = name,
+        parent_state = {}
+    }
+    return setmetatable(instance, self)
 end
 
-function Dog:move()
-    Animal.move(self)  -- Call parent method
-    print("Dog runs on four legs")
+function Child:new(name, extra)
+    -- Call parent constructor with Parent class
+    local instance = Parent.new(Parent, name)
+    
+    -- Add child-specific state
+    instance.child_state = extra
+    
+    -- Re-metatable to child class for proper inheritance chain
+    return setmetatable(instance, Child)
 end
+```
 
-function Dog:bark()
-    print("Woof!")
+**Critical rules:**
+1. **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not `Parent.new(self, ...)`
+2. **Re-assign metatable to child class** after parent initialization
+3. **Inheritance chain:** `instance → Child → Parent`
+
+**Why this works:**
+- Parent constructor expects its own class as `self`
+- Parent sets up instance with correct state
+- Child "upgrades" the instance by re-assigning metatable
+- Method resolution works correctly via `__index` chain
+
+**Calling parent methods:**
+
+```lua
+function Child:move()
+    Parent.move(self)  -- Explicit parent method call
+    print("Child-specific movement")
 end
-
--- Usage
-local dog = Dog:new()
-dog:move()
 ```
 
 ### LuaCATS Annotations
