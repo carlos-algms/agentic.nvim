@@ -85,7 +85,7 @@ jobs:
         if: steps.cache-neovim.outputs.cache-hit != 'true'
         run: |
           mkdir -p .local
-          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux64.tar.gz" | tar xzf - --strip-components=1 -C .local
+          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz" | tar xzf - --strip-components=1 -C .local
 
       - name: Cache LuaLS
         id: cache-luals
