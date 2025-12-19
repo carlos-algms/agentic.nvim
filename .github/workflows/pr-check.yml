@@ -23,14 +23,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  LUALS_VERSION: '3.16.2'
-  STYLUA_VERSION: '2.0.2'
+  LUALS_VERSION: 3.16.2
+  STYLUA_VERSION: 2.3.1
 
 jobs:
   format:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup directories
+        run: mkdir -p .local/bin
 
       - name: Cache StyLua
         id: cache-stylua
@@ -42,7 +45,6 @@ jobs:
       - name: Install StyLua
         if: steps.cache-stylua.outputs.cache-hit != 'true'
         run: |
-          mkdir -p .local/bin
           curl -sL "https://github.com/JohnnyMorganz/StyLua/releases/download/v${{ env.STYLUA_VERSION }}/stylua-linux-x86_64.zip" -o stylua.zip
           unzip -q stylua.zip -d .local/bin/
           chmod +x .local/bin/stylua
@@ -67,25 +69,30 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-latest
+
     # TODO: Enable matrix testing when unit tests are added
     # strategy:
     #   matrix:
     #     neovim-version: ['v0.11.5', 'nightly']
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup directories
+        run: mkdir -p .local/nvim .local/bin .local/luals
 
       - name: Cache Neovim
         id: cache-neovim
         uses: actions/cache@v4
         with:
-          path: .local
+          path: .local/nvim
           key: neovim-${{ runner.os }}-v0.11.5
 
       - name: Install Neovim
         if: steps.cache-neovim.outputs.cache-hit != 'true'
         run: |
-          mkdir -p .local
-          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz" | tar xzf - --strip-components=1 -C .local
+          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz" |
+            tar xzf - --strip-components=1 -C .local/nvim
 
       - name: Cache LuaLS
         id: cache-luals
@@ -97,12 +104,12 @@ jobs:
       - name: Install LuaLS
         if: steps.cache-luals.outputs.cache-hit != 'true'
         run: |
-          mkdir -p .local/luals .local/bin
-          curl -sL "https://github.com/LuaLS/lua-language-server/releases/download/${{ env.LUALS_VERSION }}/lua-language-server-${{ env.LUALS_VERSION }}-linux-x64.tar.gz" | tar xzf - -C .local/luals
+          curl -sL "https://github.com/LuaLS/lua-language-server/releases/download/${{ env.LUALS_VERSION }}/lua-language-server-${{ env.LUALS_VERSION }}-linux-x64.tar.gz" |
+            tar xzf - -C .local/luals
 
       - name: Run type check
         run: |
           ln -sf "$PWD/.local/luals/bin/lua-language-server" .local/bin/lua-language-server
+          ln -sf "$PWD/.local/nvim/bin/nvim" .local/bin/nvim
           export PATH="$PWD/.local/bin:$PATH"
-          export VIMRUNTIME="$PWD/.local/share/nvim/runtime"
           make luals

@@ -20,6 +20,7 @@ node_modules/
 
 .cache/
 .temp/
+.local/
 
 # Mac files
 .DS_Store
