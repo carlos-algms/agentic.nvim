@@ -14,8 +14,10 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id)
     local instance = SessionRegistry.sessions[tab_page_id]
 
     if not instance then
-        instance = SessionManager:new(tab_page_id)
-        SessionRegistry.sessions[tab_page_id] = instance
+        instance = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager|nil]]
+        if instance ~= nil then
+            SessionRegistry.sessions[tab_page_id] = instance
+        end
     end
 
     return instance --[[@as agentic.SessionManager]]
