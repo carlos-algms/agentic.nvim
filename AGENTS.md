@@ -1,7 +1,79 @@
 # Agents Guide
 
-agentic.nvim is a Neovim plugin that emulates Cursor AI IDE behavior, providing
-AI-driven code assistance through a chat sidebar for interactive conversations.
+**agentic.nvim** is a Neovim plugin that emulates Cursor AI IDE behavior,
+providing AI-driven code assistance through a chat sidebar for interactive
+conversations.
+
+## 📋 Documentation Scope
+
+This guide focuses on **architectural decisions and critical patterns** that
+agents must understand to work effectively with this codebase.
+
+**What belongs here:**
+
+- ✅ Multi-tabpage architecture and isolation requirements
+- ✅ Class design patterns and inheritance rules
+- ✅ Critical utility modules that are frequently used
+- ✅ Provider system and adapters
+- ✅ Code style conventions and LuaCATS standards
+- ✅ Development workflows and configuration protocols
+
+**What does NOT belong here:**
+
+- ❌ Exhaustive documentation of every file, module, or class
+- ❌ Implementation details that are self-documenting in code
+- ❌ Simple utility functions that have clear names and types
+- ❌ UI components unless they demonstrate critical patterns
+
+**When to add documentation:**
+
+- Module introduces new architectural pattern
+- Utility used across multiple components
+- Violating pattern breaks core functionality
+- Non-obvious tabpage isolation requirements
+
+Read code for implementation details. This guide prevents architectural
+mistakes, not duplicates what's clear in code.
+
+## 🚨 CRITICAL: No Assumptions - Gather Context First
+
+**NEVER make assumptions. ALWAYS gather context before decisions or
+suggestions.**
+
+### Mandatory Context Gathering
+
+Before implementing, suggesting, or answering:
+
+1. **Read relevant files** - Don't guess implementation details
+2. **Search codebase** - Find existing patterns and usage
+3. **Check dependencies** - Understand what relies on what
+4. **Verify types** - Read type definitions, don't assume structure
+
+### Examples of Forbidden Assumptions
+
+❌ **DON'T:**
+
+- "This probably uses X pattern" → Read the file
+- "I assume this field exists" → Check the type definition
+- "This likely works like Y" → Verify in code
+- "Based on similar projects..." → Check THIS codebase
+
+✅ **DO:**
+
+- Read files to understand current implementation
+- Search for usage patterns across codebase
+- Verify types and interfaces before using them
+- Build complete context before suggesting solutions
+
+### Incomplete Solutions Are Unacceptable
+
+- Don't suggest partial implementations hoping user fills gaps
+- Don't provide solutions with "you might need to..." caveats
+- Don't guess at parameter types or return values
+- If missing context, gather it first - don't ask user
+
+**Rule:** If you haven't read the relevant code, you don't have enough context
+to make decisions.
 
 ## 🚨 CRITICAL: Multi-Tabpage Architecture
 
@@ -10,20 +82,24 @@ per tabpage**.
 
 ### Architecture Overview
 
-- **Tabpage instance control:** `lua/agentic/init.lua` maintains
-  `chat_widgets_by_tab` table
+- **Tabpage instance control:** `SessionRegistry` manages instances via
+  `sessions` table mapping `tab_page_id -> SessionManager`
 - **1 ACP provider instance** (single subprocess per provider) shared across all
-  tabpages
+  tabpages (managed by `AgentInstance`)
 - **1 ACP session ID per tabpage** - The ACP protocol supports multiple sessions
   per instance
 - **1 SessionManager + 1 ChatWidget per tabpage** - Full UI isolation between
   tabpages
 
-- Each tabpage has independent:
-  - ACP session ID (tracked by the shared provider)
-  - Chat widget (buffers, windows, state)
-  - Status animation
-  - All UI state and resources
+Each tabpage has independent:
+
+- ACP session ID (tracked by the shared provider)
+- Chat widget (buffers, windows, state)
+- Status animation
+- Permission manager
+- File list
+- Code selection
+- All UI state and resources
 
 ### Implementation Requirements
 
@@ -71,13 +147,13 @@ When implementing ANY feature:
      definitions
 
 4. **Get tabpage ID correctly**
-   - In instance methods with `self.tabpage`: `self.tabpage`
+   - In instance methods with `self.tab_page_id`
    - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
    - Current tabpage: `vim.api.nvim_get_current_tabpage()`
 
 5. **ACP sessions are per-tabpage**
    - Each tabpage gets its own session ID from the shared ACP provider
-   - Session state tracked independently per tabpage
+   - Session state tracked independently per tabpage via `SessionManager`
    - Never mix session IDs between tabpages
 
 6. **Buffers/windows are tabpage-specific**
@@ -95,15 +171,12 @@ When implementing ANY feature:
 
 ### Testing Multi-Tab Isolation
 
-Before submitting changes, verify isolation:
+Verify isolation before submitting:
 
 ```vim
-:tabnew          " Create second tabpage
-:AgenticChat     " Start chat in tab 2
-:tabprev         " Go back to tab 1
-:AgenticChat     " Start chat in tab 1
-" Both chats must work independently - no cross-contamination
-" Verify: animations, highlights, sessions, namespaces all isolated
+:tabnew | AgenticChat    " Tab 2: start chat
+:tabprev | AgenticChat   " Tab 1: start chat
+" Both must work independently - no cross-contamination
 ```
 
 ### Class Design Guidelines
@@ -115,14 +188,19 @@ When creating or modifying classes:
    - Are part of the public API
    - Need to be accessed by subclasses or mixins
 
-2. **Prefer private fields over unnecessary public properties** - Mark internal
-   state with `_` prefix and `@private` annotation. Only expose what external
-   code needs to access.
+2. **Use visibility prefixes for encapsulation** - Control what external code
+   can access:
+
+   **Visibility levels (configured in `.luarc.json`):**
+   - `_*` → **Private** - Hidden from external consumers
+   - `__*` → **Protected** - Visible to subclasses, hidden from external
+     consumers
+   - No prefix → **Public** - Visible everywhere
 
    ```lua
-   -- ❌ Bad: Unnecessary public property
+   -- ❌ Bad: Unnecessary public exposure
    --- @class MyClass
-   --- @field counter number  -- Exposed to external code unnecessarily
+   --- @field counter number
    local MyClass = {}
    MyClass.__index = MyClass
 
@@ -130,13 +208,9 @@ When creating or modifying classes:
        return setmetatable({ counter = 0 }, self)
    end
 
-   function MyClass:increment()
-       self.counter = self.counter + 1
-   end
-
-   -- ✅ Good: Private internal state
+   -- ✅ Good: Proper visibility control
    --- @class MyClass
-   --- @field _counter number  -- Internal implementation detail
+   --- @field _counter number
    --- @private
    local MyClass = {}
    MyClass.__index = MyClass
@@ -145,26 +219,24 @@ When creating or modifying classes:
        return setmetatable({ _counter = 0 }, self)
    end
 
-   function MyClass:increment()
-       self._counter = self._counter + 1
-   end
+   --- @class Parent
+   --- @field __protected_state table
+   --- @protected
 
-   function MyClass:get_count()
-       return self._counter  -- Controlled access if needed
+   --- @class Child : Parent
+   function Child:use_parent_state()
+       self:__protected_method()
    end
    ```
 
-3. **Document intent with LuaCATS** - Use `@private` or `@package` annotations
-   for fields that are implementation details:
+3. **Document intent with LuaCATS** - Use visibility annotations:
 
    ```lua
    --- @class MyClass
-   --- @field public_field string Public API field
-   --- @field _private_field number Private implementation detail
+   --- @field public_field string Public API
+   --- @field __protected_field table For subclasses
+   --- @field _private_field number Internal only
    ```
-
-   **Note:** Lua Language Server is configured to treat `_*` prefixed properties
-   as private and will not show them in autocomplete for external consumers.
 
 4. **Regular cleanup** - When adding new code, review class definitions and
    remove:
@@ -204,23 +276,18 @@ Debug logging utility controlled by `Config.debug` setting.
   `error()`, or `info()` methods
 - All debug output is conditional on `Config.debug` setting
 
-**When adding new public methods:**
+**When adding public methods to utility modules, update AGENTS.md with:**
 
-When adding new public methods to Logger or any other commonly used utility
-module, **ALWAYS update this AGENTS.md documentation** with:
-
-1. Method signature and brief description
-2. What the method does
-3. Usage examples
-4. Any important notes or gotchas
-
-This prevents confusion and ensures agents know what methods are available.
+1. Method signature
+2. Brief description
+3. Usage example
+4. Important notes
 
 ## Code Style
 
 ### Lua Class Pattern
 
-Use this standard pattern for creating Lua classes:
+**Basic class structure:**
 
 ```lua
 --- @class Animal
@@ -253,61 +320,64 @@ end
   - Called as: `Class.method()` or `instance.method()` (both work, but no
     `self`)
   - Use for utility functions, constructors, or static helpers
-  - **Important:** Instances can call these too via `instance.method()`, but no
-    `self` is passed
+
+#### Inheritance Pattern
+
+**Class setup (module-level):**
 
 ```lua
---- @class Utils
-local Utils = {}
-Utils.__index = Utils
+local Parent = {}
+Parent.__index = Parent
 
--- Constructor: module function (no self)
-function Utils.new()
-    return setmetatable({}, Utils)
-end
-
--- Instance method (receives self)
-function Utils:get_value()
-    return self.value  -- Has access to self
-end
-
--- Module function (no self)
-function Utils.helper()
-    return "static"  -- No access to self
-end
-
--- Usage:
-local u = Utils.new()           -- Constructor: no self needed
-local val = u:get_value()       -- Instance method: self passed implicitly
-local help = u.helper()         -- Module function: called on instance BUT no self
-local help2 = Utils.helper()    -- Module function: called on class, same result
+--- @class Child : Parent
+local Child = setmetatable({}, { __index = Parent })
+Child.__index = Child
 ```
 
-**Example with inheritance:**
+**Constructor with parent initialization:**
 
 ```lua
--- Dog class extends Animal
---- @class Dog : Animal
-local Dog = setmetatable({}, {__index = Animal})
-Dog.__index = Dog
-
-function Dog:new()
-    local instance = setmetatable({}, self)
-    return instance
+function Parent:new(name)
+    local instance = {
+        name = name,
+        parent_state = {}
+    }
+    return setmetatable(instance, self)
 end
 
-function Dog:move()
-    Animal.move(self)  -- Call parent method
-    print("Dog runs on four legs")
-end
+function Child:new(name, extra)
+    -- Call parent constructor with Parent class
+    local instance = Parent.new(Parent, name)
 
-function Dog:bark()
-    print("Woof!")
-end
+    -- Add child-specific state
+    instance.child_state = extra
 
--- Usage
-local dog = Dog:new()
-dog:move()
+    -- Re-metatable to child class for proper inheritance chain
+    return setmetatable(instance, Child)
+end
+```
+
+**Critical rules:**
+
+1. **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
+   `Parent.new(self, ...)`
+2. **Re-assign metatable to child class** after parent initialization
+3. **Inheritance chain:** `instance → Child → Parent`
+
+**Why:**
+
+- Parent constructor needs its own class as `self`
+- Parent initializes instance state
+- Child re-metatables instance to upgrade it
+- Method resolution follows `__index` chain
+
+**Calling parent methods:**
+
+```lua
+function Child:move()
+    Parent.move(self)  -- Explicit parent method call
+    print("Child-specific movement")
+end
 ```
 
 ### LuaCATS Annotations
@@ -341,26 +411,35 @@ end
 
 - Always include a space after `---` for both descriptions and annotations
 - Use `@private` or `@package` for internal implementation details
-- **IMPORTANT:** Optional types MUST use explicit union syntax `type|nil`, NOT
-  the `?` suffix
-  - ❌ Wrong: `@param winid? number` or `@field _state? string`
-  - ✅ Correct: `@param winid number|nil` or `@field _state string|nil`
-  - Reason: Lua Language Server may not properly validate the `?` suffix syntax
-    in all contexts
-- Do NOT Provide meaningful parameter and return descriptions, unless requested
+- **Optional types:** Use `?` suffix for brevity (preferred style)
+  - ✅ Preferred: `@param winid? number` or `@field _state? string`
+  - ✅ Also valid: `@param winid number|nil` or `@field _state string|nil`
+  - Both syntaxes are equivalent in LuaLS - `type?` is syntactic sugar for
+    `type|nil`
+  - **Exception:** In `fun()` type declarations, use explicit `type|nil` due to
+    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385)
+    - ❌ Broken: `fun(result?: table)` - optional syntax ignored
+    - ✅ Works: `fun(result: table|nil)` - explicit union
+- Do NOT provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 
 ## Development & Linting
 
-### Type Checking
+### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
-**Always use `make luals` for full project type checks.** This runs Lua Language
-Server headless diagnosis across all files in the project and provides
-comprehensive type checking.
+**ALWAYS run both linters after making ANY Lua file changes:**
 
 ```bash
-make luals  # Run full project type checking
+make luals      # REQUIRED: Run type checking
+make luacheck   # REQUIRED: Run style/syntax checking
 ```
+
+**Not optional.** Every Lua change must pass both checks before completion.
+
+### Type Checking
+
+`make luals` runs Lua Language Server headless diagnosis across all files in the
+project and provides comprehensive type checking.
 
 ### Available Make targets:
 
@@ -398,6 +477,7 @@ The `lua/agentic/config_default.lua` file defines all user-configurable options.
 2. **ALWAYS update the README.md** "Configuration" section:
    - Include default values
    - Update the configuration table if one exists
+   - Document environment variables if any
 
 #### Theme & Highlight Groups
 
@@ -412,8 +492,7 @@ plugin.
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
 
-These documentation updates ensure users can discover and customize all aspects
-of the plugin.
+Documentation updates ensure users can discover and customize plugin features.
 
 ### Provider System
 
@@ -423,23 +502,49 @@ These providers spawn **external CLI tools** as subprocesses and communicate via
 the Agent Client Protocol:
 
 - **Requirements**: External CLI tools must be installed
-  - `brew install gemini-cli`
-  - `npm -g install @zed-industries/claude-code-acp`
-  - etc...
+  - `npm i -g @zed-industries/claude-code-acp` or
+    `brew install --cask claude-code` or
+    `curl -fsSL https://claude.ai/install.sh | bash`
+  - `npm i -g @google/gemini-cli` or `brew install --cask gemini`
+  - `npm i -g @zed-industries/codex-acp` or `brew install --cask codex` or
+    download from releases
+  - `npm i -g opencode-ai` or `brew install opencode` or
+    `curl -fsSL https://opencode.ai/install | bash`
+
+##### Provider adapters:
+
+Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
+
+- `claude_acp_adapter.lua` - Claude Code ACP adapter
+- `gemini_acp_adapter.lua` - Gemini ACP adapter
+- `codex_acp_adapter.lua` - Codex ACP adapter
+- `opencode_acp_adapter.lua` - OpenCode ACP adapter
+
+These adapters implement provider-specific message formatting, tool call
+handling, and protocol quirks.
+
+**CRITICAL:** When adding a new ACP provider, update this documentation
 
 ##### ACP provider configuration:
 
 ```lua
 acp_providers = {
-  ["gemini-cli"] = {
-    command = "gemini",                    -- CLI command to spawn
-    args = { "--experimental-acp" },       -- CLI arguments
-    env = { GEMINI_API_KEY = "..." },      -- Environment variables
+  ["claude-acp"] = {
+    name = "Claude ACP",                   -- Display name
+    command = "claude-code-acp",           -- CLI command to spawn
+    env = {                                -- Environment variables
+      NODE_NO_WARNINGS = "1",
+      IS_AI_TERMINAL = "1",
+    },
   },
-  ["claude-code"] = {
-    command = "npx",
-    args = { "@zed-industries/claude-code-acp" },
-    env = { ANTHROPIC_API_KEY = "..." },
+  ["gemini-acp"] = {
+    name = "Gemini ACP",
+    command = "gemini",
+    args = { "--experimental-acp" },       -- CLI arguments
+    env = {
+      NODE_NO_WARNINGS = "1",
+      IS_AI_TERMINAL = "1",
+    },
   },
 }
 ```
@@ -520,6 +625,7 @@ Follow this priority order to locate Neovim documentation:
      `/opt/homebrew/Cellar/neovim/0.11.5/share/nvim/runtime/doc/api.txt`
 
    - **Linux (Snap assumed):** Compose path directly
+
      ```
      /snap/nvim/current/usr/share/nvim/runtime/doc/<doc-name>.txt
      ```
@@ -541,7 +647,6 @@ Follow this priority order to locate Neovim documentation:
    ```
 
 **Why:** Running `nvim` commands can hang, cause race conditions, or interfere
-with the development environment. Always use static documentation sources.
+with development environment.
 
-**Pro tip:** Use grep on the entire doc folder when unsure which specific file
-contains the information you need.
+**Tip:** Use grep on doc folder when unsure which file contains needed info.
