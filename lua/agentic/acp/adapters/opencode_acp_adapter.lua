@@ -35,7 +35,8 @@ end
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
 function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
-    -- generating an empty tool call block on purpose, all useful data comes in tool_call_update
+    -- generating an empty tool call block on purpose,
+    -- all OpenCode's useful data comes in tool_call_update
     -- having an empty tool call block helps unnecessary data conversions
 
     --- @type agentic.ui.MessageWriter.ToolCallBlock
@@ -48,7 +49,7 @@ function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
 
     if update.title == "list" then
         -- hack to keep consistency with other Providers
-        -- OpenCode uses `read`, it the message writer will omit it's output if we keept it as read.
+        -- OpenCode uses `read`, and the message writer will omit it's output if we kept this as read.
         message.kind = "search"
     elseif update.title == "websearch" then
         message.kind = "WebSearch"
@@ -59,15 +60,17 @@ function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
---- @class agentic.acp.ToolCallRawInputOpenCode : agentic.acp.RawInput
+--- Specific OpenCode structure - created to avoid confusion with the standard ACP types,
+--- as only OpenCode sends these fields
+--- @class agentic.acp.OpenCodeToolCallRawInput : agentic.acp.RawInput
 --- @field filePath? string
 --- @field newString? string
 --- @field oldString? string
 --- @field replaceAll? boolean
 --- @field error? string
 
---- @class agentic.acp.ToolCallUpdateOpenCode : agentic.acp.ToolCallUpdate
---- @field rawInput? agentic.acp.ToolCallRawInputOpenCode
+--- @class agentic.acp.OpenCodeToolCallUpdate : agentic.acp.ToolCallUpdate
+--- @field rawInput? agentic.acp.OpenCodeToolCallRawInput
 
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
@@ -76,7 +79,7 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
         return
     end
 
-    ---@cast update agentic.acp.ToolCallUpdateOpenCode
+    ---@cast update agentic.acp.OpenCodeToolCallUpdate
 
     --- @type agentic.ui.MessageWriter.ToolCallBase
     local message = {

@@ -74,6 +74,11 @@ function GeminiACPAdapter:_handle_tool_call(session_id, update)
         --- Gemini "execute" title format:
         --- "command [context maybe path] (optional description)"
         message.argument = vim.trim(vim.split(update.title, " %[")[1] or "")
+
+        local desc = update.title:match("%((.-)%)")
+        if desc then
+            message.body = vim.split(desc, "\n")
+        end
     end
 
     self:__with_subscriber(session_id, function(subscriber)
@@ -104,12 +109,13 @@ function GeminiACPAdapter:_handle_tool_call_update(session_id, update)
     end)
 end
 
+--- Specific Gemini ToolCall structure - created to avoid confusion with the standard ACP types, as only Gemini sends these fields
 --- @class agentic.acp.GeminiToolCall : agentic.acp.ToolCall
---- @field kind? agentic.acp.ToolKind -- Gemini is sending it
---- @field locations? agentic.acp.ToolCallLocation[] -- Gemini is sending it
---- @field content? agentic.acp.ACPToolCallContent[] -- Gemini is sending it
---- @field status? agentic.acp.ToolCallStatus -- Gemini is sending it
---- @field title? string -- Gemini is sending it
+--- @field kind? agentic.acp.ToolKind
+--- @field locations? agentic.acp.ToolCallLocation[]
+--- @field content? agentic.acp.ACPToolCallContent[]
+--- @field status? agentic.acp.ToolCallStatus
+--- @field title? string
 
 --- @class agentic.acp.GeminiRequestPermission : agentic.acp.RequestPermission
 --- @field toolCall agentic.acp.GeminiToolCall
@@ -119,8 +125,8 @@ end
 --- @param request agentic.acp.GeminiRequestPermission
 function GeminiACPAdapter:__handle_request_permission(message_id, request)
     -- Gemini asks for permission first, for edit, execute, etc,
-    -- and send diff block for the first time in the same message
-    -- I have to intercept it, send the tool call, and then process with the normal flow
+    -- and sends diff block for the first time in the same message
+    -- I have to intercept it, send a synthetic tool call, and then proceed with the normal flow
 
     local kind = request.toolCall.kind
 
@@ -132,7 +138,7 @@ function GeminiACPAdapter:__handle_request_permission(message_id, request)
         self:_handle_tool_call(request.sessionId, update)
     end
 
-    -- Gemini also don't send "cancel" tool_call_update, so I have to generate a synthetic
+    -- Gemini also don't send "cancel" tool_call_update, so I have to generate a synthetic one
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)

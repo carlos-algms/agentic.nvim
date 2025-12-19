@@ -361,6 +361,9 @@ function SessionManager:new_session()
         on_tool_call_update = function(tool_call_update)
             self.message_writer:update_tool_call_block(tool_call_update)
 
+            -- I need to remove the permission request if the tool call failed before user granted it
+            -- It could happen for many reasons, like invalid parameters, tool not found, etc.
+            -- Mostly comes from the Agent.
             if tool_call_update.status == "failed" then
                 self.permission_manager:remove_request_by_tool_call_id(
                     tool_call_update.tool_call_id

@@ -69,6 +69,7 @@ function CodexACPAdapter:_handle_tool_call(session_id, update)
         and update.rawInput.parsed_cmd[1]
     then
         message.argument = update.rawInput.parsed_cmd[1].cmd or ""
+        -- The argument was designed to be a single line, so escape newlines to avoid breaking UI
         message.argument = message.argument:gsub("\n", "\\n")
     else
         local command = update.rawInput.command
@@ -76,7 +77,7 @@ function CodexACPAdapter:_handle_tool_call(session_id, update)
             command = table.concat(command, " ")
         end
 
-        message.argument = command or update.title or ""
+        message.argument = command or update.title or "unknown codex command"
     end
 
     self:__with_subscriber(session_id, function(subscriber)

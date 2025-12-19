@@ -324,7 +324,6 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     local kind = tool_call_block.kind
     local argument = tool_call_block.argument
 
-    -- FIXIT: Codex is sending multiple updates with different values, and formats, causing the blocks to get empty
     local lines = {
         string.format(" %s(%s) ", kind, argument),
     }

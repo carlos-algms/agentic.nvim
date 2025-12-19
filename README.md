@@ -125,7 +125,7 @@ property:
       },
     },
 
-    -- Override the ACP command to suit your installation
+    -- Example of how override the ACP command to suit your installation, if needed
     ["codex-acp"] = {
       command = "~/.local/bin/codex-acp",
     },

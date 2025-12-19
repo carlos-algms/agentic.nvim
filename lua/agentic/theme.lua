@@ -52,7 +52,7 @@ local lang_map = {
 
 local status_hl = {
     pending = Theme.HL_GROUPS.STATUS_PENDING,
-    in_progress = Theme.HL_GROUPS.STATUS_PENDING, -- Codex is not sending 'pending'
+    in_progress = Theme.HL_GROUPS.STATUS_PENDING, -- pending and in_progress should look the same, to avoid too many colors, added initially because of Codex, but not limited to it
     completed = Theme.HL_GROUPS.STATUS_COMPLETED,
     failed = Theme.HL_GROUPS.STATUS_FAILED,
 }

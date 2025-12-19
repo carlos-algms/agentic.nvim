@@ -68,6 +68,7 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
         end
     elseif kind == "fetch" then
         if update.rawInput.query then
+            -- To keep consistency with all other ACP providers
             message.kind = "WebSearch"
             message.argument = update.rawInput.query
         elseif update.rawInput.url then
