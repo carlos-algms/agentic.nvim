@@ -103,7 +103,7 @@ function PermissionManager._sort_permission_options(options)
 end
 
 --- Complete the current request and process next in queue
---- @param option_id string|nil
+--- @param option_id? string
 function PermissionManager:_complete_request(option_id)
     local current = self.current_request
     if not current then

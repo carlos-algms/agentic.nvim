@@ -2,7 +2,7 @@
 local M = {}
 
 --- @param str string The string to trim
---- @param opts { prefix: string?, suffix: string? }? Optional table with prefix and/or suffix to remove
+--- @param opts? { prefix?: string, suffix?: string } Optional table with prefix and/or suffix to remove
 --- @return string trimmed
 local function trim(str, opts)
     local res = str

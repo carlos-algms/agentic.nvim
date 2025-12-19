@@ -11,7 +11,7 @@ local Logger = require("agentic.utils.logger")
 --- @field chat_widget agentic.ui.ChatWidget
 --- @field agent_client agentic.acp.ACPClient
 
----@class agentic.acp.AgentInstance
+--- @class agentic.acp.AgentInstance
 local AgentInstance = {}
 
 --- A Keyed list of agent instances by name
@@ -19,7 +19,7 @@ local AgentInstance = {}
 --- @type table<string, agentic.acp.ACPClient|nil>
 AgentInstance._instances = {}
 
----@param provider_name string
+--- @param provider_name string
 --- @param on_ready fun(client: agentic.acp.ACPClient)
 function AgentInstance.get_instance(provider_name, on_ready)
     local client = AgentInstance._instances[provider_name]

@@ -1,4 +1,4 @@
----@alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
+--- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
 
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding

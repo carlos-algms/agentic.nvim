@@ -110,7 +110,7 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
             elseif update.rawInput.query then -- WebSearch command
                 message.body = vim.split(update.rawInput.query, "\n")
             elseif update.rawInput.command then
-                message.argument = update.rawInput.command:gsub("\n", "\\n")
+                message.argument = update.rawInput.command
 
                 if update.rawInput.description then
                     message.body = vim.split(update.rawInput.description, "\n")

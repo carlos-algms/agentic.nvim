@@ -1,22 +1,22 @@
 local logger = require("agentic.utils.logger")
 local uv = vim.uv or vim.loop
 
----@alias agentic.acp.TransportType "stdio" | "tcp" | "websocket"
+--- @alias agentic.acp.TransportType "stdio" | "tcp" | "websocket"
 
----@class agentic.acp.ACPTransportModule
+--- @class agentic.acp.ACPTransportModule
 local M = {}
 
----@class agentic.acp.TransportCallbacks
----@field on_state_change fun(state: agentic.acp.ClientConnectionState): nil The transport state like "connecting", "connected", "disconnected", "error"
----@field on_message fun(message: agentic.acp.ResponseRaw): nil
----@field on_reconnect fun(): nil
+--- @class agentic.acp.TransportCallbacks
+--- @field on_state_change fun(state: agentic.acp.ClientConnectionState): nil The transport state like "connecting", "connected", "disconnected", "error"
+--- @field on_message fun(message: agentic.acp.ResponseRaw): nil
+--- @field on_reconnect fun(): nil
 
----@class agentic.acp.StdioTransportConfig
----@field command string Command to spawn agent
----@field args? string[] Arguments for agent command
----@field env? table<string, string|nil> Environment variables
----@field enable_reconnect? boolean Enable auto-reconnect
----@field max_reconnect_attempts? number Maximum reconnection attempts
+--- @class agentic.acp.StdioTransportConfig
+--- @field command string Command to spawn agent
+--- @field args? string[] Arguments for agent command
+--- @field env? table<string, string|nil> Environment variables
+--- @field enable_reconnect? boolean Enable auto-reconnect
+--- @field max_reconnect_attempts? number Maximum reconnection attempts
 
 --- Some known messages the ACP providers write to stderr because it communicates via stdio
 --- These can be safely ignored, as they aren't errors, but logs
@@ -32,10 +32,10 @@ local IGNORE_STDERR_PATTERNS = {
     "[PreToolUseHook]",
 }
 
----Create stdio transport for ACP communication
----@param config agentic.acp.StdioTransportConfig
----@param callbacks agentic.acp.TransportCallbacks
----@return agentic.acp.ACPTransportInstance
+--- Create stdio transport for ACP communication
+--- @param config agentic.acp.StdioTransportConfig
+--- @param callbacks agentic.acp.TransportCallbacks
+--- @return agentic.acp.ACPTransportInstance
 function M.create_stdio_transport(config, callbacks)
     local reconnect_count = 0
 
@@ -107,7 +107,7 @@ function M.create_stdio_transport(config, callbacks)
             end
         end
 
-        ---@diagnostic disable-next-line: missing-fields
+        --- @diagnostic disable-next-line: missing-fields
         local handle, pid = uv.spawn(config.command, {
             args = args,
             env = final_env,

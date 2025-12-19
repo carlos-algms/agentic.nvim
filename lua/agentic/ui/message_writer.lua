@@ -23,21 +23,21 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @class agentic.ui.MessageWriter.ToolCallBase
 --- @field tool_call_id string
 --- @field status agentic.acp.ToolCallStatus
---- @field body string[]|nil
---- @field diff { new: string[], old: string[], all: boolean|nil }|nil
---- @field kind agentic.acp.ToolKind|nil
---- @field argument string|nil
+--- @field body? string[]
+--- @field diff? { new: string[], old: string[], all?: boolean }
+--- @field kind? agentic.acp.ToolKind
+--- @field argument? string
 
 --- @class agentic.ui.MessageWriter.ToolCallBlock : agentic.ui.MessageWriter.ToolCallBase
 --- @field kind agentic.acp.ToolKind
 --- @field argument string
---- @field extmark_id integer|nil Range extmark spanning the block
---- @field decoration_extmark_ids integer[]|nil IDs of decoration extmarks from ExtmarkBlock
+--- @field extmark_id? integer Range extmark spanning the block
+--- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
---- @field _last_message_type string|nil
+--- @field _last_message_type? string
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -323,6 +323,10 @@ end
 function MessageWriter:_prepare_block_lines(tool_call_block)
     local kind = tool_call_block.kind
     local argument = tool_call_block.argument
+
+    -- Sanitize argument to prevent newlines in the header line
+    -- nvim_buf_set_lines doesn't accept array items with embedded newlines
+    argument = argument:gsub("\n", "\\n")
 
     local lines = {
         string.format(" %s(%s) ", kind, argument),
@@ -679,7 +683,7 @@ function MessageWriter:_apply_status_footer(footer_line, status)
     })
 end
 
---- @param ids integer[]|nil
+--- @param ids? integer[]
 function MessageWriter:_clear_decoration_extmarks(ids)
     if not ids then
         return
@@ -717,7 +721,7 @@ end
 
 --- @param start_row integer
 --- @param end_row integer
---- @param status string|nil
+--- @param status? string
 function MessageWriter:_apply_status_highlights_if_present(
     start_row,
     end_row,

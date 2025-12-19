@@ -411,15 +411,38 @@ end
 
 - Always include a space after `---` for both descriptions and annotations
 - Use `@private` or `@package` for internal implementation details
-- **Optional types:** Use `?` suffix for brevity (preferred style)
-  - ✅ Preferred: `@param winid? number` or `@field _state? string`
-  - ✅ Also valid: `@param winid number|nil` or `@field _state string|nil`
-  - Both syntaxes are equivalent in LuaLS - `type?` is syntactic sugar for
-    `type|nil`
-  - **Exception:** In `fun()` type declarations, use explicit `type|nil` due to
-    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385)
-    - ❌ Broken: `fun(result?: table)` - optional syntax ignored
-    - ✅ Works: `fun(result: table|nil)` - explicit union
+- **Optional types:** Format depends on annotation type
+
+  **`@param` and `@field` annotations - Use `variable? type` format:**
+  - ✅ **CORRECT:** `@param winid? number` - `?` goes AFTER the variable name
+  - ✅ **CORRECT:** `@field _state? string` - `?` goes AFTER the variable name
+  - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also support `?`
+  - ❌ **WRONG:** `@param winid number|nil` - Use `variable? type` instead
+  - ❌ **WRONG:** `@param winid number?` - `?` must be after variable name, not
+    type
+  - ❌ **WRONG:** `@field _state string|nil` - Use `variable? type` instead
+  - ❌ **WRONG:** `@field _state string?` - `?` must be after variable name, not
+    type
+
+  **`@return`, `@type`, and `@alias` annotations - Use explicit `type|nil`
+  union:**
+  - ✅ **CORRECT:** `@return string|nil` - Explicit union type
+  - ✅ **CORRECT:** `@type table<string, number|nil>` - Explicit union type
+  - ✅ **CORRECT:** `@alias MyType string|nil` - Explicit union type
+  - ❌ **WRONG:** `@return string?` - Do NOT use `?` after type
+  - ❌ **WRONG:** `@type table<string, number?>` - Do NOT use `?` after type
+  - ❌ **WRONG:** `@alias MyType string?` - Do NOT use `?` after type
+  - **Reason:** Makes the optional nature more explicit in type definitions
+
+  **`fun()` type declarations - Use explicit `type|nil` union:**
+  - ✅ **CORRECT:** `fun(result: table|nil)` - Explicit union type (required due
+    to
+    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385))
+  - ❌ **WRONG:** `fun(result?: table)` - Optional syntax ignored in `fun()`
+    declarations, luals ignores it and don't run null checks properly
+  - **Note:** `@param` and `@field` annotations can use `variable? type`, but
+    inline `fun()` parameters must use `type|nil`
+
 - Do NOT provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 

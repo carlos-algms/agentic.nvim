@@ -80,8 +80,8 @@ function FileSystem.write_file(abs_path, content, callback)
 end
 
 --- @param abs_path string
---- @param line integer|nil
---- @param limit integer|nil
+--- @param line? integer
+--- @param limit? integer
 --- @param callback fun(content: string|nil)
 function FileSystem.read_file(abs_path, line, limit, callback)
     local lines, err = FileSystem.read_from_buffer_or_disk(abs_path)

@@ -28,10 +28,10 @@ local TIMING = {
 
 --- @class agentic.ui.StatusAnimation
 --- @field _bufnr number Buffer number where animation is rendered
---- @field _state agentic.Theme.SpinnerState|nil Current animation state
---- @field _next_frame_handle uv.uv_timer_t|nil One-shot deferred function handle from vim.defer_fn
+--- @field _state? agentic.Theme.SpinnerState Current animation state
+--- @field _next_frame_handle? uv.uv_timer_t One-shot deferred function handle from vim.defer_fn
 --- @field _spinner_idx number Current spinner frame index
---- @field _extmark_id number|nil Current extmark ID
+--- @field _extmark_id? number Current extmark ID
 local StatusAnimation = {}
 StatusAnimation.__index = StatusAnimation
 
@@ -86,8 +86,8 @@ function StatusAnimation:stop()
 end
 
 function StatusAnimation:_render_frame()
-    if not self._state then
-        -- return early to stop the animation in case state was cleared
+    if not self._state or not vim.api.nvim_buf_is_valid(self._bufnr) then
+        -- return early to stop the animation in case state was cleared, or buffer is invalid
         -- this avoids an infinite loop of deferred calls without a state and it actually renders nil in the UI
         return
     end

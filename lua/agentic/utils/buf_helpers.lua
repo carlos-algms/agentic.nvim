@@ -7,6 +7,10 @@ local BufHelpers = {}
 --- @param callback fun(bufnr: integer): T|nil
 --- @return T|nil
 function BufHelpers.with_modifiable(bufnr, callback)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return nil
+    end
+
     local original_modifiable =
         vim.api.nvim_get_option_value("modifiable", { buf = bufnr })
     vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
@@ -40,6 +44,10 @@ end
 --- @param callback fun(bufnr: integer): T|nil
 --- @return T|nil
 function BufHelpers.execute_on_buffer(bufnr, callback)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return nil
+    end
+
     return vim.api.nvim_buf_call(bufnr, function()
         return callback(bufnr)
     end)
@@ -57,8 +65,8 @@ function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     vim.keymap.set(mode, lhs, rhs, opts)
 end
 
----@param bufnr integer
----@return boolean
+--- @param bufnr integer
+--- @return boolean
 function BufHelpers.is_buffer_empty(bufnr)
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
 

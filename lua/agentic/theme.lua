@@ -1,6 +1,6 @@
----@alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching" | "busy"
+--- @alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching" | "busy"
 
----@class agentic.Theme
+--- @class agentic.Theme
 local Theme = {}
 
 Theme.HL_GROUPS = {
@@ -96,8 +96,8 @@ function Theme.setup()
 end
 
 ---Get language identifier from file path for markdown code fences
----@param file_path string
----@return string language
+--- @param file_path string
+--- @return string language
 function Theme.get_language_from_path(file_path)
     local ext = vim.fn.fnamemodify(file_path, ":e")
     if not ext or ext == "" then
@@ -107,21 +107,21 @@ function Theme.get_language_from_path(file_path)
     return lang_map[ext] or ext
 end
 
----@param status string
----@return string hl_group
+--- @param status string
+--- @return string hl_group
 function Theme.get_status_hl_group(status)
     return status_hl[status] or "Comment"
 end
 
----@param state agentic.Theme.SpinnerState
----@return string hl_group
+--- @param state agentic.Theme.SpinnerState
+--- @return string hl_group
 function Theme.get_spinner_hl_group(state)
     return spinner_hl[state] or Theme.HL_GROUPS.SPINNER_GENERATING
 end
 
----@private
----@param group string
----@param opts table
+--- @private
+--- @param group string
+--- @param opts table
 function Theme._create_hl_if_not_exists(group, opts)
     local hl = vim.api.nvim_get_hl(0, { name = group })
     -- Check if highlight actually exists by checking for specific keys or count

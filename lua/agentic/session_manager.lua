@@ -11,7 +11,7 @@ local FileSystem = require("agentic.utils.file_system")
 local P = {}
 
 --- @class agentic.SessionManager
---- @field session_id string|nil
+--- @field session_id? string
 --- @field _is_first_message boolean Whether this is the first message in the session, used to add system info only once
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
@@ -476,7 +476,7 @@ function SessionManager:add_selection_to_session()
     return false
 end
 
---- @param buf number|string|nil Buffer number or path, if nil the current buffer is used or `0`
+--- @param buf? number|string Buffer number or path, if nil the current buffer is used or `0`
 function SessionManager:add_file_to_session(buf)
     local bufnr = buf and vim.fn.bufnr(buf) or 0
     local buf_path = vim.api.nvim_buf_get_name(bufnr)

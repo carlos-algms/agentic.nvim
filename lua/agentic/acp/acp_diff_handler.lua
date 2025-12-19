@@ -1,18 +1,18 @@
----@class agentic.DiffHandler.DiffBlock
----@field start_line integer
----@field end_line integer
----@field old_lines string[]
----@field new_lines string[]
+--- @class agentic.DiffHandler.DiffBlock
+--- @field start_line integer
+--- @field end_line integer
+--- @field old_lines string[]
+--- @field new_lines string[]
 
----@class agentic.acp.ACPDiffHandler
+--- @class agentic.acp.ACPDiffHandler
 local M = {}
 
 local TextMatcher = require("agentic.utils.text_matcher")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
----@param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
----@return boolean has_diff
+--- @param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
+--- @return boolean has_diff
 function M.has_diff_content(tool_call)
     -- We use rawInput for diffs. Old string might be nil for new files.
     -- We check for file_path and new_string presence.
@@ -24,10 +24,10 @@ end
 --- @param path string
 --- @param oldText string[]
 --- @param newText string[]
---- @param replace_all boolean|nil
+--- @param replace_all? boolean
 --- @return agentic.DiffHandler.DiffBlock[] diff_blocks List of diff blocks for the given file
 function M.extract_diff_blocks(path, oldText, newText, replace_all)
-    ---@type agentic.DiffHandler.DiffBlock[]
+    --- @type agentic.DiffHandler.DiffBlock[]
     local diff_blocks = {}
 
     if not path or not newText then
@@ -75,11 +75,11 @@ function M.extract_diff_blocks(path, oldText, newText, replace_all)
     return diff_blocks
 end
 
----Minimize diff blocks by removing unchanged lines using vim.diff
----@param diff_blocks agentic.DiffHandler.DiffBlock[]
----@return agentic.DiffHandler.DiffBlock[]
+--- Minimize diff blocks by removing unchanged lines using vim.diff
+--- @param diff_blocks agentic.DiffHandler.DiffBlock[]
+--- @return agentic.DiffHandler.DiffBlock[]
 function M._minimize_diff_blocks(diff_blocks)
-    ---@type agentic.DiffHandler.DiffBlock[]
+    --- @type agentic.DiffHandler.DiffBlock[]
     local minimized = {}
 
     for _, diff_block in ipairs(diff_blocks) do
@@ -100,7 +100,7 @@ function M._minimize_diff_blocks(diff_blocks)
                 for _, hunk in ipairs(patch) do
                     local start_a, count_a, start_b, count_b = unpack(hunk)
 
-                    ---@type agentic.DiffHandler.DiffBlock
+                    --- @type agentic.DiffHandler.DiffBlock
                     local minimized_block = {
                         start_line = 0,
                         end_line = 0,
@@ -157,13 +157,13 @@ function M._minimize_diff_blocks(diff_blocks)
     return minimized
 end
 
----Create a diff block for a new file
----@param new_lines string[]
----@return agentic.DiffHandler.DiffBlock
+--- Create a diff block for a new file
+--- @param new_lines string[]
+--- @return agentic.DiffHandler.DiffBlock
 function M._create_new_file_diff_block(new_lines)
     local line_count = #new_lines
 
-    ---@type agentic.DiffHandler.DiffBlock
+    --- @type agentic.DiffHandler.DiffBlock
     local block = {
         start_line = 1,
         end_line = line_count > 0 and line_count or 1,
@@ -174,9 +174,9 @@ function M._create_new_file_diff_block(new_lines)
     return block
 end
 
----Normalize text to lines array, handling nil and vim.NIL
----@param text string|string[]|nil
----@return string[]
+--- Normalize text to lines array, handling nil and vim.NIL
+--- @param text? string|string[]
+--- @return string[]
 function M._normalize_text_to_lines(text)
     if not text or text == "" or text == vim.NIL then
         return {}
@@ -189,21 +189,21 @@ function M._normalize_text_to_lines(text)
     return text
 end
 
----Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
----@param file_lines string[] File content lines
----@param old_lines string[] Old text lines
----@param new_lines string[] New text lines
----@return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
+--- Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
+--- @param file_lines string[] File content lines
+--- @param old_lines string[] Old text lines
+--- @param new_lines string[] New text lines
+--- @return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
 function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
     -- Find all matches using fuzzy matching
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then
-        ---@type agentic.DiffHandler.DiffBlock[]
+        --- @type agentic.DiffHandler.DiffBlock[]
         local blocks = {}
 
         for _, match in ipairs(matches) do
-            ---@type agentic.DiffHandler.DiffBlock
+            --- @type agentic.DiffHandler.DiffBlock
             local block = {
                 start_line = match.start_line,
                 end_line = match.end_line,
@@ -231,11 +231,11 @@ function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
     return nil
 end
 
----Find all substring replacement occurrences in file lines
----@param file_lines string[] File content lines
----@param search_text string Text to search for
----@param replace_text string Text to replace with
----@return agentic.DiffHandler.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
+--- Find all substring replacement occurrences in file lines
+--- @param file_lines string[] File content lines
+--- @param search_text string Text to search for
+--- @param replace_text string Text to replace with
+--- @return agentic.DiffHandler.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
 function M._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
 
@@ -250,7 +250,7 @@ function M._find_substring_replacements(file_lines, search_text, replace_text)
                 return replace_text
             end, 1)
 
-            ---@type agentic.DiffHandler.DiffBlock
+            --- @type agentic.DiffHandler.DiffBlock
             local block = {
                 start_line = line_idx,
                 end_line = line_idx,

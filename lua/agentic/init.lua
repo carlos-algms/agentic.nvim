@@ -3,7 +3,7 @@ local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
 
----@class agentic.Agentic
+--- @class agentic.Agentic
 local Agentic = {}
 
 local function deep_merge_into(target, ...)
@@ -83,7 +83,7 @@ local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
 
 --- Merges the current user configuration with the default configuration
 --- This method should be safe to be called multiple times
----@param opts agentic.UserConfig
+--- @param opts agentic.UserConfig
 function Agentic.setup(opts)
     deep_merge_into(Config, opts or {})
 

@@ -7,7 +7,7 @@ local SessionRegistry = {
     sessions = setmetatable({}, { __mode = "v" }),
 }
 
---- @param tab_page_id integer|nil
+--- @param tab_page_id? integer
 function SessionRegistry.get_session_for_tab_page(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()
@@ -24,7 +24,7 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id)
 end
 
 --- Destroys any existing session for the given tab page and creates a new one
---- @param tab_page_id integer|nil
+--- @param tab_page_id? integer
 --- @return agentic.SessionManager
 function SessionRegistry.new_session(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
@@ -46,7 +46,7 @@ function SessionRegistry.new_session(tab_page_id)
 end
 
 --- Destroys the session for the given tab page, if it exists and removes it from the registry
---- @param tab_page_id integer|nil
+--- @param tab_page_id? integer
 function SessionRegistry.destroy_session(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()

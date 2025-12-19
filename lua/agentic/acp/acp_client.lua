@@ -14,7 +14,7 @@ DO NOT REMOVE them. Only update them if the underlying types change.
 --- @field protocol_version number
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
---- @field callbacks table<number, fun(result?: table, err?: agentic.acp.ACPError)>
+--- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
@@ -138,7 +138,7 @@ end
 --- @protected
 --- @param code number
 --- @param message string
---- @param data any?
+--- @param data? any
 --- @return agentic.acp.ACPError
 function ACPClient:__create_error(code, message, data)
     return {
@@ -176,7 +176,7 @@ function ACPClient:_send_request(method, params, callback)
 end
 
 --- @param method string
---- @param params table?
+--- @param params? table
 function ACPClient:_send_notification(method, params)
     local message = {
         jsonrpc = "2.0",
@@ -490,7 +490,7 @@ end
 
 --- @param session_id string
 --- @param cwd string
---- @param mcp_servers table[]?
+--- @param mcp_servers? table[]
 --- @param handlers agentic.acp.ClientHandlers
 function ACPClient:load_session(session_id, cwd, mcp_servers, handlers)
     --FIXIT: check if it's possible to ignore this check and just try to send load message
@@ -768,10 +768,10 @@ return ACPClient
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
 --- @field parsed_cmd? {
----   cmd?: string|nil,
----   path?: string|nil,
----   query?: string|nil|vim.NIL,
----   type?: string|nil }[] First seem from Codex
+---   cmd?: string,
+---   path?: string,
+---   query?: string|vim.NIL,
+---   type?: string }[] First seem from Codex
 
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string
@@ -826,16 +826,16 @@ return ACPClient
 
 --- @class agentic.acp.SessionCreationResponse
 --- @field sessionId string
---- @field modes agentic.acp.ModesInfo|nil
---- @field models agentic.acp.ModelsInfo|nil
+--- @field modes? agentic.acp.ModesInfo
+--- @field models? agentic.acp.ModelsInfo
 
 --- @class agentic.acp.ResponseRaw
---- @field id number|nil
+--- @field id? number
 --- @field jsonrpc string
 --- @field method string
---- @field result table|nil
---- @field params { sessionId: string, update: agentic.acp.SessionUpdateMessage }|nil
---- @field error agentic.acp.ACPError|nil
+--- @field result? table
+--- @field params? { sessionId: string, update: agentic.acp.SessionUpdateMessage }
+--- @field error? agentic.acp.ACPError
 
 --- @class agentic.acp.UserMessageChunk
 --- @field sessionUpdate "user_message_chunk"
@@ -858,7 +858,7 @@ return ACPClient
 --- @field content? agentic.acp.ACPToolCallContent[]
 --- @field locations? agentic.acp.ToolCallLocation[]
 --- @field rawInput? agentic.acp.RawInput
---- @field _meta? table|nil Claude ACP is sending it
+--- @field _meta? table Claude ACP is sending it
 
 --- @class agentic.acp.ToolCallUpdate
 --- @field sessionUpdate "tool_call_update"

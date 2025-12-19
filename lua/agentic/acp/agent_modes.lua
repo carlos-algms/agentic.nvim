@@ -6,7 +6,7 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 --- @class agentic.acp.AgentModes
 --- @field _modes agentic.acp.AgentMode[]
 --- @field _set_mode_callback fun(mode_id: string) called when the user selects a new mode from the selector
---- @field current_mode_id string|nil
+--- @field current_mode_id? string
 local AgentModes = {}
 AgentModes.__index = AgentModes
 

@@ -116,8 +116,8 @@ end
 --- @param bufnr integer Buffer number
 --- @param ns_id integer Namespace ID for highlights
 --- @param line_number integer 0-indexed line number
---- @param old_line string|nil Old line content (for deleted lines)
---- @param new_line string|nil New line content (for added lines)
+--- @param old_line? string Old line content (for deleted lines)
+--- @param new_line? string New line content (for added lines)
 function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
     if not validate_buffer_line(bufnr, line_number) then
         return

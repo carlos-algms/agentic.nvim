@@ -69,8 +69,6 @@ function CodexACPAdapter:_handle_tool_call(session_id, update)
         and update.rawInput.parsed_cmd[1]
     then
         message.argument = update.rawInput.parsed_cmd[1].cmd or ""
-        -- The argument was designed to be a single line, so escape newlines to avoid breaking UI
-        message.argument = message.argument:gsub("\n", "\\n")
     else
         local command = update.rawInput.command
         if type(command) == "table" then
