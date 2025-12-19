@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  LUALS_VERSION: '3.13.6'
+  LUALS_VERSION: '3.16.2'
   STYLUA_VERSION: '2.0.2'
 
 jobs:
