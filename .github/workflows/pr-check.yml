@@ -60,7 +60,7 @@ jobs:
       - name: Install Luacheck
         run: |
           sudo apt-get update
-          sudo apt-get install -y luacheck
+          sudo apt-get install -y lua-check
 
       - name: Run luacheck
         run: make luacheck
@@ -74,18 +74,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: Install Neovim when unit tests are added
-      # - name: Cache Neovim
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: .local
-      #     key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
-      #
-      # - name: Install Neovim
-      #   if: steps.cache-neovim.outputs.cache-hit != 'true'
-      #   run: |
-      #     mkdir -p .local
-      #     curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux64.tar.gz" | tar xzf - --strip-components=1 -C .local
+      - name: Cache Neovim
+        id: cache-neovim
+        uses: actions/cache@v4
+        with:
+          path: .local
+          key: neovim-${{ runner.os }}-v0.11.5
+
+      - name: Install Neovim
+        if: steps.cache-neovim.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .local
+          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux64.tar.gz" | tar xzf - --strip-components=1 -C .local
 
       - name: Cache LuaLS
         id: cache-luals
@@ -104,4 +104,5 @@ jobs:
         run: |
           ln -sf "$PWD/.local/luals/bin/lua-language-server" .local/bin/lua-language-server
           export PATH="$PWD/.local/bin:$PATH"
+          export VIMRUNTIME="$PWD/.local/share/nvim/runtime"
           make luals

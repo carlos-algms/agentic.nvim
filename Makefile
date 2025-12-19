@@ -4,14 +4,10 @@ LUALS    ?= $(shell which lua-language-server 2>/dev/null || echo "$(HOME)/.loca
 LUACHECK ?= luacheck
 STYLUA   ?= stylua
 
-export VIMRUNTIME := $(strip $(shell \
+# Try to determine VIMRUNTIME, but don't fail at parse time
+VIMRUNTIME := $(strip $(shell \
 	"$(NVIM)" --headless -c 'echo $$VIMRUNTIME' -c q 2>&1 \
 ))
-
-# Bail out if still empty
-ifeq ($(VIMRUNTIME),)
-$(error Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable)
-endif
 
 PROJECT ?= lua/
 LOGDIR  ?= .luals-log
@@ -23,7 +19,10 @@ print-vimruntime:
 
 # Lua Language Server headless diagnosis report
 luals:
-	"$(LUALS)" --check "$(PROJECT)" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json"
+ifeq ($(VIMRUNTIME),)
+	$(error Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable)
+endif
+	VIMRUNTIME="$(VIMRUNTIME)" "$(LUALS)" --check "$(PROJECT)" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json"
 
 # Luacheck linter
 luacheck:
