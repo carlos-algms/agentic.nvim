@@ -4,25 +4,19 @@ LUALS    ?= $(shell which lua-language-server 2>/dev/null || echo "$(HOME)/.loca
 LUACHECK ?= luacheck
 STYLUA   ?= stylua
 
-# Try to determine VIMRUNTIME, but don't fail at parse time
-VIMRUNTIME := $(strip $(shell \
-	"$(NVIM)" --headless -c 'echo $$VIMRUNTIME' -c q 2>&1 \
-))
-
 PROJECT ?= lua/
 LOGDIR  ?= .luals-log
 
-.PHONY: print-vimruntime luals luacheck format-check format check clean-luals-log
-
-print-vimruntime:
-	@echo "VIMRUNTIME=$(VIMRUNTIME)"
+.PHONY: luals luacheck format-check format check clean-luals-log install-hooks
 
 # Lua Language Server headless diagnosis report
 luals:
-ifeq ($(VIMRUNTIME),)
-	$(error Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable)
-endif
-	VIMRUNTIME="$(VIMRUNTIME)" "$(LUALS)" --check "$(PROJECT)" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json"
+	@VIMRUNTIME=$$($(NVIM) --headless -c 'echo $$VIMRUNTIME' -c q 2>&1); \
+	if [ -z "$$VIMRUNTIME" ]; then \
+		echo "Error: Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable" >&2; \
+		exit 1; \
+	fi; \
+	VIMRUNTIME="$$VIMRUNTIME" "$(LUALS)" --check "$(PROJECT)" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json"
 
 # Luacheck linter
 luacheck:
@@ -36,5 +30,21 @@ format-check:
 format:
 	"$(STYLUA)" .
 
-# Convenience aggregator
+# Convenience aggregator, NOT to be used in the CI
 check: luals luacheck format-check
+
+# Install pre-commit hook locally
+install-git-hooks:
+	@mkdir -p .git/hooks
+	@printf '%s\n' \
+		'#!/bin/sh' \
+		'set -e' \
+		'STAGED_LUA_FILES=$$(git diff --cached --name-only --diff-filter=ACM | grep "\.lua$$" || true)' \
+		'if [ -n "$$STAGED_LUA_FILES" ]; then' \
+		'  echo "Running stylua on staged files..."' \
+		'  stylua $$STAGED_LUA_FILES' \
+		'  git add $$STAGED_LUA_FILES' \
+		'fi' \
+		> .git/hooks/pre-commit
+	@chmod +x .git/hooks/pre-commit
+	@echo "Pre-commit hook installed successfully"
