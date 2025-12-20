@@ -484,7 +484,7 @@ function ACPClient:create_session(handlers, callback)
         end
 
         --- @cast result agentic.acp.SessionCreationResponse
-        callback(result, err)
+        callback(result, nil)
     end)
 end
 

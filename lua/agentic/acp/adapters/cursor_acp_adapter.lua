@@ -4,6 +4,7 @@ local Logger = require("agentic.utils.logger")
 
 --- Cursor-specific adapter that extends ACPClient with Cursor-specific behaviors
 --- @class agentic.acp.CursorACPAdapter : agentic.acp.ACPClient
+--- @field _available_commands_updates table<string, table> Cursor sends available commands before session starts, indexed by session ID, to be processed after session creation
 local CursorACPAdapter = setmetatable({}, { __index = ACPClient })
 CursorACPAdapter.__index = CursorACPAdapter
 
@@ -17,7 +18,37 @@ function CursorACPAdapter:new(config, on_ready)
     -- Re-metatable to child class for proper inheritance chain
     self = setmetatable(self, CursorACPAdapter) --[[@as agentic.acp.CursorACPAdapter]]
 
+    -- Initialize session-indexed storage for available commands
+    self._available_commands_updates = {}
+
     return self
+end
+
+--- Overloading create_session to handle slash commands, as cursor sends them before session starts
+--- @param handlers agentic.acp.ClientHandlers
+--- @param callback fun(result: agentic.acp.SessionCreationResponse|nil, err: agentic.acp.ACPError|nil)
+function CursorACPAdapter:create_session(handlers, callback)
+    --- @param result agentic.acp.SessionCreationResponse|nil
+    --- @param err agentic.acp.ACPError|nil
+    local function wrapped_callback(result, err)
+        callback(result, err)
+
+        if not err and result then
+            local stored_update =
+                self._available_commands_updates[result.sessionId]
+            if stored_update then
+                Logger.debug(
+                    "CursorACPAdapter",
+                    "Processing stored available commands update for session "
+                        .. result.sessionId
+                )
+                self._available_commands_updates[result.sessionId] = nil
+                self:__handle_session_update(stored_update)
+            end
+        end
+    end
+
+    ACPClient.create_session(self, handlers, wrapped_callback)
 end
 
 --- @param params table
@@ -28,6 +59,21 @@ function CursorACPAdapter:__handle_session_update(params)
         self:_handle_tool_call(params.sessionId, params.update)
     elseif type == "tool_call_update" then
         self:_handle_tool_call_update(params.sessionId, params.update)
+    elseif type == "user_message_chunk" then
+        -- Ignore user message chunks, otherwise it would duplicate messages in the Chat buffer
+        return
+    elseif type == "available_commands_update" then
+        if not self.subscribers[params.sessionId] then
+            Logger.debug(
+                "CursorACPAdapter",
+                "Storing available commands update for session "
+                    .. params.sessionId
+            )
+            -- Store available commands update indexed by session ID
+            self._available_commands_updates[params.sessionId] = params
+        else
+            ACPClient.__handle_session_update(self, params)
+        end
     else
         ACPClient.__handle_session_update(self, params)
     end
