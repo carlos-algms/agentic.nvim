@@ -94,7 +94,7 @@ function ACPHealth.check_configured_provider()
     elseif not ACPHealth.is_command_available(provider_config.command) then
         vim.list_extend(lines, {
             string.format(
-                "ACP provider `%s` (`%s`) is not installed or not executable.",
+                "‼️ **%s** (command: `%s`) is not installed or not executable.",
                 provider_config.name or provider_name,
                 provider_config.command or "unknown"
             ),
@@ -132,7 +132,7 @@ function ACPHealth.check_configured_provider()
 
     vim.list_extend(lines, {
         "",
-        "You can check the Requirements section in the README for installation instructions:",
+        "Check the `Requirements` section in the README for installation instructions:",
         "",
         "https://github.com/carlos-algms/agentic.nvim?tab=readme-ov-file#-requirements",
         "",
