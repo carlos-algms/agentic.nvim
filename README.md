@@ -322,6 +322,24 @@ correctly without interference from your statusline plugin.
 
 ## 🔧 Development
 
+### Health Check
+
+Verify your installation and dependencies:
+
+```vim
+:checkhealth agentic
+```
+
+This will check:
+
+- Neovim version (≥ 0.11.0 required)
+- Current ACP provider installation (We don't install them for security reasons)
+- Optional ACP providers (so you know which ones are available and can use at
+  any time)
+- Node.js and package managers (Most of the ACP CLIs require Node.js to install
+  and run, some have native binaries too, we don't have control over that, it up
+  to the Creators)
+
 ### Debug Mode
 
 Enable debug logging to troubleshoot issues:
