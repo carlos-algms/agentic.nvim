@@ -1,5 +1,4 @@
 local ACPClient = require("agentic.acp.acp_client")
-local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
 --- Cursor-specific adapter that extends ACPClient with Cursor-specific behaviors
