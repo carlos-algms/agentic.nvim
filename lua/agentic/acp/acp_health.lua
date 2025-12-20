@@ -84,6 +84,12 @@ function ACPHealth.check_configured_provider()
                 provider_name
             ),
             "",
+            "- If it's the first time you're using Agentic.nvim, you might have **NEVER** installed it",
+            "",
+            "- Have you switched your **Node.js version**? Globally installed packages are lost when switching versions with tools like nvm, fnm, etc...(out of this plugin's control)",
+            "",
+            "- It could be a typo 🤷",
+            "",
         })
     elseif not ACPHealth.is_command_available(provider_config.command) then
         vim.list_extend(lines, {
@@ -130,6 +136,8 @@ function ACPHealth.check_configured_provider()
         "",
         "https://github.com/carlos-algms/agentic.nvim?tab=readme-ov-file#-requirements",
         "",
+        "**PLEASE NOTE**: Agentic.nvim does NOT install any ACP providers on your behalf, for security and privacy reasons.",
+        "",
         "Run `:checkhealth agentic` for more information.",
     })
 
@@ -149,8 +157,8 @@ end
 --- Show a floating window with provider warning
 --- @param lines string[]
 function ACPHealth._show_provider_warning(lines)
-    local width = math.floor(vim.o.columns * 0.4)
-    local height = math.floor(vim.o.lines * 0.4)
+    local width = math.floor(vim.o.columns * 0.5)
+    local height = #lines + 3
     local row = math.floor((vim.o.lines - height) / 2)
     local col = math.floor((vim.o.columns - width) / 2)
 
@@ -175,6 +183,8 @@ function ACPHealth._show_provider_warning(lines)
         border = "rounded",
         title = " Agentic.nvim - Warning ",
         title_pos = "center",
+        footer = " q or <Esc> to close ",
+        footer_pos = "right",
     })
 
     vim.wo[win].wrap = true
