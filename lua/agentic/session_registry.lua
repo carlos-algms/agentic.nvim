@@ -8,24 +8,35 @@ local SessionRegistry = {
 }
 
 --- @param tab_page_id? integer
-function SessionRegistry.get_session_for_tab_page(tab_page_id)
+--- @param callback? fun(session: agentic.SessionManager)
+--- @return agentic.SessionManager|nil
+function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()
     local instance = SessionRegistry.sessions[tab_page_id]
 
     if not instance then
+        local ACPHealth = require("agentic.acp.acp_health")
+        if not ACPHealth.check_configured_provider() then
+            return nil
+        end
+
         instance = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager|nil]]
         if instance ~= nil then
             SessionRegistry.sessions[tab_page_id] = instance
         end
     end
 
-    return instance --[[@as agentic.SessionManager]]
+    if instance and callback then
+        callback(instance)
+    end
+
+    return instance
 end
 
 --- Destroys any existing session for the given tab page and creates a new one
 --- @param tab_page_id? integer
---- @return agentic.SessionManager
+--- @return agentic.SessionManager|nil
 function SessionRegistry.new_session(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()

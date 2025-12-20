@@ -22,57 +22,64 @@ end
 --- Opens the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.open()
-    local session = SessionRegistry.get_session_for_tab_page()
-    session:add_selection_or_file_to_session()
-    session.widget:show()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:add_selection_or_file_to_session()
+        session.widget:show()
+    end)
 end
 
 --- Closes the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.close()
-    SessionRegistry.get_session_for_tab_page().widget:hide()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session.widget:hide()
+    end)
 end
 
 --- Toggles the chat widget for the current tab page
 --- Safe to call multiple times
 function Agentic.toggle()
-    local session = SessionRegistry.get_session_for_tab_page()
-
-    if session.widget:is_open() then
-        session.widget:hide()
-    else
-        session:add_selection_or_file_to_session()
-        session.widget:show()
-    end
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        if session.widget:is_open() then
+            session.widget:hide()
+        else
+            session:add_selection_or_file_to_session()
+            session.widget:show()
+        end
+    end)
 end
 
 --- Add the current visual selection to the Chat context
 function Agentic.add_selection()
-    local session = SessionRegistry.get_session_for_tab_page()
-    session:add_selection_to_session()
-
-    session.widget:show()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:add_selection_to_session()
+        session.widget:show()
+    end)
 end
 
 --- Add the current file to the Chat context
 function Agentic.add_file()
-    local session = SessionRegistry.get_session_for_tab_page()
-    session:add_file_to_session()
-    session.widget:show()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:add_file_to_session()
+        session.widget:show()
+    end)
 end
 
 --- Add either the current visual selection or the current file to the Chat context
 function Agentic.add_selection_or_file_to_context()
-    local session = SessionRegistry.get_session_for_tab_page()
-    session:add_selection_or_file_to_session()
-    session.widget:show()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:add_selection_or_file_to_session()
+        session.widget:show()
+    end)
 end
 
 --- Destroys the current Chat session and starts a new one
 function Agentic.new_session()
     local session = SessionRegistry.new_session()
-    session:add_selection_or_file_to_session()
-    session.widget:show()
+    if session then
+        session:add_selection_or_file_to_session()
+        session.widget:show()
+    end
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
