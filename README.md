@@ -17,8 +17,8 @@ interface, your colors, and your keymaps.
 
 - **⚡ Performance First** - Optimized for minimal overhead and fast response
   times
-- **🔌 Multiple ACP Providers** - Support for Claude, Gemini, Codex, and
-  OpenCode
+- **🔌 Multiple ACP Providers** - Support for Claude, Gemini, Codex, OpenCode,
+  and Cursor Agent 🥇
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -63,6 +63,39 @@ https://github.com/user-attachments/assets/b6b43544-a91e-407f-834e-4b4de41259f8
 
 https://github.com/user-attachments/assets/c6653a8b-20ef-49c8-b644-db0df1b342f0
 
+## 📋 Requirements
+
+- **Neovim** v0.11.0 or higher
+- **ACP Provider CLI** - Chose your favorite ACP and install its CLI tool
+  - For security reasons, this plugin doesn't install or manage binaries for
+    you. You must install them manually.
+
+**We recommend using `pnpm`**  
+`pnpm` uses a constant, static global path, that's resilient to updates.  
+While `npm` loses global packages every time you change Node versions using
+tools like `nvm`, `fnm`, etc...
+
+**You are free to chose** any installation method you prefer!
+
+| Provider                           | Install                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [claude-code-acp][claude-code-acp] | `pnpm add -g @zed-industries/claude-code-acp`<br/> **OR** `npm i -g @zed-industries/claude-code-acp`<br/> **OR** [Download binary][claude-code-acp-releases]  |
+| [gemini-cli][gemini-cli]           | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                           |
+| [codex-acp][codex-acp]             | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                    |
+| [opencode][opencode]               | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash` |
+| [cursor-agent][cursor-agent]       | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                    |
+
+> [!WARNING]  
+> These install commands are here for convenience, please always refer to the
+> official installation instructions from the respective ACP provider.
+
+> [!NOTE]  
+> Why install ACP provider CLIs globally?
+> [shai-hulud](https://www.wiz.io/blog/shai-hulud-2-0-ongoing-supply-chain-attack)
+> should be reason enough. 📌 Pin your versions!  
+> But frontend projects with strict package management policies will fail to
+> start when using `npx ...`
+
 ## 📦 Installation
 
 ### lazy.nvim
@@ -74,7 +107,7 @@ https://github.com/user-attachments/assets/c6653a8b-20ef-49c8-b644-db0df1b342f0
   event = "VeryLazy",
 
   opts = {
-    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
+    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
     provider = "claude-acp", -- setting the name here is all you need to get started
   },
 
@@ -144,29 +177,6 @@ property:
 
 **Notes:** Customizing a provider only requires specifying the fields you want
 to change, not the entire configuration.
-
-## 📋 Requirements
-
-- **Neovim** v0.11.0 or higher
-- **ACP Provider CLI** - Chose your favorite ACP and install its CLI tool
-
-| Provider                           | Install                                                                                                 |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| [claude-code-acp][claude-code-acp] | `npm i -g @zed-industries/claude-code-acp`<br/>[Download binary][claude-code-acp-releases]              |
-| [gemini-cli][gemini-cli]           | `npm i -g @google/gemini-cli`<br/>`brew install --cask gemini`                                          |
-| [codex-acp][codex-acp]             | `npm i -g @zed-industries/codex-acp`<br/>[Download binary][codex-acp-releases]                          |
-| [opencode][opencode]               | `npm i -g opencode-ai`<br/>`brew install opencode`<br/>`curl -fsSL https://opencode.ai/install \| bash` |
-
-> [!WARNING]  
-> These install commands are here for convenience, please always refer to the
-> official installation instructions from the respective ACP provider.
-
-> [!NOTE]  
-> Why install ACP provider CLIs globally?
-> [shai-hulud](https://www.wiz.io/blog/shai-hulud-2-0-ongoing-supply-chain-attack)
-> should be reason enough. Pin your versions!  
-> But frontend projects with strict package management policies will fail to
-> start when using `npx ...`
 
 ## 🚀 Usage (Public Lua API)
 
@@ -386,3 +396,5 @@ the the acknowledgments 😊.
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
+[cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
+

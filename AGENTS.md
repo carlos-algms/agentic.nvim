@@ -416,7 +416,8 @@ end
   **`@param` and `@field` annotations - Use `variable? type` format:**
   - ✅ **CORRECT:** `@param winid? number` - `?` goes AFTER the variable name
   - ✅ **CORRECT:** `@field _state? string` - `?` goes AFTER the variable name
-  - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also support `?`
+  - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also
+    support `?`
   - ❌ **WRONG:** `@param winid number|nil` - Use `variable? type` instead
   - ❌ **WRONG:** `@param winid number?` - `?` must be after variable name, not
     type
@@ -533,6 +534,7 @@ the Agent Client Protocol:
     download from releases
   - `npm i -g opencode-ai` or `brew install opencode` or
     `curl -fsSL https://opencode.ai/install | bash`
+  - `npm i -g @blowmage/cursor-agent-acp`
 
 ##### Provider adapters:
 
@@ -542,6 +544,7 @@ Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
 - `gemini_acp_adapter.lua` - Gemini ACP adapter
 - `codex_acp_adapter.lua` - Codex ACP adapter
 - `opencode_acp_adapter.lua` - OpenCode ACP adapter
+- `cursor_acp_adapter.lua` - Cursor Agent ACP adapter
 
 These adapters implement provider-specific message formatting, tool call
 handling, and protocol quirks.
@@ -673,3 +676,4 @@ Follow this priority order to locate Neovim documentation:
 with development environment.
 
 **Tip:** Use grep on doc folder when unsure which file contains needed info.
+

@@ -1,4 +1,4 @@
---- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp"
+--- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
 
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
@@ -58,6 +58,16 @@ local ConfigDefault = {
             name = "OpenCode ACP",
             command = "opencode",
             args = { "acp" },
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
+        },
+
+        ["cursor-acp"] = {
+            name = "Cursor Agent ACP",
+            command = "cursor-agent-acp",
+            args = {},
             env = {
                 NODE_NO_WARNINGS = "1",
                 IS_AI_TERMINAL = "1",
