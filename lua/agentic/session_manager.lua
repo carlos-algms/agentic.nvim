@@ -425,7 +425,9 @@ function SessionManager:new_session()
             if can_use_default and default_mode then
                 self:_handle_mode_change(default_mode)
             else
-                if default_mode and not self.agent_modes:get_mode(default_mode) then
+                if
+                    default_mode and not self.agent_modes:get_mode(default_mode)
+                then
                     vim.notify(
                         string.format(
                             "Configured default_mode '%s' not available. Using provider default.",
