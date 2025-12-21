@@ -141,9 +141,30 @@ property:
   path)
 - `args` (table, optional) - Array of command-line arguments
 - `env` (table, optional) - Environment variables to set for the process
+- `default_mode` (string, optional) - Default mode ID to set on session creation
+  (e.g., `"bypassPermissions"`, `"plan"`)
 
 **Notes:** Customizing a provider only requires specifying the fields you want
 to change, not the entire configuration.
+
+#### Setting a Default Agent Mode
+
+If you prefer a specific agent mode other than the provider's default, you can
+configure it per provider:
+
+```lua
+{
+  acp_providers = {
+    ["claude-acp"] = {
+      -- Automatically switch to this mode when a new session starts
+      default_mode = "bypassPermissions",
+    },
+  },
+}
+```
+
+The mode will only be set if it's available from the provider. Use `<S-Tab>` to
+see available modes for your provider.
 
 ## 📋 Requirements
 

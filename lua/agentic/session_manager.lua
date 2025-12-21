@@ -416,7 +416,25 @@ function SessionManager:new_session()
 
         if response.modes then
             self.agent_modes:set_modes(response.modes)
-            self:_set_mode_to_chat_header(response.modes.currentModeId)
+
+            local default_mode = self.agent.provider_config.default_mode
+            if default_mode and default_mode ~= response.modes.currentModeId then
+                if self.agent_modes:get_mode(default_mode) then
+                    self:_handle_mode_change(default_mode)
+                else
+                    vim.notify(
+                        string.format(
+                            "Configured default_mode '%s' not available. Using provider default.",
+                            default_mode
+                        ),
+                        vim.log.levels.WARN,
+                        { title = "Agentic" }
+                    )
+                    self:_set_mode_to_chat_header(response.modes.currentModeId)
+                end
+            else
+                self:_set_mode_to_chat_header(response.modes.currentModeId)
+            end
         end
 
         -- Reset first message flag for new session, so system info is added again for this session
