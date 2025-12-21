@@ -1,5 +1,24 @@
 --- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
 
+--- Data passed to the on_prompt_submit callback
+--- @class agentic.UserConfig.PromptSubmitData
+--- @field prompt string The user's prompt text
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+--- @field has_code_selection boolean Whether code was included in the prompt
+--- @field has_file_references boolean Whether files were referenced in the prompt
+
+--- Data passed to the on_response_complete callback
+--- @class agentic.UserConfig.ResponseCompleteData
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+--- @field success boolean Whether response completed without error
+--- @field error? table Error details if failed
+
+--- @class agentic.UserConfig.Callbacks
+--- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
+--- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
+
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
 --- @field mode string|string[] The mode(s) for this binding
@@ -145,6 +164,12 @@ local ConfigDefault = {
     --- @class agentic.UserConfig.FilePicker
     file_picker = {
         enabled = true,
+    },
+
+    --- @type agentic.UserConfig.Callbacks
+    callbacks = {
+        on_prompt_submit = nil,
+        on_response_complete = nil,
     },
 }
 

@@ -10,8 +10,26 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic._SessionManagerPrivate
 local P = {}
 
+--- Safely invoke a user-configured callback
+--- @param callback_name "on_prompt_submit" | "on_response_complete"
+--- @param data table
+function P.invoke_callback(callback_name, data)
+    local Config = require("agentic.config")
+    local callback = Config.callbacks and Config.callbacks[callback_name]
+
+    if callback and type(callback) == "function" then
+        local ok, err = pcall(callback, data)
+        if not ok then
+            Logger.debug(
+                string.format("Callback '%s' error: %s", callback_name, err)
+            )
+        end
+    end
+end
+
 --- @class agentic.SessionManager
 --- @field session_id? string
+--- @field tab_page_id integer
 --- @field _is_first_message boolean Whether this is the first message in the session, used to add system info only once
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
@@ -42,6 +60,7 @@ function SessionManager:new(tab_page_id)
 
     self = setmetatable({
         session_id = nil,
+        tab_page_id = tab_page_id,
         _is_first_message = true,
         current_provider = Config.provider,
     }, self)
@@ -185,6 +204,10 @@ function SessionManager:_handle_input_submit(input_text)
         return
     end
 
+    -- Capture these before they get cleared during prompt building
+    local has_code_selection = not self.code_selection:is_empty()
+    local has_file_references = not self.file_list:is_empty()
+
     --- @type agentic.acp.Content[]
     local prompt = {}
 
@@ -306,6 +329,17 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.status_animation:start("thinking")
 
+    P.invoke_callback("on_prompt_submit", {
+        prompt = input_text,
+        session_id = self.session_id,
+        tab_page_id = self.tab_page_id,
+        has_code_selection = has_code_selection,
+        has_file_references = has_file_references,
+    })
+
+    local session_id = self.session_id
+    local tab_page_id = self.tab_page_id
+
     self.agent:send_prompt(self.session_id, prompt, function(_response, err)
         vim.schedule(function()
             local finish_message = string.format(
@@ -326,6 +360,13 @@ function SessionManager:_handle_input_submit(input_text)
             )
 
             self.status_animation:stop()
+
+            P.invoke_callback("on_response_complete", {
+                session_id = session_id,
+                tab_page_id = tab_page_id,
+                success = err == nil,
+                error = err,
+            })
         end)
     end)
 end
