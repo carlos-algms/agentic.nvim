@@ -58,6 +58,10 @@ function AgentInstance.get_instance(provider_name, on_ready)
         local OpenCodeACPAdapter =
             require("agentic.acp.adapters.opencode_acp_adapter")
         client = OpenCodeACPAdapter:new(config, on_ready)
+    elseif provider_name == "cursor-acp" then
+        local CursorACPAdapter =
+            require("agentic.acp.adapters.cursor_acp_adapter")
+        client = CursorACPAdapter:new(config, on_ready)
     else
         error("Unsupported ACP provider: " .. provider_name)
     end
