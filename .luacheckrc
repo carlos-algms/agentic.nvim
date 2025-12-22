@@ -1,6 +1,10 @@
----@diagnostic disable: lowercase-global -- this config file expects globals
+---@diagnostic disable: lowercase-global, undefined-global -- this config file expects globals
 
 cache = true
+
+exclude_files = {
+    "lazy_repro/",
+}
 
 -- Glorious list of warnings: https://luacheck.readthedocs.io/en/stable/warnings.html
 -- Strict mode: only ignore warnings that are truly necessary
@@ -30,4 +34,10 @@ globals = {
     "vim.bo",
     "vim.wo",
     "vim.opt_local",
+    "vim.env", -- Allow setting vim.env in test runner and repro files
+}
+
+-- Test files use busted standard
+files["**/*_spec.lua"] = {
+    std = "+busted",
 }
