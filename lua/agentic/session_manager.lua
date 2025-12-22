@@ -10,19 +10,17 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic._SessionManagerPrivate
 local P = {}
 
---- Safely invoke a user-configured callback
---- @param callback_name "on_prompt_submit" | "on_response_complete"
+--- Safely invoke a user-configured hook
+--- @param hook_name "on_prompt_submit" | "on_response_complete"
 --- @param data table
-function P.invoke_callback(callback_name, data)
+function P.invoke_hook(hook_name, data)
     local Config = require("agentic.config")
-    local callback = Config.callbacks and Config.callbacks[callback_name]
+    local hook = Config.hooks and Config.hooks[hook_name]
 
-    if callback and type(callback) == "function" then
-        local ok, err = pcall(callback, data)
+    if hook and type(hook) == "function" then
+        local ok, err = pcall(hook, data)
         if not ok then
-            Logger.debug(
-                string.format("Callback '%s' error: %s", callback_name, err)
-            )
+            Logger.debug(string.format("Hook '%s' error: %s", hook_name, err))
         end
     end
 end
@@ -329,7 +327,7 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.status_animation:start("thinking")
 
-    P.invoke_callback("on_prompt_submit", {
+    P.invoke_hook("on_prompt_submit", {
         prompt = input_text,
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
@@ -361,7 +359,7 @@ function SessionManager:_handle_input_submit(input_text)
 
             self.status_animation:stop()
 
-            P.invoke_callback("on_response_complete", {
+            P.invoke_hook("on_response_complete", {
                 session_id = session_id,
                 tab_page_id = tab_page_id,
                 success = err == nil,
