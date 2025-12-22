@@ -7,7 +7,10 @@ STYLUA   ?= stylua
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals luacheck format-check format check clean-luals-log install-hooks
+.PHONY: luals luacheck format-check format check test install-hooks
+
+test:
+	./tests/busted.lua
 
 # Lua Language Server headless diagnosis report
 luals:

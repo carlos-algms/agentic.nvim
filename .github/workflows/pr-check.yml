@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'lua/**'
+      - 'tests/**'
       - 'Makefile'
       - '.luarc.json'
       - 'stylua.toml'
@@ -13,6 +14,7 @@ on:
     branches: [main]
     paths:
       - 'lua/**'
+      - 'tests/**'
       - 'Makefile'
       - '.luarc.json'
       - 'stylua.toml'
@@ -67,13 +69,44 @@ jobs:
       - name: Run luacheck
         run: make luacheck
 
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        neovim-version: ['v0.11.5', 'nightly']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup directories
+        run: mkdir -p .local/nvim .local/bin
+
+      - name: Cache Neovim
+        id: cache-neovim
+        uses: actions/cache@v4
+        with:
+          path: .local/nvim
+          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
+
+      - name: Install Neovim
+        if: steps.cache-neovim.outputs.cache-hit != 'true'
+        run: |
+          curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux-x86_64.tar.gz" |
+            tar xzf - --strip-components=1 -C .local/nvim
+
+      - name: Run tests
+        run: |
+          ln -sf "$PWD/.local/nvim/bin/nvim" .local/bin/nvim
+          export PATH="$PWD/.local/bin:$PATH"
+          make test
+
   typecheck:
     runs-on: ubuntu-latest
 
-    # TODO: Enable matrix testing when unit tests are added
-    # strategy:
-    #   matrix:
-    #     neovim-version: ['v0.11.5', 'nightly']
+    strategy:
+      matrix:
+        neovim-version: ['v0.11.5', 'nightly']
 
     steps:
       - uses: actions/checkout@v4
@@ -86,12 +119,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .local/nvim
-          key: neovim-${{ runner.os }}-v0.11.5
+          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
 
       - name: Install Neovim
         if: steps.cache-neovim.outputs.cache-hit != 'true'
         run: |
-          curl -sL "https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-x86_64.tar.gz" |
+          curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux-x86_64.tar.gz" |
             tar xzf - --strip-components=1 -C .local/nvim
 
       - name: Cache LuaLS
