@@ -90,11 +90,16 @@ function M._minimize_diff_blocks(diff_blocks)
             local old_string = table.concat(diff_block.old_lines, "\n")
             local new_string = table.concat(diff_block.new_lines, "\n")
 
-            local patch = vim.diff(old_string, new_string, {
+            -- TODO: Remove vim.diff after Neovim 0.12 is released, and became the minimum requirement
+
+            --- @type fun(a: string, b: string, opts: table): integer[][]
+            local diff_fn = vim.text and vim.text.diff or vim.diff
+
+            local patch = diff_fn(old_string, new_string, {
                 algorithm = "histogram",
                 result_type = "indices",
                 ctxlen = 0,
-            }) --[[ @as integer[][] -- needs type casting because LuaLS don't infer correctly for the 'histogram' algorithm ]]
+            })
 
             if #patch > 0 then
                 for _, hunk in ipairs(patch) do
