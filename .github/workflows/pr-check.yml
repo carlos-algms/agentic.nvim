@@ -102,6 +102,12 @@ jobs:
           curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux-x86_64.tar.gz" |
             tar xzf - --strip-components=1 -C .local/nvim
 
+      - name: Cache lazy_repro
+        uses: actions/cache@v4
+        with:
+          path: lazy_repro
+          key: lazy-repro-${{ runner.os }}-${{ hashFiles('tests/busted.lua') }}
+
       - name: Run tests
         run: |
           ln -sf "$PWD/.local/nvim/bin/nvim" .local/bin/nvim
