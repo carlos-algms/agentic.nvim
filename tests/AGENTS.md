@@ -54,10 +54,10 @@ lua/agentic/
 
 ```bash
 # Run all tests
-nvim -l ./tests/busted.lua lua/
+./tests/busted.lua lua/ tests/
 
-# Or make it executable
-./tests/busted.lua lua/
+# Run specific test file
+./tests/busted.lua lua/agentic/acp/agent_modes_spec.lua
 
 # Inspect test environment
 nvim -u ./tests/busted.lua
@@ -107,8 +107,8 @@ end)
 ### Assertions
 
 ```lua
--- Equality
-assert.equals(expected, actual)
+-- Equality (use assert.equal, NOT assert.equals)
+assert.equal(expected, actual)
 assert.same(expected_table, actual_table)  -- Deep equality
 
 -- Truthiness
@@ -162,17 +162,20 @@ end)
 local stub = require('luassert.stub')
 
 describe('with stubbed functions', function()
+  local my_stub
+
   before_each(function()
-    stub(vim.api, 'nvim_buf_set_lines')
+    my_stub = stub(vim.api, 'nvim_buf_set_lines')
   end)
 
   after_each(function()
-    vim.api.nvim_buf_set_lines:revert()
+    my_stub:revert()
   end)
 
   it('uses stubbed function', function()
     vim.api.nvim_buf_set_lines(0, 0, -1, false, {'line'})
-    assert.stub(vim.api.nvim_buf_set_lines).was_called()
+    -- Type-safe assertion syntax
+    assert.stub(my_stub).was.called(1)
   end)
 end)
 ```
@@ -186,11 +189,56 @@ describe('with spies', function()
   it('tracks function calls', function()
     local s = spy.on(vim.api, 'nvim_command')
     vim.api.nvim_command('echo "test"')
-    assert.spy(s).was_called()
-    assert.spy(s).was_called_with('echo "test"')
+
+    -- Type-safe assertion syntax
+    assert.spy(s).was.called(1)
+    assert.spy(s).was.called_with('echo "test"')
+
+    s:revert()
+  end)
+
+  it('creates spy callbacks', function()
+    local callback_spy = spy.new(function(arg) end)
+
+    -- Pass spy as function (requires type cast for luals)
+    some_function(callback_spy --[[@as function]])
+
+    -- Assert spy was called
+    assert.spy(callback_spy).was.called(1)
+    assert.spy(callback_spy).was.called_with('expected_arg')
   end)
 end)
 ```
+
+### Type-Safe Spy/Stub Assertions
+
+The luassert type definitions provide spy/stub assertions through the `was` table:
+
+```lua
+-- ✅ CORRECT - Methods exist via `was` table
+assert.spy(my_spy).was.called(0)        -- Not called (pass 0 as count)
+assert.spy(my_spy).was.called(1)        -- Called once
+assert.spy(my_spy).was.called(2)        -- Called twice
+assert.spy(my_spy).was.called_with(arg) -- Called with specific arg
+assert.stub(my_stub).was.called(1)      -- Stub called once
+
+-- ✅ Other available assertions via `was` table
+assert.spy(my_spy).was.called_at_least(2)  -- Called at least N times
+assert.spy(my_spy).was.called_at_most(3)   -- Called at most N times
+assert.spy(my_spy).was.returned_with(val)  -- Returned specific value
+
+-- ❌ WRONG - These method names don't exist
+assert.spy(my_spy).was_called()         -- No `was_called` method
+assert.spy(my_spy).was_not_called()     -- No `was_not_called` method  
+assert.spy(my_spy).was_called_with(arg) -- No `was_called_with` method
+```
+
+**Key insight:** At runtime, both `was.called()` and `was_called()` work due to luassert's 
+`__index` metatable magic that splits underscores into tokens. However, LuaLS type definitions 
+only document the `was.called()` pattern (via the `was` table) because type systems can't 
+express this dynamic behavior. **Use `was.called()` to satisfy type checking.**
+
+Use `was.called(0)` to assert a spy was not called.
 
 ## Test Types
 
@@ -331,4 +379,3 @@ nvim -u ./tests/busted.lua
 - [Testing Neovim Plugins with Busted](https://hiphish.github.io/blog/2024/01/29/testing-neovim-plugins-with-busted/)
 - [LuaRocks Testing Guide](https://mrcjkb.dev/posts/2023-06-06-luarocks-test.html)
 - [Busted Documentation](https://lunarmodules.github.io/busted/)
-
