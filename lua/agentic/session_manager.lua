@@ -10,8 +10,28 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic._SessionManagerPrivate
 local P = {}
 
+--- Safely invoke a user-configured hook
+--- @param hook_name "on_prompt_submit" | "on_response_complete"
+--- @param data table
+function P.invoke_hook(hook_name, data)
+    local Config = require("agentic.config")
+    local hook = Config.hooks and Config.hooks[hook_name]
+
+    if hook and type(hook) == "function" then
+        vim.schedule(function()
+            local ok, err = pcall(hook, data)
+            if not ok then
+                Logger.debug(
+                    string.format("Hook '%s' error: %s", hook_name, err)
+                )
+            end
+        end)
+    end
+end
+
 --- @class agentic.SessionManager
 --- @field session_id? string
+--- @field tab_page_id integer
 --- @field _is_first_message boolean Whether this is the first message in the session, used to add system info only once
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
@@ -42,6 +62,7 @@ function SessionManager:new(tab_page_id)
 
     self = setmetatable({
         session_id = nil,
+        tab_page_id = tab_page_id,
         _is_first_message = true,
         current_provider = Config.provider,
     }, self)
@@ -306,6 +327,15 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.status_animation:start("thinking")
 
+    P.invoke_hook("on_prompt_submit", {
+        prompt = input_text,
+        session_id = self.session_id,
+        tab_page_id = self.tab_page_id,
+    })
+
+    local session_id = self.session_id
+    local tab_page_id = self.tab_page_id
+
     self.agent:send_prompt(self.session_id, prompt, function(_response, err)
         vim.schedule(function()
             local finish_message = string.format(
@@ -326,6 +356,13 @@ function SessionManager:_handle_input_submit(input_text)
             )
 
             self.status_animation:stop()
+
+            P.invoke_hook("on_response_complete", {
+                session_id = session_id,
+                tab_page_id = tab_page_id,
+                success = err == nil,
+                error = err,
+            })
         end)
     end)
 end

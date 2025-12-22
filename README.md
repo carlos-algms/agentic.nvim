@@ -411,11 +411,42 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-code-acp]: https://github.com/zed-industries/claude-code-acp
-[claude-code-acp-releases]:
-  https://github.com/zed-industries/claude-code-acp/releases
+[claude-code-acp-releases]: https://github.com/zed-industries/claude-code-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 
+### Event Hooks
+
+Agentic.nvim provides hooks that let you respond to key events during the
+chat lifecycle. These are useful for logging, notifications, analytics, or
+integrating with other plugins.
+
+```lua
+{
+  hooks = {
+    -- Called when the user submits a prompt
+    on_prompt_submit = function(data)
+      -- data.prompt: string - The user's prompt text
+      -- data.session_id: string - The ACP session ID
+      -- data.tab_page_id: number - The Neovim tabpage ID
+      vim.notify("Prompt submitted: " .. data.prompt:sub(1, 50))
+    end,
+
+    -- Called when the agent finishes responding
+    on_response_complete = function(data)
+      -- data.session_id: string - The ACP session ID
+      -- data.tab_page_id: number - The Neovim tabpage ID
+      -- data.success: boolean - Whether response completed without error
+      -- data.error: table|nil - Error details if failed
+      if data.success then
+        vim.notify("Agent finished!", vim.log.levels.INFO)
+      else
+        vim.notify("Agent error: " .. vim.inspect(data.error), vim.log.levels.ERROR)
+      end
+    end,
+  },
+}
+```
