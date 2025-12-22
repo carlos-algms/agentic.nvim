@@ -418,22 +418,20 @@ the the acknowledgments 😊.
 [opencode]: https://github.com/sst/opencode
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 
-### Callbacks
+### Event Hooks
 
-Agentic.nvim provides callbacks that let you hook into key events during the
+Agentic.nvim provides hooks that let you respond to key events during the
 chat lifecycle. These are useful for logging, notifications, analytics, or
 integrating with other plugins.
 
 ```lua
 {
-  callbacks = {
+  hooks = {
     -- Called when the user submits a prompt
     on_prompt_submit = function(data)
       -- data.prompt: string - The user's prompt text
       -- data.session_id: string - The ACP session ID
       -- data.tab_page_id: number - The Neovim tabpage ID
-      -- data.has_code_selection: boolean - Whether code was included
-      -- data.has_file_references: boolean - Whether files were referenced
       vim.notify("Prompt submitted: " .. data.prompt:sub(1, 50))
     end,
 

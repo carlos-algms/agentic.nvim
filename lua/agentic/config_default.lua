@@ -5,8 +5,6 @@
 --- @field prompt string The user's prompt text
 --- @field session_id string The ACP session ID
 --- @field tab_page_id number The tabpage ID
---- @field has_code_selection boolean Whether code was included in the prompt
---- @field has_file_references boolean Whether files were referenced in the prompt
 
 --- Data passed to the on_response_complete hook
 --- @class agentic.UserConfig.ResponseCompleteData

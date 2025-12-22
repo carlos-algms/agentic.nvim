@@ -18,10 +18,14 @@ function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
     if hook and type(hook) == "function" then
-        local ok, err = pcall(hook, data)
-        if not ok then
-            Logger.debug(string.format("Hook '%s' error: %s", hook_name, err))
-        end
+        vim.schedule(function()
+            local ok, err = pcall(hook, data)
+            if not ok then
+                Logger.debug(
+                    string.format("Hook '%s' error: %s", hook_name, err)
+                )
+            end
+        end)
     end
 end
 
@@ -202,10 +206,6 @@ function SessionManager:_handle_input_submit(input_text)
         return
     end
 
-    -- Capture these before they get cleared during prompt building
-    local has_code_selection = not self.code_selection:is_empty()
-    local has_file_references = not self.file_list:is_empty()
-
     --- @type agentic.acp.Content[]
     local prompt = {}
 
@@ -331,8 +331,6 @@ function SessionManager:_handle_input_submit(input_text)
         prompt = input_text,
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
-        has_code_selection = has_code_selection,
-        has_file_references = has_file_references,
     })
 
     local session_id = self.session_id
