@@ -83,7 +83,7 @@ function SlashCommands:_setup_completion(bufnr)
 
     -- Set completefunc to return our commands
     vim.bo[bufnr].completefunc =
-        "v:lua.require'agentic.acp.slash_commands'._complete_func"
+        "v:lua.require'agentic.acp.slash_commands'.complete_func"
 
     vim.api.nvim_create_autocmd("TextChangedI", {
         buffer = bufnr,
@@ -118,9 +118,9 @@ end
 
 --- Completion function for completefunc
 --- @param findstart number 1 to find start of completion, 0 to return matches
---- @param base string The text to match when findstart=0
+--- @param _base string The text to match when findstart=0
 --- @return number|table Start column when findstart=1, completion items when findstart=0
-function SlashCommands._complete_func(findstart, base)
+function SlashCommands.complete_func(findstart, _base)
     if findstart == 1 then
         -- Return the column where the completion starts (after the "/")
         return 1
@@ -128,10 +128,12 @@ function SlashCommands._complete_func(findstart, base)
 
     local bufnr = vim.api.nvim_get_current_buf()
     local instance = instances_by_buffer[bufnr]
+
     -- Return the completion items
     if instance and instance.commands then
         return instance.commands
     end
+
     return {}
 end
 
