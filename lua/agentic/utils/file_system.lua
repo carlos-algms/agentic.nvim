@@ -38,7 +38,7 @@ end
 --- @return boolean success
 --- @return string|nil error
 function FileSystem.save_to_disk(abs_path, content)
-    local file = io.open(abs_path, "w")
+    local file, open_err = io.open(abs_path, "w")
 
     if file then
         local ok, err = pcall(file.write, file, content)
@@ -50,7 +50,11 @@ function FileSystem.save_to_disk(abs_path, content)
         end
     end
 
-    return false, "Failed to open file for writing: " .. abs_path
+    return false,
+        "Failed to open file for writing: "
+            .. abs_path
+            .. ". Error: "
+            .. tostring(open_err)
 end
 
 --- @param abs_path string

@@ -212,7 +212,8 @@ end)
 
 ### Type-Safe Spy/Stub Assertions
 
-The luassert type definitions provide spy/stub assertions through the `was` table:
+The luassert type definitions provide spy/stub assertions through the `was`
+table:
 
 ```lua
 -- ✅ CORRECT - Methods exist via `was` table
@@ -229,14 +230,15 @@ assert.spy(my_spy).was.returned_with(val)  -- Returned specific value
 
 -- ❌ WRONG - These method names don't exist
 assert.spy(my_spy).was_called()         -- No `was_called` method
-assert.spy(my_spy).was_not_called()     -- No `was_not_called` method  
+assert.spy(my_spy).was_not_called()     -- No `was_not_called` method
 assert.spy(my_spy).was_called_with(arg) -- No `was_called_with` method
 ```
 
-**Key insight:** At runtime, both `was.called()` and `was_called()` work due to luassert's 
-`__index` metatable magic that splits underscores into tokens. However, LuaLS type definitions 
-only document the `was.called()` pattern (via the `was` table) because type systems can't 
-express this dynamic behavior. **Use `was.called()` to satisfy type checking.**
+**Key insight:** At runtime, both `was.called()` and `was_called()` work due to
+luassert's `__index` metatable magic that splits underscores into tokens.
+However, LuaLS type definitions only document the `was.called()` pattern (via
+the `was` table) because type systems can't express this dynamic behavior. **Use
+`was.called()` to satisfy type checking.**
 
 Use `was.called(0)` to assert a spy was not called.
 
@@ -313,7 +315,55 @@ end)
   `nvim -l`
 - Both Plenary and Busted with nlua use the same Neovim runtime
 
-### Test Isolation
+### Test Isolation and Execution Model
+
+**🚨 CRITICAL: Understanding Busted's Execution Model**
+
+**Tests run sequentially in a single Neovim process:**
+
+- ✅ Tests execute **one after another** (not in parallel)
+- ⚠️ All tests share the **same Neovim instance**
+- ⚠️ Tests **CAN affect each other** through shared global state
+- ⚠️ Module caching means `require()` returns the same module instance across
+  tests
+- ⚠️ Neovim APIs operate on the same editor state (buffers, windows,
+  autocommands, etc.)
+
+**Critical implications:**
+
+1. **Always clean up resources** - Buffers, windows, autocommands, and timers
+   left behind will affect subsequent tests
+2. **Module-level state persists** - Any module-level variables retain their
+   values between tests
+3. **Global Neovim state persists** - Vim variables, options, and global state
+   carry over
+4. **Treesitter parsers cache** - Parser state may persist between tests
+
+**Best practices:**
+
+```lua
+describe("MyModule", function()
+  local bufnr
+
+  before_each(function()
+    -- Create fresh resources for each test
+    bufnr = vim.api.nvim_create_buf(false, true)
+  end)
+
+  after_each(function()
+    -- CRITICAL: Clean up resources
+    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end
+  end)
+
+  it("does something", function()
+    -- Test uses fresh buffer
+  end)
+end)
+```
+
+**Test environment:**
 
 - Tests run in isolated `lazy_repro/` directory (gitignored)
 - Use `vim.env.LAZY_STDPATH = "lazy_repro"` for test runner (already set in
@@ -379,3 +429,4 @@ nvim -u ./tests/busted.lua
 - [Testing Neovim Plugins with Busted](https://hiphish.github.io/blog/2024/01/29/testing-neovim-plugins-with-busted/)
 - [LuaRocks Testing Guide](https://mrcjkb.dev/posts/2023-06-06-luarocks-test.html)
 - [Busted Documentation](https://lunarmodules.github.io/busted/)
+
