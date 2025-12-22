@@ -1,6 +1,3 @@
-local Logger = require("agentic.utils.logger")
-local SessionManager = require("agentic.session_manager")
-
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
 local SessionRegistry = {
@@ -20,6 +17,8 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
         if not ACPHealth.check_configured_provider() then
             return nil
         end
+
+        local SessionManager = require("agentic.session_manager")
 
         instance = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager|nil]]
         if instance ~= nil then
@@ -47,6 +46,7 @@ function SessionRegistry.new_session(tab_page_id)
             session:destroy()
         end)
         if not ok then
+            local Logger = require("agentic.utils.logger")
             Logger.debug("Session destroy error:", err)
         end
         SessionRegistry.sessions[tab_page_id] = nil
