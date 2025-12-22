@@ -73,11 +73,18 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         neovim-version: ['v0.11.5', 'nightly']
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          # libreadline-dev: Required by hererocks to build Lua 5.1 for busted tests
+          # Can be removed if tests no longer use hererocks or switch to pre-built Lua
+          sudo apt-get update && sudo apt-get install -y libreadline-dev
 
       - name: Setup directories
         run: mkdir -p .local/nvim .local/bin
@@ -105,6 +112,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         neovim-version: ['v0.11.5', 'nightly']
 
