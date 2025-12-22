@@ -4,7 +4,7 @@ LUALS    ?= $(shell which lua-language-server 2>/dev/null || echo "$(HOME)/.loca
 LUACHECK ?= luacheck
 STYLUA   ?= stylua
 
-PROJECT ?= lua/
+PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
 .PHONY: luals luacheck format-check format check clean-luals-log install-hooks
@@ -16,7 +16,10 @@ luals:
 		echo "Error: Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable" >&2; \
 		exit 1; \
 	fi; \
-	VIMRUNTIME="$$VIMRUNTIME" "$(LUALS)" --check "$(PROJECT)" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json"
+	for dir in $(PROJECT); do \
+		echo "Checking $$dir..."; \
+		VIMRUNTIME="$$VIMRUNTIME" "$(LUALS)" --check "$$dir" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json" || exit 1; \
+	done
 
 # Luacheck linter
 luacheck:

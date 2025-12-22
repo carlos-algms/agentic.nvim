@@ -7,11 +7,18 @@ load(
     )
 )()
 
+local root_dir = vim.uv.cwd()
+
+-- If no arguments provided, default to tests directory
+if #arg == 0 then
+    table.insert(arg, root_dir .. "/tests")
+end
+
 require("lazy.minit").busted({
     spec = {
         {
             name = "agentic.nvim",
-            dir = vim.uv.cwd(),
+            dir = root_dir,
         },
         -- Add any plugin dependencies here if needed
     },

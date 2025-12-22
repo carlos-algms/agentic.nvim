@@ -1,4 +1,4 @@
-vim.env.LAZY_STDPATH = "lazy_repro"
+vim.env.LAZY_STDPATH = "../lazy_repro"
 
 load(
     vim.fn.system(
@@ -10,7 +10,7 @@ require("lazy.minit").repro({
     spec = {
         {
             name = "agentic.nvim",
-            dir = "/workspace",
+            dir = vim.fn.fnamemodify(vim.uv.cwd() or "", ":h"),
 
             opts = {},
 

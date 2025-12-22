@@ -22,7 +22,7 @@ node_modules/
 .temp/
 .local/
 
-repro/lazy_repro/
+lazy_repro/
 
 # Mac files
 .DS_Store
