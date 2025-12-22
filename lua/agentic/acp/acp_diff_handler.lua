@@ -93,9 +93,9 @@ function M._minimize_diff_blocks(diff_blocks)
             -- TODO: Remove vim.diff after Neovim 0.12 is released, and became the minimum requirement
 
             --- @type fun(a: string, b: string, opts: table): integer[][]
-            --- @diagnostic disable-next-line: deprecated
             -- vim.diff was renamed to vim.text.diff (identical signature, just namespace move)
             -- Fallback needed for backward compatibility with Neovim < 0.12
+            --- @diagnostic disable-next-line: deprecated
             local diff_fn = vim.text and vim.text.diff or vim.diff
 
             local patch = diff_fn(old_string, new_string, {
