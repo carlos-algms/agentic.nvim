@@ -164,5 +164,114 @@ describe("agentic.ui.ChatWidget", function()
             -- Should exit insert mode
             assert.are_not.equal("i", vim.fn.mode())
         end)
+
+        it(
+            "show() creates files window when files buffer has content",
+            function()
+                -- Add content to files buffer
+                vim.bo[widget.buf_nrs.files].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.files,
+                    0,
+                    -1,
+                    false,
+                    { "file1.lua", "file2.lua" }
+                )
+
+                widget:show()
+
+                assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.files))
+
+                -- Verify window is in correct tabpage
+                local files_tab =
+                    vim.api.nvim_win_get_tabpage(widget.win_nrs.files)
+                assert.equal(tab_page_id, files_tab)
+            end
+        )
+
+        it("show() creates code window when code buffer has content", function()
+            -- Add content to code buffer
+            vim.bo[widget.buf_nrs.code].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                widget.buf_nrs.code,
+                0,
+                -1,
+                false,
+                { "local foo = 'bar'", "print(foo)" }
+            )
+
+            widget:show()
+
+            assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.code))
+
+            -- Verify window is in correct tabpage
+            local code_tab = vim.api.nvim_win_get_tabpage(widget.win_nrs.code)
+            assert.equal(tab_page_id, code_tab)
+        end)
+
+        it(
+            "show() creates both files and code windows when both buffers have content",
+            function()
+                -- Add content to files buffer
+                vim.bo[widget.buf_nrs.files].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.files,
+                    0,
+                    -1,
+                    false,
+                    { "file1.lua", "file2.lua" }
+                )
+
+                -- Add content to code buffer
+                vim.bo[widget.buf_nrs.code].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    { "local foo = 'bar'", "print(foo)" }
+                )
+
+                widget:show()
+
+                assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.files))
+                assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.code))
+            end
+        )
+
+        it("hide() closes files and code windows when they exist", function()
+            -- Add content to files and code buffers
+            vim.bo[widget.buf_nrs.files].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                widget.buf_nrs.files,
+                0,
+                -1,
+                false,
+                { "file1.lua" }
+            )
+            vim.bo[widget.buf_nrs.code].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                widget.buf_nrs.code,
+                0,
+                -1,
+                false,
+                { "local foo = 'bar'" }
+            )
+
+            widget:show()
+
+            local files_win = widget.win_nrs.files
+            local code_win = widget.win_nrs.code
+
+            assert.is_true(vim.api.nvim_win_is_valid(files_win))
+            assert.is_true(vim.api.nvim_win_is_valid(code_win))
+
+            widget:hide()
+
+            assert.is_false(vim.api.nvim_win_is_valid(files_win))
+            assert.is_false(vim.api.nvim_win_is_valid(code_win))
+            assert.is_nil(widget.win_nrs.files)
+            assert.is_nil(widget.win_nrs.code)
+        end)
     end)
 end)
