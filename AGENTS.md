@@ -24,6 +24,7 @@ agents must understand to work effectively with this codebase.
 - ❌ Implementation details that are self-documenting in code
 - ❌ Simple utility functions that have clear names and types
 - ❌ UI components unless they demonstrate critical patterns
+- ❌ Testing patterns and decisions (see `@tests/AGENTS.md`)
 
 **When to add documentation:**
 
@@ -460,6 +461,10 @@ make luacheck   # REQUIRED: Run style/syntax checking
 
 **Not optional.** Every Lua change must pass both checks before completion.
 
+### Testing
+
+**See `@tests/AGENTS.md` for complete testing guide.**
+
 ### Type Checking
 
 `make luals` runs Lua Language Server headless diagnosis across all files in the
@@ -676,4 +681,3 @@ Follow this priority order to locate Neovim documentation:
 with development environment.
 
 **Tip:** Use grep on doc folder when unsure which file contains needed info.
-
