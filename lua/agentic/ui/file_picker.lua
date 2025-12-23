@@ -7,6 +7,30 @@ local Logger = require("agentic.utils.logger")
 local FilePicker = {}
 FilePicker.__index = FilePicker
 
+FilePicker.CMD_RG = {
+    "rg",
+    "--files",
+    "--color",
+    "never",
+    "--hidden",
+    "--glob",
+    "!.git/",
+}
+
+FilePicker.CMD_FD = {
+    "fd",
+    "--type",
+    "f",
+    "--color",
+    "never",
+    "--hidden",
+    "--exclude",
+    ".git/",
+    "--base-directory",
+}
+
+FilePicker.CMD_GIT = { "git", "ls-files", "-co", "--exclude-standard" }
+
 --- Buffer-local storage (weak values for automatic cleanup)
 local instances_by_buffer = setmetatable({}, { __mode = "v" })
 
@@ -68,23 +92,25 @@ function FilePicker:_setup_completion(bufnr)
                 -- Only scan if this is a new @ position
                 if current_pos ~= last_at_pos then
                     last_at_pos = current_pos
-                    self:_scan_files()
+                    self:scan_files()
                 end
 
-                -- Set popup menu width a % of editor width
-                -- Neovim will auto-reposition ("nudge") the menu to fit on screen
-                vim.opt_local.pumwidth = math.floor(vim.o.columns * 0.6)
+                if self._files and #self._files > 0 then
+                    -- Set popup menu width a % of editor width
+                    -- Neovim will auto-reposition ("nudge") the menu to fit on screen
+                    vim.opt_local.pumwidth = math.floor(vim.o.columns * 0.6)
 
-                vim.api.nvim_feedkeys(
-                    vim.api.nvim_replace_termcodes(
-                        "<C-x><C-o>",
-                        true,
-                        false,
-                        true
-                    ),
-                    "n",
-                    false
-                )
+                    vim.api.nvim_feedkeys(
+                        vim.api.nvim_replace_termcodes(
+                            "<C-x><C-o>",
+                            true,
+                            false,
+                            true
+                        ),
+                        "n",
+                        false
+                    )
+                end
             else
                 last_at_pos = nil
             end
@@ -92,22 +118,23 @@ function FilePicker:_setup_completion(bufnr)
     })
 end
 
-function FilePicker:_scan_files()
-    local scan_root = self:_get_scan_root()
-    local cmd_parts = self:_build_scan_command(scan_root)
+function FilePicker:scan_files()
+    local commands = self:_build_scan_commands()
 
-    if cmd_parts then
-        Logger.debug("[FilePicker] Starting sync scan:", vim.inspect(cmd_parts))
+    -- Try each command until one succeeds
+    for _, cmd_parts in ipairs(commands) do
+        Logger.debug("[FilePicker] Trying command:", vim.inspect(cmd_parts))
         local start_time = vim.loop.hrtime()
 
         local output = vim.fn.system(cmd_parts)
         local elapsed = (vim.loop.hrtime() - start_time) / 1e6
 
         Logger.debug(
-            "[FilePicker] Command completed in",
-            string.format("%.2fms", elapsed),
-            "exit_code:",
-            vim.v.shell_error
+            string.format(
+                "[FilePicker] Command completed in %.2fms, exit_code: %d",
+                elapsed,
+                vim.v.shell_error
+            )
         )
 
         if vim.v.shell_error == 0 and output ~= "" then
@@ -125,75 +152,58 @@ function FilePicker:_scan_files()
             end
 
             self._files = files
+            return files
         end
-    else
-        Logger.debug("[FilePicker] Using glob fallback (synchronous)")
-        local files = {}
-        local glob_files = vim.fn.glob(scan_root .. "/**/*", false, true)
-        Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
-
-        for _, path in ipairs(glob_files) do
-            if
-                vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path)
-            then
-                local relative_path = FileSystem.to_smart_path(path)
-                table.insert(files, {
-                    word = "@" .. relative_path,
-                    menu = "File",
-                    kind = "@",
-                    icase = 1,
-                })
-            end
-        end
-
-        self._files = files
     end
+
+    -- Fallback to glob if all commands failed
+    Logger.debug("[FilePicker] All commands failed, using glob fallback")
+    local files = {}
+    local glob_files = vim.fn.glob("**/*", false, true)
+    Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
+
+    for _, path in ipairs(glob_files) do
+        if vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path) then
+            local relative_path = FileSystem.to_smart_path(path)
+            table.insert(files, {
+                word = "@" .. relative_path,
+                menu = "File",
+                kind = "@",
+                icase = 1,
+            })
+        end
+    end
+
+    self._files = files
+    return files
 end
 
---- @param scan_root string
---- @return table|nil command
-function FilePicker:_build_scan_command(scan_root)
+--- Builds list of all available scan commands to try in order
+--- All commands run in current working directory by default
+--- @return table[] commands List of command arrays to try
+function FilePicker:_build_scan_commands()
+    local commands = {}
+
     if vim.fn.executable("rg") == 1 then
-        return {
-            "rg",
-            "--files",
-            "--color",
-            "never",
-            "--no-require-git",
-            "--hidden",
-            "--glob",
-            "!.git/",
-            scan_root,
-        }
+        table.insert(commands, vim.list_extend({}, FilePicker.CMD_RG))
     end
 
     if vim.fn.executable("fd") == 1 then
-        return {
-            "fd",
-            "--type",
-            "f",
-            "--color",
-            "never",
-            "--hidden",
-            "--exclude",
-            ".git",
-            "--base-directory",
-            scan_root,
-        }
+        table.insert(commands, vim.list_extend({}, FilePicker.CMD_FD))
     end
 
     if vim.fn.executable("git") == 1 then
         local _ = vim.fn.system("git rev-parse --git-dir 2>/dev/null")
         if vim.v.shell_error == 0 then
-            return { "git", "ls-files", "-co", "--exclude-standard" }
+            table.insert(commands, vim.list_extend({}, FilePicker.CMD_GIT))
         end
     end
 
-    return nil
+    return commands
 end
 
 --- used exclusively with glob fallback to exclude common unwanted files
-local exclude_patterns = {
+FilePicker.GLOB_EXCLUDE_PATTERNS = {
     "%.git/",
     "node_modules/",
     "%.pyc$",
@@ -228,23 +238,13 @@ local exclude_patterns = {
 --- @param path string
 --- @return boolean
 function FilePicker:_should_exclude(path)
-    for _, pattern in ipairs(exclude_patterns) do
+    for _, pattern in ipairs(FilePicker.GLOB_EXCLUDE_PATTERNS) do
         if path:match(pattern) then
             return true
         end
     end
 
     return false
-end
-
---- Gets the root directory to scan for files
---- @return string
-function FilePicker:_get_scan_root()
-    local git_root = vim.fn.system("git rev-parse --show-toplevel 2>/dev/null")
-    if vim.v.shell_error == 0 and git_root ~= "" then
-        return (git_root:gsub("\n", ""))
-    end
-    return vim.fn.getcwd()
 end
 
 --- Omnifunc completion function (called by Neovim)
