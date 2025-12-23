@@ -150,6 +150,10 @@ function FilePicker:scan_files()
                 end
             end
 
+            table.sort(files, function(a, b)
+                return a.word < b.word
+            end)
+
             self._files = files
             return files
         end
@@ -172,6 +176,10 @@ function FilePicker:scan_files()
             })
         end
     end
+
+    table.sort(files, function(a, b)
+        return a.word < b.word
+    end)
 
     self._files = files
     return files

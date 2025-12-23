@@ -58,48 +58,75 @@ describe("FilePicker:scan_files", function()
     end)
 
     describe("real commands", function()
-        it("should return same file count for all commands", function()
-            local file_counts = {}
+        it("should return same files in same order for all commands", function()
+            -- TODO: Remove vim.diff after Neovim 0.12 is released, and became the minimum requirement
+            --- @diagnostic disable-next-line: deprecated
+            local diff_fn = vim.text and vim.text.diff or vim.diff
 
             -- Test rg
             FilePicker.CMD_RG[1] = original_cmd_rg
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = "nonexistent_git"
-            file_counts.rg = #picker:scan_files()
+            local files_rg = picker:scan_files()
 
             -- Test fd
             FilePicker.CMD_RG[1] = "nonexistent_rg"
             FilePicker.CMD_FD[1] = original_cmd_fd
             FilePicker.CMD_GIT[1] = "nonexistent_git"
-            file_counts.fd = #picker:scan_files()
+            local files_fd = picker:scan_files()
 
             -- Test git
             FilePicker.CMD_RG[1] = "nonexistent_rg"
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = original_cmd_git
-            file_counts.git = #picker:scan_files()
+            local files_git = picker:scan_files()
 
             -- All commands should return more than 0 files
-            assert.is_true(file_counts.rg > 0)
-            assert.is_true(file_counts.fd > 0)
-            assert.is_true(file_counts.git > 0)
+            assert.is_true(#files_rg > 0)
+            assert.is_true(#files_fd > 0)
+            assert.is_true(#files_git > 0)
 
             -- All commands should return the same count
             assert.are.equal(
-                file_counts.rg,
-                file_counts.fd,
-                string.format(
-                    "rg and fd counts don't match: %s",
-                    vim.inspect(file_counts)
-                )
+                #files_rg,
+                #files_fd,
+                "rg and fd counts don't match"
             )
             assert.are.equal(
-                file_counts.fd,
-                file_counts.git,
-                string.format(
-                    "fd and git counts don't match: %s",
-                    vim.inspect(file_counts)
-                )
+                #files_fd,
+                #files_git,
+                "fd and git counts don't match"
+            )
+
+            -- Extract file paths (remove @ prefix) for comparison
+            local paths_rg = vim.tbl_map(function(f)
+                return f.word:sub(2)
+            end, files_rg)
+            local paths_fd = vim.tbl_map(function(f)
+                return f.word:sub(2)
+            end, files_fd)
+            local paths_git = vim.tbl_map(function(f)
+                return f.word:sub(2)
+            end, files_git)
+
+            -- Compare rg vs fd using vim.diff
+            local diff_rg_fd = diff_fn(
+                table.concat(paths_rg, "\n"),
+                table.concat(paths_fd, "\n"),
+                { result_type = "indices" }
+            )
+            assert.are.same({}, diff_rg_fd, "rg and fd return different files")
+
+            -- Compare fd vs git using vim.diff
+            local diff_fd_git = diff_fn(
+                table.concat(paths_fd, "\n"),
+                table.concat(paths_git, "\n"),
+                { result_type = "indices" }
+            )
+            assert.are.same(
+                {},
+                diff_fd_git,
+                "fd and git return different files"
             )
         end)
     end)
