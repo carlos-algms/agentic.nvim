@@ -105,5 +105,38 @@ describe("FilePicker:scan_files", function()
                 "fd and git return different files"
             )
         end)
+
+        it("should use glob fallback when all commands fail", function()
+            local original_exclude_patterns = FilePicker.GLOB_EXCLUDE_PATTERNS
+
+            -- First, get files from rg for comparison
+            FilePicker.CMD_RG[1] = original_cmd_rg
+            FilePicker.CMD_FD[1] = "nonexistent_fd"
+            FilePicker.CMD_GIT[1] = "nonexistent_git"
+            local files_rg = picker:scan_files()
+
+            -- Disable all commands to force glob fallback
+            FilePicker.CMD_RG[1] = "nonexistent_rg"
+            FilePicker.CMD_FD[1] = "nonexistent_fd"
+            FilePicker.CMD_GIT[1] = "nonexistent_git"
+
+            -- Add lazy_repro to exclude patterns for this test
+            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
+
+            local files_glob = picker:scan_files()
+
+            -- Should return files using glob fallback
+            assert.is_true(#files_glob > 0)
+
+            -- Compare rg vs glob
+            assert.are.same(
+                files_rg,
+                files_glob,
+                "rg and glob return different files"
+            )
+
+            -- Restore original exclude patterns
+            FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
+        end)
     end)
 end)

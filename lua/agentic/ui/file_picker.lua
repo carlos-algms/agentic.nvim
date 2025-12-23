@@ -162,18 +162,27 @@ function FilePicker:scan_files()
     -- Fallback to glob if all commands failed
     Logger.debug("[FilePicker] All commands failed, using glob fallback")
     local files = {}
+    local seen = {}
+    -- Get all files including hidden files (dotfiles) and files inside hidden directories
     local glob_files = vim.fn.glob("**/*", false, true)
+    local hidden_files = vim.fn.glob("**/.*", false, true)
+    local files_in_hidden = vim.fn.glob("**/.*/**/*", false, true)
+    vim.list_extend(glob_files, hidden_files)
+    vim.list_extend(glob_files, files_in_hidden)
     Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
 
     for _, path in ipairs(glob_files) do
         if vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path) then
             local relative_path = FileSystem.to_smart_path(path)
-            table.insert(files, {
-                word = "@" .. relative_path,
-                menu = "File",
-                kind = "@",
-                icase = 1,
-            })
+            if not seen[relative_path] then
+                seen[relative_path] = true
+                table.insert(files, {
+                    word = "@" .. relative_path,
+                    menu = "File",
+                    kind = "@",
+                    icase = 1,
+                })
+            end
         end
     end
 
@@ -211,7 +220,10 @@ end
 
 --- used exclusively with glob fallback to exclude common unwanted files
 FilePicker.GLOB_EXCLUDE_PATTERNS = {
+    "^%.$",
+    "^%.%.$",
     "%.git/",
+    "%.DS_Store$",
     "node_modules/",
     "%.pyc$",
     "%.swp$",
