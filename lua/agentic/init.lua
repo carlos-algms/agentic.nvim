@@ -89,6 +89,7 @@ function Agentic.stop_generation()
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         if session.is_generating then
             session.agent:stop_generation(session.session_id)
+            session.permission_manager:clear()
         end
     end)
 end

@@ -84,11 +84,6 @@ function SessionManager:new(tab_page_id)
 
     self.widget = ChatWidget:new(tab_page_id, function(input_text)
         self:_handle_input_submit(input_text)
-    end, function()
-        if self.is_generating then
-            self.agent:stop_generation(self.session_id)
-            self.permission_manager:clear()
-        end
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)

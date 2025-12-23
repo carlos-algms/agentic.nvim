@@ -122,7 +122,7 @@ function PermissionManager:_complete_request(option_id)
     self:_process_next()
 end
 
---- Clear all displayed buttons and keymaps, clear queue
+--- Clear all displayed buttons and keymaps, cancel all pending requests
 function PermissionManager:clear()
     if self.current_request then
         self.message_writer:remove_permission_buttons(
