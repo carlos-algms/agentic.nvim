@@ -26,7 +26,6 @@ FilePicker.CMD_FD = {
     "--hidden",
     "--exclude",
     ".git/",
-    "--base-directory",
 }
 
 FilePicker.CMD_GIT = { "git", "ls-files", "-co", "--exclude-standard" }
@@ -184,15 +183,15 @@ end
 function FilePicker:_build_scan_commands()
     local commands = {}
 
-    if vim.fn.executable("rg") == 1 then
+    if vim.fn.executable(FilePicker.CMD_RG[1]) == 1 then
         table.insert(commands, vim.list_extend({}, FilePicker.CMD_RG))
     end
 
-    if vim.fn.executable("fd") == 1 then
+    if vim.fn.executable(FilePicker.CMD_FD[1]) == 1 then
         table.insert(commands, vim.list_extend({}, FilePicker.CMD_FD))
     end
 
-    if vim.fn.executable("git") == 1 then
+    if vim.fn.executable(FilePicker.CMD_GIT[1]) == 1 then
         local _ = vim.fn.system("git rev-parse --git-dir 2>/dev/null")
         if vim.v.shell_error == 0 then
             table.insert(commands, vim.list_extend({}, FilePicker.CMD_GIT))
