@@ -164,9 +164,10 @@ function FilePicker:scan_files()
     local files = {}
     local seen = {}
     -- Get all files including hidden files (dotfiles) and files inside hidden directories
-    local glob_files = vim.fn.glob("**/*", false, true)
-    local hidden_files = vim.fn.glob("**/.*", false, true)
-    local files_in_hidden = vim.fn.glob("**/.*/**/*", false, true)
+    -- Note: vim.fn.glob() doesn't support brace expansion, so we need separate calls
+    local glob_files = vim.fn.glob("**/*", false, true) -- Regular files
+    local hidden_files = vim.fn.glob("**/.*", false, true) -- Dotfiles at any depth
+    local files_in_hidden = vim.fn.glob("**/.*/**/*", false, true) -- Files inside dot dirs
     vim.list_extend(glob_files, hidden_files)
     vim.list_extend(glob_files, files_in_hidden)
     Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
