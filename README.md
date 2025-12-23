@@ -214,6 +214,23 @@ see available modes for your provider.
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one  |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active) |
 
+### Optional Parameters
+
+Content-adding methods accept an optional `opts` table:
+
+- **`focus_prompt`** (boolean, default: `true`) - Whether to move cursor to
+  prompt input after opening the chat
+
+Available on: `add_selection(opts)`, `add_file(opts)`,
+`add_selection_or_file_to_context(opts)`
+
+**Example:**
+
+```lua
+-- Add selection without focusing the prompt
+require("agentic").add_selection({ focus_prompt = false })
+```
+
 ### Built-in Keybindings
 
 These keybindings are automatically set in Agentic buffers:

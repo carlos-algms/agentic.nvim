@@ -12,6 +12,9 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 ---   suffix?: string,
 ---   persistent?: string|nil }>
 
+--- Options for controlling widget display behavior
+--- @alias agentic.ui.ChatWidget.ShowOpts { focus_prompt?: boolean }
+
 --- @type agentic.ui.ChatWidget.Headers
 local WINDOW_HEADERS = {
     chat = {
@@ -62,7 +65,12 @@ function ChatWidget:is_open()
     return win_id and vim.api.nvim_win_is_valid(win_id)
 end
 
-function ChatWidget:show()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts Options for showing the widget
+function ChatWidget:show(opts)
+    local options = opts or {}
+    local should_focus = options.focus_prompt == nil and true
+        or options.focus_prompt
+
     if
         not self.win_nrs.chat
         or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
@@ -122,10 +130,12 @@ function ChatWidget:show()
         self:render_header("files")
     end
 
-    self:move_cursor_to(
-        self.win_nrs.input,
-        BufHelpers.start_insert_on_last_char
-    )
+    if should_focus then
+        self:move_cursor_to(
+            self.win_nrs.input,
+            BufHelpers.start_insert_on_last_char
+        )
+    end
 end
 
 --- Closes all windows but keeps buffers in memory

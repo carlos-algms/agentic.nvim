@@ -50,26 +50,29 @@ function Agentic.toggle()
 end
 
 --- Add the current visual selection to the Chat context
-function Agentic.add_selection()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding selection
+function Agentic.add_selection(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_selection_to_session()
-        session.widget:show()
+        session.widget:show(opts)
     end)
 end
 
 --- Add the current file to the Chat context
-function Agentic.add_file()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding file
+function Agentic.add_file(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_file_to_session()
-        session.widget:show()
+        session.widget:show(opts)
     end)
 end
 
 --- Add either the current visual selection or the current file to the Chat context
-function Agentic.add_selection_or_file_to_context()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding content
+function Agentic.add_selection_or_file_to_context(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_selection_or_file_to_session()
-        session.widget:show()
+        session.widget:show(opts)
     end)
 end
 
