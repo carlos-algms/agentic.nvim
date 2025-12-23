@@ -540,6 +540,20 @@ function ACPClient:set_mode(session_id, mode_id, callback)
     return self:_send_request("session/set_mode", params, callback)
 end
 
+--- Stops current generation/tool execution, keeps session active for the next prompt
+--- @param session_id string
+function ACPClient:stop_generation(session_id)
+    if not session_id then
+        return
+    end
+
+    self:_send_notification("session/cancel", {
+        sessionId = session_id,
+    })
+end
+
+--- Cancels and destroys session (cleanup)
+--- Either to create a new session or if the tabpage is closed
 --- @param session_id string
 function ACPClient:cancel_session(session_id)
     if not session_id then

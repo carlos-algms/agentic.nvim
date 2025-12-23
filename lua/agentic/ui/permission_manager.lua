@@ -130,9 +130,16 @@ function PermissionManager:clear()
             self.current_request.button_end_row
         )
         self:_remove_keymaps()
+
+        pcall(self.current_request.callback, nil)
+        self.current_request = nil
     end
 
-    self.current_request = nil
+    for _, item in ipairs(self.queue) do
+        local callback = item[3]
+        pcall(callback, nil)
+    end
+
     self.queue = {}
 end
 

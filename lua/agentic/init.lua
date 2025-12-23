@@ -82,6 +82,17 @@ function Agentic.new_session()
     end
 end
 
+--- Stops the agent's current generation or tool execution
+--- The session remains active and ready for the next prompt
+--- Safe to call multiple times or when no generation is active
+function Agentic.stop_generation()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        if session.is_generating then
+            session.agent:stop_generation(session.session_id)
+        end
+    end)
+end
+
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {

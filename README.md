@@ -203,15 +203,16 @@ see available modes for your provider.
 
 ### Commands
 
-| Function                                                     | Description                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------------- |
-| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                             |
-| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                |
-| `:lua require("agentic").close()`                            | Close chat sidebar                                              |
-| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                 |
-| `:lua require("agentic").add_file()`                         | Add current file to context                                     |
-| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                   |
-| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one |
+| Function                                                     | Description                                                      |
+| ------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                              |
+| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                 |
+| `:lua require("agentic").close()`                            | Close chat sidebar                                               |
+| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                  |
+| `:lua require("agentic").add_file()`                         | Add current file to context                                      |
+| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                    |
+| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one  |
+| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active) |
 
 ### Built-in Keybindings
 
@@ -411,7 +412,8 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-code-acp]: https://github.com/zed-industries/claude-code-acp
-[claude-code-acp-releases]: https://github.com/zed-industries/claude-code-acp/releases
+[claude-code-acp-releases]:
+  https://github.com/zed-industries/claude-code-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -420,8 +422,8 @@ the the acknowledgments 😊.
 
 ### Event Hooks
 
-Agentic.nvim provides hooks that let you respond to key events during the
-chat lifecycle. These are useful for logging, notifications, analytics, or
+Agentic.nvim provides hooks that let you respond to key events during the chat
+lifecycle. These are useful for logging, notifications, analytics, or
 integrating with other plugins.
 
 ```lua

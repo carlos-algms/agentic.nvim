@@ -37,18 +37,21 @@ local WINDOW_HEADERS = {
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field headers agentic.ui.ChatWidget.Headers
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
+--- @field on_stop_generation fun()
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
 --- @param tab_page_id integer
 --- @param on_submit_input fun(prompt: string)
-function ChatWidget:new(tab_page_id, on_submit_input)
+--- @param on_stop_generation fun()
+function ChatWidget:new(tab_page_id, on_submit_input, on_stop_generation)
     self = setmetatable({}, self)
 
     self.headers = vim.deepcopy(WINDOW_HEADERS)
     self.win_nrs = {}
 
     self.on_submit_input = on_submit_input
+    self.on_stop_generation = on_stop_generation
     self.tab_page_id = tab_page_id
 
     self:_initialize()

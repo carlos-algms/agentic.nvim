@@ -17,8 +17,13 @@ describe("agentic.ui.ChatWidget", function()
 
             -- Create widget instance
             local on_submit_spy = spy.new(function() end)
-            widget =
-                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+            local on_stop_generation_spy = spy.new(function() end)
+
+            widget = ChatWidget:new(
+                tab_page_id,
+                on_submit_spy --[[@as function]],
+                on_stop_generation_spy --[[@as function]]
+            )
         end)
 
         after_each(function()
