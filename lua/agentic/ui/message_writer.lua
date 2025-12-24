@@ -112,7 +112,8 @@ function MessageWriter:write_message_chunk(update)
 
         local lines_to_write = vim.split(text, "\n", { plain = true })
 
-        vim.api.nvim_buf_set_text(
+        local success, err = pcall(
+            vim.api.nvim_buf_set_text,
             bufnr,
             last_line,
             start_col,
@@ -120,6 +121,10 @@ function MessageWriter:write_message_chunk(update)
             start_col,
             lines_to_write
         )
+
+        if not success then
+            Logger.debug("Failed to set text in buffer", err, lines_to_write)
+        end
 
         self:_auto_scroll(bufnr)
     end)
@@ -130,7 +135,18 @@ end
 function MessageWriter:_append_lines(lines)
     local start_line = BufHelpers.is_buffer_empty(self.bufnr) and 0 or -1
 
-    vim.api.nvim_buf_set_lines(self.bufnr, start_line, -1, false, lines)
+    local success, err = pcall(
+        vim.api.nvim_buf_set_lines,
+        self.bufnr,
+        start_line,
+        -1,
+        false,
+        lines
+    )
+
+    if not success then
+        Logger.debug("Failed to append lines to buffer", err, lines)
+    end
 
     self:_auto_scroll(self.bufnr)
 end
@@ -467,9 +483,23 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     local tracker = self.tool_call_blocks[tool_call_id]
 
     if tracker then
+        -- Sanitize argument to prevent newlines in the permission request, neovim throws error
+        local sanitized_argument = tracker.argument:gsub("\n", "\\n")
+
+        -- Get buffer width and limit the display line
+        local buf_width =
+            vim.api.nvim_win_get_width(vim.fn.bufwinid(self.bufnr))
+        local tool_line =
+            string.format(" %s(%s)", tracker.kind, sanitized_argument)
+
+        -- Truncate if longer than buffer width, leaving space for "..."
+        if #tool_line > buf_width then
+            tool_line = tool_line:sub(1, buf_width - 3) .. "..."
+        end
+
         vim.list_extend(lines_to_append, {
-            string.format(" %s(%s)", tracker.kind, tracker.argument),
-            "",
+            tool_line,
+            "", -- Blank line prevents markdown inline markers from spanning to next content
         })
     end
 
