@@ -416,13 +416,13 @@ function SessionManager:new_session()
                 self.permission_manager:remove_request_by_tool_call_id(
                     tool_call_update.tool_call_id
                 )
+            end
 
-                if
-                    not self.permission_manager.current_request
-                    and #self.permission_manager.queue == 0
-                then
-                    self.status_animation:start("generating")
-                end
+            if
+                not self.permission_manager.current_request
+                and #self.permission_manager.queue == 0
+            then
+                self.status_animation:start("generating")
             end
         end,
 
@@ -440,8 +440,6 @@ function SessionManager:new_session()
                 end
             end
 
-            -- FIXIT: I might have to generate a tool call block
-            -- Codex ask for permission before sending the `edit` tool call
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }

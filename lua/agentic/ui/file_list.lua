@@ -74,7 +74,6 @@ function FileList:_render()
     local lines = {}
 
     for _, file in ipairs(self._files) do
-        -- FIXIT: ADD Icon to the file list
         table.insert(lines, "-   " .. FileSystem.to_smart_path(file))
     end
 
