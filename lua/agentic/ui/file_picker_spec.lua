@@ -343,4 +343,70 @@ describe("FilePicker keymap fallback", function()
         assert.is_true(tab_called)
         assert.equal("LAZY_TAB_CALLED", result)
     end)
+
+    it(
+        "should not insert garbage characters when using vimscript expr fallback",
+        function()
+            -- Set up a vimscript expr mapping with ternary (simulates copilot.vim fallback)
+            -- This is a STRING RHS (not a Lua callback), which goes through nvim_eval
+            -- Using v:true which is always available in Neovim
+            vim.cmd([[
+                inoremap <expr> <Tab> v:true ? "\t" : "\t"
+            ]])
+
+            -- Initialize FilePicker
+            FilePicker.new(bufnr)
+
+            -- Set the buffer as current and enter insert mode context
+            vim.api.nvim_set_current_buf(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "" })
+
+            -- Get the file picker's Tab mapping
+            local mappings = vim.api.nvim_buf_get_keymap(bufnr, "i")
+            local tab_mapping = nil --- @type vim.api.keyset.get_keymap
+            for _, map in ipairs(mappings) do
+                if
+                    map.lhs == "<Tab>"
+                    and map.desc
+                    and map.desc:match("%[agentic%-fallback%]")
+                then
+                    tab_mapping = map
+                    break
+                end
+            end
+
+            assert.is_not_nil(tab_mapping)
+
+            -- Simulate Tab press with completion menu NOT visible
+            ---@diagnostic disable-next-line: duplicate-set-field
+            vim.fn.pumvisible = function() -- luacheck: ignore
+                return 0
+            end
+
+            local result = tab_mapping.callback()
+
+            -- The result should be a single tab character (byte 0x09)
+            -- NOT termcoded - nvim_eval already processed "\t" into actual tab
+            assert.equal(1, #result)
+            assert.equal(9, string.byte(result))
+
+            -- Additional check: simulate actually using the result
+            -- Insert the returned keys and verify buffer doesn't have garbage
+            vim.api.nvim_feedkeys(result, "n", false)
+            vim.cmd("doautocmd InsertCharPre") -- Trigger any insert-related autocommands
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local content = table.concat(lines, "\n")
+
+            -- Content should only contain tab or be empty, no garbage characters
+            for i = 1, #content do
+                local byte = string.byte(content, i)
+                -- Only allow: tab (9), newline (10), space (32), or printable ASCII (32-126)
+                local is_valid = byte == 9
+                    or byte == 10
+                    or (byte >= 32 and byte <= 126)
+                assert.is_true(is_valid)
+            end
+        end
+    )
 end)

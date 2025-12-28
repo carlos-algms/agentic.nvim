@@ -106,10 +106,21 @@ end)
 
 ### Assertions
 
+**IMPORTANT:** Busted assertions accept an optional second argument for custom
+error messages, but LuaCATS type definitions don't include it. To avoid
+`redundant-parameter` warnings, either:
+
+1. Don't use the second argument (preferred)
+2. Add file-level diagnostic suppression:
+   `---@diagnostic disable: redundant-parameter`
+
 ```lua
 -- Equality (use assert.equal, NOT assert.equals)
-assert.equal(expected, actual)
+assert.equal(expected, actual)  -- ✅ Preferred: no message
 assert.same(expected_table, actual_table)  -- Deep equality
+
+-- ❌ AVOID: Custom messages cause LuaLS warnings
+assert.equal(expected, actual, "Custom error message")  -- Warning: redundant-parameter
 
 -- Truthiness
 assert.is_true(value)
@@ -126,6 +137,11 @@ assert.is_function(value)
 assert.is_table(value)
 assert.is_string(value)
 assert.is_number(value)
+
+-- ❌ AVOID: All of these cause redundant-parameter warnings
+assert.is_true(value, "Custom message")
+assert.is_not_nil(value, "Should not be nil")
+assert.has_error(function() ... end, "Should throw error")
 ```
 
 ## Mocking Dependencies
@@ -429,4 +445,3 @@ nvim -u ./tests/busted.lua
 - [Testing Neovim Plugins with Busted](https://hiphish.github.io/blog/2024/01/29/testing-neovim-plugins-with-busted/)
 - [LuaRocks Testing Guide](https://mrcjkb.dev/posts/2023-06-06-luarocks-test.html)
 - [Busted Documentation](https://lunarmodules.github.io/busted/)
-
