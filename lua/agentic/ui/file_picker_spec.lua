@@ -146,10 +146,14 @@ describe("FilePicker keymap fallback", function()
     local tab_called
     local cr_called
     local Config
+    local original_pumvisible
 
     before_each(function()
         Config = require("agentic.config")
         Config.file_picker.enabled = true
+
+        -- Save original pumvisible function
+        original_pumvisible = vim.fn.pumvisible
 
         bufnr = vim.api.nvim_create_buf(false, true)
         tab_called = false
@@ -161,9 +165,10 @@ describe("FilePicker keymap fallback", function()
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
 
-        -- Clean up global mappings
         pcall(vim.keymap.del, "i", "<Tab>")
         pcall(vim.keymap.del, "i", "<CR>")
+
+        vim.fn.pumvisible = original_pumvisible -- luacheck: ignore
     end)
 
     it(
