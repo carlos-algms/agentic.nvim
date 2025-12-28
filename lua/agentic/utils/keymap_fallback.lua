@@ -13,7 +13,7 @@ local function is_agentic_mapping(mapping)
     return mapping.desc and mapping.desc:find(M.MARKER, 1, true) ~= nil
 end
 
---- Gets existing mapping for a key using vim.fn.maparg
+--- Gets existing mapping for a key
 --- Automatically checks buffer-local first, then global
 --- Skips mappings created by agentic to prevent infinite loops
 --- @param mode string

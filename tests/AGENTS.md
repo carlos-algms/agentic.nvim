@@ -106,13 +106,9 @@ end)
 
 ### Assertions
 
-**IMPORTANT:** Busted assertions accept an optional second argument for custom
-error messages, but LuaCATS type definitions don't include it. To avoid
-`redundant-parameter` warnings, either:
-
-1. Don't use the second argument (preferred)
-2. Add file-level diagnostic suppression:
-   `---@diagnostic disable: redundant-parameter`
+**IMPORTANT:** Busted assertions do not accept an optional second argument for
+custom error messages, and LuaCATS type definitions don't include it also. To
+avoid `redundant-parameter` warnings don't use the second argument.
 
 ```lua
 -- Equality (use assert.equal, NOT assert.equals)
