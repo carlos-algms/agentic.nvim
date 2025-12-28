@@ -79,12 +79,15 @@ function M.execute_fallback(mapping, default_key)
     if mapping.rhs and mapping.rhs ~= "" then
         if mapping.expr == 1 then
             -- Expr mapping with string RHS: evaluate vimscript
+            -- Example: copilot.vim's Tab mapping:
+            --   i  <Tab>  & empty(get(g:, 'copilot_no_tab_map')) ? copilot#Accept() : "\t"
+            -- The expression is evaluated and returns either copilot's result or "\t"
             local ok, result = pcall(vim.api.nvim_eval, mapping.rhs)
             if ok and type(result) == "string" then
                 -- Expr results need termcode replacement (e.g., "\t" -> actual tab)
                 return vim.api.nvim_replace_termcodes(result, true, true, true)
             end
-            -- Eval failed, use default
+            -- Eval failed (syntax error, undefined var) or returned non-string, use default
             return vim.api.nvim_replace_termcodes(default_key, true, true, true)
         else
             -- Regular mapping: return the RHS directly
