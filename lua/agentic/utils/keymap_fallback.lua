@@ -74,7 +74,8 @@ function M.execute_fallback(mapping, default_key)
             -- Expr mapping with string RHS: evaluate vimscript
             local ok, result = pcall(vim.api.nvim_eval, mapping.rhs)
             if ok and type(result) == "string" then
-                return result
+                -- Expr results need termcode replacement (e.g., "\t" -> actual tab)
+                return vim.api.nvim_replace_termcodes(result, true, true, true)
             end
             -- Eval failed, use default
             return vim.api.nvim_replace_termcodes(default_key, true, true, true)
