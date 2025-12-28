@@ -27,8 +27,15 @@ function M.get_existing_mapping(mode, lhs)
         return nil
     end
 
-    -- Skip our own mappings to prevent infinite loops
+    -- Skip our own mappings and search global scope
     if is_agentic_mapping(mapping) then
+        -- Our buffer-local mapping was found, now check global mappings
+        local global_maps = vim.api.nvim_get_keymap(mode)
+        for _, map in ipairs(global_maps) do
+            if map.lhs == lhs and not is_agentic_mapping(map) then
+                return map
+            end
+        end
         return nil
     end
 

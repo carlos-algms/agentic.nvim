@@ -140,3 +140,202 @@ describe("FilePicker:scan_files", function()
         end)
     end)
 end)
+
+describe("FilePicker keymap fallback", function()
+    local bufnr
+    local tab_called
+    local cr_called
+    local Config
+
+    before_each(function()
+        Config = require("agentic.config")
+        Config.file_picker.enabled = true
+
+        bufnr = vim.api.nvim_create_buf(false, true)
+        tab_called = false
+        cr_called = false
+    end)
+
+    after_each(function()
+        if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end
+
+        -- Clean up global mappings
+        pcall(vim.keymap.del, "i", "<Tab>")
+        pcall(vim.keymap.del, "i", "<CR>")
+    end)
+
+    it(
+        "should call fallback Tab mapping when completion menu not visible",
+        function()
+            -- Set up a pre-existing GLOBAL Tab mapping (simulates copilot.vim)
+            vim.keymap.set("i", "<Tab>", function()
+                tab_called = true
+                return "TAB_CALLED"
+            end, {
+                expr = true,
+                desc = "Test Tab mapping",
+            })
+
+            -- Verify the test mapping was set (global mapping)
+            local test_mapping = vim.fn.maparg("<Tab>", "i", false, true)
+            assert.is_not_nil(test_mapping.rhs or test_mapping.callback)
+
+            FilePicker.new(bufnr)
+
+            -- Get the file picker's Tab mapping
+            local mappings = vim.api.nvim_buf_get_keymap(bufnr, "i")
+            local tab_mapping = nil --- @type vim.api.keyset.get_keymap
+
+            for _, map in ipairs(mappings) do
+                if
+                    map.lhs == "<Tab>"
+                    and map.desc
+                    and map.desc:match("%[agentic%-fallback%]")
+                then
+                    tab_mapping = map
+                    break
+                end
+            end
+
+            assert.is_not_nil(tab_mapping)
+            assert.is_not_nil(tab_mapping.callback)
+
+            -- Simulate Tab press with completion menu NOT visible
+            ---@diagnostic disable-next-line: duplicate-set-field
+            vim.fn.pumvisible = function() -- luacheck: ignore
+                return 0
+            end
+
+            -- Call the mapping callback
+            local result = tab_mapping.callback()
+
+            assert.is_true(tab_called)
+            assert.equal("TAB_CALLED", result)
+        end
+    )
+
+    it(
+        "should call fallback CR mapping when completion menu not visible",
+        function()
+            -- Set up a pre-existing GLOBAL CR mapping
+            vim.keymap.set("i", "<CR>", function()
+                cr_called = true
+                return "CR_CALLED"
+            end, {
+                expr = true,
+            })
+
+            FilePicker.new(bufnr)
+
+            local mappings = vim.api.nvim_buf_get_keymap(bufnr, "i")
+            local cr_mapping = nil --- @type vim.api.keyset.get_keymap
+
+            for _, map in ipairs(mappings) do
+                if
+                    map.lhs == "<CR>"
+                    and map.desc
+                    and map.desc:match("%[agentic%-fallback%]")
+                then
+                    cr_mapping = map
+                    break
+                end
+            end
+
+            assert.is_not_nil(cr_mapping)
+            assert.is_not_nil(cr_mapping.callback)
+
+            -- Simulate CR press with completion menu NOT visible
+            ---@diagnostic disable-next-line: duplicate-set-field
+            vim.fn.pumvisible = function() -- luacheck: ignore
+                return 0
+            end
+
+            local result = cr_mapping.callback()
+
+            -- Should have called the fallback
+            assert.is_true(cr_called)
+            assert.equal("CR_CALLED", result)
+        end
+    )
+
+    it("should NOT call fallback when completion menu is visible", function()
+        vim.keymap.set("i", "<Tab>", function()
+            tab_called = true
+            return "TAB_CALLED"
+        end, {
+            expr = true,
+        })
+
+        FilePicker.new(bufnr)
+
+        local mappings = vim.api.nvim_buf_get_keymap(bufnr, "i")
+        local tab_mapping = nil --- @type vim.api.keyset.get_keymap
+
+        for _, map in ipairs(mappings) do
+            if
+                map.lhs == "<Tab>"
+                and map.desc
+                and map.desc:match("%[agentic%-fallback%]")
+            then
+                tab_mapping = map
+                break
+            end
+        end
+
+        -- Simulate Tab press with completion menu VISIBLE
+        ---@diagnostic disable-next-line: duplicate-set-field
+        vim.fn.pumvisible = function() -- luacheck: ignore
+            return 1
+        end
+
+        local result = tab_mapping.callback()
+
+        -- Should return completion accept sequence, NOT call fallback
+        assert.is_false(tab_called)
+        assert.equal("<C-y> ", result)
+    end)
+
+    it("should call fallback for lazy-loaded global mapping", function()
+        -- Initialize FilePicker BEFORE setting up any global mapping
+        -- This simulates a plugin that loads after agentic
+        FilePicker.new(bufnr)
+
+        -- Now register a global Tab mapping (simulates lazy-loaded copilot.vim)
+        vim.keymap.set("i", "<Tab>", function()
+            tab_called = true
+            return "LAZY_TAB_CALLED"
+        end, {
+            expr = true,
+            desc = "Lazy-loaded Tab mapping",
+        })
+
+        -- Get the file picker's Tab mapping
+        local mappings = vim.api.nvim_buf_get_keymap(bufnr, "i")
+        local tab_mapping = nil --- @type vim.api.keyset.get_keymap
+        for _, map in ipairs(mappings) do
+            if
+                map.lhs == "<Tab>"
+                and map.desc
+                and map.desc:match("%[agentic%-fallback%]")
+            then
+                tab_mapping = map
+                break
+            end
+        end
+
+        assert.is_not_nil(tab_mapping)
+
+        -- Simulate Tab press with completion menu NOT visible
+        ---@diagnostic disable-next-line: duplicate-set-field
+        vim.fn.pumvisible = function() -- luacheck: ignore
+            return 0
+        end
+
+        local result = tab_mapping.callback()
+
+        assert.is_true(tab_called)
+        assert.equal("LAZY_TAB_CALLED", result)
+    end)
+end)

@@ -55,6 +55,8 @@ function FilePicker:_setup_completion(bufnr)
     vim.bo[bufnr].iskeyword = vim.bo[bufnr].iskeyword .. ",@"
     instances_by_buffer[bufnr] = self
 
+    local prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
+
     -- Space after <C-y> ensures completion menu closes and user is ready to type `@` again and start a new completion
     vim.keymap.set("i", "<Tab>", function()
         if vim.fn.pumvisible() == 1 then
@@ -62,8 +64,9 @@ function FilePicker:_setup_completion(bufnr)
         end
 
         -- Always check for existing mapping to handle lazy-loaded plugins
-        -- vim.fn.maparg is very fast (C function) and Tab isn't pressed frequently
-        local prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
+        -- vim.fn.maparg is very fast and Tab isn't pressed frequently
+        prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
+            or prev_tab_map
         return KeymapFallback.execute_fallback(prev_tab_map, "<Tab>")
     end, {
         buffer = bufnr,
@@ -71,13 +74,16 @@ function FilePicker:_setup_completion(bufnr)
         desc = KeymapFallback.MARKER .. " Tab completion fallback",
     })
 
+    local prev_cr_map = KeymapFallback.get_existing_mapping("i", "<CR>")
+
     vim.keymap.set("i", "<CR>", function()
         if vim.fn.pumvisible() == 1 then
             return "<C-y> "
         end
 
         -- Always check for existing mapping to handle lazy-loaded plugins
-        local prev_cr_map = KeymapFallback.get_existing_mapping("i", "<CR>")
+        prev_cr_map = KeymapFallback.get_existing_mapping("i", "<CR>")
+            or prev_cr_map
         return KeymapFallback.execute_fallback(prev_cr_map, "<CR>")
     end, {
         buffer = bufnr,
