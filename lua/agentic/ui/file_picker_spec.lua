@@ -238,7 +238,8 @@ describe("FilePicker keymap fallback", function()
 
             FilePicker.new(bufnr)
 
-            vim.cmd([[execute "normal i\<Tab>"]])
+            -- this one has silence because of the vimScript mapping
+            vim.cmd([[silent execute "normal i\<Tab>"]])
 
             local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
             local content = table.concat(lines, "\n")
