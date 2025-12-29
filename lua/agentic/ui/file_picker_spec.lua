@@ -87,6 +87,9 @@ describe("FilePicker:scan_files", function()
         end)
 
         it("should use glob fallback when all commands fail", function()
+            local original_exclude_patterns =
+                vim.tbl_extend("force", {}, FilePicker.GLOB_EXCLUDE_PATTERNS)
+
             -- First, get files from rg for comparison
             FilePicker.CMD_RG[1] = original_cmd_rg
             FilePicker.CMD_FD[1] = "nonexistent_fd"
@@ -105,6 +108,8 @@ describe("FilePicker:scan_files", function()
 
             assert.is_true(#files_glob > 0)
             assert.are.same(files_rg, files_glob)
+
+            FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)
     end)
 end)

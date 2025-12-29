@@ -470,7 +470,7 @@ output to avoid context flooding:**
 # Redirect output to tmp file and capture exit code
 make luals > /tmp/agentic_luals_output.txt 2>&1; echo $?
 make luacheck > /tmp/agentic_luacheck_output.txt 2>&1; echo $?
-./tests/busted.lua <test_file> > /tmp/agentic_test_output.txt 2>&1; echo $?
+nvim -l tests/busted.lua <test_file> > /tmp/agentic_test_output.txt 2>&1; echo $?
 ```
 
 **Rules:**

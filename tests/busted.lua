@@ -1,5 +1,3 @@
-#!/usr/bin/env -S nvim -l
-
 vim.env.LAZY_STDPATH = "lazy_repro"
 load(
     vim.fn.system(

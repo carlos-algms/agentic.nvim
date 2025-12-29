@@ -10,7 +10,7 @@ LOGDIR  ?= .luals-log
 .PHONY: luals luacheck format-check format check test install-hooks
 
 test:
-	./tests/busted.lua lua/ tests/
+	$(NVIM) -l ./tests/busted.lua lua/ tests/
 
 # Lua Language Server headless diagnosis report
 luals:

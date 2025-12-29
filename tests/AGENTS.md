@@ -54,13 +54,13 @@ lua/agentic/
 
 ```bash
 # Run all tests
-./tests/busted.lua lua/ tests/
+nvim -l tests/busted.lua lua/ tests/
 
 # Run specific test file
-./tests/busted.lua lua/agentic/acp/agent_modes_spec.lua
+nvim -l tests/busted.lua lua/agentic/acp/agent_modes_spec.lua
 
 # Inspect test environment
-nvim -u ./tests/busted.lua
+nvim -u tests/busted.lua
 ```
 
 ### First Run
@@ -415,21 +415,21 @@ end)
 
 ```bash
 # Run with verbose output
-BUSTED_ARGS="--verbose" nvim -l ./tests/busted.lua lua/
+BUSTED_ARGS="--verbose" nvim -l tests/busted.lua lua/
 ```
 
 ### Debug Specific Test
 
 ```bash
 # Run single test file
-nvim -l ./tests/busted.lua lua/agentic/init_spec.lua
+nvim -l tests/busted.lua lua/agentic/init_spec.lua
 ```
 
 ### Inspect Test Environment
 
 ```bash
 # Open Neovim with test environment loaded
-nvim -u ./tests/busted.lua
+nvim -u tests/busted.lua
 
 # Then manually run tests
 :lua require('plenary.busted').run('lua/agentic/init_spec.lua')
