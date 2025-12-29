@@ -98,6 +98,9 @@ local ConfigDefault = {
         input = {
             height = 10,
         },
+        todos = {
+            max_height = 10,
+        },
     },
 
     --- Custom actions to be used with keymaps

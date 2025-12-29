@@ -30,6 +30,9 @@ local WINDOW_HEADERS = {
         title = " Referenced Files",
         persistent = "d: remove file",
     },
+    todos = {
+        title = " TODO Items",
+    },
 }
 
 --- A sidebar-style chat widget with multiple windows stacked vertically
@@ -75,7 +78,7 @@ function ChatWidget:show(opts)
         not self.win_nrs.chat
         or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
     then
-        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {
+        self.win_nrs.chat = self:open_win(self.buf_nrs.chat, false, {
             -- Only the top most needs a fixed width, others adapt to available space
             width = self._calculate_width(Config.windows.width),
         }, {
@@ -90,7 +93,7 @@ function ChatWidget:show(opts)
         not self.win_nrs.input
         or not vim.api.nvim_win_is_valid(self.win_nrs.input)
     then
-        self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
+        self.win_nrs.input = self:open_win(self.buf_nrs.input, true, {
             win = self.win_nrs.chat,
             split = "below",
             height = Config.windows.input.height,
@@ -106,7 +109,7 @@ function ChatWidget:show(opts)
             or not vim.api.nvim_win_is_valid(self.win_nrs.code)
         ) and not BufHelpers.is_buffer_empty(self.buf_nrs.code)
     then
-        self.win_nrs.code = self:_open_win(self.buf_nrs.code, false, {
+        self.win_nrs.code = self:open_win(self.buf_nrs.code, false, {
             win = self.win_nrs.chat,
             split = "below",
             height = 15,
@@ -121,13 +124,31 @@ function ChatWidget:show(opts)
             or not vim.api.nvim_win_is_valid(self.win_nrs.files)
         ) and not BufHelpers.is_buffer_empty(self.buf_nrs.files)
     then
-        self.win_nrs.files = self:_open_win(self.buf_nrs.files, false, {
+        self.win_nrs.files = self:open_win(self.buf_nrs.files, false, {
             win = self.win_nrs.input,
             split = "above",
             height = 5,
         }, {})
 
         self:render_header("files")
+    end
+
+    if
+        (
+            not self.win_nrs.todos
+            or not vim.api.nvim_win_is_valid(self.win_nrs.todos)
+        ) and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
+    then
+        local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
+        local height = math.min(line_count + 1, Config.windows.todos.max_height)
+
+        self.win_nrs.todos = self:open_win(self.buf_nrs.todos, false, {
+            win = self.win_nrs.chat,
+            split = "below",
+            height = height,
+        }, {})
+
+        self:render_header("todos")
     end
 
     if should_focus then
@@ -399,7 +420,7 @@ end
 --- @param opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
 --- @return integer winid
-function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
+function ChatWidget:open_win(bufnr, enter, opts, win_opts)
     --- @type vim.api.keyset.win_config
     local default_opts = {
         split = "right",
@@ -560,6 +581,13 @@ function ChatWidget:close_files_window()
     if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
         vim.api.nvim_win_close(self.win_nrs.files, true)
         self.win_nrs.files = nil
+    end
+end
+
+function ChatWidget:close_todos_window()
+    if self.win_nrs.todos and vim.api.nvim_win_is_valid(self.win_nrs.todos) then
+        vim.api.nvim_win_close(self.win_nrs.todos, true)
+        self.win_nrs.todos = nil
     end
 end
 

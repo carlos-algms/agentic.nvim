@@ -6,6 +6,7 @@
 
 local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
+local TodoList = require("agentic.ui.todo_list")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -128,8 +129,11 @@ function SessionManager:_on_session_update(update)
     -- order the IF blocks in order of likeliness to be called for performance
 
     if update.sessionUpdate == "plan" then
-        -- FIXIT: implement plan handling
-        Logger.debug("Implement plan handling")
+        TodoList.render(self.widget.buf_nrs.todos, update.entries)
+
+        if #update.entries > 0 and self.widget:is_open() then
+            self.widget:show()
+        end
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
         self.message_writer:write_message_chunk(update)
