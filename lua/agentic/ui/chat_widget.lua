@@ -78,7 +78,7 @@ function ChatWidget:show(opts)
         not self.win_nrs.chat
         or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
     then
-        self.win_nrs.chat = self:open_win(self.buf_nrs.chat, false, {
+        self.win_nrs.chat = self:_open_win(self.buf_nrs.chat, false, {
             -- Only the top most needs a fixed width, others adapt to available space
             width = self._calculate_width(Config.windows.width),
         }, {
@@ -93,7 +93,7 @@ function ChatWidget:show(opts)
         not self.win_nrs.input
         or not vim.api.nvim_win_is_valid(self.win_nrs.input)
     then
-        self.win_nrs.input = self:open_win(self.buf_nrs.input, true, {
+        self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
             win = self.win_nrs.chat,
             split = "below",
             height = Config.windows.input.height,
@@ -109,7 +109,7 @@ function ChatWidget:show(opts)
             or not vim.api.nvim_win_is_valid(self.win_nrs.code)
         ) and not BufHelpers.is_buffer_empty(self.buf_nrs.code)
     then
-        self.win_nrs.code = self:open_win(self.buf_nrs.code, false, {
+        self.win_nrs.code = self:_open_win(self.buf_nrs.code, false, {
             win = self.win_nrs.chat,
             split = "below",
             height = 15,
@@ -124,7 +124,7 @@ function ChatWidget:show(opts)
             or not vim.api.nvim_win_is_valid(self.win_nrs.files)
         ) and not BufHelpers.is_buffer_empty(self.buf_nrs.files)
     then
-        self.win_nrs.files = self:open_win(self.buf_nrs.files, false, {
+        self.win_nrs.files = self:_open_win(self.buf_nrs.files, false, {
             win = self.win_nrs.input,
             split = "above",
             height = 5,
@@ -142,7 +142,7 @@ function ChatWidget:show(opts)
         local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
         local height = math.min(line_count + 1, Config.windows.todos.max_height)
 
-        self.win_nrs.todos = self:open_win(self.buf_nrs.todos, false, {
+        self.win_nrs.todos = self:_open_win(self.buf_nrs.todos, false, {
             win = self.win_nrs.chat,
             split = "below",
             height = height,
@@ -420,7 +420,7 @@ end
 --- @param opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
 --- @return integer winid
-function ChatWidget:open_win(bufnr, enter, opts, win_opts)
+function ChatWidget:_open_win(bufnr, enter, opts, win_opts)
     --- @type vim.api.keyset.win_config
     local default_opts = {
         split = "right",
