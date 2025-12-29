@@ -199,9 +199,12 @@ function FilePicker:scan_files()
     Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
 
     for _, path in ipairs(glob_files) do
-        if vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path) then
+        if vim.fn.isdirectory(path) == 0 then
             local relative_path = FileSystem.to_smart_path(path)
-            if not seen[relative_path] then
+            if
+                not seen[relative_path]
+                and not self:_should_exclude(relative_path)
+            then
                 seen[relative_path] = true
                 table.insert(files, {
                     word = "@" .. relative_path,
