@@ -1,5 +1,6 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 
+--- @class agentic.ui.TodoList
 local TodoList = {}
 
 --- Map status to checkbox format
