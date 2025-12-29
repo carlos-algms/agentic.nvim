@@ -47,6 +47,10 @@ function FilePicker.new(bufnr)
     return instance
 end
 
+--- Completion menu accept sequence
+local COMPLETION_ACCEPT =
+    vim.api.nvim_replace_termcodes("<C-y> ", true, true, true)
+
 --- Sets up omnifunc completion and @ trigger detection
 --- @param bufnr number
 function FilePicker:_setup_completion(bufnr)
@@ -60,7 +64,7 @@ function FilePicker:_setup_completion(bufnr)
     -- Space after <C-y> ensures completion menu closes and user is ready to type `@` again and start a new completion
     vim.keymap.set("i", "<Tab>", function()
         if vim.fn.pumvisible() == 1 then
-            return "<C-y> "
+            return COMPLETION_ACCEPT
         end
 
         -- Always check for existing mapping to handle lazy-loaded plugins
@@ -79,7 +83,7 @@ function FilePicker:_setup_completion(bufnr)
 
     vim.keymap.set("i", "<CR>", function()
         if vim.fn.pumvisible() == 1 then
-            return "<C-y> "
+            return COMPLETION_ACCEPT
         end
 
         -- Always check for existing mapping to handle lazy-loaded plugins
