@@ -140,6 +140,8 @@ function ChatWidget:show(opts)
         ) and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
     then
         local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
+
+        -- Add 1 for visual padding to prevent last line cutoff because of the header
         local height = math.min(line_count + 1, Config.windows.todos.max_height)
 
         self.win_nrs.todos = self:_open_win(self.buf_nrs.todos, false, {
@@ -247,6 +249,7 @@ function ChatWidget:_submit_input()
 
     self:close_code_window()
     self:close_files_window()
+    self:close_todos_window()
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
