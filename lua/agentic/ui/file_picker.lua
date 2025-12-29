@@ -71,6 +71,7 @@ function FilePicker:_setup_completion(bufnr)
     end, {
         buffer = bufnr,
         expr = true,
+        replace_keycodes = false, -- Needed to avoid double-escaping, as it's true by default when expr=true
         desc = KeymapFallback.MARKER .. " Tab completion fallback",
     })
 
@@ -88,6 +89,7 @@ function FilePicker:_setup_completion(bufnr)
     end, {
         buffer = bufnr,
         expr = true,
+        replace_keycodes = false,
         desc = KeymapFallback.MARKER .. " CR completion fallback",
     })
 

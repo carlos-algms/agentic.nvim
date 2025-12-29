@@ -84,9 +84,9 @@ function M.execute_fallback(mapping, default_key)
             -- The expression is evaluated and returns either copilot's result or "\t"
             local ok, result = pcall(vim.api.nvim_eval, mapping.rhs)
             if ok and type(result) == "string" then
-                -- Expr results are ALREADY evaluated - "\t" becomes actual tab (0x09)
-                -- nvim_eval processes escape sequences, so we return as-is
-                -- DO NOT run nvim_replace_termcodes again - that would double-process
+                -- nvim_eval returns strings already in internal format (K_SPECIAL bytes).
+                -- Do NOT call nvim_replace_termcodes here - it corrupts K_SPECIAL sequences.
+                -- Our mapping must use replace_keycodes=false to prevent double-processing.
                 return result
             end
             -- Eval failed (syntax error, undefined var) or returned non-string, use default
