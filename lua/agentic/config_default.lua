@@ -95,8 +95,15 @@ local ConfigDefault = {
     --- @class agentic.UserConfig.Windows
     windows = {
         width = "40%",
+
         input = {
             height = 10,
+        },
+
+        todos = {
+            --- Should show the todo list window in the sidebar widget or not
+            display = true,
+            max_height = 10,
         },
     },
 

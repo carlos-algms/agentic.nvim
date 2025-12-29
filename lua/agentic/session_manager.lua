@@ -6,6 +6,8 @@
 
 local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
+local TodoList = require("agentic.ui.todo_list")
+local Config = require("agentic.config")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -14,7 +16,6 @@ local P = {}
 --- @param hook_name "on_prompt_submit" | "on_response_complete"
 --- @param data table
 function P.invoke_hook(hook_name, data)
-    local Config = require("agentic.config")
     local hook = Config.hooks and Config.hooks[hook_name]
 
     if hook and type(hook) == "function" then
@@ -50,7 +51,6 @@ SessionManager.__index = SessionManager
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
-    local Config = require("agentic.config")
     local ChatWidget = require("agentic.ui.chat_widget")
     local MessageWriter = require("agentic.ui.message_writer")
     local PermissionManager = require("agentic.ui.permission_manager")
@@ -128,8 +128,15 @@ function SessionManager:_on_session_update(update)
     -- order the IF blocks in order of likeliness to be called for performance
 
     if update.sessionUpdate == "plan" then
-        -- FIXIT: implement plan handling
-        Logger.debug("Implement plan handling")
+        if Config.windows.todos.display then
+            TodoList.render(self.widget.buf_nrs.todos, update.entries)
+
+            if #update.entries > 0 and self.widget:is_open() then
+                self.widget:show({
+                    focus_prompt = false,
+                })
+            end
+        end
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
         self.message_writer:write_message_chunk(update)

@@ -30,6 +30,9 @@ local WINDOW_HEADERS = {
         title = " Referenced Files",
         persistent = "d: remove file",
     },
+    todos = {
+        title = " TODO Items",
+    },
 }
 
 --- A sidebar-style chat widget with multiple windows stacked vertically
@@ -130,6 +133,27 @@ function ChatWidget:show(opts)
         self:render_header("files")
     end
 
+    if
+        Config.windows.todos.display
+        and (not self.win_nrs.todos or not vim.api.nvim_win_is_valid(
+            self.win_nrs.todos
+        ))
+        and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
+    then
+        local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
+
+        -- Add 1 for visual padding to prevent last line cutoff because of the header
+        local height = math.min(line_count + 1, Config.windows.todos.max_height)
+
+        self.win_nrs.todos = self:_open_win(self.buf_nrs.todos, false, {
+            win = self.win_nrs.chat,
+            split = "below",
+            height = height,
+        }, {})
+
+        self:render_header("todos")
+    end
+
     if should_focus then
         self:move_cursor_to(
             self.win_nrs.input,
@@ -226,6 +250,7 @@ function ChatWidget:_submit_input()
 
     self:close_code_window()
     self:close_files_window()
+    self:close_todos_window()
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
@@ -560,6 +585,13 @@ function ChatWidget:close_files_window()
     if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
         vim.api.nvim_win_close(self.win_nrs.files, true)
         self.win_nrs.files = nil
+    end
+end
+
+function ChatWidget:close_todos_window()
+    if self.win_nrs.todos and vim.api.nvim_win_is_valid(self.win_nrs.todos) then
+        vim.api.nvim_win_close(self.win_nrs.todos, true)
+        self.win_nrs.todos = nil
     end
 end
 

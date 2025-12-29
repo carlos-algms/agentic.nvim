@@ -812,9 +812,6 @@ return ACPClient
 --- @field priority agentic.acp.PlanEntryPriority
 --- @field status agentic.acp.PlanEntryStatus
 
---- @class agentic.acp.Plan
---- @field entries agentic.acp.PlanEntry[]
-
 --- @class agentic.acp.AvailableCommand
 --- @field name string
 --- @field description string
