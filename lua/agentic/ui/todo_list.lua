@@ -23,12 +23,7 @@ function TodoList.render(bufnr, entries)
     local lines = {}
     for _, entry in ipairs(entries) do
         local checkbox = status_to_checkbox(entry.status)
-        local line = string.format(
-            "- %s %s (%s)",
-            checkbox,
-            entry.content,
-            entry.priority
-        )
+        local line = string.format("- %s %s", checkbox, entry.content) -- not adding priority for now, it's not aggregating much visual value
         table.insert(lines, line)
     end
 

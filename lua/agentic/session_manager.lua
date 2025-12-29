@@ -132,7 +132,9 @@ function SessionManager:_on_session_update(update)
         TodoList.render(self.widget.buf_nrs.todos, update.entries)
 
         if #update.entries > 0 and self.widget:is_open() then
-            self.widget:show()
+            self.widget:show({
+                focus_prompt = false,
+            })
         end
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
