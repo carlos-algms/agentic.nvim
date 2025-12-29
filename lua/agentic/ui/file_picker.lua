@@ -267,11 +267,11 @@ FilePicker.GLOB_EXCLUDE_PATTERNS = {
     "%.bundle/",
     -- Build/Cache
     "%.cache/",
-    ".turbo/",
+    "%.turbo/",
     "out/",
     -- Coverage
     "coverage/",
-    ".nyc_output/",
+    "%.nyc_output/",
     -- Package managers
     "%.npm/",
     "%.yarn/",

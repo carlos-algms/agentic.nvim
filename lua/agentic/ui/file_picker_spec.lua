@@ -98,8 +98,8 @@ describe("FilePicker:scan_files", function()
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = "nonexistent_git"
 
-            -- Add lazy_repro to exclude patterns for this test
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
+            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
 
             local files_glob = picker:scan_files()
 

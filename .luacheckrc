@@ -4,6 +4,7 @@ cache = true
 
 exclude_files = {
     "lazy_repro/",
+    "%.local/",
 }
 
 -- Glorious list of warnings: https://luacheck.readthedocs.io/en/stable/warnings.html

@@ -22,7 +22,10 @@ node_modules/
 .temp/
 .local/
 
+# Folder used for isolated dependencies for tests
 lazy_repro/
+# CI folder where nvim is installed
+.local/
 
 # Mac files
 .DS_Store
