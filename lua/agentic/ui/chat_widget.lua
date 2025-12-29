@@ -134,10 +134,11 @@ function ChatWidget:show(opts)
     end
 
     if
-        (
-            not self.win_nrs.todos
-            or not vim.api.nvim_win_is_valid(self.win_nrs.todos)
-        ) and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
+        Config.windows.todos.display
+        and (not self.win_nrs.todos or not vim.api.nvim_win_is_valid(
+            self.win_nrs.todos
+        ))
+        and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
     then
         local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
 
