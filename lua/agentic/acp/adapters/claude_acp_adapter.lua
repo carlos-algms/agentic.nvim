@@ -42,6 +42,7 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     end
 
     local kind = update.kind
+
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
         tool_call_id = update.toolCallId,
@@ -83,6 +84,11 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
             end
         else
             message.argument = "unknown fetch"
+        end
+    elseif kind == "other" then
+        if update.title == "SlashCommand" then
+            -- Override kind to increase UX, `other` doesn't say much
+            message.kind = "SlashCommand"
         end
     else
         local command = update.rawInput.command

@@ -697,6 +697,7 @@ return ACPClient
 --- | "think"
 --- | "fetch"
 --- | "WebSearch"
+--- | "SlashCommand"
 --- | "other"
 --- | "create"
 
