@@ -1,10 +1,10 @@
---- @class agentic.DiffHandler.DiffBlock
+--- @class agentic.ui.ToolCallDiff.DiffBlock
 --- @field start_line integer
 --- @field end_line integer
 --- @field old_lines string[]
 --- @field new_lines string[]
 
---- @class agentic.acp.ACPDiffHandler
+--- @class agentic.ui.ToolCallDiff
 local M = {}
 
 local TextMatcher = require("agentic.utils.text_matcher")
@@ -25,9 +25,9 @@ end
 --- @param oldText string[]
 --- @param newText string[]
 --- @param replace_all? boolean
---- @return agentic.DiffHandler.DiffBlock[] diff_blocks List of diff blocks for the given file
+--- @return agentic.ui.ToolCallDiff.DiffBlock[] diff_blocks List of diff blocks for the given file
 function M.extract_diff_blocks(path, oldText, newText, replace_all)
-    --- @type agentic.DiffHandler.DiffBlock[]
+    --- @type agentic.ui.ToolCallDiff.DiffBlock[]
     local diff_blocks = {}
 
     if not path or not newText then
@@ -76,10 +76,10 @@ function M.extract_diff_blocks(path, oldText, newText, replace_all)
 end
 
 --- Minimize diff blocks by removing unchanged lines using vim.diff
---- @param diff_blocks agentic.DiffHandler.DiffBlock[]
---- @return agentic.DiffHandler.DiffBlock[]
+--- @param diff_blocks agentic.ui.ToolCallDiff.DiffBlock[]
+--- @return agentic.ui.ToolCallDiff.DiffBlock[]
 function M._minimize_diff_blocks(diff_blocks)
-    --- @type agentic.DiffHandler.DiffBlock[]
+    --- @type agentic.ui.ToolCallDiff.DiffBlock[]
     local minimized = {}
 
     for _, diff_block in ipairs(diff_blocks) do
@@ -108,7 +108,7 @@ function M._minimize_diff_blocks(diff_blocks)
                 for _, hunk in ipairs(patch) do
                     local start_a, count_a, start_b, count_b = unpack(hunk)
 
-                    --- @type agentic.DiffHandler.DiffBlock
+                    --- @type agentic.ui.ToolCallDiff.DiffBlock
                     local minimized_block = {
                         start_line = 0,
                         end_line = 0,
@@ -167,11 +167,11 @@ end
 
 --- Create a diff block for a new file
 --- @param new_lines string[]
---- @return agentic.DiffHandler.DiffBlock
+--- @return agentic.ui.ToolCallDiff.DiffBlock
 function M._create_new_file_diff_block(new_lines)
     local line_count = #new_lines
 
-    --- @type agentic.DiffHandler.DiffBlock
+    --- @type agentic.ui.ToolCallDiff.DiffBlock
     local block = {
         start_line = 1,
         end_line = line_count > 0 and line_count or 1,
@@ -201,17 +201,17 @@ end
 --- @param file_lines string[] File content lines
 --- @param old_lines string[] Old text lines
 --- @param new_lines string[] New text lines
---- @return agentic.DiffHandler.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
+--- @return agentic.ui.ToolCallDiff.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
 function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
     -- Find all matches using fuzzy matching
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then
-        --- @type agentic.DiffHandler.DiffBlock[]
+        --- @type agentic.ui.ToolCallDiff.DiffBlock[]
         local blocks = {}
 
         for _, match in ipairs(matches) do
-            --- @type agentic.DiffHandler.DiffBlock
+            --- @type agentic.ui.ToolCallDiff.DiffBlock
             local block = {
                 start_line = match.start_line,
                 end_line = match.end_line,
@@ -243,7 +243,7 @@ end
 --- @param file_lines string[] File content lines
 --- @param search_text string Text to search for
 --- @param replace_text string Text to replace with
---- @return agentic.DiffHandler.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
+--- @return agentic.ui.ToolCallDiff.DiffBlock[] diff_blocks Array of diff blocks (empty if no matches)
 function M._find_substring_replacements(file_lines, search_text, replace_text)
     local diff_blocks = {}
 
@@ -258,7 +258,7 @@ function M._find_substring_replacements(file_lines, search_text, replace_text)
                 return replace_text
             end, 1)
 
-            --- @type agentic.DiffHandler.DiffBlock
+            --- @type agentic.ui.ToolCallDiff.DiffBlock
             local block = {
                 start_line = line_idx,
                 end_line = line_idx,

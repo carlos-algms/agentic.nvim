@@ -1,4 +1,4 @@
-local ACPDiffHandler = require("agentic.acp.acp_diff_handler")
+local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
@@ -377,7 +377,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             vim.list_extend(lines, tool_call_block.body)
         end
     elseif tool_call_block.diff then
-        local diff_blocks = ACPDiffHandler.extract_diff_blocks(
+        local diff_blocks = ToolCallDiff.extract_diff_blocks(
             argument,
             tool_call_block.diff.old,
             tool_call_block.diff.new,
