@@ -90,13 +90,13 @@ describe("FilePicker:scan_files", function()
             local original_exclude_patterns =
                 vim.tbl_extend("force", {}, FilePicker.GLOB_EXCLUDE_PATTERNS)
 
-            -- First, get files from rg for comparison
-            FilePicker.CMD_RG[1] = original_cmd_rg
+            -- Use git ls-files for baseline (guaranteed to respect .gitignore)
+            FilePicker.CMD_RG[1] = "nonexistent_rg"
             FilePicker.CMD_FD[1] = "nonexistent_fd"
-            FilePicker.CMD_GIT[1] = "nonexistent_git"
-            local files_rg = picker:scan_files()
+            FilePicker.CMD_GIT[1] = original_cmd_git
+            local files_git = picker:scan_files()
 
-            print(string.format("[DEBUG] RG returned %d files", #files_rg))
+            print(string.format("[DEBUG] Git returned %d files", #files_git))
 
             -- Disable all commands to force glob fallback
             FilePicker.CMD_RG[1] = "nonexistent_rg"
@@ -152,8 +152,8 @@ describe("FilePicker:scan_files", function()
                 )
             )
 
-            assert.are.equal(#files_rg, #files_glob)
-            -- assert.are.same(files_rg, files_glob)
+            assert.are.equal(#files_git, #files_glob)
+            assert.are.same(files_git, files_glob)
 
             FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)
