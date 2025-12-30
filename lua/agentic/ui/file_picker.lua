@@ -48,6 +48,7 @@ function FilePicker.new(bufnr)
 end
 
 --- Completion menu accept sequence
+--- Space after <C-y> ensures completion menu closes and user is ready to start a new completion
 local COMPLETION_ACCEPT =
     vim.api.nvim_replace_termcodes("<C-y> ", true, true, true)
 
@@ -61,14 +62,13 @@ function FilePicker:_setup_completion(bufnr)
 
     local prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
 
-    -- Space after <C-y> ensures completion menu closes and user is ready to type `@` again and start a new completion
     vim.keymap.set("i", "<Tab>", function()
         if vim.fn.pumvisible() == 1 then
             return COMPLETION_ACCEPT
         end
 
         -- Always check for existing mapping to handle lazy-loaded plugins
-        -- vim.fn.maparg is very fast and Tab isn't pressed frequently
+        -- the check is very fast and Tab isn't pressed frequently to cause noticeable lag
         prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
             or prev_tab_map
         return KeymapFallback.execute_fallback(prev_tab_map, "<Tab>")

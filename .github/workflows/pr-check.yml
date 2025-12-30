@@ -98,7 +98,7 @@ jobs:
             | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/fd'
           chmod +x /usr/local/bin/fd
 
-          echo "[DEBUG] FD version: $(fd --version) from '$(which fd)\n"
+          echo "[DEBUG] FD version: $(fd --version) from '$(which fd)' \n"
 
       - name: Setup directories
         run: mkdir -p .local/nvim .local/bin

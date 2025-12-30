@@ -101,7 +101,9 @@ describe("FilePicker:scan_files", function()
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = "nonexistent_git"
 
+            -- lazy_repro is the temp folder where plugins are installed during tests
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
+            -- .local is the folder where Neovim is installed during tests in CI
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
 
             local files_glob = picker:scan_files()
