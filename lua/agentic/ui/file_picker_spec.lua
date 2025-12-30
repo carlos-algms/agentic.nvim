@@ -90,70 +90,24 @@ describe("FilePicker:scan_files", function()
             local original_exclude_patterns =
                 vim.tbl_extend("force", {}, FilePicker.GLOB_EXCLUDE_PATTERNS)
 
-            -- Use git ls-files for baseline (guaranteed to respect .gitignore)
-            FilePicker.CMD_RG[1] = "nonexistent_rg"
+            -- First, get files from rg for comparison
+            FilePicker.CMD_RG[1] = original_cmd_rg
             FilePicker.CMD_FD[1] = "nonexistent_fd"
-            FilePicker.CMD_GIT[1] = original_cmd_git
-            local files_git = picker:scan_files()
-
-            print(string.format("[DEBUG] Git returned %d files", #files_git))
+            FilePicker.CMD_GIT[1] = "nonexistent_git"
+            local files_rg = picker:scan_files()
 
             -- Disable all commands to force glob fallback
             FilePicker.CMD_RG[1] = "nonexistent_rg"
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = "nonexistent_git"
 
-            print(
-                string.format(
-                    "[DEBUG] Pattern count before adding: %d",
-                    #FilePicker.GLOB_EXCLUDE_PATTERNS
-                )
-            )
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
-            print(
-                string.format(
-                    "[DEBUG] Pattern count after adding: %d",
-                    #FilePicker.GLOB_EXCLUDE_PATTERNS
-                )
-            )
-            print(
-                string.format(
-                    "[DEBUG] Last two patterns: '%s', '%s'",
-                    FilePicker.GLOB_EXCLUDE_PATTERNS[#FilePicker.GLOB_EXCLUDE_PATTERNS - 1],
-                    FilePicker.GLOB_EXCLUDE_PATTERNS[#FilePicker.GLOB_EXCLUDE_PATTERNS]
-                )
-            )
 
             local files_glob = picker:scan_files()
 
-            print(string.format("[DEBUG] Glob returned %d files", #files_glob))
-
-            -- Check first few .local/.lazy_repro files in glob results
-            local found_excluded = 0
-            for _, file in ipairs(files_glob) do
-                local path = file.word:sub(2) -- Remove @ prefix
-                if path:match("lazy_repro/") or path:match("%.local/") then
-                    found_excluded = found_excluded + 1
-                    if found_excluded <= 3 then
-                        print(
-                            string.format(
-                                "[DEBUG] Found excluded path: %s",
-                                path
-                            )
-                        )
-                    end
-                end
-            end
-            print(
-                string.format(
-                    "[DEBUG] Total files matching lazy_repro/.local: %d",
-                    found_excluded
-                )
-            )
-
-            assert.are.equal(#files_git, #files_glob)
-            assert.are.same(files_git, files_glob)
+            assert.is_true(#files_glob > 0)
+            assert.are.same(files_rg, files_glob)
 
             FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)

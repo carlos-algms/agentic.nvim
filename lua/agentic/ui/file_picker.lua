@@ -198,34 +198,10 @@ function FilePicker:scan_files()
     vim.list_extend(glob_files, files_in_hidden)
     Logger.debug("[FilePicker] Glob returned", #glob_files, "paths")
 
-    local debug_count = 0
     for _, path in ipairs(glob_files) do
-        if vim.fn.isdirectory(path) == 0 then
+        if vim.fn.isdirectory(path) == 0 and not self:_should_exclude(path) then
             local relative_path = FileSystem.to_smart_path(path)
-            local is_seen = seen[relative_path] ~= nil
-            local is_excluded = self:_should_exclude(relative_path)
-
-            -- Debug first few lazy_repro/.local paths
-            if
-                (
-                    relative_path:match("lazy_repro")
-                    or relative_path:match("%.local")
-                ) and debug_count < 5
-            then
-                debug_count = debug_count + 1
-                print(
-                    string.format(
-                        "[GLOB_DEBUG] raw='%s' smart='%s' seen=%s excluded=%s patterns=%d",
-                        path,
-                        relative_path,
-                        is_seen,
-                        is_excluded,
-                        #FilePicker.GLOB_EXCLUDE_PATTERNS
-                    )
-                )
-            end
-
-            if not is_seen and not is_excluded then
+            if not seen[relative_path] then
                 seen[relative_path] = true
                 table.insert(files, {
                     word = "@" .. relative_path,
