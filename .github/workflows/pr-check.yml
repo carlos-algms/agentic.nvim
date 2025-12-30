@@ -85,6 +85,20 @@ jobs:
           # libreadline-dev: Required by hererocks to build Lua 5.1 for busted tests
           # Can be removed if tests no longer use hererocks or switch to pre-built Lua
           sudo apt-get update && sudo apt-get install -y libreadline-dev
+          # I need newer versions of rg, and fd to fix unit tests that use them
+          curl -sL "$(curl -s https://api.github.com/repos/BurntSushi/ripgrep/releases/latest \
+            | grep "browser_download_url.*x86_64-unknown-linux-musl.tar.gz" \
+            | cut -d '"' -f 4 | head -n1)" \
+            | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/rg'
+          chmod +x /usr/local/bin/rg
+
+          echo "[DEBUG] RG version: $(rg --version) from '$(which rg)' \n"
+
+          curl -sL "$(curl -s https://api.github.com/repos/sharkdp/fd/releases/latest | grep "browser_download_url.*fd-.*-x86_64-unknown-linux-gnu\.tar\.gz" | cut -d '"' -f 4)" \
+            | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/fd'
+          chmod +x /usr/local/bin/fd
+
+          echo "[DEBUG] FD version: $(fd --version) from '$(which fd)\n"
 
       - name: Setup directories
         run: mkdir -p .local/nvim .local/bin
