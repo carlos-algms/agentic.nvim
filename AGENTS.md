@@ -518,15 +518,6 @@ be removed, only updated when the underlying types change.
 
 The `lua/agentic/config_default.lua` file defines all user-configurable options.
 
-**IMPORTANT:** When adding or refactoring configuration options:
-
-1. Add/update the configuration in `config_default.lua` with proper LuaCATS type
-   annotations
-2. **ALWAYS update the README.md** "Configuration" section:
-   - Include default values
-   - Update the configuration table if one exists
-   - Document environment variables if any
-
 #### Theme & Highlight Groups
 
 The `lua/agentic/theme.lua` file defines all custom highlight groups used by the
