@@ -11,16 +11,6 @@ local TextMatcher = require("agentic.utils.text_matcher")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
---- @param tool_call agentic.acp.ToolCallMessage | agentic.acp.ToolCallUpdate
---- @return boolean has_diff
-function M.has_diff_content(tool_call)
-    -- We use rawInput for diffs. Old string might be nil for new files.
-    -- We check for file_path and new_string presence.
-    return tool_call.rawInput ~= nil
-        and tool_call.rawInput.file_path ~= nil
-        and tool_call.rawInput.new_string ~= nil
-end
-
 --- @param path string
 --- @param oldText string[]
 --- @param newText string[]

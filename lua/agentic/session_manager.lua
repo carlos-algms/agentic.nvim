@@ -4,10 +4,11 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
-local Logger = require("agentic.utils.logger")
-local FileSystem = require("agentic.utils.file_system")
-local TodoList = require("agentic.ui.todo_list")
 local Config = require("agentic.config")
+local DiffPreview = require("agentic.ui.diff_preview")
+local FileSystem = require("agentic.utils.file_system")
+local Logger = require("agentic.utils.logger")
+local TodoList = require("agentic.ui.todo_list")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -416,6 +417,9 @@ function SessionManager:new_session()
         on_tool_call_update = function(tool_call_update)
             self.message_writer:update_tool_call_block(tool_call_update)
 
+            -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
+            self:_clear_diff_in_buffer(tool_call_update.tool_call_id)
+
             -- I need to remove the permission request if the tool call failed before user granted it
             -- It could happen for many reasons, like invalid parameters, tool not found, etc.
             -- Mostly comes from the Agent.
@@ -436,8 +440,10 @@ function SessionManager:new_session()
         on_request_permission = function(request, callback)
             self.status_animation:stop()
 
-            local wrapped_callback = function(option_id)
+            local function wrapped_callback(option_id)
                 callback(option_id)
+
+                self:_clear_diff_in_buffer(request.toolCall.toolCallId)
 
                 if
                     not self.permission_manager.current_request
@@ -569,13 +575,23 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
         return
     end
 
-    local DiffPreview = require("agentic.ui.diff_preview")
-
     DiffPreview.show_diff({
         file_path = tracker.argument,
         diff = tracker.diff,
         widget_windows = self.widget.win_nrs,
     })
+end
+
+--- @param tool_call_id string
+function SessionManager:_clear_diff_in_buffer(tool_call_id)
+    local tracker = tool_call_id
+        and self.message_writer.tool_call_blocks[tool_call_id]
+
+    if not tracker or tracker.kind ~= "edit" or tracker.diff == nil then
+        return
+    end
+
+    DiffPreview.clear_diff(tracker.argument)
 end
 
 function SessionManager:_get_system_info()
