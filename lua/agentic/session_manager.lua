@@ -447,6 +447,7 @@ function SessionManager:new_session()
                 end
             end
 
+            self:_show_diff_in_buffer(request.toolCall.toolCallId)
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
@@ -557,6 +558,24 @@ function SessionManager:add_file_to_session(buf)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
     return self.file_list:add(buf_path)
+end
+
+--- @param tool_call_id string
+function SessionManager:_show_diff_in_buffer(tool_call_id)
+    local tracker = tool_call_id
+        and self.message_writer.tool_call_blocks[tool_call_id]
+
+    if not tracker or tracker.kind ~= "edit" or tracker.diff == nil then
+        return
+    end
+
+    local DiffPreview = require("agentic.ui.diff_preview")
+
+    DiffPreview.show_diff({
+        file_path = tracker.argument,
+        diff = tracker.diff,
+        widget_windows = self.widget.win_nrs,
+    })
 end
 
 function SessionManager:_get_system_info()
