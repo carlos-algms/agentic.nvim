@@ -10,7 +10,7 @@ local NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
---- @field diff { new: string[], old: string[], all?: boolean }
+--- @field diff agentic.ui.MessageWriter.ToolCallDiff
 --- @field widget_windows table<string, number|nil> The chat widget sidebar windows - These are considered locked and we should find other windows to display the diff in
 
 --- Finds the first window on the current tabpage that is NOT part of the chat widget

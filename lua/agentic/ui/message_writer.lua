@@ -20,11 +20,16 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field old_line? string Original line content (for diff types)
 --- @field new_line? string Modified line content (for diff types)
 
+--- @class agentic.ui.MessageWriter.ToolCallDiff
+--- @field new string[]
+--- @field old string[]
+--- @field all? boolean
+
 --- @class agentic.ui.MessageWriter.ToolCallBase
 --- @field tool_call_id string
 --- @field status agentic.acp.ToolCallStatus
 --- @field body? string[]
---- @field diff? { new: string[], old: string[], all?: boolean }
+--- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field kind? agentic.acp.ToolKind
 --- @field argument? string
 
