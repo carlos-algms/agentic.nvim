@@ -171,6 +171,12 @@ local ConfigDefault = {
         enabled = true,
     },
 
+    --- Show diff preview for edit tool calls in the buffer
+    --- @class agentic.UserConfig.DiffPreview
+    diff_preview = {
+        enabled = true,
+    },
+
     --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,

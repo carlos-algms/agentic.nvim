@@ -1,10 +1,10 @@
+local Config = require("agentic.config")
 local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local Theme = require("agentic.theme")
 
 --- Displays the edit tool call diff in the actual buffer using virtual lines and highlights
 --- @class agentic.ui.DiffPreview
 local M = {}
-M.__index = M
 
 local NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 
@@ -39,17 +39,36 @@ end
 
 --- Opens a new window on the left side with full height
 --- @param bufnr number The buffer to display in the new window
---- @return number winid The newly created window ID
+--- @return number|nil winid The newly created window ID or nil on failure
 local function open_left_window(bufnr)
-    local winid = vim.api.nvim_open_win(bufnr, true, {
+    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
         split = "left",
         win = -1,
     })
+
+    if not ok then
+        vim.notify(
+            "Failed to open diff window: " .. tostring(winid),
+            vim.log.levels.WARN
+        )
+        return nil
+    end
+
     return winid
 end
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
+    if not Config.diff_preview.enabled then
+        return
+    end
+
+    -- Only show diff in normal mode to avoid disrupting user workflow
+    local mode = vim.api.nvim_get_mode().mode
+    if mode ~= "n" then
+        return
+    end
+
     local bufnr = vim.fn.bufnr(opts.file_path)
 
     if bufnr == -1 then
@@ -60,6 +79,13 @@ function M.show_diff(opts)
 
     if not target_winid then
         target_winid = open_left_window(bufnr)
+
+        if not target_winid then
+            return
+        end
+    else
+        -- Ensure the target window displays the diff buffer
+        vim.api.nvim_win_set_buf(target_winid, bufnr)
     end
 
     M.clear_diff(bufnr)
