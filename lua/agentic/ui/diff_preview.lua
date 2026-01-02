@@ -85,7 +85,14 @@ function M.show_diff(opts)
         end
     else
         -- Ensure the target window displays the diff buffer
-        vim.api.nvim_win_set_buf(target_winid, bufnr)
+        local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
+        if not ok then
+            vim.notify(
+                "Failed to set buffer in window: " .. tostring(err),
+                vim.log.levels.WARN
+            )
+            return
+        end
     end
 
     M.clear_diff(bufnr)
