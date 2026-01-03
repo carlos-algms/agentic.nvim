@@ -7,6 +7,107 @@ local M = {}
 
 local NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 
+--- Builds a highlight map for all lines parsed as a block
+--- @param lines string[]
+--- @param lang string
+--- @return table<number, table<number, string>>|nil row_col_hl Map of row -> col -> hl_group
+local function build_highlight_map(lines, lang)
+    if not lang or lang == "" or #lines == 0 then
+        return nil
+    end
+
+    local content = table.concat(lines, "\n")
+
+    local ok, parser = pcall(vim.treesitter.get_string_parser, content, lang)
+    if not ok or not parser then
+        return nil
+    end
+
+    local trees = parser:parse()
+    if not trees or #trees == 0 then
+        return nil
+    end
+
+    local query = vim.treesitter.query.get(lang, "highlights")
+    if not query then
+        return nil
+    end
+
+    local row_col_hl = {}
+    for i = 0, #lines - 1 do
+        row_col_hl[i] = {}
+    end
+
+    for id, node in query:iter_captures(trees[1]:root(), content) do
+        local name = query.captures[id]
+        local start_row, start_col, end_row, end_col = node:range()
+        local hl_group = "@" .. name .. "." .. lang
+
+        for row = start_row, end_row do
+            if row_col_hl[row] then
+                local col_start = (row == start_row) and start_col or 0
+                local col_end = (row == end_row) and end_col or #lines[row + 1]
+                for col = col_start, col_end - 1 do
+                    row_col_hl[row][col] = hl_group
+                end
+            end
+        end
+    end
+
+    return row_col_hl
+end
+
+--- Builds virt_lines with syntax highlighting and diff background
+--- @param lines string[]
+--- @param lang string
+--- @return table virt_lines
+local function get_highlighted_virt_lines(lines, lang)
+    local diff_hl = Theme.HL_GROUPS.DIFF_ADD
+    local row_col_hl = build_highlight_map(lines, lang)
+
+    local virt_lines = {}
+    for row, line in ipairs(lines) do
+        local col_hl = row_col_hl and row_col_hl[row - 1]
+        local line_len = #line
+
+        -- No highlights or empty line: single segment with diff background
+        if not col_hl or line_len == 0 then
+            table.insert(virt_lines, { { line, diff_hl } })
+        else
+            local segments = {}
+            local current_hl = col_hl[0]
+            local seg_start = 0
+
+            for col = 1, line_len do
+                local hl = col_hl[col]
+                if hl ~= current_hl then
+                    local text = line:sub(seg_start + 1, col)
+                    local hl_spec = current_hl and { current_hl, diff_hl }
+                        or diff_hl
+                    table.insert(segments, { text, hl_spec })
+                    seg_start = col
+                    current_hl = hl
+                end
+            end
+
+            -- Final segment
+            local text = line:sub(seg_start + 1)
+            if #text > 0 then
+                local hl_spec = current_hl and { current_hl, diff_hl }
+                    or diff_hl
+                table.insert(segments, { text, hl_spec })
+            end
+
+            table.insert(
+                virt_lines,
+                #segments > 0 and segments or { { line, diff_hl } }
+            )
+        end
+    end
+
+    return virt_lines
+end
+
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
@@ -66,7 +167,7 @@ function M.show_diff(opts)
                 )[1] or ""
                 local line_len = #line_content
 
-                local ok, err = pcall(
+                ok, err = pcall(
                     vim.api.nvim_buf_set_extmark,
                     bufnr,
                     NS_DIFF,
@@ -90,14 +191,13 @@ function M.show_diff(opts)
         if #block.new_lines > 0 then
             local anchor_line = block.end_line == 0 and 0 or block.end_line - 1
 
-            local virt_lines = {}
-            for _, new_line in ipairs(block.new_lines) do
-                table.insert(virt_lines, {
-                    { new_line, Theme.HL_GROUPS.DIFF_ADD },
-                })
-            end
+            -- Get treesitter language for syntax highlighting
+            local ft = vim.bo[bufnr].filetype
+            local lang = vim.treesitter.language.get_lang(ft) or ft
 
-            local ok, err = pcall(
+            local virt_lines = get_highlighted_virt_lines(block.new_lines, lang)
+
+            ok, err = pcall(
                 vim.api.nvim_buf_set_extmark,
                 bufnr,
                 NS_DIFF,
@@ -119,7 +219,7 @@ function M.show_diff(opts)
 
     if #diff_blocks > 0 then
         local first_block = diff_blocks[1]
-        local ok, err = pcall(
+        ok, err = pcall(
             vim.api.nvim_win_set_cursor,
             target_winid,
             { first_block.start_line, 0 }
