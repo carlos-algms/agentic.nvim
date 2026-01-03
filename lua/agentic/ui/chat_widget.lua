@@ -595,4 +595,77 @@ function ChatWidget:close_todos_window()
     end
 end
 
+--- Finds the first window on the current tabpage that is NOT part of the chat widget
+--- @return number|nil winid The first non-widget window ID, or nil if none found
+function ChatWidget:find_first_non_widget_window()
+    local current_tabpage = vim.api.nvim_get_current_tabpage()
+    local all_windows = vim.api.nvim_tabpage_list_wins(current_tabpage)
+
+    -- Build a set of widget window IDs for fast lookup
+    local widget_win_ids = {}
+    for _, winid in pairs(self.win_nrs) do
+        if winid then
+            widget_win_ids[winid] = true
+        end
+    end
+
+    for _, winid in ipairs(all_windows) do
+        if not widget_win_ids[winid] then
+            return winid
+        end
+    end
+
+    return nil
+end
+
+--- Opens a new window on the left side with full height
+--- @param bufnr? number The buffer to display in the new window
+--- @return number|nil winid The newly created window ID or nil on failure
+function ChatWidget:open_left_window(bufnr)
+    if bufnr == nil then
+        -- Try alternate buffer first
+        bufnr = vim.fn.bufnr("#")
+        if bufnr == -1 then
+            -- Fall back to first oldfile that exists in current directory
+            local oldfiles = vim.v.oldfiles
+            local cwd = vim.fn.getcwd()
+            if oldfiles and #oldfiles > 0 then
+                for _, filepath in ipairs(oldfiles) do
+                    -- Check if file exists and is under current working directory
+                    if
+                        vim.startswith(filepath, cwd)
+                        and vim.fn.filereadable(filepath) == 1
+                    then
+                        bufnr = vim.fn.bufnr(filepath)
+                        if bufnr == -1 then
+                            bufnr = vim.fn.bufadd(filepath)
+                        end
+                        break
+                    end
+                end
+            end
+
+            -- Last resort: create new scratch buffer
+            if bufnr == -1 then
+                bufnr = vim.api.nvim_create_buf(true, false)
+            end
+        end
+    end
+
+    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
+        split = "left",
+        win = -1,
+    })
+
+    if not ok then
+        vim.notify(
+            "Failed to open window: " .. tostring(winid),
+            vim.log.levels.WARN
+        )
+        return nil
+    end
+
+    return winid
+end
+
 return ChatWidget

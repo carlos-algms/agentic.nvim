@@ -568,6 +568,10 @@ end
 
 --- @param tool_call_id string
 function SessionManager:_show_diff_in_buffer(tool_call_id)
+    if not Config.diff_preview.enabled then
+        return
+    end
+
     local tracker = tool_call_id
         and self.message_writer.tool_call_blocks[tool_call_id]
 
@@ -575,10 +579,16 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
         return
     end
 
+    local winid = self.widget:find_first_non_widget_window()
+
+    if not winid then
+        winid = self.widget:open_left_window()
+    end
+
     DiffPreview.show_diff({
         file_path = tracker.argument,
         diff = tracker.diff,
-        widget_windows = self.widget.win_nrs,
+        target_winid = winid,
     })
 end
 

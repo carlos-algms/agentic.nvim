@@ -1,4 +1,3 @@
-local Config = require("agentic.config")
 local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local Theme = require("agentic.theme")
 
@@ -11,55 +10,13 @@ local NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
---- @field widget_windows table<string, number|nil> The chat widget sidebar windows - These are considered locked and we should find other windows to display the diff in
-
---- Finds the first window on the current tabpage that is NOT part of the chat widget
---- @param widget_windows table<string, number|nil> The chat widget window IDs to exclude
---- @return number|nil winid The first non-widget window ID, or nil if none found
-local function find_first_non_widget_window(widget_windows)
-    local current_tabpage = vim.api.nvim_get_current_tabpage()
-    local all_windows = vim.api.nvim_tabpage_list_wins(current_tabpage)
-
-    -- Build a set of widget window IDs for fast lookup
-    local widget_win_ids = {}
-    for _, winid in pairs(widget_windows) do
-        if winid then
-            widget_win_ids[winid] = true
-        end
-    end
-
-    for _, winid in ipairs(all_windows) do
-        if not widget_win_ids[winid] then
-            return winid
-        end
-    end
-
-    return nil
-end
-
---- Opens a new window on the left side with full height
---- @param bufnr number The buffer to display in the new window
---- @return number|nil winid The newly created window ID or nil on failure
-local function open_left_window(bufnr)
-    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
-        split = "left",
-        win = -1,
-    })
-
-    if not ok then
-        vim.notify(
-            "Failed to open diff window: " .. tostring(winid),
-            vim.log.levels.WARN
-        )
-        return nil
-    end
-
-    return winid
-end
+--- @field target_winid? number The window ID to display the diff in
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
-    if not Config.diff_preview.enabled then
+    local target_winid = opts.target_winid
+
+    if not target_winid then
         return
     end
 
@@ -75,24 +32,14 @@ function M.show_diff(opts)
         return
     end
 
-    local target_winid = find_first_non_widget_window(opts.widget_windows)
-
-    if not target_winid then
-        target_winid = open_left_window(bufnr)
-
-        if not target_winid then
-            return
-        end
-    else
-        -- Ensure the target window displays the diff buffer
-        local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
-        if not ok then
-            vim.notify(
-                "Failed to set buffer in window: " .. tostring(err),
-                vim.log.levels.WARN
-            )
-            return
-        end
+    -- Ensure the target window displays the diff buffer
+    local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
+    if not ok then
+        vim.notify(
+            "Failed to set buffer in window: " .. tostring(err),
+            vim.log.levels.WARN
+        )
+        return
     end
 
     M.clear_diff(bufnr)
