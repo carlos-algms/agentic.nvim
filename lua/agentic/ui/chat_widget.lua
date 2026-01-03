@@ -166,6 +166,13 @@ end
 function ChatWidget:hide()
     vim.cmd("stopinsert")
 
+    local winid = self:find_first_non_widget_window()
+
+    if not winid then
+        -- Fallback: create a new left window to avoid closing the last window error
+        self:open_left_window()
+    end
+
     for name, winid in pairs(self.win_nrs) do
         self.win_nrs[name] = nil
         local ok = pcall(vim.api.nvim_win_close, winid, true)
