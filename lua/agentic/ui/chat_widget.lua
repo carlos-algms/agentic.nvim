@@ -605,8 +605,7 @@ end
 --- Finds the first window on the current tabpage that is NOT part of the chat widget
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
-    local current_tabpage = vim.api.nvim_get_current_tabpage()
-    local all_windows = vim.api.nvim_tabpage_list_wins(current_tabpage)
+    local all_windows = vim.api.nvim_tabpage_list_wins(self.tab_page_id)
 
     -- Build a set of widget window IDs for fast lookup
     local widget_win_ids = {}

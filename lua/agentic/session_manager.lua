@@ -583,6 +583,10 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
 
     if not winid then
         winid = self.widget:open_left_window()
+
+        if not winid then
+            return
+        end
     end
 
     DiffPreview.show_diff({

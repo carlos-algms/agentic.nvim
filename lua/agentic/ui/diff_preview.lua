@@ -111,7 +111,7 @@ end
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
---- @field target_winid? number The window ID to display the diff in
+--- @field target_winid number The window ID to display the diff in
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
