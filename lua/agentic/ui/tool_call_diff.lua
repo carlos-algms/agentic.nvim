@@ -76,6 +76,8 @@ function M._minimize_diff_blocks(diff_blocks)
             local old_string = table.concat(diff_block.old_lines, "\n")
             local new_string = table.concat(diff_block.new_lines, "\n")
 
+            -- vim.diff was renamed to vim.text.diff (identical signature, just namespace move)
+            -- Fallback needed for backward compatibility with Neovim < 0.12
             --- @type fun(a: string, b: string, opts: table): integer[][]
             --- @diagnostic disable-next-line: deprecated
             local diff_fn = vim.text and vim.text.diff or vim.diff
