@@ -382,11 +382,9 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             vim.list_extend(lines, tool_call_block.body)
         end
     elseif tool_call_block.diff then
-        local diff_blocks = ToolCallDiff.extract_diff_blocks(
-            argument,
-            tool_call_block.diff.old,
-            tool_call_block.diff.new,
-            tool_call_block.diff.all
+        local hunks = ToolCallDiff.minimize_diff(
+            tool_call_block.diff.old or {},
+            tool_call_block.diff.new or {}
         )
 
         local lang = Theme.get_language_from_path(argument)
@@ -397,23 +395,23 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             table.insert(lines, "```" .. lang)
         end
 
-        for _, block in ipairs(diff_blocks) do
-            local old_count = #block.old_lines
-            local new_count = #block.new_lines
+        for _, hunk in ipairs(hunks) do
+            local old_count = #hunk.old_lines
+            local new_count = #hunk.new_lines
             local is_new_file = old_count == 0
             local is_modification = old_count == new_count and old_count > 0
 
             if is_new_file then
-                for _, new_line in ipairs(block.new_lines) do
+                for _, new_line in ipairs(hunk.new_lines) do
                     table.insert(lines, new_line)
                 end
             else
                 -- Insert old lines (removed content)
-                for i, old_line in ipairs(block.old_lines) do
+                for i, old_line in ipairs(hunk.old_lines) do
                     local line_index = #lines
                     table.insert(lines, old_line)
 
-                    local new_line = is_modification and block.new_lines[i]
+                    local new_line = is_modification and hunk.new_lines[i]
                         or nil
 
                     --- @type agentic.ui.MessageWriter.HighlightRange
@@ -428,12 +426,11 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
                 end
 
                 -- Insert new lines (added content)
-                for i, new_line in ipairs(block.new_lines) do
+                for i, new_line in ipairs(hunk.new_lines) do
                     local line_index = #lines
                     table.insert(lines, new_line)
 
                     if not is_modification then
-                        -- Pure addition
                         --- @type agentic.ui.MessageWriter.HighlightRange
                         local range = {
                             line_index = line_index,
@@ -444,12 +441,11 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
                         table.insert(highlight_ranges, range)
                     else
-                        -- Modification with word-level diff
                         --- @type agentic.ui.MessageWriter.HighlightRange
                         local range = {
                             line_index = line_index,
                             type = "new_modification",
-                            old_line = block.old_lines[i],
+                            old_line = hunk.old_lines[i],
                             new_line = new_line,
                         }
 
