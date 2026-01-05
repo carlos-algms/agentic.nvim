@@ -259,11 +259,13 @@ Debug logging utility controlled by `Config.debug` setting.
 - **`Logger.notify(msg, level, opts)`** - Safe wrapper around `vim.notify`
   - Prevents "fast context is active" errors via `vim.schedule`
   - Falls back to `print()` if `vim.notify` fails
+  - **Default level:** `vim.log.levels.WARN`
   - **ALWAYS use this instead of `vim.notify` directly**
   - Signature:
     `Logger.notify(msg: string, level?: vim.log.levels, opts?: table)`
-  - Example: `Logger.notify("Session created", vim.log.levels.INFO)`
-
+  - Examples:
+    - `Logger.notify("Session created")` - Uses default WARN level
+    - `Logger.notify("Session created", vim.log.levels.INFO)` - Explicit level
 - **`Logger.debug(...)`** - Print debug messages that can be retrieved with the
   command `:messages`
   - Only outputs when `Config.debug = true`
