@@ -1,3 +1,4 @@
+local Logger = require("agentic.utils.logger")
 local BufHelpers = require("agentic.utils.buf_helpers")
 
 --- @class agentic.utils.FileSystem
@@ -92,7 +93,7 @@ function FileSystem.read_file(abs_path, line, limit, callback)
     lines = lines or {}
 
     if err ~= nil then
-        vim.notify(
+        Logger.notify(
             "Agent file read error: " .. err,
             vim.log.levels.ERROR,
             { title = " Read file error" }

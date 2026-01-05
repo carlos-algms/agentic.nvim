@@ -1,3 +1,5 @@
+local Logger = require("agentic.utils.logger")
+
 --- @class agentic.utils.BufHelpers
 local BufHelpers = {}
 
@@ -23,7 +25,7 @@ function BufHelpers.with_modifiable(bufnr, callback)
     )
 
     if not ok then
-        vim.notify(
+        Logger.notify(
             "Error in with_modifiable: \n" .. tostring(response),
             vim.log.levels.ERROR,
             { title = "🐞 Error with modifiable callback" }

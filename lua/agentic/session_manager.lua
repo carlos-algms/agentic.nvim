@@ -149,12 +149,12 @@ function SessionManager:_on_session_update(update)
             string.format(
                 "Updated %d slash commands for session %s",
                 #self.slash_commands.commands,
-                self.session_id or "unknown"
+                self.session_id or "no-session-id"
             )
         )
     else
-        -- TODO: Move this to Logger when confidence is high
-        vim.notify(
+        -- TODO: Move this to Logger from notify to debug when confidence is high
+        Logger.notify(
             "Unknown session update type: "
                 .. tostring(
                     --- @diagnostic disable-next-line: undefined-field -- expected it to be unknown
@@ -174,25 +174,19 @@ function SessionManager:_handle_mode_change(mode_id)
     end
 
     self.agent:set_mode(self.session_id, mode_id, function(_result, err)
-        vim.schedule(function()
-            if err then
-                vim.notify(
-                    "Failed to change mode: " .. err.message,
-                    vim.log.levels.ERROR
-                )
-            else
-                self.agent_modes.current_mode_id = mode_id
-                self:_set_mode_to_chat_header(mode_id)
+        if err then
+            Logger.notify(
+                "Failed to change mode: " .. err.message,
+                vim.log.levels.ERROR
+            )
+        else
+            self.agent_modes.current_mode_id = mode_id
+            self:_set_mode_to_chat_header(mode_id)
 
-                vim.notify(
-                    "Mode changed to: " .. mode_id,
-                    vim.log.levels.INFO,
-                    {
-                        title = "Agentic Mode changed",
-                    }
-                )
-            end
-        end)
+            Logger.notify("Mode changed to: " .. mode_id, vim.log.levels.INFO, {
+                title = "Agentic Mode changed",
+            })
+        end
     end)
 end
 
@@ -455,7 +449,7 @@ function SessionManager:new_session()
         self.status_animation:stop()
 
         if err or not response then
-            vim.notify(
+            Logger.notify(
                 "Failed to create session: " .. (err or "unknown error"),
                 vim.log.levels.ERROR,
                 { title = "Session creation error" }
@@ -481,7 +475,7 @@ function SessionManager:new_session()
                 if
                     default_mode and not self.agent_modes:get_mode(default_mode)
                 then
-                    vim.notify(
+                    Logger.notify(
                         string.format(
                             "Configured default_mode '%s' not available. Using provider default.",
                             default_mode

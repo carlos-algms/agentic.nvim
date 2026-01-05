@@ -245,19 +245,15 @@ function ACPClient:_handle_message(message)
             self.callbacks[message.id] = nil
             callback(message.result, message.error)
         else
-            vim.notify(
+            Logger.notify(
                 "No callback found for response id: "
                     .. tostring(message.id)
                     .. "\n\n"
-                    .. vim.inspect(message),
-                vim.log.levels.WARN
+                    .. vim.inspect(message)
             )
         end
     else
-        vim.notify(
-            "Unknown message type: " .. vim.inspect(message),
-            vim.log.levels.WARN
-        )
+        Logger.notify("Unknown message type: " .. vim.inspect(message))
     end
 end
 
@@ -275,10 +271,7 @@ function ACPClient:_handle_notification(message_id, method, params)
     elseif method == "fs/write_text_file" then
         self:_handle_write_text_file(message_id, params)
     else
-        vim.notify(
-            "Unknown notification method: " .. method,
-            vim.log.levels.WARN
-        )
+        Logger.notify("Unknown notification method: " .. method)
     end
 end
 
@@ -289,18 +282,12 @@ function ACPClient:__handle_session_update(params)
     local update = params.update
 
     if not session_id then
-        vim.notify(
-            "Received session/update without sessionId",
-            vim.log.levels.WARN
-        )
+        Logger.notify("Received session/update without sessionId")
         return
     end
 
     if not update then
-        vim.notify(
-            "Received session/update without update data",
-            vim.log.levels.WARN
-        )
+        Logger.notify("Received session/update without update data")
         return
     end
 
@@ -343,10 +330,7 @@ function ACPClient:_handle_read_text_file(message_id, params)
     local path = params.path
 
     if not session_id or not path then
-        vim.notify(
-            "Received fs/read_text_file without sessionId or path",
-            vim.log.levels.WARN
-        )
+        Logger.notify("Received fs/read_text_file without sessionId or path")
         return
     end
 
@@ -370,9 +354,8 @@ function ACPClient:_handle_write_text_file(message_id, params)
     local content = params.content
 
     if not session_id or not path or not content then
-        vim.notify(
-            "Received fs/write_text_file without sessionId, path, or content",
-            vim.log.levels.WARN
+        Logger.notify(
+            "Received fs/write_text_file without sessionId, path, or content"
         )
         return
     end
@@ -411,7 +394,7 @@ function ACPClient:_connect()
     }, function(result, err)
         if not result or err then
             self:_set_state("error")
-            vim.notify(
+            Logger.notify(
                 "Failed to initialize\n\n" .. vim.inspect(err),
                 vim.log.levels.ERROR
             )
@@ -461,10 +444,11 @@ function ACPClient:create_session(handlers, callback)
     }, function(result, err)
         callback = callback or function() end
         if err then
-            vim.notify(
+            Logger.notify(
                 "Failed to create session: " .. err.message,
                 vim.log.levels.ERROR
             )
+
             callback(nil, err)
             return
         end
@@ -498,10 +482,7 @@ function ACPClient:load_session(session_id, cwd, mcp_servers, handlers)
     if
         not self.agent_capabilities or not self.agent_capabilities.loadSession
     then
-        vim.notify(
-            "Agent does not support loading sessions",
-            vim.log.levels.WARN
-        )
+        Logger.notify("Agent does not support loading sessions")
         return
     end
 
