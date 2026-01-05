@@ -128,9 +128,8 @@ function M.show_diff(opts)
     end
 
     local bufnr = vim.fn.bufnr(opts.file_path)
-
     if bufnr == -1 then
-        return
+        bufnr = vim.fn.bufadd(opts.file_path)
     end
 
     -- Ensure the target window displays the diff buffer
@@ -145,12 +144,13 @@ function M.show_diff(opts)
 
     M.clear_diff(bufnr)
 
-    local diff_blocks = ToolCallDiff.extract_diff_blocks(
-        opts.file_path,
-        opts.diff.old,
-        opts.diff.new,
-        opts.diff.all
-    )
+    local diff_blocks = ToolCallDiff.extract_diff_blocks({
+        path = opts.file_path,
+        old_text = opts.diff.old,
+        new_text = opts.diff.new,
+        replace_all = opts.diff.all,
+        strict = true, -- don't show fallback if match fails
+    })
 
     for _, block in ipairs(diff_blocks) do
         if #block.old_lines > 0 then
