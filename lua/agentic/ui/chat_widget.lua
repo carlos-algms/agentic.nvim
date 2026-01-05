@@ -664,7 +664,7 @@ function ChatWidget:open_left_window(bufnr)
     })
 
     if not ok then
-        vim.notify(
+        Logger.notify(
             "Failed to open window: " .. tostring(winid),
             vim.log.levels.WARN
         )

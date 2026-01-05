@@ -1,6 +1,7 @@
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
-local ToolCallDiff = require("agentic.ui.tool_call_diff")
+local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
+local ToolCallDiff = require("agentic.ui.tool_call_diff")
 
 --- Displays the edit tool call diff in the actual buffer using virtual lines and highlights
 --- @class agentic.ui.DiffPreview
@@ -185,10 +186,7 @@ function M.show_diff(opts)
     -- Ensure the target window displays the diff buffer
     local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
     if not ok then
-        vim.notify(
-            "Failed to set buffer in window: " .. tostring(err),
-            vim.log.levels.WARN
-        )
+        Logger.notify("Failed to set buffer in window: " .. tostring(err))
         return
     end
 
@@ -255,10 +253,7 @@ function M.show_diff(opts)
                 }
             )
             if not ok then
-                vim.notify(
-                    "Failed to set virtual lines: " .. tostring(err),
-                    vim.log.levels.WARN
-                )
+                Logger.notify("Failed to set virtual lines: " .. tostring(err))
             end
         end
     end
@@ -271,9 +266,8 @@ function M.show_diff(opts)
             { first_block.start_line, 0 }
         )
         if not ok then
-            vim.notify(
-                "Failed to jump to first diff block: " .. tostring(err),
-                vim.log.levels.WARN
+            Logger.notify(
+                "Failed to jump to first diff block: " .. tostring(err)
             )
         end
     end
