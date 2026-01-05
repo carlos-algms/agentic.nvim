@@ -45,8 +45,8 @@ local function format_debug_message(...)
 end
 
 --- @param msg string Content of the notification to show to the user.
---- @param level vim.log.levels|nil One of the values from `vim.log.levels`. Defaults to WARN
---- @param opts table|nil Optional parameters. Unused by default.
+--- @param level? vim.log.levels One of the values from `vim.log.levels`. Defaults to WARN
+--- @param opts? table Optional parameters. Unused by default.
 function Logger.notify(msg, level, opts)
     vim.schedule(function()
         local ok, res =
