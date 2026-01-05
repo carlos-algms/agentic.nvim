@@ -44,6 +44,25 @@ local function format_debug_message(...)
     return log_parts
 end
 
+--- @param msg string Content of the notification to show to the user.
+--- @param level? vim.log.levels One of the values from `vim.log.levels`. Defaults to WARN
+--- @param opts? table Optional parameters. Unused by default.
+function Logger.notify(msg, level, opts)
+    vim.schedule(function()
+        local ok, res =
+            pcall(vim.notify, msg, level or vim.log.levels.WARN, opts or {})
+
+        if not ok then
+            print(
+                "Notification error: "
+                    .. tostring(res)
+                    .. " - Original message: "
+                    .. msg
+            )
+        end
+    end)
+end
+
 --- Print a debug message that can be read by `:messages`
 function Logger.debug(...)
     local formatted_message = format_debug_message(...)
@@ -74,10 +93,7 @@ function Logger.debug_to_file(...)
         file:write(log_message)
         file:close()
     else
-        vim.notify(
-            "Failed to write to log file: " .. log_file_path,
-            vim.log.levels.WARN
-        )
+        Logger.notify("Failed to write to log file: " .. log_file_path)
     end
 end
 

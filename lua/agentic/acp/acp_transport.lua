@@ -1,4 +1,4 @@
-local logger = require("agentic.utils.logger")
+local Logger = require("agentic.utils.logger")
 local uv = vim.uv or vim.loop
 
 --- @alias agentic.acp.TransportType "stdio" | "tcp" | "websocket"
@@ -114,7 +114,7 @@ function M.create_stdio_transport(config, callbacks)
             stdio = { stdin, stdout, stderr },
             detached = false,
         }, function(code, signal)
-            logger.debug(
+            Logger.debug(
                 "ACP agent exited with code ",
                 code,
                 " and signal ",
@@ -141,7 +141,7 @@ function M.create_stdio_transport(config, callbacks)
             end
         end)
 
-        logger.debug("Spawned ACP agent process with PID ", tostring(pid))
+        Logger.debug("Spawned ACP agent process with PID ", tostring(pid))
 
         if not handle then
             callbacks.on_state_change("error")
@@ -157,7 +157,7 @@ function M.create_stdio_transport(config, callbacks)
         local chunks = ""
         stdout:read_start(function(err, data)
             if err then
-                vim.notify("ACP stdout error: " .. err, vim.log.levels.ERROR)
+                Logger.notify("ACP stdout error: " .. err, vim.log.levels.ERROR)
                 callbacks.on_state_change("error")
                 return
             end
@@ -176,12 +176,9 @@ function M.create_stdio_transport(config, callbacks)
                         if ok then
                             callbacks.on_message(message)
                         else
-                            vim.schedule(function()
-                                vim.notify(
-                                    "Failed to parse JSON-RPC message: " .. line,
-                                    vim.log.levels.WARN
-                                )
-                            end)
+                            Logger.notify(
+                                "Failed to parse JSON-RPC message: " .. line
+                            )
                         end
                     end
                 end
@@ -197,7 +194,7 @@ function M.create_stdio_transport(config, callbacks)
                 end
 
                 vim.schedule(function()
-                    logger.debug("ACP stderr: ", data)
+                    Logger.debug("ACP stderr: ", data)
                 end)
             end
         end)

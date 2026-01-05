@@ -256,6 +256,16 @@ Debug logging utility controlled by `Config.debug` setting.
 - **`Logger.get_timestamp()`** - Returns current timestamp string
   (`YYYY-MM-DD HH:MM:SS`)
 
+- **`Logger.notify(msg, level, opts)`** - Safe wrapper around `vim.notify`
+  - Prevents "fast context is active" errors via `vim.schedule`
+  - Falls back to `print()` if `vim.notify` fails
+  - **Default level:** `vim.log.levels.WARN`
+  - **ALWAYS use this instead of `vim.notify` directly**
+  - Signature:
+    `Logger.notify(msg: string, level?: vim.log.levels, opts?: table)`
+  - Examples:
+    - `Logger.notify("Session created")` - Uses default WARN level
+    - `Logger.notify("Session created", vim.log.levels.INFO)` - Explicit level
 - **`Logger.debug(...)`** - Print debug messages that can be retrieved with the
   command `:messages`
   - Only outputs when `Config.debug = true`
@@ -273,9 +283,12 @@ Debug logging utility controlled by `Config.debug` setting.
 
 **Important Notes:**
 
-- ⚠️ Logger only has `debug()` and `debug_to_file()` methods - no `warn()`,
-  `error()`, or `info()` methods
-- All debug output is conditional on `Config.debug` setting
+- 🚨 **NEVER use `vim.notify` directly** - Always use `Logger.notify` to avoid
+  fast context errors
+- ⚠️ Logger only has `debug()`, `debug_to_file()`, and `notify()` methods - no
+  `warn()`, `error()`, or `info()` methods
+- Logger.debug() and Logger.debug_to_file() output is conditional on
+  `Config.debug` setting
 
 **When adding public methods to utility modules, update AGENTS.md with:**
 
