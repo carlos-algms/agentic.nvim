@@ -172,11 +172,18 @@ end
 function ChatWidget:hide()
     vim.cmd("stopinsert")
 
-    local last_winid = self:find_first_non_widget_window()
+    local fallback_winid = self:find_first_non_widget_window()
 
-    if not last_winid then
+    if not fallback_winid then
         -- Fallback: create a new left window to avoid closing the last window error
-        self:open_left_window()
+        local created_winid = self:open_left_window()
+        if not created_winid then
+            Logger.notify(
+                "Failed to create fallback window; cannot hide widget safely, run `:tabclose` to close the tab instead.",
+                vim.log.levels.ERROR
+            )
+            return
+        end
     end
 
     for name, winid in pairs(self.win_nrs) do
