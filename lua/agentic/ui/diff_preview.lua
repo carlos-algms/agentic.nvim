@@ -162,16 +162,10 @@ end
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
---- @field target_winid number The window ID to display the diff in
+--- @field get_winid fun(bufnr: number): number|nil Called when buffer is not already visible, should return a winid
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
-    local target_winid = opts.target_winid
-
-    if not target_winid then
-        return
-    end
-
     -- Only show diff in normal mode to avoid disrupting user workflow
     local mode = vim.api.nvim_get_mode().mode
     if mode ~= "n" then
@@ -183,11 +177,18 @@ function M.show_diff(opts)
         bufnr = vim.fn.bufadd(opts.file_path)
     end
 
-    -- Ensure the target window displays the diff buffer
-    local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
-    if not ok then
-        Logger.notify("Failed to set buffer in window: " .. tostring(err))
-        return
+    -- Check if buffer is already visible in some window
+    --- @type number|nil
+    local target_winid = vim.fn.bufwinid(bufnr)
+    if target_winid == -1 then
+        target_winid = nil
+    end
+
+    if not target_winid then
+        target_winid = opts.get_winid(bufnr)
+        if not target_winid then
+            return
+        end
     end
 
     M.clear_diff(bufnr)
@@ -241,7 +242,7 @@ function M.show_diff(opts)
                 lang
             )
 
-            ok, err = pcall(
+            local ok, err = pcall(
                 vim.api.nvim_buf_set_extmark,
                 bufnr,
                 NS_DIFF,
@@ -258,18 +259,12 @@ function M.show_diff(opts)
         end
     end
 
+    -- Scroll target window to first diff block without moving cursor
     if #diff_blocks > 0 then
         local first_block = diff_blocks[1]
-        ok, err = pcall(
-            vim.api.nvim_win_set_cursor,
-            target_winid,
-            { first_block.start_line, 0 }
-        )
-        if not ok then
-            Logger.notify(
-                "Failed to jump to first diff block: " .. tostring(err)
-            )
-        end
+        pcall(vim.api.nvim_win_call, target_winid, function()
+            vim.fn.winrestview({ topline = first_block.start_line })
+        end)
     end
 end
 

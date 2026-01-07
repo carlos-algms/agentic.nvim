@@ -602,6 +602,13 @@ function ChatWidget:close_todos_window()
     end
 end
 
+--- Filetypes that should be excluded when finding fallback windows
+local EXCLUDED_FILETYPES = {
+    ["neo-tree"] = true,
+    ["NvimTree"] = true,
+    ["oil"] = true,
+}
+
 --- Finds the first window on the current tabpage that is NOT part of the chat widget
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
@@ -617,11 +624,27 @@ function ChatWidget:find_first_non_widget_window()
 
     for _, winid in ipairs(all_windows) do
         if not widget_win_ids[winid] then
-            return winid
+            local bufnr = vim.api.nvim_win_get_buf(winid)
+            local ft = vim.bo[bufnr].filetype
+            if not EXCLUDED_FILETYPES[ft] then
+                return winid
+            end
         end
     end
 
     return nil
+end
+
+--- Checks if a buffer belongs to this widget
+--- @param bufnr number
+--- @return boolean
+function ChatWidget:_is_widget_buffer(bufnr)
+    for _, widget_bufnr in pairs(self.buf_nrs) do
+        if widget_bufnr == bufnr then
+            return true
+        end
+    end
+    return false
 end
 
 --- Opens a new window on the left side with full height
@@ -629,33 +652,38 @@ end
 --- @return number|nil winid The newly created window ID or nil on failure
 function ChatWidget:open_left_window(bufnr)
     if bufnr == nil then
-        -- Try alternate buffer first
-        bufnr = vim.fn.bufnr("#")
-        if bufnr == -1 then
-            -- Fall back to first oldfile that exists in current directory
-            local oldfiles = vim.v.oldfiles
-            local cwd = vim.fn.getcwd()
-            if oldfiles and #oldfiles > 0 then
-                for _, filepath in ipairs(oldfiles) do
-                    -- Check if file exists and is under current working directory
-                    if
-                        vim.startswith(filepath, cwd)
-                        and vim.fn.filereadable(filepath) == 1
-                    then
-                        bufnr = vim.fn.bufnr(filepath)
-                        if bufnr == -1 then
-                            bufnr = vim.fn.bufadd(filepath)
-                        end
-                        break
+        -- Try alternate buffer first, but skip if it's a widget buffer
+        local alt_bufnr = vim.fn.bufnr("#")
+        if alt_bufnr ~= -1 and not self:_is_widget_buffer(alt_bufnr) then
+            bufnr = alt_bufnr
+        end
+    end
+
+    if bufnr == nil then
+        -- Fall back to first oldfile that exists in current directory
+        local oldfiles = vim.v.oldfiles
+        local cwd = vim.fn.getcwd()
+        if oldfiles and #oldfiles > 0 then
+            for _, filepath in ipairs(oldfiles) do
+                -- Check if file exists and is under current working directory
+                if
+                    vim.startswith(filepath, cwd)
+                    and vim.fn.filereadable(filepath) == 1
+                then
+                    local file_bufnr = vim.fn.bufnr(filepath)
+                    if file_bufnr == -1 then
+                        file_bufnr = vim.fn.bufadd(filepath)
                     end
+                    bufnr = file_bufnr
+                    break
                 end
             end
-
-            -- Last resort: create new scratch buffer
-            if bufnr == -1 then
-                bufnr = vim.api.nvim_create_buf(true, false)
-            end
         end
+    end
+
+    -- Last resort: create new scratch buffer
+    if bufnr == nil then
+        bufnr = vim.api.nvim_create_buf(true, false)
     end
 
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {

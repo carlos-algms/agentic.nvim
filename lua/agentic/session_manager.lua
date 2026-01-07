@@ -568,20 +568,17 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
         return
     end
 
-    local winid = self.widget:find_first_non_widget_window()
-
-    if not winid then
-        winid = self.widget:open_left_window()
-
-        if not winid then
-            return
-        end
-    end
-
     DiffPreview.show_diff({
         file_path = tracker.argument,
         diff = tracker.diff,
-        target_winid = winid,
+        get_winid = function(bufnr)
+            local winid = self.widget:find_first_non_widget_window()
+            if not winid then
+                return self.widget:open_left_window(bufnr)
+            end
+            vim.api.nvim_win_set_buf(winid, bufnr)
+            return winid
+        end,
     })
 end
 
