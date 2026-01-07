@@ -199,6 +199,11 @@ configure it per provider:
 The mode will only be set if it's available from the provider. Use `<S-Tab>` to
 see available modes for your provider.
 
+### Customizing Window Options
+
+You can customize the behavior of individual chat widget windows by configuring the
+`win_opts` property for each window. These options override the default window settings.
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands

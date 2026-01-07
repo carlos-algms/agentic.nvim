@@ -27,6 +27,10 @@
 --- @field widget table<string, agentic.UserConfig.KeymapValue>
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
 
+--- Window options passed to nvim_set_option_value
+--- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
+--- @alias agentic.UserConfig.WinOpts table<string, any>
+
 --- @class agentic.UserConfig
 local ConfigDefault = {
     --- Enable printing debug messages which can be read via `:messages`
@@ -92,19 +96,38 @@ local ConfigDefault = {
         },
     },
 
+    --- @class agentic.UserConfig.Windows.Chat
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
+    --- @class agentic.UserConfig.Windows.Input
+    --- @field height number
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
+    --- @class agentic.UserConfig.Windows.Code
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
+    --- @class agentic.UserConfig.Windows.Files
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
+    --- @class agentic.UserConfig.Windows.Todos
+    --- @field display boolean
+    --- @field max_height number
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
     --- @class agentic.UserConfig.Windows
+    --- @field width string|number
+    --- @field chat agentic.UserConfig.Windows.Chat
+    --- @field input agentic.UserConfig.Windows.Input
+    --- @field code agentic.UserConfig.Windows.Code
+    --- @field files agentic.UserConfig.Windows.Files
+    --- @field todos agentic.UserConfig.Windows.Todos
     windows = {
         width = "40%",
-
-        input = {
-            height = 10,
-        },
-
-        todos = {
-            --- Should show the todo list window in the sidebar widget or not
-            display = true,
-            max_height = 10,
-        },
+        chat = { win_opts = {} },
+        input = { height = 10, win_opts = {} },
+        code = { win_opts = {} },
+        files = { win_opts = {} },
+        todos = { display = true, max_height = 10, win_opts = {} },
     },
 
     --- Custom actions to be used with keymaps
