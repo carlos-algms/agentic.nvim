@@ -576,7 +576,15 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
             if not winid then
                 return self.widget:open_left_window(bufnr)
             end
-            vim.api.nvim_win_set_buf(winid, bufnr)
+            local ok, err = pcall(vim.api.nvim_win_set_buf, winid, bufnr)
+
+            if not ok then
+                Logger.notify(
+                    "Failed to set buffer in window: " .. tostring(err),
+                    vim.log.levels.WARN
+                )
+                return nil
+            end
             return winid
         end,
     })

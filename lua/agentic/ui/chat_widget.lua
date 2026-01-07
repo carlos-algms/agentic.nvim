@@ -683,7 +683,7 @@ function ChatWidget:open_left_window(bufnr)
 
     -- Last resort: create new scratch buffer
     if bufnr == nil then
-        bufnr = vim.api.nvim_create_buf(true, false)
+        bufnr = vim.api.nvim_create_buf(false, true)
     end
 
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
