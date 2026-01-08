@@ -622,9 +622,32 @@ end
 
 --- Filetypes that should be excluded when finding fallback windows
 local EXCLUDED_FILETYPES = {
+    -- File explorers
     ["neo-tree"] = true,
     ["NvimTree"] = true,
     ["oil"] = true,
+    -- Neovim special buffers
+    ["qf"] = true, -- Quickfix
+    ["help"] = true, -- Help buffers
+    ["man"] = true, -- Man pages
+    ["terminal"] = true, -- Terminal buffers
+    -- Plugin special windows
+    ["TelescopePrompt"] = true,
+    ["DiffviewFiles"] = true,
+    ["DiffviewFileHistory"] = true,
+    ["fugitive"] = true,
+    ["gitcommit"] = true,
+    ["dashboard"] = true,
+    ["alpha"] = true, -- Alpha dashboard
+    ["starter"] = true, -- Mini.starter
+    ["notify"] = true, -- nvim-notify
+    ["noice"] = true, -- Noice popup
+    ["aerial"] = true, -- Aerial outline
+    ["Outline"] = true, -- symbols-outline
+    ["trouble"] = true, -- Trouble diagnostics
+    ["spectre_panel"] = true, -- nvim-spectre
+    ["lazy"] = true, -- Lazy plugin manager
+    ["mason"] = true, -- Mason installer
 }
 
 --- Finds the first window on the current tabpage that is NOT part of the chat widget
@@ -670,10 +693,17 @@ end
 --- @return number|nil winid The newly created window ID or nil on failure
 function ChatWidget:open_left_window(bufnr)
     if bufnr == nil then
-        -- Try alternate buffer first, but skip if it's a widget buffer
+        -- Try alternate buffer first, but skip if it's a widget buffer or excluded filetype
         local alt_bufnr = vim.fn.bufnr("#")
-        if alt_bufnr ~= -1 and not self:_is_widget_buffer(alt_bufnr) then
-            bufnr = alt_bufnr
+        if
+            alt_bufnr ~= -1
+            and vim.api.nvim_buf_is_valid(alt_bufnr)
+            and not self:_is_widget_buffer(alt_bufnr)
+        then
+            local ft = vim.bo[alt_bufnr].filetype
+            if not EXCLUDED_FILETYPES[ft] then
+                bufnr = alt_bufnr
+            end
         end
     end
 
