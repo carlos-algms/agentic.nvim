@@ -475,12 +475,7 @@ function SessionManager:new_session()
         self.status_animation:stop()
 
         if err or not response then
-            Logger.notify(
-                "Failed to create session: " .. (err or "unknown error"),
-                vim.log.levels.ERROR,
-                { title = "Session creation error" }
-            )
-
+            -- no log here, already logged in create_session
             self.session_id = nil
             return
         end

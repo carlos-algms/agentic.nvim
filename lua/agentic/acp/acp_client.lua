@@ -442,11 +442,12 @@ function ACPClient:create_session(handlers, callback)
         cwd = cwd,
         mcpServers = {},
     }, function(result, err)
-        callback = callback or function() end
         if err then
             Logger.notify(
-                "Failed to create session: " .. err.message,
-                vim.log.levels.ERROR
+                "Failed to create session: "
+                    .. (err.message or vim.inspect(err)),
+                vim.log.levels.ERROR,
+                { title = "🐞 Session creation error" }
             )
 
             callback(nil, err)

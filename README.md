@@ -225,6 +225,11 @@ Configure image paste behavior (macOS only):
 - **macOS**: Install `pngpaste` with `brew install pngpaste`
 - **Linux/Windows**: Not currently supported (shows warning if attempted)
 
+### Customizing Window Options
+
+You can customize the behavior of individual chat widget windows by configuring the
+`win_opts` property for each window. These options override the default window settings.
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands
