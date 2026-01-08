@@ -44,6 +44,10 @@ interface, your colors, and your keymaps.
 - **ℹ️ Smart Context** - Automatically includes system and project information
   in the first message of each session, so the Agent don't spend time and tokens
   gathering basic info
+- **📷 Image Support** - Paste images from clipboard directly into chat prompts
+  - **macOS only** (requires `pngpaste` - `brew install pngpaste`)
+  - Press `<C-p>` (configurable) to paste - images shown as 📷 indicators
+  - Configurable size limit (default: 10MB)
 
 ## 🎥 Showcase
 
@@ -199,6 +203,28 @@ configure it per provider:
 The mode will only be set if it's available from the provider. Use `<S-Tab>` to
 see available modes for your provider.
 
+### Image Configuration
+
+Configure image paste behavior (macOS only):
+
+```lua
+{
+  image = {
+    -- Maximum image size in bytes (default: 10MB)
+    -- Images larger than this will be rejected with an error message
+    max_size_bytes = 10 * 1024 * 1024,  -- 10MB
+
+    -- Examples of other sizes:
+    -- max_size_bytes = 5 * 1024 * 1024,   -- 5MB
+    -- max_size_bytes = 20 * 1024 * 1024,  -- 20MB
+  },
+}
+```
+
+**Requirements:**
+- **macOS**: Install `pngpaste` with `brew install pngpaste`
+- **Linux/Windows**: Not currently supported (shows warning if attempted)
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands
@@ -240,6 +266,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<S-Tab>`  | n/v/i | Switch agent mode (only available if provider supports modes) |
 | `<CR>`     | n     | Submit prompt                                                 |
 | `<C-s>`    | n/v/i | Submit prompt                                                 |
+| `<C-p>`    | n/i   | Paste image from clipboard (macOS only)                       |
 | `q`        | n     | Close chat widget                                             |
 | `d`        | n     | Remove file or code selection at cursor                       |
 | `d`        | v     | Remove multiple selected files or code selections             |
@@ -270,6 +297,12 @@ your setup:
         {
           "<C-s>",
           mode = { "n", "v", "i" },
+        },
+      },
+      paste_image = {
+        {
+          "<C-p>",  -- Default keybinding for pasting images
+          mode = { "n", "i" },
         },
       },
     },
