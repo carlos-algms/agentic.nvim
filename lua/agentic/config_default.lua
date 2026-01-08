@@ -107,6 +107,13 @@ local ConfigDefault = {
         },
     },
 
+    --- @class agentic.UserConfig.Image
+    image = {
+        --- Maximum image size in bytes (default: 10MB)
+        --- Images larger than this will be rejected with an error message
+        max_size_bytes = 10 * 1024 * 1024,
+    },
+
     --- Custom actions to be used with keymaps
     --- @class agentic.UserConfig.Actions
     actions = {},
@@ -131,6 +138,12 @@ local ConfigDefault = {
                 {
                     "<C-s>",
                     mode = { "i", "n", "v" },
+                },
+            },
+            paste_image = {
+                {
+                    "<C-p>",
+                    mode = { "n", "i" },
                 },
             },
         },

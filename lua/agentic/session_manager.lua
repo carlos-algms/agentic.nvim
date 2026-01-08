@@ -43,6 +43,7 @@ end
 --- @field current_provider string
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
+--- @field image_manager agentic.ui.ImageManager
 --- @field slash_commands agentic.acp.SlashCommands
 --- @field agent_modes agentic.acp.AgentModes
 local SessionManager = {}
@@ -59,6 +60,7 @@ function SessionManager:new(tab_page_id)
     local AgentModes = require("agentic.acp.agent_modes")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
+    local ImageManager = require("agentic.ui.image_manager")
     local FilePicker = require("agentic.ui.file_picker")
 
     self = setmetatable({
@@ -117,6 +119,16 @@ function SessionManager:new(tab_page_id)
                     tostring(#code_selection:get_selections())
                 self.widget:render_header("code")
             end
+        end
+    )
+
+    self.image_manager = ImageManager:new(
+        self.widget.buf_nrs.input,
+        function(image_manager)
+            -- Could add header update here if desired
+            Logger.debug(
+                string.format("Image manager has %d images", #image_manager:get_images())
+            )
         end
     )
 
@@ -226,6 +238,20 @@ function SessionManager:_handle_input_submit(input_text)
         type = "text",
         text = input_text,
     })
+
+    -- Add images if any
+    if not self.image_manager:is_empty() then
+        local images = self.image_manager:get_images()
+        for _, image_data in ipairs(images) do
+            table.insert(prompt, {
+                type = "image",
+                data = image_data.data,
+                mimeType = image_data.mimeType,
+            })
+        end
+        -- Clear images after adding to prompt
+        self.image_manager:clear()
+    end
 
     --- The message to be written to the chat widget
     local message_lines = {
