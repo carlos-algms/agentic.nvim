@@ -339,18 +339,18 @@ to install the `img-clip.nvim` dependency:
 
 ```lua
 {
-  "carlos-algms/img-clip.nvim",
+  "carlos-algms/agentic.nvim",
 
   dependencies = {
-    { "hakonharnes/img-clip.nvim", opts ={} },
+    { "hakonharnes/img-clip.nvim", opts = {} }
   }
 
   -- ... rest of your config
 }
 ```
 
-Please not it depends on `xclip` (x11) or `wl-clipboard` (wayland) on Linux or
-`pngpaste` on MacOS, Windows requires no extra dependencies.
+Please note img-clip.nvim, on Linux depends on `xclip` (x11) or `wl-clipboard`
+(wayland), or `pngpaste` on macOS, Windows requires no extra dependencies.
 
 Then just press `<localleader>p` in the Prompt buffer to paste the image from
 your clipboard.
