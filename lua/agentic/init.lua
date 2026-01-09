@@ -154,7 +154,7 @@ function Agentic.setup(opts)
 
                 if ret then
                     session.widget:show({
-                        focus_input = false,
+                        focus_prompt = false,
                     })
                 end
 

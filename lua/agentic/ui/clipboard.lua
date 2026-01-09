@@ -1,20 +1,7 @@
-local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.Clipboard
 local M = {}
-
---- @param file_path string
---- @return boolean
-local function is_image_or_audio_file(file_path)
-    local ext = FileSystem.get_file_extension(file_path)
-    if ext == "" then
-        return false
-    end
-
-    return FileSystem.IMAGE_MIMES[ext] ~= nil
-        or FileSystem.AUDIO_MIMES[ext] ~= nil
-end
 
 --- @class agentic.Clipboard.SetupOpts
 --- @field is_widget_open fun(): boolean Callback to check if the Chat widget is visible
@@ -36,12 +23,6 @@ function M.setup(opts)
 
             -- Only handle single-line pastes that look like file paths
             if not line or line == "" or #lines > 1 then
-                return original_paste(lines, phase)
-            end
-
-            -- Check if it's an image/audio file
-            if not is_image_or_audio_file(line) then
-                Logger.debug("clipboard: not an image/audio file", line)
                 return original_paste(lines, phase)
             end
 
