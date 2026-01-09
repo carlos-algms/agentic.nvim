@@ -194,6 +194,12 @@ local ConfigDefault = {
         enabled = true,
     },
 
+    --- @class agentic.UserConfig.ImagePaste
+    --- @field enabled boolean Enable image drag-and-drop to add images to referenced files
+    image_paste = {
+        enabled = true,
+    },
+
     --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,
