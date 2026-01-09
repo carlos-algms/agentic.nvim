@@ -25,6 +25,8 @@ interface, your colors, and your keymaps.
     on Agentic.
 - **📝 Context Control** - Add files and text selections to conversation context
   with one keypress
+- **🏞️ Image Support** - Drag-and-drop or paste images and screenshots directly
+  into the chat
 - **🛡️ Permission System** - Interactive approval workflow for AI tool calls,
   mimicking Claude-code's approach, with 1, 2, 3, ... one-key press for quick
   responses
@@ -103,8 +105,6 @@ tools like `nvm`, `fnm`, etc...
 ```lua
 {
   "carlos-algms/agentic.nvim",
-
-  event = "VeryLazy",
 
   opts = {
     -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
@@ -201,8 +201,9 @@ see available modes for your provider.
 
 ### Customizing Window Options
 
-You can customize the behavior of individual chat widget windows by configuring the
-`win_opts` property for each window. These options override the default window settings.
+You can customize the behavior of individual chat widget windows by configuring
+the `win_opts` property for each window. These options override the default
+window settings.
 
 ## 🚀 Usage (Public Lua API)
 
@@ -240,14 +241,15 @@ require("agentic").add_selection({ focus_prompt = false })
 
 These keybindings are automatically set in Agentic buffers:
 
-| Keybinding | Mode  | Description                                                   |
-| ---------- | ----- | ------------------------------------------------------------- |
-| `<S-Tab>`  | n/v/i | Switch agent mode (only available if provider supports modes) |
-| `<CR>`     | n     | Submit prompt                                                 |
-| `<C-s>`    | n/v/i | Submit prompt                                                 |
-| `q`        | n     | Close chat widget                                             |
-| `d`        | n     | Remove file or code selection at cursor                       |
-| `d`        | v     | Remove multiple selected files or code selections             |
+| Keybinding       | Mode  | Description                                                   |
+| ---------------- | ----- | ------------------------------------------------------------- |
+| `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes) |
+| `<CR>`           | n     | Submit prompt                                                 |
+| `<C-s>`          | n/v/i | Submit prompt                                                 |
+| `<localleader>p` | n/i   | Paste image from clipboard in the Prompt buffer               |
+| `q`              | n     | Close chat widget                                             |
+| `d`              | n     | Remove file or code selection at cursor                       |
+| `d`              | v     | Remove multiple selected files or code selections             |
 
 #### Customizing Keybindings
 
@@ -271,10 +273,17 @@ your setup:
     -- Keybindings for the prompt buffer only
     prompt = {
       submit = {
-        "<CR>",  -- Normal mode by default
+        "<CR>",  -- Normal mode, just Enter
         {
           "<C-s>",
           mode = { "n", "v", "i" },
+        },
+      },
+
+      paste_image = {
+        {
+          "<localleader>p",
+          mode = { "n", "i" }, -- I like normal and insert modes for this, but feel free to customize
         },
       },
     },
@@ -313,6 +322,44 @@ the current workspace.
   type
 - **Multiple files**: You can reference multiple files in one prompt:
   `@file1.lua @file2.lua`
+
+### Image and Screenshots support
+
+You can drag-and-drop images into the Prompt buffer or paste images and
+screenshots directly from your clipboard.
+
+The support still depends on the ACP provider capabilities, but most of them
+support images in the conversation.
+
+Drag-and-drop should work out of the box if your terminal supports it, no need
+for extra configuration or plugins.
+
+But, if you want to paste screenshots directly from your clipboard, you'll need
+to install the `img-clip.nvim` dependency:
+
+```lua
+{
+  "carlos-algms/img-clip.nvim",
+
+  dependencies = {
+    { "hakonharnes/img-clip.nvim", opts ={} },
+  }
+
+  -- ... rest of your config
+}
+```
+
+Please not it depends on `xclip` (x11) or `wl-clipboard` (wayland) on Linux or
+`pngpaste` on MacOS, Windows requires no extra dependencies.
+
+Then just press `<localleader>p` in the Prompt buffer to paste the image from
+your clipboard.
+
+NOTE: Due to Terminal and Neovim limitations, when pasting an image from the
+Clipboard, there's no way of intercepting it, as it's considered binary and not
+text, so either your Terminal or Neovim will just ignore and do nothing with it,
+that's why we need the help of the external plugin. It's totally out of our
+control.
 
 ### System Information
 
