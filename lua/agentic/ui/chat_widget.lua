@@ -7,13 +7,17 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 
 --- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
---- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, {
----   title: string,
----   suffix?: string,
----   persistent?: string|nil }>
+
+--- @class agentic.ui.ChatWidget.HeaderConfig
+--- @field title string
+--- @field suffix? string
+--- @field persistent? string
+
+--- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderConfig>
 
 --- Options for controlling widget display behavior
---- @alias agentic.ui.ChatWidget.ShowOpts { focus_prompt?: boolean }
+--- @class agentic.ui.ChatWidget.ShowOpts
+--- @field focus_prompt? boolean
 
 --- @type agentic.ui.ChatWidget.Headers
 local WINDOW_HEADERS = {
@@ -335,6 +339,40 @@ function ChatWidget:_bind_keymaps()
             self:_submit_input()
         end, {
             desc = "Agentic: Submit prompt",
+        })
+    end
+
+    local paste_image = Config.keymaps.prompt.paste_image
+
+    if type(paste_image) == "string" then
+        paste_image = { paste_image }
+    end
+
+    for _, key in ipairs(paste_image) do
+        --- @type string|string[]
+        local modes = "n"
+        --- @type string
+        local keymap
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
+        end
+
+        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
+            vim.schedule(function()
+                local Clipboard = require("agentic.ui.clipboard")
+                local res = Clipboard.paste_image()
+
+                if res ~= nil then
+                    -- call vim.paste directly to avoid coupling to the file list logic
+                    vim.paste({ res }, -1)
+                end
+            end)
+        end, {
+            desc = "Agentic: Paste image from clipboard",
         })
     end
 

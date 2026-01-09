@@ -308,10 +308,7 @@ function SessionManager:_handle_input_submit(input_text)
         self.file_list:clear()
 
         for _, file_path in ipairs(files) do
-            table.insert(
-                prompt,
-                self.agent:create_resource_link_content(file_path)
-            )
+            table.insert(prompt, self.agent:create_file_content(file_path))
 
             table.insert(
                 message_lines,

@@ -1,3 +1,5 @@
+local FileSystem = require("agentic.utils.file_system")
+
 --- @alias agentic.Theme.SpinnerState "generating" | "thinking" | "searching" | "busy"
 
 --- @class agentic.Theme
@@ -99,7 +101,7 @@ end
 --- @param file_path string
 --- @return string language
 function Theme.get_language_from_path(file_path)
-    local ext = vim.fn.fnamemodify(file_path, ":e")
+    local ext = FileSystem.get_file_extension(file_path)
     if not ext or ext == "" then
         return ""
     end

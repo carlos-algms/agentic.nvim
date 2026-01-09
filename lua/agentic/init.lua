@@ -137,6 +137,32 @@ function Agentic.setup(opts)
         desc = "Cleanup Agentic processes on tab close",
     })
 
+    if Config.image_paste.enabled then
+        require("agentic.ui.clipboard").setup({
+            is_widget_open = function()
+                local session = SessionRegistry.get_session_for_tab_page()
+                return session and session.widget:is_open() or false
+            end,
+            on_paste = function(file_path)
+                local session = SessionRegistry.get_session_for_tab_page()
+
+                if not session then
+                    return false
+                end
+
+                local ret = session.file_list:add(file_path) or false
+
+                if ret then
+                    session.widget:show({
+                        focus_prompt = false,
+                    })
+                end
+
+                return ret
+            end,
+        })
+    end
+
     -- Setup signal handlers for graceful shutdown
     local sigterm_handler = vim.uv.new_signal()
     if sigterm_handler then

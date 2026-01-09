@@ -590,29 +590,48 @@ function ACPClient:_generate_message_chunk(text, role)
 end
 
 --- @param path string
---- @param text string
---- @param annotations? agentic.acp.Annotations
---- @return agentic.acp.ResourceContent
-function ACPClient:create_resource_content(path, text, annotations)
-    local uri = "file://" .. FileSystem.to_absolute_path(path)
+--- @return agentic.acp.Content
+function ACPClient:create_file_content(path)
+    local abs_path = FileSystem.to_absolute_path(path)
+    local uri = "file://" .. abs_path
+    local ext = FileSystem.get_file_extension(path)
 
-    --- @type agentic.acp.ResourceContent
-    local resource = {
-        type = "resource",
-        resource = {
+    local mime = FileSystem.IMAGE_MIMES[ext]
+
+    -- It's an image file
+    if mime then
+        --- @type agentic.acp.ImageContent
+        local content = {
+            type = "image",
+            mimeType = mime,
             uri = uri,
-            text = text,
-        },
-        annotations = annotations,
-    }
+            data = FileSystem.read_file_base64(abs_path),
+        }
 
-    return resource
+        return content
+    end
+
+    mime = FileSystem.AUDIO_MIMES[ext]
+
+    -- It's an audio file
+    if mime then
+        --- @type agentic.acp.AudioContent
+        local content = {
+            type = "audio",
+            mimeType = mime,
+            uri = uri,
+            data = FileSystem.read_file_base64(abs_path),
+        }
+
+        return content
+    end
+
+    return self:create_resource_link_content(path)
 end
 
 --- @param path string
---- @param annotations? agentic.acp.Annotations
 --- @return agentic.acp.ResourceLinkContent
-function ACPClient:create_resource_link_content(path, annotations)
+function ACPClient:create_resource_link_content(path)
     local uri = "file://" .. FileSystem.to_absolute_path(path)
     local name = FileSystem.base_name(path)
 
@@ -621,7 +640,6 @@ function ACPClient:create_resource_link_content(path, annotations)
         type = "resource_link",
         uri = uri,
         name = name,
-        annotations = annotations,
     }
 
     return resource

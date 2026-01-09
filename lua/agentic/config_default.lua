@@ -156,6 +156,13 @@ local ConfigDefault = {
                     mode = { "i", "n", "v" },
                 },
             },
+
+            paste_image = {
+                {
+                    "<localleader>p",
+                    mode = { "n", "i" },
+                },
+            },
         },
     },
 
@@ -194,12 +201,17 @@ local ConfigDefault = {
         enabled = true,
     },
 
+    --- @class agentic.UserConfig.ImagePaste
+    --- @field enabled boolean Enable image drag-and-drop to add images to referenced files
+    image_paste = {
+        enabled = true,
+    },
+
     --- Show diff preview for edit tool calls in the buffer
     --- @class agentic.UserConfig.DiffPreview
     diff_preview = {
         enabled = true,
     },
-
     --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,
