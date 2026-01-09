@@ -172,6 +172,20 @@ end
 function ChatWidget:hide()
     vim.cmd("stopinsert")
 
+    local fallback_winid = self:find_first_non_widget_window()
+
+    if not fallback_winid then
+        -- Fallback: create a new left window to avoid closing the last window error
+        local created_winid = self:open_left_window()
+        if not created_winid then
+            Logger.notify(
+                "Failed to create fallback window; cannot hide widget safely, run `:tabclose` to close the tab instead.",
+                vim.log.levels.ERROR
+            )
+            return
+        end
+    end
+
     for name, winid in pairs(self.win_nrs) do
         self.win_nrs[name] = nil
         local ok = pcall(vim.api.nvim_win_close, winid, true)
@@ -604,6 +618,136 @@ function ChatWidget:close_todos_window()
         vim.api.nvim_win_close(self.win_nrs.todos, true)
         self.win_nrs.todos = nil
     end
+end
+
+--- Filetypes that should be excluded when finding fallback windows
+local EXCLUDED_FILETYPES = {
+    -- File explorers
+    ["neo-tree"] = true,
+    ["NvimTree"] = true,
+    ["oil"] = true,
+    -- Neovim special buffers
+    ["qf"] = true, -- Quickfix
+    ["help"] = true, -- Help buffers
+    ["man"] = true, -- Man pages
+    ["terminal"] = true, -- Terminal buffers
+    -- Plugin special windows
+    ["TelescopePrompt"] = true,
+    ["DiffviewFiles"] = true,
+    ["DiffviewFileHistory"] = true,
+    ["fugitive"] = true,
+    ["gitcommit"] = true,
+    ["dashboard"] = true,
+    ["alpha"] = true, -- Alpha dashboard
+    ["starter"] = true, -- Mini.starter
+    ["notify"] = true, -- nvim-notify
+    ["noice"] = true, -- Noice popup
+    ["aerial"] = true, -- Aerial outline
+    ["Outline"] = true, -- symbols-outline
+    ["trouble"] = true, -- Trouble diagnostics
+    ["spectre_panel"] = true, -- nvim-spectre
+    ["lazy"] = true, -- Lazy plugin manager
+    ["mason"] = true, -- Mason installer
+}
+
+--- Finds the first window on the current tabpage that is NOT part of the chat widget
+--- @return number|nil winid The first non-widget window ID, or nil if none found
+function ChatWidget:find_first_non_widget_window()
+    local all_windows = vim.api.nvim_tabpage_list_wins(self.tab_page_id)
+
+    -- Build a set of widget window IDs for fast lookup
+    local widget_win_ids = {}
+    for _, winid in pairs(self.win_nrs) do
+        if winid then
+            widget_win_ids[winid] = true
+        end
+    end
+
+    for _, winid in ipairs(all_windows) do
+        if not widget_win_ids[winid] then
+            local bufnr = vim.api.nvim_win_get_buf(winid)
+            local ft = vim.bo[bufnr].filetype
+            if not EXCLUDED_FILETYPES[ft] then
+                return winid
+            end
+        end
+    end
+
+    return nil
+end
+
+--- Checks if a buffer belongs to this widget
+--- @param bufnr number
+--- @return boolean
+function ChatWidget:_is_widget_buffer(bufnr)
+    for _, widget_bufnr in pairs(self.buf_nrs) do
+        if widget_bufnr == bufnr then
+            return true
+        end
+    end
+    return false
+end
+
+--- Opens a new window on the left side with full height
+--- @param bufnr? number The buffer to display in the new window
+--- @return number|nil winid The newly created window ID or nil on failure
+function ChatWidget:open_left_window(bufnr)
+    if bufnr == nil then
+        -- Try alternate buffer first, but skip if it's a widget buffer or excluded filetype
+        local alt_bufnr = vim.fn.bufnr("#")
+        if
+            alt_bufnr ~= -1
+            and vim.api.nvim_buf_is_valid(alt_bufnr)
+            and not self:_is_widget_buffer(alt_bufnr)
+        then
+            local ft = vim.bo[alt_bufnr].filetype
+            if not EXCLUDED_FILETYPES[ft] then
+                bufnr = alt_bufnr
+            end
+        end
+    end
+
+    if bufnr == nil then
+        -- Fall back to first oldfile that exists in current directory
+        local oldfiles = vim.v.oldfiles
+        local cwd = vim.fn.getcwd()
+        if oldfiles and #oldfiles > 0 then
+            for _, filepath in ipairs(oldfiles) do
+                -- Check if file exists and is under current working directory
+                if
+                    vim.startswith(filepath, cwd)
+                    and vim.fn.filereadable(filepath) == 1
+                then
+                    local file_bufnr = vim.fn.bufnr(filepath)
+                    if file_bufnr == -1 then
+                        file_bufnr = vim.fn.bufadd(filepath)
+                    end
+                    bufnr = file_bufnr
+                    break
+                end
+            end
+        end
+    end
+
+    -- Last resort: create new scratch buffer
+    if bufnr == nil then
+        bufnr = vim.api.nvim_create_buf(false, true)
+    end
+
+    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
+        split = "left",
+        win = -1,
+    })
+
+    if not ok then
+        Logger.notify(
+            "Failed to open window: " .. tostring(winid),
+            vim.log.levels.WARN
+        )
+        return nil
+    end
+
+    return winid
 end
 
 return ChatWidget
