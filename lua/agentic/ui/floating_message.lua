@@ -1,3 +1,5 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
+
 --- Floating message window utilities
 --- @class agentic.ui.FloatingMessage
 local M = {}
@@ -47,20 +49,12 @@ function M.show(opts)
     vim.wo[win].wrap = true
     vim.wo[win].linebreak = true
 
-    vim.api.nvim_buf_set_keymap(
-        buf,
-        "n",
-        "q",
-        "<cmd>close<cr>",
-        { noremap = true, silent = true }
-    )
-    vim.api.nvim_buf_set_keymap(
-        buf,
-        "n",
-        "<Esc>",
-        "<cmd>close<cr>",
-        { noremap = true, silent = true }
-    )
+    BufHelpers.keymap_set(buf, "n", "q", function()
+        vim.cmd.close()
+    end)
+    BufHelpers.keymap_set(buf, "n", "<Esc>", function()
+        vim.cmd.close()
+    end)
 
     vim.api.nvim_create_autocmd("BufLeave", {
         buffer = buf,
