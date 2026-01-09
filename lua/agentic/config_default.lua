@@ -156,6 +156,10 @@ local ConfigDefault = {
                     mode = { "i", "n", "v" },
                 },
             },
+
+            paste_image = {
+                "<localleader>p",
+            },
         },
     },
 
