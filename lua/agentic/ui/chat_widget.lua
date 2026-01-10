@@ -455,7 +455,10 @@ function ChatWidget:_create_buf_nrs()
         buftype = "acwrite",
     })
     -- avoid "E32: No file name"
-    vim.api.nvim_buf_set_name(input, "AgenticInput")
+    vim.api.nvim_buf_set_name(
+        input,
+        string.format("AgenticInput-%d", self.tab_page_id)
+    )
 
     vim.api.nvim_create_autocmd("BufWriteCmd", {
         buffer = input,
