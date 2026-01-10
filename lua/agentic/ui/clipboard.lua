@@ -44,8 +44,10 @@ function M.show_img_clip_not_installed_message()
     })
 end
 
+--- Check if a directory exists and is writable
+--- @param dir string|nil
 local function is_dir_writable(dir)
-    if not dir then
+    if not dir or dir == "" then
         return false
     end
 
