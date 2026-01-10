@@ -46,6 +46,7 @@ end
 
 --- Check if a directory exists and is writable
 --- @param dir string|nil
+--- @return boolean
 local function is_dir_writable(dir)
     if not dir or dir == "" then
         return false
@@ -67,6 +68,7 @@ local function is_dir_writable(dir)
         pcall(vim.uv.fs_unlink, vim.fs.joinpath(dir, ".agentic_write_test"))
         return true
     end
+
     return false
 end
 
