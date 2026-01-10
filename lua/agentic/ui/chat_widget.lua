@@ -452,6 +452,16 @@ function ChatWidget:_create_buf_nrs()
     local input = self:_create_new_buf({
         filetype = "AgenticInput",
         modifiable = true,
+        buftype = "acwrite",
+    })
+    -- avoid "E32: No file name"
+    vim.api.nvim_buf_set_name(input, "AgenticInput")
+
+    vim.api.nvim_create_autocmd("BufWriteCmd", {
+        buffer = input,
+        callback = function()
+            self:_submit_input()
+        end,
     })
 
     -- Don't call it for the chat buffer as its managed somewhere else
