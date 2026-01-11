@@ -90,7 +90,7 @@ function SessionManager:new(tab_page_id)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
     self.slash_commands = SlashCommands:new(self.widget.buf_nrs.input)
-    FilePicker.new(self.widget.buf_nrs.input)
+    FilePicker:new(self.widget.buf_nrs.input)
 
     self.agent_modes = AgentModes:new(self.widget.buf_nrs, function(mode_id)
         self:_handle_mode_change(mode_id)

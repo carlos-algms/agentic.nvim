@@ -36,13 +36,13 @@ local instances_by_buffer = setmetatable({}, { __mode = "v" })
 
 --- @param bufnr number
 --- @return agentic.ui.FilePicker|nil
-function FilePicker.new(bufnr)
+function FilePicker:new(bufnr)
     if not Config.file_picker.enabled then
         return nil
     end
 
     --- @type agentic.ui.FilePicker
-    local instance = setmetatable({ _files = {} }, FilePicker)
+    local instance = setmetatable({ _files = {} }, self)
     instance:_setup_completion(bufnr)
     return instance
 end

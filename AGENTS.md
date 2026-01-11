@@ -485,21 +485,35 @@ make luacheck   # REQUIRED: Run style/syntax checking
 ### 🚨 Output Management for Validation Commands
 
 **When running tests, linters, docker build, or validation commands, redirect
-output to avoid context flooding:**
+output to avoid context window flooding:**
 
 ```bash
-# Redirect output to tmp file and capture exit code
-make luals > /tmp/agentic_luals_output.txt 2>&1; echo $?
-make luacheck > /tmp/agentic_luacheck_output.txt 2>&1; echo $?
-nvim -l tests/busted.lua <test_file> > /tmp/agentic_test_output.txt 2>&1; echo $?
+# Redirect output to log file and capture exit code
+make luals > ./.local/agentic_luals_output.log 2>&1; echo $?
+make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo $?
+make test-file FILE=<test_file> > ./.local/agentic_test_output.log 2>&1; echo $?
 ```
 
 **Rules:**
 
 - Only read the exit code (0 = success, non-zero = failure)
-- Only read the tmp file if the command fails
+- Only read the log file if the command fails
 - Prevents large output from consuming context unnecessarily
-- Use unique tmp file names to avoid collisions
+- Use unique log file names to avoid collisions
+
+**Reading log files:**
+
+- **NEVER use Read tool** - floods context with entire file
+- **Use targeted commands instead:**
+  - `tail -n 10 <logfile>` - Last 10 lines (errors usually at end)
+  - `head -n 10 <logfile>` - First 10 lines
+  - `rg "error|warning|fail" <logfile>` - Search for specific patterns
+    (smart-case by default)
+  - `grep -i "error" <logfile>` - Search with grep (case-insensitive)
+- Increase line count only if needed for context
+- Read only what's needed to diagnose the issue
+- **If multiple reads needed:** Use `cat <logfile>` once for entire file instead
+  of reading multiple chunks (avoids loops of reading trying to find info)
 
 ### Testing
 
@@ -714,3 +728,4 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
+

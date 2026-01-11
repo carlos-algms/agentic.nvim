@@ -16,7 +16,7 @@ describe("FilePicker:scan_files", function()
         original_cmd_rg = FilePicker.CMD_RG[1]
         original_cmd_fd = FilePicker.CMD_FD[1]
         original_cmd_git = FilePicker.CMD_GIT[1]
-        picker = FilePicker.new(vim.api.nvim_create_buf(false, true)) --[[@as agentic.ui.FilePicker]]
+        picker = FilePicker:new(vim.api.nvim_create_buf(false, true)) --[[@as agentic.ui.FilePicker]]
     end)
 
     after_each(function()
@@ -125,6 +125,30 @@ end)
 describe("FilePicker keymap fallback", function()
     local child = require("tests.helpers.child").new()
 
+    --- Setup a tracking expr keymap using vimscript (fully typed, no child.lua needed)
+    --- @param key string The key to map (e.g., "<Tab>", "<CR>")
+    --- @param global_name string The global variable name (g:) to track calls
+    local function setup_tracking_keymap(key, global_name)
+        child.g[global_name] = false
+        -- vimscript expr: execute() returns "" on success, concat with return value
+        local rhs = ("execute('let g:%s = v:true') .. '%s_CALLED'"):format(
+            global_name,
+            key:upper():gsub("[<>]", "")
+        )
+        child.api.nvim_set_keymap("i", key, rhs, { expr = true })
+    end
+
+    --- Load FilePicker in child process to void polluting main test env
+    local function load_file_picker()
+        child.lua([[require("agentic.ui.file_picker"):new(0)]])
+    end
+
+    --- Execute insert mode key via normal command
+    --- @param key string
+    local function execute_insert_key(key)
+        child.cmd(([[silent execute "normal i\%s"]]):format(key))
+    end
+
     teardown(function()
         child.stop()
     end)
@@ -136,53 +160,41 @@ describe("FilePicker keymap fallback", function()
     it(
         "should call fallback Tab mapping when completion menu not visible",
         function()
-            child.lua([=[
-                _G.tab_called = false
-                vim.keymap.set("i", "<Tab>", function()
-                    _G.tab_called = true
-                    return "TAB_CALLED"
-                end, { expr = true, desc = "Test Tab mapping" })
+            local prop_name = "tab_called"
+            setup_tracking_keymap("<Tab>", prop_name)
+            load_file_picker()
+            execute_insert_key("<Tab>")
 
-                require("agentic.ui.file_picker").new(0)
-                vim.cmd([[execute "normal i\<Tab>"]])
-            ]=])
-
-            assert.is_true(child.lua_get("_G.tab_called"))
+            assert.is_true(child.g[prop_name])
         end
     )
 
     it(
         "should call fallback CR mapping when completion menu not visible",
         function()
-            child.lua([=[
-                _G.cr_called = false
-                vim.keymap.set("i", "<CR>", function()
-                    _G.cr_called = true
-                    return "CR_CALLED"
-                end, { expr = true })
+            local prop_name = "cr_called"
+            setup_tracking_keymap("<CR>", prop_name)
+            load_file_picker()
+            execute_insert_key("<CR>")
 
-                require("agentic.ui.file_picker").new(0)
-                vim.cmd([[execute "normal i\<CR>"]])
-            ]=])
-
-            assert.is_true(child.lua_get("_G.cr_called"))
+            assert.is_true(child.g[prop_name])
         end
     )
 
     it("should NOT call fallback when completion menu is visible", function()
-        child.lua([=[
-            _G.tab_called = false
-            vim.keymap.set("i", "<Tab>", function()
-                _G.tab_called = true
-                return "TAB_CALLED"
-            end, { expr = true })
+        local prop_name = "tab_called"
+        setup_tracking_keymap("<Tab>", prop_name)
+        load_file_picker()
 
-            require("agentic.ui.file_picker").new(0)
-
-            -- Set up buffer with multiple completion candidates
-            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello help helicopter", "" })
-            vim.api.nvim_win_set_cursor(0, { 2, 0 })
-        ]=])
+        -- Set up buffer with multiple completion candidates
+        child.api.nvim_buf_set_lines(
+            0,
+            0,
+            -1,
+            false,
+            { "hello help helicopter", "" }
+        )
+        child.api.nvim_win_set_cursor(0, { 2, 0 })
 
         -- Type partial word and trigger keyword completion
         child.type_keys("i", "hel", "<C-x><C-n>")
@@ -193,47 +205,38 @@ describe("FilePicker keymap fallback", function()
         -- Now press Tab while menu is visible - should accept completion, not call fallback
         child.type_keys("<Tab>")
 
-        assert.is_false(child.lua_get("_G.tab_called"))
+        assert.is_false(child.g[prop_name])
     end)
 
     it("should call fallback for lazy-loaded global mapping", function()
-        child.lua([=[
-            _G.tab_called = false
-            -- Initialize FilePicker BEFORE setting up any global mapping
-            -- This simulates a plugin that loads after Agentic
-            require("agentic.ui.file_picker").new(0)
+        local prop_name = "tab_called"
+        child.g[prop_name] = false
+        -- Initialize FilePicker BEFORE setting up any global mapping
+        -- This simulates a plugin that loads after Agentic
+        load_file_picker()
 
-            -- Now register a global Tab mapping (simulates lazy-loaded plugin)
-            vim.keymap.set("i", "<Tab>", function()
-                _G.tab_called = true
-                return "LAZY_TAB_CALLED"
-            end, { expr = true, desc = "Lazy-loaded Tab mapping" })
+        -- Now register a global Tab mapping (simulates lazy-loaded plugin)
+        setup_tracking_keymap("<Tab>", prop_name)
+        execute_insert_key("<Tab>")
 
-            vim.cmd([[execute "normal i\<Tab>"]])
-        ]=])
-
-        assert.is_true(child.lua_get("_G.tab_called"))
+        assert.is_true(child.g[prop_name])
     end)
 
     it(
         "should handle vimscript expr mappings with proper keycode conversion",
         function()
-            child.lua([=[
-                vim.cmd([[
-                    function! TestVimscriptExpr()
-                        return "\t\t\<C-R>\<C-R>=123\<CR>\<CR>\<CR>"
-                    endfunction
-                    inoremap <expr> <Tab> TestVimscriptExpr()
-                ]])
+            child.cmd([[
+                function! TestVimscriptExpr()
+                    return "\t\t\<C-R>\<C-R>=123\<CR>\<CR>\<CR>"
+                endfunction
+                inoremap <expr> <Tab> TestVimscriptExpr()
+            ]])
 
-                require("agentic.ui.file_picker").new(0)
-                vim.cmd([[silent execute "normal i\<Tab>"]])
-            ]=])
+            load_file_picker()
+            execute_insert_key("<Tab>")
 
-            local content = child.lua_get(
-                "table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), '\\n')"
-            )
-            assert.equal("\t\t123\n\n", content)
+            local lines = child.api.nvim_buf_get_lines(0, 0, -1, false)
+            assert.equal("\t\t123\n\n", table.concat(lines, "\n"))
         end
     )
 end)
