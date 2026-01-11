@@ -7,7 +7,7 @@ local expect = MiniTest.expect
 --- @field was tests.helpers.AssertSpyWas
 
 --- @class tests.helpers.AssertSpyWas
---- @field called fun(n?: number) Assert spy was called (no arg = at least once, with arg = exact count)
+--- @field called fun(n: number|nil) Assert spy was called (no arg = at least once, with arg = exact count)
 --- @field called_with fun(...: any) Assert spy was called with specific arguments
 
 --- @class tests.helpers.Assert

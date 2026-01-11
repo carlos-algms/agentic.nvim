@@ -165,6 +165,19 @@ jobs:
           curl -sL "https://github.com/LuaLS/lua-language-server/releases/download/${{ env.LUALS_VERSION }}/lua-language-server-${{ env.LUALS_VERSION }}-linux-x64.tar.gz" |
             tar xzf - -C .local/luals
 
+      - name: Cache deps (mini.nvim)
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('tests/init.lua') }}
+
+      - name: Install deps (mini.nvim)
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p deps
+          git clone --depth=1 https://github.com/echasnovski/mini.nvim deps/mini.nvim
+
       - name: Run type check
         run: |
           ln -sf "$PWD/.local/luals/bin/lua-language-server" .local/bin/lua-language-server
