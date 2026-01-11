@@ -460,6 +460,14 @@ function ChatWidget:_create_buf_nrs()
         string.format("AgenticInput-%d", self.tab_page_id)
     )
 
+    vim.api.nvim_create_autocmd("QuitPre", {
+        buffer = input,
+        callback = function()
+            -- Prevent "unsaved changes" prompt when deleting/exiting input buffer
+            vim.bo.modified = false
+        end,
+    })
+
     vim.api.nvim_create_autocmd("BufWriteCmd", {
         buffer = input,
         callback = function()
