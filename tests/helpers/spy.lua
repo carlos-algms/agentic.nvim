@@ -13,8 +13,6 @@ local M = {}
 --- @field _target table|nil Target object (for method spies)
 --- @field _method string|nil Method name (for method spies)
 --- @field called_with fun(self: TestSpy, ...: any): boolean Check if called with args
---- @field call fun(self: TestSpy, n: number): table|nil Get args from call n
---- @field clear fun(self: TestSpy) Clear call history
 --- @field revert fun(self: TestSpy) Revert to original function
 
 --- Create a new spy function
@@ -41,19 +39,6 @@ function M.new(fn)
             end
         end
         return false
-    end
-
-    --- Get arguments from a specific call
-    --- @param n number Call index (1-based)
-    --- @return table|nil args Arguments from that call
-    function spy:call(n)
-        return self.calls[n]
-    end
-
-    --- Clear call history
-    function spy:clear()
-        self.calls = {}
-        self.call_count = 0
     end
 
     --- Revert a spy to the original function
@@ -100,7 +85,6 @@ end
 --- @field returns fun(self: TestStub, value: any) Set return value
 --- @field invokes fun(self: TestStub, fn: function) Set invoke function
 --- @field revert fun(self: TestStub) Revert to original function
---- @field clear fun(self: TestStub) Clear call history
 --- @field called_with fun(self: TestStub, ...: any): boolean Check if called with args
 
 --- Create a stub that replaces a method
@@ -136,12 +120,6 @@ function M.stub(target, method)
         if self._target and self._method and self._original_fn then
             self._target[self._method] = self._original_fn
         end
-    end
-
-    --- Clear call history
-    function stub:clear()
-        self.calls = {}
-        self.call_count = 0
     end
 
     --- Check if stub was called with specific arguments
