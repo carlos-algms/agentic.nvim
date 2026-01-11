@@ -463,6 +463,15 @@ end
 
 ## Development & Linting
 
+### Agentic.nvim Plugin Requirements
+
+- Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
+  `vim.*` are for this version or newer)
+- LuaJIT 2.1 (bundled with Neovim, based on Lua 5.1)
+- Optional: https://github.com/hakonharnes/img-clip.nvim for Screenshot pasting
+  from the clipboard (drag-and-drop works without it, it's terminal feature, not
+  plugin, neither neovim specific)
+
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
 **ALWAYS run both linters after making ANY Lua file changes:**
@@ -477,21 +486,35 @@ make luacheck   # REQUIRED: Run style/syntax checking
 ### 🚨 Output Management for Validation Commands
 
 **When running tests, linters, docker build, or validation commands, redirect
-output to avoid context flooding:**
+output to avoid context window flooding:**
 
 ```bash
-# Redirect output to tmp file and capture exit code
-make luals > /tmp/agentic_luals_output.txt 2>&1; echo $?
-make luacheck > /tmp/agentic_luacheck_output.txt 2>&1; echo $?
-nvim -l tests/busted.lua <test_file> > /tmp/agentic_test_output.txt 2>&1; echo $?
+# Redirect output to log file and capture exit code
+make luals > ./.local/agentic_luals_output.log 2>&1; echo $?
+make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo $?
+make test-file FILE=<test_file> > ./.local/agentic_test_output.log 2>&1; echo $?
 ```
 
 **Rules:**
 
 - Only read the exit code (0 = success, non-zero = failure)
-- Only read the tmp file if the command fails
+- Only read the log file if the command fails
 - Prevents large output from consuming context unnecessarily
-- Use unique tmp file names to avoid collisions
+- Use unique log file names to avoid collisions
+
+**Reading log files:**
+
+- **NEVER use Read tool** - floods context with entire file
+- **Use targeted commands instead:**
+  - `tail -n 10 <logfile>` - Last 10 lines (errors usually at end)
+  - `head -n 10 <logfile>` - First 10 lines
+  - `rg "error|warning|fail" <logfile>` - Search for specific patterns
+    (smart-case by default)
+  - `grep -i "error" <logfile>` - Search with grep (case-insensitive)
+- Increase line count only if needed for context
+- Read only what's needed to diagnose the issue
+- **If multiple reads needed:** Use `cat <logfile>` once for entire file instead
+  of reading multiple chunks (avoids loops of reading trying to find info)
 
 ### Testing
 
@@ -620,10 +643,7 @@ The ACP documentation can be found at:
 - Extensibility: https://agentclientprotocol.com/protocol/extensibility.md
 - Transports: https://agentclientprotocol.com/protocol/transports.md
 
-## Plugin Requirements
-
-- Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
-  `vim.*` are for this version or newer)
+### Neovim Documentation Files and help docs
 
 **IMPORTANT**: For dealing with neovim native features and APIs, refer to the
 official docs. Common documentation files include:
@@ -657,50 +677,47 @@ official docs. Common documentation files include:
 - windows.txt - Windows
 - various.txt - Various commands
 
-Use GitHub raw URLs or local paths (see section below) to access these files.
-
-### 🚨 NEVER Execute `nvim` to Read Help Manuals
-
 **CRITICAL**: Do NOT run `nvim --headless` or any other `nvim` command to read
 help documentation. Use direct file access instead.
-
-**Documentation Lookup Strategy:**
-
-Follow this priority order to locate Neovim documentation:
-
-1. **If OS and Neovim version are known from context:**
-   - **macOS (Homebrew assumed):** Compose path directly
-
-     ```
-     /opt/homebrew/Cellar/neovim/<version>/share/nvim/runtime/doc/<doc-name>.txt
-     ```
-
-     Example for v0.11.5:
-     `/opt/homebrew/Cellar/neovim/0.11.5/share/nvim/runtime/doc/api.txt`
-
-   - **Linux (Snap assumed):** Compose path directly
-
-     ```
-     /snap/nvim/current/usr/share/nvim/runtime/doc/<doc-name>.txt
-     ```
-
-2. **If OS or version unknown:** Run discovery commands as last resort
-
-   Find Neovim installation:
-
-   ```bash
-   realpath $(which nvim)
-   ```
-
-   Then, use appropriate path pattern based on the result
-
-3. **If local lookup fails:** Use GitHub raw URLs (least preferred)
-
-   ```
-   https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc/<doc-name>.txt
-   ```
 
 **Why:** Running `nvim` commands can hang, cause race conditions, or interfere
 with development environment.
 
-**Tip:** Use grep on doc folder when unsure which file contains needed info.
+#### Neovim Documentation Lookup Strategy:
+
+Always prefer reading local documentation files directly from the Neovim runtime
+path, because they reflect the exact version installed on my system.
+
+- **If Neovim binary path is known from context:**
+
+  Use the known path to derive the runtime documentation directory
+
+- **If Neovim binary path is unknown:**
+
+  Discover Neovim installation location:
+
+  ```bash
+  realpath $(which nvim)
+  ```
+
+Then, after getting the binary path, derive the runtime documentation directory:
+
+Common path patterns after discovery:
+
+- **macOS (Homebrew):** `/opt/homebrew/Cellar/neovim/<formula-version>/bin/nvim`
+  - Runtime docs:
+    `/opt/homebrew/Cellar/neovim/<formula-version>/share/nvim/runtime/doc/`
+  - Note: `<formula-version>` may include formula revision (e.g., `0.11.5_1`),
+    that's why knowing the real path is important.
+- **Linux (Snap):** `/snap/nvim/current/usr/bin/nvim`
+  - Runtime docs: `/snap/nvim/current/usr/share/nvim/runtime/doc/`
+
+**If local lookup fails:** Use GitHub raw URLs (least preferred)
+
+```
+https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc/<doc-name>.txt
+```
+
+**Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
+contains needed info.
+

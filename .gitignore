@@ -26,6 +26,7 @@ node_modules/
 
 # Folder used for isolated dependencies for tests
 lazy_repro/
+deps/
 
 # Mac files
 .DS_Store

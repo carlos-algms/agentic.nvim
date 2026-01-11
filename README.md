@@ -49,13 +49,13 @@ interface, your colors, and your keymaps.
 
 ## 🎥 Showcase
 
-### Image and Screenshot support in the Chat
-
-https://github.com/user-attachments/assets/d084484b-ca16-4350-b427-16f82d75ed37
-
 ### Simple replace with tool approval:
 
 https://github.com/user-attachments/assets/4b33bb18-95f7-4fea-bc12-9a9208823911
+
+### Image and Screenshot support in the Chat
+
+https://github.com/user-attachments/assets/6ae57136-9c08-4d71-bc8a-59babc49be4d
 
 ### 🐣 NEW: Switch agent mode: Always ask, Accept Edits, Plan mode...
 
@@ -118,7 +118,8 @@ tools like `nvm`, `fnm`, etc...
   -- these are just suggested keymaps; customize as desired
   keys = {
     {
-      "<C-\\>", function() require("agentic").toggle() end,
+      "<C-\\>",
+      function() require("agentic").toggle() end,
       mode = { "n", "v", "i" },
       desc = "Toggle Agentic Chat"
     },
@@ -150,23 +151,27 @@ You can customize the supported ACP providers by configuring the `acp_providers`
 property:
 
 > [!NOTE]  
-> You don't have to override anything or include these in your setup.  
-> This is only needed if you want to customize existing providers.
+> You don't have to override anything or include these in your setup!  
+> These are just examples of how you can customize the commands, env, etc.
 
 ```lua
 {
-  acp_providers = {
-    -- Override existing provider (e.g., add API key)
-    -- Agentic.nvim don't require API keys, only add it if that's how you prefer to authenticate
-    ["claude-acp"] = {
-      env = {
-        ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
+  "carlos-algms/agentic.nvim",
+  opts = {
+    acp_providers = {
+      -- Override existing provider (e.g., add API key)
+      -- Agentic.nvim doesn't require API keys
+      -- Only add it if that's how you prefer to authenticate
+      ["claude-acp"] = {
+        env = {
+          ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
+        },
       },
-    },
 
-    -- Example of how override the ACP command to suit your installation, if needed
-    ["codex-acp"] = {
-      command = "~/.local/bin/codex-acp",
+      -- Example of how override the ACP command to suit your installation, if needed
+      ["codex-acp"] = {
+        command = "~/.local/bin/codex-acp",
+      },
     },
   },
 }
@@ -181,8 +186,9 @@ property:
 - `default_mode` (string, optional) - Default mode ID to set on session creation
   (e.g., `"bypassPermissions"`, `"plan"`)
 
-**Notes:** Customizing a provider only requires specifying the fields you want
-to change, not the entire configuration.
+> [!NOTE]  
+> Customizing a provider only requires specifying the fields you want to
+> override, not the entire configuration.
 
 #### Setting a Default Agent Mode
 
@@ -191,10 +197,13 @@ configure it per provider:
 
 ```lua
 {
-  acp_providers = {
-    ["claude-acp"] = {
-      -- Automatically switch to this mode when a new session starts
-      default_mode = "bypassPermissions",
+  "carlos-algms/agentic.nvim",
+  opts = {
+    acp_providers = {
+      ["claude-acp"] = {
+        -- Automatically switch to this mode when a new session starts
+        default_mode = "bypassPermissions",
+      },
     },
   },
 }
@@ -262,32 +271,35 @@ your setup:
 
 ```lua
 {
-  keymaps = {
-    -- Keybindings for ALL buffers in the widget (chat, prompt, code, files)
-    widget = {
-      close = "q",  -- String for a single keybinding
-      change_mode = {
-        {
-          "<S-Tab>",
-          mode = { "i", "n", "v" },  -- Specify modes for this keybinding
-        },
-      },
-    },
-
-    -- Keybindings for the prompt buffer only
-    prompt = {
-      submit = {
-        "<CR>",  -- Normal mode, just Enter
-        {
-          "<C-s>",
-          mode = { "n", "v", "i" },
+  "carlos-algms/agentic.nvim",
+  opts = {
+    keymaps = {
+      -- Keybindings for ALL buffers in the widget (chat, prompt, code, files)
+      widget = {
+        close = "q",  -- String for a single keybinding
+        change_mode = {
+          {
+            "<S-Tab>",
+            mode = { "i", "n", "v" },  -- Specify modes for this keybinding
+          },
         },
       },
 
-      paste_image = {
-        {
-          "<localleader>p",
-          mode = { "n", "i" }, -- I like normal and insert modes for this, but feel free to customize
+      -- Keybindings for the prompt buffer only
+      prompt = {
+        submit = {
+          "<CR>",  -- Normal mode, just Enter
+          {
+            "<C-s>",
+            mode = { "n", "v", "i" },
+          },
+        },
+
+        paste_image = {
+          {
+            "<localleader>p",
+            mode = { "n", "i" }, -- I like normal and insert modes for this, but feel free to customize
+          },
         },
       },
     },
@@ -383,6 +395,42 @@ This helps the AI Agent understand the context of the current project without
 having to run additional commands or grep through files, the goals is to reduce
 time for the first response.
 
+### Event Hooks
+
+Agentic.nvim provides hooks that let you respond to specific events during the
+chat lifecycle. These are useful for logging, notifications, analytics, or
+integrating with other plugins.
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    hooks = {
+      -- Called when the user submits a prompt
+      on_prompt_submit = function(data)
+        -- data.prompt: string - The user's prompt text
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        vim.notify("Prompt submitted: " .. data.prompt:sub(1, 50))
+      end,
+
+      -- Called when the agent finishes responding
+      on_response_complete = function(data)
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.success: boolean - Whether response completed without error
+        -- data.error: table|nil - Error details if failed
+        if data.success then
+          vim.notify("Agent finished!", vim.log.levels.INFO)
+        else
+          vim.notify("Agent error: " .. vim.inspect(data.error), vim.log.levels.ERROR)
+        end
+      end,
+    }
+  }
+}
+```
+
 ## 🍚 Customization (Ricing)
 
 Agentic.nvim uses custom highlight groups that you can override to match your
@@ -451,15 +499,18 @@ Enable debug logging to troubleshoot issues:
 
 ```lua
 {
-  debug = true,
-
-  --- ... rest of config
+   "carlos-algms/agentic.nvim",
+    opts = {
+      debug = true,
+      -- ... rest of your options
+    }
 }
 ```
 
-View logs with `:messages`
+View debug logs with `:messages` (lost after restarting Neovim)
 
-View messages exchanged with the ACP provider in the log file at:
+View messages exchanged with the ACP provider in the log file at:  
+(persistent until you delete it)
 
 - `~/.cache/nvim/agentic_debug.log`
 
@@ -493,35 +544,3 @@ the the acknowledgments 😊.
 [opencode]: https://github.com/sst/opencode
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 
-### Event Hooks
-
-Agentic.nvim provides hooks that let you respond to key events during the chat
-lifecycle. These are useful for logging, notifications, analytics, or
-integrating with other plugins.
-
-```lua
-{
-  hooks = {
-    -- Called when the user submits a prompt
-    on_prompt_submit = function(data)
-      -- data.prompt: string - The user's prompt text
-      -- data.session_id: string - The ACP session ID
-      -- data.tab_page_id: number - The Neovim tabpage ID
-      vim.notify("Prompt submitted: " .. data.prompt:sub(1, 50))
-    end,
-
-    -- Called when the agent finishes responding
-    on_response_complete = function(data)
-      -- data.session_id: string - The ACP session ID
-      -- data.tab_page_id: number - The Neovim tabpage ID
-      -- data.success: boolean - Whether response completed without error
-      -- data.error: table|nil - Error details if failed
-      if data.success then
-        vim.notify("Agent finished!", vim.log.levels.INFO)
-      else
-        vim.notify("Agent error: " .. vim.inspect(data.error), vim.log.levels.ERROR)
-      end
-    end,
-  },
-}
-```

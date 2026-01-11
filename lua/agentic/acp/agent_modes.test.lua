@@ -1,3 +1,6 @@
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.acp.AgentModes", function()
     --- @type agentic.acp.AgentModes
     local AgentModes
@@ -58,9 +61,9 @@ describe("agentic.acp.AgentModes", function()
     end)
 
     describe("show_mode_selector", function()
-        local stub = require("luassert.stub")
-        local spy = require("luassert.spy")
+        --- @type TestSpy
         local callback_spy
+        --- @type TestStub
         local select_stub
 
         before_each(function()
@@ -68,7 +71,7 @@ describe("agentic.acp.AgentModes", function()
             agent_modes =
                 AgentModes:new({}, callback_spy --[[@as fun(mode_id: string)]])
             agent_modes:set_modes(modes_info)
-            select_stub = stub(vim.ui, "select")
+            select_stub = spy.stub(vim.ui, "select")
         end)
 
         after_each(function()
@@ -87,7 +90,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("calls callback when selecting different mode", function()
-            select_stub.invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(items, opts, on_choice)
                 on_choice(items[2]) -- Select "plan"
             end)
 
@@ -96,7 +99,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("does not call callback when selecting current mode", function()
-            select_stub.invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(items, opts, on_choice)
                 on_choice(items[1]) -- Select "normal" (current)
             end)
 
@@ -105,7 +108,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("does not call callback when user cancels", function()
-            select_stub.invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(items, opts, on_choice)
                 on_choice(nil)
             end)
 

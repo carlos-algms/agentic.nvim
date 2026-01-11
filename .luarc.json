@@ -31,13 +31,14 @@
       "$VIMRUNTIME/lua",
       "$VIMRUNTIME/lua/vim",
       "${3rd}/luv/library",
-      "${3rd}/luassert/library",
       "${3rd}/busted/library",
-      "$PWD/lua"
+      "$PWD/lua",
+      "$PWD/tests",
+      "$PWD/deps/mini.nvim/lua"
     ],
     "checkThirdParty": false,
     "preloadFileSize": 10000,
-    "ignoreDir": [".git", "node_modules", ".github"]
+    "ignoreDir": [".git", "node_modules", ".github", "deps"]
   },
   "type": {
     "checkTableShape": true,

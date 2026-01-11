@@ -82,10 +82,7 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          # libreadline-dev: Required by hererocks to build Lua 5.1 for busted tests
-          # Can be removed if tests no longer use hererocks or switch to pre-built Lua
-          sudo apt-get update && sudo apt-get install -y libreadline-dev
-          # I need newer versions of rg, and fd to fix unit tests that use them
+          # Install newer versions of rg and fd for unit tests
           curl -sL "$(curl -s https://api.github.com/repos/BurntSushi/ripgrep/releases/latest \
             | grep "browser_download_url.*x86_64-unknown-linux-musl.tar.gz" \
             | cut -d '"' -f 4 | head -n1)" \
@@ -116,11 +113,11 @@ jobs:
           curl -sL "https://github.com/neovim/neovim/releases/download/${{ matrix.neovim-version }}/nvim-linux-x86_64.tar.gz" |
             tar xzf - --strip-components=1 -C .local/nvim
 
-      - name: Cache lazy_repro
+      - name: Cache deps (mini.nvim)
         uses: actions/cache@v4
         with:
-          path: lazy_repro
-          key: lazy-repro-${{ runner.os }}-${{ hashFiles('tests/busted.lua') }}
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('tests/init.lua') }}
 
       - name: Run tests
         run: |
@@ -167,6 +164,19 @@ jobs:
         run: |
           curl -sL "https://github.com/LuaLS/lua-language-server/releases/download/${{ env.LUALS_VERSION }}/lua-language-server-${{ env.LUALS_VERSION }}-linux-x64.tar.gz" |
             tar xzf - -C .local/luals
+
+      - name: Cache deps (mini.nvim)
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ runner.os }}-${{ hashFiles('tests/init.lua') }}
+
+      - name: Install deps (mini.nvim)
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p deps
+          git clone --depth=1 https://github.com/echasnovski/mini.nvim deps/mini.nvim
 
       - name: Run type check
         run: |

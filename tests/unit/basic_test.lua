@@ -1,3 +1,5 @@
+local assert = require("tests.helpers.assert")
+
 describe("basic test suite", function()
     it("should assert two equal values", function()
         local a = 1

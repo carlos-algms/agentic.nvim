@@ -1,3 +1,6 @@
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.acp.SlashCommands", function()
     local SlashCommands = require("agentic.acp.slash_commands")
 
@@ -285,7 +288,8 @@ describe("agentic.acp.SlashCommands", function()
             local bufnr2 = vim.api.nvim_create_buf(false, true)
             local slash_commands2 = SlashCommands:new(bufnr2)
 
-            assert.is_not.equal(slash_commands, slash_commands2)
+            -- Verify they are different instances by checking they're not the exact same reference
+            assert.is_not.equal(rawequal(slash_commands, slash_commands2), true)
 
             if vim.api.nvim_buf_is_valid(bufnr2) then
                 vim.api.nvim_buf_delete(bufnr2, { force = true })

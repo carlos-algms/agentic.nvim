@@ -1,8 +1,10 @@
 ---@diagnostic disable: assign-type-mismatch, need-check-nil, undefined-field
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
     local ChatWidget
-    local spy = require("luassert.spy")
 
     ChatWidget = require("agentic.ui.chat_widget")
 

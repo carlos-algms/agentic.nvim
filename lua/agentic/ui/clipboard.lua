@@ -44,6 +44,34 @@ function M.show_img_clip_not_installed_message()
     })
 end
 
+--- Check if a directory exists and is writable
+--- @param dir string|nil
+--- @return boolean
+local function is_dir_writable(dir)
+    if not dir or dir == "" then
+        return false
+    end
+
+    local stat = vim.uv.fs_stat(dir)
+    if not stat or stat.type ~= "directory" then
+        return false
+    end
+
+    -- Test write permission by attempting to create a test file
+    local ok, fd = pcall(function()
+        local test_file = vim.fs.joinpath(dir, ".agentic_write_test")
+        return vim.uv.fs_open(test_file, "w", 438) -- 438 = 0666 octal
+    end)
+
+    if ok and fd then
+        pcall(vim.uv.fs_close, fd)
+        pcall(vim.uv.fs_unlink, vim.fs.joinpath(dir, ".agentic_write_test"))
+        return true
+    end
+
+    return false
+end
+
 --- Paste image from clipboard using img-clip plugin
 --- @return string|nil file path of saved image or nil on failure
 function M.paste_image()
@@ -52,13 +80,27 @@ function M.paste_image()
         return
     end
 
-    -- Prefer /tmp on Unix systems (Linux/macOS) for cleaner paths
-    local tmp_dir = "/tmp"
-    local stat = vim.uv.fs_stat(tmp_dir)
-    if not stat or stat.type ~= "directory" then
-        -- Fallback to system temp dir (Windows or unusual systems)
-        -- Or current working directory if temp dir is unavailable (very unlikely)
-        tmp_dir = vim.uv.os_tmpdir() or vim.fn.getcwd()
+    --- @type string|nil
+    local tmp_dir
+
+    -- Prefer /tmp on Unix systems (auto-cleanup by OS)
+    if is_dir_writable("/tmp") then
+        tmp_dir = "/tmp"
+    elseif is_dir_writable(vim.uv.os_tmpdir()) then
+        -- Fallback to system temp dir (Windows or restricted Unix)
+        tmp_dir = vim.uv.os_tmpdir()
+    else
+        -- Try Neovim cache with safe directory creation
+        local cache_dir = vim.fn.stdpath("cache")
+        local agentic_cache = vim.fs.joinpath(cache_dir, "agentic")
+
+        local ok = pcall(vim.fn.mkdir, agentic_cache, "p")
+        if ok and is_dir_writable(agentic_cache) then
+            tmp_dir = agentic_cache
+        else
+            -- Last resort: current working directory
+            tmp_dir = vim.fn.getcwd()
+        end
     end
 
     local file_name = "pasted_image_"
@@ -69,14 +111,17 @@ function M.paste_image()
 
     Logger.debug("clipboard: saving image to", file_path)
 
-    local ImgClipClipboard = require("img-clip.clipboard")
-    local ok = ImgClipClipboard.save_image(file_path)
-
+    local ok, ImgClipClipboard = pcall(require, "img-clip.clipboard")
     if not ok then
-        Logger.debug(
-            "clipboard: failed to save image from clipboard",
-            file_path
+        Logger.notify(
+            "Failed to load img-clip clipboard module",
+            vim.log.levels.ERROR
         )
+        return nil
+    end
+
+    local success, result = pcall(ImgClipClipboard.save_image, file_path)
+    if not success or not result then
         Logger.notify(
             "Failed to paste image from clipboard, not an image",
             vim.log.levels.ERROR
