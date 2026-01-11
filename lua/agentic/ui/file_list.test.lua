@@ -1,30 +1,29 @@
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.ui.FileList", function()
     local FileList = require("agentic.ui.file_list")
-    local spy = require("luassert.spy")
-    local stub = require("luassert.stub")
 
     --- @type integer
     local bufnr
     --- @type agentic.ui.FileList
     local file_list
+    --- @type TestSpy
     local on_change_spy
-    --- @type luassert.spy
+    --- @type TestStub
     local fs_stat_stub
 
     before_each(function()
         bufnr = vim.api.nvim_create_buf(false, true)
         on_change_spy = spy.new(function() end)
 
-        fs_stat_stub = stub(vim.uv, "fs_stat")
-
-        ---@diagnostic disable-next-line: undefined-field -- no type info for stub 🤷🏻‍♂️
-        fs_stat_stub.returns({ type = "file" })
+        fs_stat_stub = spy.stub(vim.uv, "fs_stat")
+        fs_stat_stub:returns({ type = "file" })
 
         file_list = FileList:new(bufnr, on_change_spy --[[@as function]])
     end)
 
     after_each(function()
-        ---@diagnostic disable-next-line: undefined-field
         fs_stat_stub:revert()
 
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
@@ -49,8 +48,7 @@ describe("agentic.ui.FileList", function()
 
         it("does not add non-existent file", function()
             local non_existent = "/non/existent/file.lua"
-            ---@diagnostic disable-next-line: undefined-field
-            fs_stat_stub.returns(nil)
+            fs_stat_stub:returns(nil)
 
             local success = file_list:add(non_existent)
 
@@ -61,8 +59,7 @@ describe("agentic.ui.FileList", function()
 
         it("does not add directory", function()
             local directory = "/path/to/directory"
-            ---@diagnostic disable-next-line: undefined-field
-            fs_stat_stub.returns({ type = "directory" })
+            fs_stat_stub:returns({ type = "directory" })
 
             local success = file_list:add(directory)
 

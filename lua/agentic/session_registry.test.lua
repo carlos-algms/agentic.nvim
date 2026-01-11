@@ -1,8 +1,10 @@
 ---@diagnostic disable: assign-type-mismatch, need-check-nil, undefined-field
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.SessionRegistry", function()
     --- @type agentic.SessionRegistry
     local SessionRegistry
-    local spy = require("luassert.spy")
 
     --- @type table Mock for SessionManager module
     local session_manager_mock

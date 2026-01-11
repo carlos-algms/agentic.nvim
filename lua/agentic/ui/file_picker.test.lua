@@ -1,3 +1,5 @@
+local assert = require("tests.helpers.assert")
+
 local FilePicker = require("agentic.ui.file_picker")
 
 describe("FilePicker:scan_files", function()
@@ -101,10 +103,14 @@ describe("FilePicker:scan_files", function()
             FilePicker.CMD_FD[1] = "nonexistent_fd"
             FilePicker.CMD_GIT[1] = "nonexistent_git"
 
+            -- deps is the temp folder where mini.nvim is installed during tests
+            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "deps/")
             -- lazy_repro is the temp folder where plugins are installed during tests
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
             -- .local is the folder where Neovim is installed during tests in CI
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
+            -- .claude is in global gitignore (rg/fd/git respect it, glob doesn't)
+            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.claude/")
 
             local files_glob = picker:scan_files()
 
@@ -117,139 +123,116 @@ describe("FilePicker:scan_files", function()
 end)
 
 describe("FilePicker keymap fallback", function()
-    local bufnr
-    local tab_called
-    local Config
-    local original_pumvisible
+    local child = require("tests.helpers.child").new()
 
-    local pum_return_value = 0
-
-    before_each(function()
-        Config = require("agentic.config")
-        Config.file_picker.enabled = true
-
-        original_pumvisible = vim.fn.pumvisible
-
-        ---@diagnostic disable-next-line: duplicate-set-field
-        vim.fn.pumvisible = function() -- luacheck: ignore
-            return pum_return_value
-        end
-
-        bufnr = vim.api.nvim_create_buf(false, true)
-        vim.api.nvim_set_current_buf(bufnr)
-
-        tab_called = false
+    teardown(function()
+        child.stop()
     end)
 
-    after_each(function()
-        pum_return_value = 0
-
-        vim.fn.pumvisible = original_pumvisible -- luacheck: ignore
-
-        pcall(vim.keymap.del, "i", "<Tab>")
-        pcall(vim.keymap.del, "i", "<CR>")
-
-        if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-            vim.api.nvim_buf_delete(bufnr, { force = true })
-        end
+    before_each(function()
+        child.setup()
     end)
 
     it(
         "should call fallback Tab mapping when completion menu not visible",
         function()
-            -- Set up a pre-existing GLOBAL Tab mapping (simulates copilot.vim)
-            vim.keymap.set("i", "<Tab>", function()
-                tab_called = true
-                return "TAB_CALLED"
-            end, {
-                expr = true,
-                desc = "Test Tab mapping",
-            })
+            child.lua([=[
+                _G.tab_called = false
+                vim.keymap.set("i", "<Tab>", function()
+                    _G.tab_called = true
+                    return "TAB_CALLED"
+                end, { expr = true, desc = "Test Tab mapping" })
 
-            FilePicker.new(bufnr)
+                require("agentic.ui.file_picker").new(0)
+                vim.cmd([[execute "normal i\<Tab>"]])
+            ]=])
 
-            vim.cmd([[execute "normal i\<Tab>"]])
-
-            assert.is_true(tab_called)
+            assert.is_true(child.lua_get("_G.tab_called"))
         end
     )
 
     it(
         "should call fallback CR mapping when completion menu not visible",
         function()
-            local cr_called = false
+            child.lua([=[
+                _G.cr_called = false
+                vim.keymap.set("i", "<CR>", function()
+                    _G.cr_called = true
+                    return "CR_CALLED"
+                end, { expr = true })
 
-            -- Set up a pre-existing GLOBAL CR mapping
-            vim.keymap.set("i", "<CR>", function()
-                cr_called = true
-                return "CR_CALLED"
-            end, {
-                expr = true,
-            })
+                require("agentic.ui.file_picker").new(0)
+                vim.cmd([[execute "normal i\<CR>"]])
+            ]=])
 
-            FilePicker.new(bufnr)
-
-            vim.cmd([[execute "normal i\<CR>"]])
-
-            assert.is_true(cr_called)
+            assert.is_true(child.lua_get("_G.cr_called"))
         end
     )
 
     it("should NOT call fallback when completion menu is visible", function()
-        vim.keymap.set("i", "<Tab>", function()
-            tab_called = true
-            return "TAB_CALLED"
-        end, {
-            expr = true,
-        })
+        child.lua([=[
+            _G.tab_called = false
+            vim.keymap.set("i", "<Tab>", function()
+                _G.tab_called = true
+                return "TAB_CALLED"
+            end, { expr = true })
 
-        FilePicker.new(bufnr)
+            require("agentic.ui.file_picker").new(0)
 
-        pum_return_value = 1
+            -- Set up buffer with multiple completion candidates
+            vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hello help helicopter", "" })
+            vim.api.nvim_win_set_cursor(0, { 2, 0 })
+        ]=])
 
-        vim.cmd([[execute "normal i\<Tab>"]])
+        -- Type partial word and trigger keyword completion
+        child.type_keys("i", "hel", "<C-x><C-n>")
 
-        assert.is_false(tab_called)
+        -- Verify completion menu is actually visible
+        assert.equal(1, child.fn.pumvisible())
+
+        -- Now press Tab while menu is visible - should accept completion, not call fallback
+        child.type_keys("<Tab>")
+
+        assert.is_false(child.lua_get("_G.tab_called"))
     end)
 
     it("should call fallback for lazy-loaded global mapping", function()
-        -- Initialize FilePicker BEFORE setting up any global mapping
-        -- This simulates a plugin that loads after Agentic
-        FilePicker.new(bufnr)
+        child.lua([=[
+            _G.tab_called = false
+            -- Initialize FilePicker BEFORE setting up any global mapping
+            -- This simulates a plugin that loads after Agentic
+            require("agentic.ui.file_picker").new(0)
 
-        -- Now register a global Tab mapping (simulates lazy-loaded plugin)
-        vim.keymap.set("i", "<Tab>", function()
-            tab_called = true
-            return "LAZY_TAB_CALLED"
-        end, {
-            expr = true,
-            desc = "Lazy-loaded Tab mapping",
-        })
+            -- Now register a global Tab mapping (simulates lazy-loaded plugin)
+            vim.keymap.set("i", "<Tab>", function()
+                _G.tab_called = true
+                return "LAZY_TAB_CALLED"
+            end, { expr = true, desc = "Lazy-loaded Tab mapping" })
 
-        vim.cmd([[execute "normal i\<Tab>"]])
+            vim.cmd([[execute "normal i\<Tab>"]])
+        ]=])
 
-        assert.is_true(tab_called)
+        assert.is_true(child.lua_get("_G.tab_called"))
     end)
 
     it(
         "should handle vimscript expr mappings with proper keycode conversion",
         function()
-            -- Simulates copilot.vim: expr mapping returns complex keycodes
-            -- 2 tabs, expression register inserting "123", then 2 newlines
-            vim.cmd([[
-                function! TestVimscriptExpr()
-                    return "\t\t\<C-R>\<C-R>=123\<CR>\<CR>\<CR>"
-                endfunction
-                inoremap <expr> <Tab> TestVimscriptExpr()
-            ]])
+            child.lua([=[
+                vim.cmd([[
+                    function! TestVimscriptExpr()
+                        return "\t\t\<C-R>\<C-R>=123\<CR>\<CR>\<CR>"
+                    endfunction
+                    inoremap <expr> <Tab> TestVimscriptExpr()
+                ]])
 
-            FilePicker.new(bufnr)
+                require("agentic.ui.file_picker").new(0)
+                vim.cmd([[silent execute "normal i\<Tab>"]])
+            ]=])
 
-            -- this one has silence because of the vimScript mapping
-            vim.cmd([[silent execute "normal i\<Tab>"]])
-
-            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-            local content = table.concat(lines, "\n")
+            local content = child.lua_get(
+                "table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), '\\n')"
+            )
             assert.equal("\t\t123\n\n", content)
         end
     )

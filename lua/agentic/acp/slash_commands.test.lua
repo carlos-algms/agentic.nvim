@@ -1,3 +1,6 @@
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.acp.SlashCommands", function()
     local SlashCommands = require("agentic.acp.slash_commands")
 

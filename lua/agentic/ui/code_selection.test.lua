@@ -1,11 +1,14 @@
+local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
+
 describe("agentic.ui.CodeSelection", function()
     local CodeSelection = require("agentic.ui.code_selection")
-    local spy = require("luassert.spy")
 
     --- @type integer
     local bufnr
     --- @type agentic.ui.CodeSelection
     local code_selection
+    --- @type TestSpy
     local on_change_spy
 
     --- Helper to create a simple test selection

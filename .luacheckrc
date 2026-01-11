@@ -4,6 +4,7 @@ cache = true
 
 exclude_files = {
     "lazy_repro/",
+    "deps/",
     "%.local/",
 }
 
@@ -38,7 +39,11 @@ globals = {
     "vim.env", -- Allow setting vim.env in test runner and repro files
 }
 
--- Test files use busted standard
-files["**/*_spec.lua"] = {
+-- Test files: use busted standard for describe/it/before_each/etc
+files["**/*.test.lua"] = {
+    std = "+busted",
+}
+
+files["**/tests/unit/*_test.lua"] = {
     std = "+busted",
 }
