@@ -96,12 +96,8 @@ M.are = {
 --- Busted-style negated equality assertions
 --- @class tests.helpers.AssertAreNot
 M.are_not = {
-    equal = function(expected, actual)
-        expect.no_equality(actual, expected)
-    end,
-    same = function(expected, actual)
-        expect.no_equality(actual, expected)
-    end,
+    equal = M.is_not.equal,
+    same = M.is_not.same,
 }
 
 --- Create spy/stub assertion chain
