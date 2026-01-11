@@ -33,7 +33,8 @@
       "${3rd}/luv/library",
       "${3rd}/busted/library",
       "$PWD/lua",
-      "$PWD/tests"
+      "$PWD/tests",
+      "$PWD/deps/mini.nvim/lua"
     ],
     "checkThirdParty": false,
     "preloadFileSize": 10000,

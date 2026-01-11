@@ -157,6 +157,10 @@ describe("FilePicker keymap fallback", function()
         child.setup()
     end)
 
+    after_each(function()
+        child.stop()
+    end)
+
     it(
         "should call fallback Tab mapping when completion menu not visible",
         function()

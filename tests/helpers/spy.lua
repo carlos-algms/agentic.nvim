@@ -1,8 +1,7 @@
 -- Simple spy/stub implementation for mini.test
 -- Provides tracking of function calls without luassert dependency
 
----@diagnostic disable: invisible, return-type-mismatch
-
+--- @class tests.helpers.Spy
 local M = {}
 
 --- @class TestSpy
@@ -32,9 +31,12 @@ function M.new(fn)
     --- @param ... any Expected arguments
     --- @return boolean
     function spy:called_with(...)
-        local expected = { ... }
+        local expected = { n = select("#", ...), ... }
         for _, call_args in ipairs(self.calls) do
-            if vim.deep_equal(call_args, expected) then
+            if
+                call_args.n == expected.n
+                and vim.deep_equal(call_args, expected)
+            then
                 return true
             end
         end
@@ -48,9 +50,11 @@ function M.new(fn)
         end
     end
 
+    -- Metatable with __call makes the table callable, satisfying TestSpy interface at runtime
+    --- @diagnostic disable-next-line: return-type-mismatch
     return setmetatable(spy, {
         __call = function(self, ...)
-            local args = { ... }
+            local args = { n = select("#", ...), ... }
             table.insert(self.calls, args)
             self.call_count = self.call_count + 1
             if self._fn then
@@ -67,8 +71,12 @@ end
 function M.on(target, method)
     local original = target[method]
     local s = M.new(original)
+    -- Need to access private fields from outside the class to set up method spy
+    --- @diagnostic disable-next-line: invisible
     s._original_fn = original
+    --- @diagnostic disable-next-line: invisible
     s._target = target
+    --- @diagnostic disable-next-line: invisible
     s._method = method
     target[method] = s
     return s
@@ -126,18 +134,23 @@ function M.stub(target, method)
     --- @param ... any Expected arguments
     --- @return boolean
     function stub:called_with(...)
-        local expected = { ... }
+        local expected = { n = select("#", ...), ... }
         for _, call_args in ipairs(self.calls) do
-            if vim.deep_equal(call_args, expected) then
+            if
+                call_args.n == expected.n
+                and vim.deep_equal(call_args, expected)
+            then
                 return true
             end
         end
         return false
     end
 
+    -- Metatable with __call makes the table callable, satisfying TestStub interface at runtime
+    --- @diagnostic disable-next-line: return-type-mismatch
     local callable = setmetatable(stub, {
         __call = function(self, ...)
-            local args = { ... }
+            local args = { n = select("#", ...), ... }
             table.insert(self.calls, args)
             self.call_count = self.call_count + 1
             if self._invokes_fn then
@@ -148,6 +161,8 @@ function M.stub(target, method)
     })
 
     target[method] = callable
+    -- Callable is a setmetatable result with __call, which satisfies TestStub at runtime
+    --- @diagnostic disable-next-line: return-type-mismatch
     return callable
 end
 

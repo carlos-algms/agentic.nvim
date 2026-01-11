@@ -467,6 +467,7 @@ end
 
 - Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
   `vim.*` are for this version or newer)
+- LuaJIT 2.1 (bundled with Neovim, based on Lua 5.1)
 - Optional: https://github.com/hakonharnes/img-clip.nvim for Screenshot pasting
   from the clipboard (drag-and-drop works without it, it's terminal feature, not
   plugin, neither neovim specific)

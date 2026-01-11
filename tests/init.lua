@@ -5,13 +5,24 @@ local mini_path = deps_path .. "/mini.nvim"
 -- Bootstrap mini.nvim
 if not vim.uv.fs_stat(mini_path) then
     vim.fn.mkdir(deps_path, "p")
-    vim.fn.system({
+
+    local output = vim.fn.system({
         "git",
         "clone",
         "--depth=1",
         "https://github.com/echasnovski/mini.nvim",
         mini_path,
     })
+
+    if vim.v.shell_error ~= 0 then
+        error(
+            string.format(
+                "Failed to clone mini.nvim (exit code: %d):\n%s",
+                vim.v.shell_error,
+                output
+            )
+        )
+    end
 end
 
 vim.opt.rtp:prepend(mini_path)

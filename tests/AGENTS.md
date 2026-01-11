@@ -10,9 +10,9 @@
 - Built-in child Neovim process support for isolated testing
 - Busted-style syntax via `emulate_busted = true`
 - Automatic bootstrap (clones mini.nvim on first run)
-- Single Neovim process execution model
+- Single Neovim process execution model with child processes for isolation
 
-**Previous framework:** Busted with lazy.nvim's `minit.busted()`
+**Previous framework:** Busted with lazy.nvim's (completely removed)
 
 ## Test File Organization
 
@@ -60,20 +60,10 @@ make test-verbose
 make test-file FILE=lua/agentic/acp/agent_modes.test.lua
 ```
 
-### Manual Execution
-
-```bash
-# Run all tests
-nvim --headless -u tests/init.lua -c "lua MiniTest.run()"
-
-# Run specific file with verbose output
-nvim --headless -u tests/init.lua -c "lua MiniTest.run_file('lua/agentic/acp/agent_modes.test.lua', {execute = {reporter = MiniTest.gen_reporter.stdout({})}})"
-```
-
 ### First Run
 
-First run will be slower as it clones mini.nvim to `deps/` directory (gitignored).
-Subsequent runs are fast.
+First run will be slower as it clones mini.nvim to `deps/` directory
+(gitignored). Subsequent runs are fast.
 
 ## Test Structure
 
@@ -82,10 +72,10 @@ Subsequent runs are fast.
 mini.test with `emulate_busted = true` provides familiar Busted syntax:
 
 ```lua
-local MiniTest = require('mini.test')
-local expect = MiniTest.expect
+local assert = require('tests.helpers.assert')
 
 describe('MyModule', function()
+  --- @type agentic.mymodule add actual existing module type to avoid `any` or `unknown`
   local MyModule
 
   before_each(function()
@@ -98,7 +88,7 @@ describe('MyModule', function()
 
   it('does something', function()
     local result = MyModule.function_name()
-    expect.equality(result, 'expected')
+    assert.equal('expected', result)
   end)
 end)
 ```
@@ -115,37 +105,58 @@ end)
 | `setup(fn)`          | Run once before all tests in block |
 | `teardown(fn)`       | Run once after all tests in block  |
 
-### Assertions (MiniTest.expect)
+### Assertions (Custom Assert Module)
 
-**IMPORTANT:** mini.test does NOT provide luassert's `assert.*` functions. Use
-`MiniTest.expect.*` instead:
+**IMPORTANT:** Use the custom `tests.helpers.assert` module which provides a
+familiar Busted/luassert-style API while wrapping mini.test's expect functions:
+
+```lua
+local assert = require('tests.helpers.assert')
+
+-- Equality assertions
+assert.equal(expected, actual)          -- Basic equality
+assert.same(expected, actual)           -- Deep equality (same as equal)
+assert.are.equal(expected, actual)      -- Busted-style variant
+assert.are.same(expected, actual)       -- Busted-style variant
+
+-- Negated equality
+assert.are_not.equal(expected, actual)  -- Not equal
+assert.is_not.equal(expected, actual)   -- Not equal (alternate)
+
+-- Type checks
+assert.is_nil(value)                    -- Value is nil
+assert.is_not_nil(value)                -- Value is not nil
+assert.is_true(value)                   -- Value is true
+assert.is_false(value)                  -- Value is false
+assert.is_table(value)                  -- Value is a table
+
+-- Truthy/falsy checks
+assert.truthy(value)                    -- Value is truthy
+assert.is_falsy(value)                  -- Value is falsy
+
+-- Error handling
+assert.has_no_errors(function() ... end)  -- Function does not throw
+
+-- Spy/stub assertions
+local spy = require('tests.helpers.spy')
+local my_spy = spy.new(function() end)
+my_spy()
+assert.spy(my_spy).was.called(1)        -- Called once
+assert.spy(my_spy).was.called_with(...)  -- Called with specific args
+```
+
+### Direct MiniTest.expect Usage
+
+For assertions not covered by the custom assert module, use MiniTest.expect:
 
 ```lua
 local MiniTest = require('mini.test')
 local expect = MiniTest.expect
 
--- Equality
-expect.equality(actual, expected)       -- Deep equality
-expect.no_equality(actual, expected)    -- Not equal
-
--- Error testing
+-- Error testing with pattern matching
 expect.error(function() ... end)        -- Function throws error
 expect.error(function() ... end, 'msg') -- Error matches pattern
 ```
-
-### Assertion Mapping (Busted → mini.test)
-
-| Busted (assert.\*)          | mini.test (expect.\*)          |
-| --------------------------- | ------------------------------ |
-| `assert.are.equal(a, b)`    | `expect.equality(a, b)`        |
-| `assert.are.same(a, b)`     | `expect.equality(a, b)` (deep) |
-| `assert.is_true(v)`         | `expect.equality(v, true)`     |
-| `assert.is_false(v)`        | `expect.equality(v, false)`    |
-| `assert.is_nil(v)`          | `expect.equality(v, nil)`      |
-| `assert.is_not_nil(v)`      | `expect.no_equality(v, nil)`   |
-| `assert.are_not.equal(a,b)` | `expect.no_equality(a, b)`     |
-| `assert.has_error(fn)`      | `expect.error(fn)`             |
-| `assert.has_error(fn, msg)` | `expect.error(fn, msg)`        |
 
 ## Spy/Stub Utilities
 
@@ -159,17 +170,27 @@ local spy = require('tests.helpers.spy')
 ### Creating Spies
 
 ```lua
+local assert = require('tests.helpers.assert')
+local spy = require('tests.helpers.spy')
+
 -- Create a standalone spy
 local callback_spy = spy.new(function() end)
 
 -- Pass spy as callback (type cast for luals)
 some_function(callback_spy --[[@as function]])
 
--- Check call count
+-- Check call count using custom assert
+assert.equal(1, callback_spy.call_count)
+assert.spy(callback_spy).was.called(1)  -- Called exactly once
+assert.spy(callback_spy).was.called(0)  -- Not called (use 0)
+
+-- Or using MiniTest.expect directly
+local expect = require('mini.test').expect
 expect.equality(callback_spy.call_count, 1)
 
 -- Check if called with specific arguments
-expect.equality(callback_spy:called_with('arg1', 'arg2'), true)
+assert.is_true(callback_spy:called_with('arg1', 'arg2'))
+assert.spy(callback_spy).was.called_with('arg1', 'arg2')
 
 -- Get arguments from specific call
 local args = callback_spy:call(1)  -- First call arguments
@@ -178,13 +199,21 @@ local args = callback_spy:call(1)  -- First call arguments
 ### Spying on Existing Methods
 
 ```lua
+local assert = require('tests.helpers.assert')
+local spy = require('tests.helpers.spy')
+
 -- Create spy on existing method
 local feedkeys_spy = spy.on(vim.api, 'nvim_feedkeys')
 
 -- Method still works, but calls are tracked
 vim.api.nvim_feedkeys('keys', 'n', false)
 
--- Check calls
+-- Check calls using custom assert
+assert.equal(1, feedkeys_spy.call_count)
+assert.is_true(feedkeys_spy:called_with('keys', 'n', false))
+
+-- Or using MiniTest.expect directly
+local expect = require('mini.test').expect
 expect.equality(feedkeys_spy.call_count, 1)
 expect.equality(feedkeys_spy:called_with('keys', 'n', false), true)
 
@@ -195,6 +224,9 @@ feedkeys_spy:revert()
 ### Creating Stubs
 
 ```lua
+local assert = require('tests.helpers.assert')
+local spy = require('tests.helpers.spy')
+
 -- Create stub that replaces a method
 local fs_stat_stub = spy.stub(vim.uv, 'fs_stat')
 
@@ -209,7 +241,11 @@ fs_stat_stub:invokes(function(path)
   return nil
 end)
 
--- Check calls
+-- Check calls using custom assert
+assert.equal(1, fs_stat_stub.call_count)
+
+-- Or using MiniTest.expect directly
+local expect = require('mini.test').expect
 expect.equality(fs_stat_stub.call_count, 1)
 
 -- IMPORTANT: Always revert in after_each
@@ -219,6 +255,9 @@ fs_stat_stub:revert()
 ### Spy/Stub Best Practices
 
 ```lua
+local assert = require('tests.helpers.assert')
+local spy = require('tests.helpers.spy')
+
 describe('MyModule', function()
   local my_stub
 
@@ -233,7 +272,8 @@ describe('MyModule', function()
 
   it('uses stubbed function', function()
     -- Test code here
-    expect.equality(my_stub.call_count, 1)
+    assert.equal(1, my_stub.call_count)
+    -- Or: require('mini.test').expect.equality(my_stub.call_count, 1)
   end)
 end)
 ```
@@ -267,6 +307,7 @@ When testing ACP providers or any code that makes external requests, always mock
 the transport layer:
 
 ```lua
+local assert = require('tests.helpers.assert')
 local spy = require('tests.helpers.spy')
 
 describe('ACP provider', function()
@@ -287,7 +328,7 @@ describe('ACP provider', function()
 
   it('sends messages without real API calls', function()
     -- Test code
-    expect.equality(transport_stub.call_count, 1)
+    assert.equal(1, transport_stub.call_count)
   end)
 end)
 ```
@@ -314,35 +355,10 @@ end)
 3. **Global Neovim state persists** - Vim variables, options carry over
 4. **Always revert stubs/spies** - Failure to revert breaks subsequent tests
 
-**Best practices:**
-
-```lua
-describe("MyModule", function()
-  local bufnr
-  local my_stub
-
-  before_each(function()
-    bufnr = vim.api.nvim_create_buf(false, true)
-    my_stub = spy.stub(vim.uv, 'fs_stat')
-  end)
-
-  after_each(function()
-    -- CRITICAL: Clean up resources
-    my_stub:revert()
-    if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
-      vim.api.nvim_buf_delete(bufnr, { force = true })
-    end
-  end)
-
-  it("does something", function()
-    -- Test uses fresh buffer and stub
-  end)
-end)
-```
-
 ### Multi-Tabpage Testing
 
-Since agentic.nvim supports **one instance per tabpage**, tests must verify:
+Since agentic.nvim supports **one session instance per tabpage**, tests must
+verify:
 
 - Tabpage isolation (no cross-contamination)
 - Independent state per tabpage
@@ -368,13 +384,12 @@ end)
 For isolated integration tests, use mini.test's child process:
 
 ```lua
-local MiniTest = require('mini.test')
-local expect = MiniTest.expect
-local child = new_child()  -- Global helper from tests/init.lua
+local assert = require('tests.helpers.assert')
+local child = require('tests.helpers.child').new()
 
 describe('integration', function()
   setup(function()
-    child.setup()  -- Bootstraps lazy.nvim with plugin
+    child.setup()  -- Restarts child and loads plugin
   end)
 
   teardown(function()
@@ -387,7 +402,8 @@ describe('integration', function()
 
   it('loads plugin correctly', function()
     local loaded = child.lua_get([[package.loaded['agentic'] ~= nil]])
-    expect.equality(loaded, true)
+    assert.is_true(loaded)
+    -- Or: require('mini.test').expect.equality(loaded, true)
   end)
 end)
 ```
@@ -410,3 +426,4 @@ make test-file FILE=lua/agentic/init.test.lua
 
 - [mini.test Documentation](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-test.md)
 - [mini.test Help](https://github.com/echasnovski/mini.nvim/blob/main/doc/mini-test.txt)
+
