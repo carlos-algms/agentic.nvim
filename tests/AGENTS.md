@@ -406,6 +406,53 @@ describe('integration', function()
 end)
 ```
 
+#### Child Instance Redirection Tables
+
+The child Neovim instance provides "redirection tables" that wrap corresponding `vim.*` tables:
+
+**API Access:**
+- `child.api` - Wraps `vim.api` for Neovim API calls
+- `child.api.nvim_buf_line_count(0)` - Returns result from child process
+- `child.api_notify` - Uses `vim.rpcnotify()` (non-blocking, no response)
+
+**Variable and Option Access:**
+- `child.o` - Global options (`vim.o`)
+- `child.bo` - Buffer options (`vim.bo`)
+- `child.wo` - Window options (`vim.wo`)
+- `child.g`, `child.b`, `child.w`, `child.t`, `child.v` - Variables
+
+**Function Execution:**
+- `child.fn` - Wraps `vim.fn` for calling Vim functions
+- `child.lua_get(code)` - Executes Lua code and returns result (auto-prepends `return`)
+- `child.lua_func(fn, ...)` - Executes a Lua function with parameters
+
+**Common Patterns:**
+
+```lua
+-- Get window count
+local win_count = child.fn.winnr('$')
+assert.equal(3, win_count)
+
+-- Check buffer line count
+local lines = child.api.nvim_buf_line_count(0)
+
+-- Get option value
+local colorscheme = child.o.colorscheme
+
+-- Execute Lua and get result
+local result = child.lua_get([[require('mymodule').get_state()]])
+
+-- Execute complex Lua code
+child.lua([[
+  local Module = require('mymodule')
+  Module.setup({ option = true })
+]])
+```
+
+**Limitations:**
+- Cannot use functions or userdata for child's inputs/outputs
+- Move computations into child process rather than passing complex types
+
 ## Debugging Tests
 
 ### Verbose Output
@@ -422,5 +469,5 @@ make test-file FILE=lua/agentic/init.test.lua
 
 ## Resources
 
-- [mini.test Documentation](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-test.md)
-- [mini.test Help](https://github.com/echasnovski/mini.nvim/blob/main/doc/mini-test.txt)
+- [mini.test Documentation](https://raw.githubusercontent.com/nvim-mini/mini.test/refs/heads/main/README.md)
+- [mini.test Help](https://raw.githubusercontent.com/nvim-mini/mini.nvim/refs/heads/main/doc/mini-test.txt)
