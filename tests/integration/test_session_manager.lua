@@ -10,6 +10,7 @@ describe("session_manager", function()
         child.lua([[
             local ACPTransportMock = require("tests.mocks.acp_transport_mock")
             package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
+            require("agentic").setup()
         ]])
     end)
 
@@ -54,7 +55,6 @@ describe("session_manager", function()
     end)
 
     it("toggles the widget to show and hide it", function()
-        -- Open the widget
         child.lua([[ require("agentic").toggle() ]])
 
         local window_count = child.fn.winnr("$")
@@ -64,5 +64,38 @@ describe("session_manager", function()
 
         window_count = child.fn.winnr("$")
         assert.equal(1, window_count)
+    end)
+
+    it("Creates independent sessions per tabpage", function()
+        child.lua([[ require("agentic").toggle() ]])
+
+        local tab1_wincount = child.fn.winnr("$")
+        assert.equal(3, tab1_wincount)
+
+        local tab1_id = child.api.nvim_get_current_tabpage()
+
+        child.cmd("tabnew")
+
+        local tab2_id = child.api.nvim_get_current_tabpage()
+        assert.is_not.equal(tab1_id, tab2_id)
+
+        child.lua([[ require("agentic").toggle() ]])
+
+        local tab2_wincount = child.fn.winnr("$")
+        assert.equal(3, tab2_wincount)
+
+        local session_count = child.lua_get([[
+            vim.tbl_count(require("agentic.session_registry").sessions)
+        ]])
+        assert.equal(2, session_count)
+
+        assert.has_no_errors(function()
+            child.cmd("tabclose")
+        end)
+
+        local session_count_after = child.lua_get([[
+            vim.tbl_count(require("agentic.session_registry").sessions)
+        ]])
+        assert.equal(1, session_count_after)
     end)
 end)
