@@ -385,19 +385,17 @@ For isolated integration tests, use mini.test's child process:
 
 ```lua
 local assert = require('tests.helpers.assert')
-local child = require('tests.helpers.child').new()
+local Child = require('tests.helpers.child')
 
 describe('integration', function()
-  setup(function()
+  local child = Child.new()
+
+  before_each(function()
     child.setup()  -- Restarts child and loads plugin
   end)
 
-  teardown(function()
+  after_each(function()
     child.stop()
-  end)
-
-  before_each(function()
-    child.cmd('enew')
   end)
 
   it('loads plugin correctly', function()

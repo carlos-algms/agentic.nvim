@@ -44,6 +44,10 @@ files["**/*.test.lua"] = {
     std = "+busted",
 }
 
+files["**/tests/unit/test_*.lua"] = {
+    std = "+busted",
+}
+
 files["**/tests/unit/*_test.lua"] = {
     std = "+busted",
 }
