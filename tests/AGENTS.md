@@ -1,7 +1,5 @@
 # Testing Guide for agentic.nvim
 
-## Testing Framework Decision
-
 **Framework:** mini.test with Busted-style emulation
 
 **Why:**
@@ -44,6 +42,8 @@ lua/agentic/
 - `tests/init.lua` - Test runner
 - `tests/helpers/spy.lua` - Spy/stub utilities
 - `tests/unit/` - Legacy/shared test files (if needed)
+- `tests/functional/` - Functional tests
+- `tests/integration/` - Integration tests that requires multiple components
 
 ## Running Tests
 
@@ -424,4 +424,3 @@ make test-file FILE=lua/agentic/init.test.lua
 
 - [mini.test Documentation](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-test.md)
 - [mini.test Help](https://github.com/echasnovski/mini.nvim/blob/main/doc/mini-test.txt)
-
