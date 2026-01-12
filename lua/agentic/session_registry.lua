@@ -1,3 +1,5 @@
+local Logger = require("agentic.utils.logger")
+
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
 local SessionRegistry = {
@@ -6,7 +8,7 @@ local SessionRegistry = {
 
 --- @param tab_page_id? integer
 --- @param callback? fun(session: agentic.SessionManager)
---- @return agentic.SessionManager|nil
+--- @return agentic.SessionManager|nil session valid session instance or nil on failure
 function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()
@@ -27,7 +29,11 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
     end
 
     if instance and callback then
-        callback(instance)
+        local ok, err = pcall(callback, instance)
+
+        if not ok then
+            Logger.notify("Session create callback error:", err)
+        end
     end
 
     return instance
@@ -39,18 +45,8 @@ end
 function SessionRegistry.new_session(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()
-    local session = SessionRegistry.sessions[tab_page_id]
 
-    if session then
-        local ok, err = pcall(function()
-            session:destroy()
-        end)
-        if not ok then
-            local Logger = require("agentic.utils.logger")
-            Logger.debug("Session destroy error:", err)
-        end
-        SessionRegistry.sessions[tab_page_id] = nil
-    end
+    SessionRegistry.destroy_session(tab_page_id)
 
     local new_session = SessionRegistry.get_session_for_tab_page(tab_page_id)
     return new_session
@@ -64,10 +60,14 @@ function SessionRegistry.destroy_session(tab_page_id)
     local session = SessionRegistry.sessions[tab_page_id]
 
     if session then
-        pcall(function()
+        SessionRegistry.sessions[tab_page_id] = nil
+
+        local ok, err = pcall(function()
             session:destroy()
         end)
-        SessionRegistry.sessions[tab_page_id] = nil
+        if not ok then
+            Logger.debug("Session destroy error:", err)
+        end
     end
 end
 
