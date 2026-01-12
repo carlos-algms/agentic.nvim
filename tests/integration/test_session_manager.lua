@@ -4,6 +4,22 @@ local Child = require("tests.helpers.child")
 describe("session_manager", function()
     local child = Child:new()
 
+    --- Gets sorted filetypes for all windows in the given tabpage
+    --- @param tabpage number
+    --- @return string[]
+    local function get_tabpage_filetypes(tabpage)
+        local winids = child.api.nvim_tabpage_list_wins(tabpage)
+        local filetypes = {}
+        for _, winid in ipairs(winids) do
+            local bufnr = child.api.nvim_win_get_buf(winid)
+            local ft =
+                child.lua_get(string.format([[vim.bo[%d].filetype]], bufnr))
+            table.insert(filetypes, ft)
+        end
+        table.sort(filetypes)
+        return filetypes
+    end
+
     before_each(function()
         child.setup()
 
@@ -23,26 +39,8 @@ describe("session_manager", function()
 
         child.lua([[ require("agentic").toggle() ]])
 
-        -- Check that 3 windows are open (original + chat + prompt)
-        local window_count = #child.api.nvim_tabpage_list_wins(0)
-        assert.equal(3, window_count)
-
-        -- Get all window IDs in current tabpage
-        local winids = child.lua_get([[vim.api.nvim_tabpage_list_wins(0)]])
-
-        -- Check filetypes of all windows
-        local filetypes = {}
-        for _, winid in ipairs(winids) do
-            local bufnr = child.api.nvim_win_get_buf(winid)
-            local ft =
-                child.lua_get(string.format([[vim.bo[%d].filetype]], bufnr))
-            table.insert(filetypes, ft)
-        end
-
-        -- Sort for consistent comparison
-        table.sort(filetypes)
-
         -- Should have: empty filetype (original window), AgenticChat, AgenticInput
+        local filetypes = get_tabpage_filetypes(0)
         assert.same({ "", "AgenticChat", "AgenticInput" }, filetypes)
 
         -- 80 - default neovim headless width
@@ -56,20 +54,23 @@ describe("session_manager", function()
     it("toggles the widget to show and hide it", function()
         child.lua([[ require("agentic").toggle() ]])
 
-        local window_count = #child.api.nvim_tabpage_list_wins(0)
-        assert.equal(3, window_count)
+        -- Should have: empty filetype (original window), AgenticChat, AgenticInput
+        local filetypes = get_tabpage_filetypes(0)
+        assert.same({ "", "AgenticChat", "AgenticInput" }, filetypes)
 
         child.lua([[ require("agentic").toggle() ]])
 
-        window_count = #child.api.nvim_tabpage_list_wins(0)
-        assert.equal(1, window_count)
+        -- After hide, should only have original window
+        filetypes = get_tabpage_filetypes(0)
+        assert.same({ "" }, filetypes)
     end)
 
     it("Creates independent sessions per tabpage", function()
         child.lua([[ require("agentic").toggle() ]])
 
-        local tab1_wincount = #child.api.nvim_tabpage_list_wins(0)
-        assert.equal(3, tab1_wincount)
+        -- Tab1 should have: empty filetype, AgenticChat, AgenticInput
+        local tab1_filetypes = get_tabpage_filetypes(0)
+        assert.same({ "", "AgenticChat", "AgenticInput" }, tab1_filetypes)
 
         local tab1_id = child.api.nvim_get_current_tabpage()
 
@@ -80,8 +81,9 @@ describe("session_manager", function()
 
         child.lua([[ require("agentic").toggle() ]])
 
-        local tab2_wincount = #child.api.nvim_tabpage_list_wins(0)
-        assert.equal(3, tab2_wincount)
+        -- Tab2 should also have: empty filetype, AgenticChat, AgenticInput
+        local tab2_filetypes = get_tabpage_filetypes(0)
+        assert.same({ "", "AgenticChat", "AgenticInput" }, tab2_filetypes)
 
         local session_count = child.lua_get([[
             vim.tbl_count(require("agentic.session_registry").sessions)
