@@ -408,29 +408,34 @@ end)
 
 #### Child Instance Redirection Tables
 
-The child Neovim instance provides "redirection tables" that wrap corresponding `vim.*` tables:
+The child Neovim instance provides "redirection tables" that wrap corresponding
+`vim.*` tables, but gets executed in the child process:
 
 **API Access:**
-- `child.api` - Wraps `vim.api` for Neovim API calls
+
+- `child.api` - Wraps `vim.api`
 - `child.api.nvim_buf_line_count(0)` - Returns result from child process
-- `child.api_notify` - Uses `vim.rpcnotify()` (non-blocking, no response)
 
 **Variable and Option Access:**
+
 - `child.o` - Global options (`vim.o`)
 - `child.bo` - Buffer options (`vim.bo`)
 - `child.wo` - Window options (`vim.wo`)
 - `child.g`, `child.b`, `child.w`, `child.t`, `child.v` - Variables
 
 **Function Execution:**
-- `child.fn` - Wraps `vim.fn` for calling Vim functions
-- `child.lua_get(code)` - Executes Lua code and returns result (auto-prepends `return`)
+
+- `child.fn` - Wraps `vim.fn`
+- `child.lua(code)` - Executes multi-line Lua code and returns result
+- `child.lua_get(code)` - Executes single-line Lua expression and returns result
+  (auto-prepends `return`)
 - `child.lua_func(fn, ...)` - Executes a Lua function with parameters
 
 **Common Patterns:**
 
 ```lua
 -- Get window count
-local win_count = child.fn.winnr('$')
+local win_count = #child.api.nvim_tabpage_list_wins(0)
 assert.equal(3, win_count)
 
 -- Check buffer line count
@@ -439,17 +444,39 @@ local lines = child.api.nvim_buf_line_count(0)
 -- Get option value
 local colorscheme = child.o.colorscheme
 
--- Execute Lua and get result
+-- Count table entries - use vim.tbl_count
+local count = child.lua_get([[vim.tbl_count(some_table)]])
+
+-- Execute Lua and get single value result
 local result = child.lua_get([[require('mymodule').get_state()]])
 
--- Execute complex Lua code
-child.lua([[
-  local Module = require('mymodule')
-  Module.setup({ option = true })
+-- Execute multi-line Lua code and return result
+local filetypes = child.lua([[
+  local fts = {}
+  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    table.insert(fts, vim.bo[vim.api.nvim_win_get_buf(winid)].filetype)
+  end
+  table.sort(fts)
+  return fts
 ]])
 ```
 
+**Critical Guidelines:**
+
+- **Use `#` operator with child.api results** -
+  `#child.api.nvim_tabpage_list_wins(0)` instead of wrapping in `lua_get`
+- **Use `vim.tbl_count()`** for counting table entries - Never manually iterate
+  with pairs()
+- **`child.lua_get()` limitations:**
+  - Auto-prepends `return` - ONLY for single-line expressions
+  - CANNOT use multi-line code (will error with "unexpected symbol")
+  - For multi-line code, use `child.lua()` instead
+- **When to use `child.lua()` vs `child.lua_get()`:**
+  - Single expression returning a value: `child.lua_get([[expression]])`
+  - Multi-line code or complex logic: `child.lua([[code]])`
+
 **Limitations:**
+
 - Cannot use functions or userdata for child's inputs/outputs
 - Move computations into child process rather than passing complex types
 

@@ -19,13 +19,12 @@ describe("session_manager", function()
     end)
 
     it("Opens the widget with chat and prompt windows", function()
-        -- Get initial window width before toggle
         local initial_winid = child.api.nvim_get_current_win()
 
         child.lua([[ require("agentic").toggle() ]])
 
         -- Check that 3 windows are open (original + chat + prompt)
-        local window_count = child.fn.winnr("$")
+        local window_count = #child.api.nvim_tabpage_list_wins(0)
         assert.equal(3, window_count)
 
         -- Get all window IDs in current tabpage
@@ -57,19 +56,19 @@ describe("session_manager", function()
     it("toggles the widget to show and hide it", function()
         child.lua([[ require("agentic").toggle() ]])
 
-        local window_count = child.fn.winnr("$")
+        local window_count = #child.api.nvim_tabpage_list_wins(0)
         assert.equal(3, window_count)
 
         child.lua([[ require("agentic").toggle() ]])
 
-        window_count = child.fn.winnr("$")
+        window_count = #child.api.nvim_tabpage_list_wins(0)
         assert.equal(1, window_count)
     end)
 
     it("Creates independent sessions per tabpage", function()
         child.lua([[ require("agentic").toggle() ]])
 
-        local tab1_wincount = child.fn.winnr("$")
+        local tab1_wincount = #child.api.nvim_tabpage_list_wins(0)
         assert.equal(3, tab1_wincount)
 
         local tab1_id = child.api.nvim_get_current_tabpage()
@@ -81,7 +80,7 @@ describe("session_manager", function()
 
         child.lua([[ require("agentic").toggle() ]])
 
-        local tab2_wincount = child.fn.winnr("$")
+        local tab2_wincount = #child.api.nvim_tabpage_list_wins(0)
         assert.equal(3, tab2_wincount)
 
         local session_count = child.lua_get([[
