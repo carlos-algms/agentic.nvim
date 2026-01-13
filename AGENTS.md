@@ -128,6 +128,18 @@ When implementing ANY feature:
   - Use namespaces to control WHERE highlights appear, not to isolate highlight
     definitions
 
+- **Buffer-scoped storage:** Use correct accessor for the use case
+
+  | Accessor        | Purpose          | Use For         | Example                          |
+  | --------------- | ---------------- | --------------- | -------------------------------- |
+  | `vim.b[bufnr]`  | Custom variables | User data/state | `vim.b[bufnr].my_state = {}`     |
+  | `vim.bo[bufnr]` | Built-in options | Neovim settings | `vim.bo[bufnr].filetype = "lua"` |
+  - `vim.b` stores buffer-local variables (equivalent to Vimscript `b:`
+    variables)
+  - `vim.bo` sets buffer options (equivalent to `:setlocal`)
+  - State stored in `vim.b` is automatically cleaned up when buffer is deleted
+  - Invalid option names in `vim.bo` throw errors
+
 - **Get tabpage ID correctly**
   - In instance methods with `self.tab_page_id`
   - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
@@ -675,3 +687,4 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
+
