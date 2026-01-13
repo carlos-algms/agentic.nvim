@@ -4,6 +4,7 @@ local MiniTest = require("mini.test")
 
 --- @class tests.helpers.Child : MiniTest.child
 --- @field setup fun() Restart child and load plugin and run agentic.setup() to run auto commands and configurations
+--- @field flush fun() Flush pending scheduled callbacks in child neovim and wait a bit to ensure they are processed
 
 --- @class tests.helpers.ChildModule
 local M = {}
@@ -22,6 +23,13 @@ function M.new()
             local ACPTransportMock = require("tests.mocks.acp_transport_mock")
             package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
             require("agentic").setup()
+        ]])
+    end
+
+    function child.flush()
+        child.lua([[
+          vim.cmd("redraw")
+          vim.wait(10)
         ]])
     end
 
