@@ -21,7 +21,9 @@ function M.new()
 
         child.lua([[
             local ACPTransportMock = require("tests.mocks.acp_transport_mock")
+            local ACPHealthMock = require("tests.mocks.acp_health_mock")
             package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
+            package.loaded["agentic.acp.acp_health"] = ACPHealthMock
             require("agentic").setup()
         ]])
     end
@@ -32,7 +34,7 @@ function M.new()
         ]])
 
         child.api.nvim_eval("1")
-        vim.uv.sleep(1000)
+        vim.uv.sleep(10)
     end
 
     return child

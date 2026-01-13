@@ -17,6 +17,7 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
     if not instance then
         local ACPHealth = require("agentic.acp.acp_health")
         if not ACPHealth.check_configured_provider() then
+            Logger.debug("Session creation aborted: No configured ACP provider")
             return nil
         end
 
