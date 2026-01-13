@@ -4,6 +4,13 @@ local Child = require("tests.helpers.child")
 describe("Open and Close Chat Widget", function()
     local child = Child:new()
 
+    --- Flush pending scheduled callbacks in child neovim
+    local function flush_callbacks()
+        -- Run event loop to process any pending vim.schedule callbacks
+        child.lua([[vim.cmd("redraw")]])
+        vim.wait(10)
+    end
+
     --- Gets sorted filetypes for all windows in the given tabpage
     --- @param tabpage number
     --- @return string[]
@@ -32,7 +39,7 @@ describe("Open and Close Chat Widget", function()
         local initial_winid = child.api.nvim_get_current_win()
 
         child.lua([[ require("agentic").toggle() ]])
-        child.flush()
+        flush_callbacks()
 
         -- Should have: empty filetype (original window), AgenticChat, AgenticInput
         local filetypes = get_tabpage_filetypes(0)
@@ -48,14 +55,14 @@ describe("Open and Close Chat Widget", function()
 
     it("toggles the widget to show and hide it", function()
         child.lua([[ require("agentic").toggle() ]])
-        child.flush()
+        flush_callbacks()
 
         -- Should have: empty filetype (original window), AgenticChat, AgenticInput
         local filetypes = get_tabpage_filetypes(0)
         assert.same({ "", "AgenticChat", "AgenticInput" }, filetypes)
 
         child.lua([[ require("agentic").toggle() ]])
-        child.flush()
+        flush_callbacks()
 
         -- After hide, should only have original window
         filetypes = get_tabpage_filetypes(0)
@@ -64,7 +71,7 @@ describe("Open and Close Chat Widget", function()
 
     it("Creates independent widgets per tabpage", function()
         child.lua([[ require("agentic").toggle() ]])
-        child.flush()
+        flush_callbacks()
 
         -- Tab1 should have: empty filetype, AgenticChat, AgenticInput
         local tab1_filetypes = get_tabpage_filetypes(0)
@@ -78,7 +85,7 @@ describe("Open and Close Chat Widget", function()
         assert.is_not.equal(tab1_id, tab2_id)
 
         child.lua([[ require("agentic").toggle() ]])
-        child.flush()
+        flush_callbacks()
 
         -- Tab2 should also have: empty filetype, AgenticChat, AgenticInput
         local tab2_filetypes = get_tabpage_filetypes(0)
