@@ -31,6 +31,7 @@ function M.new()
           vim.cmd("redraw")
         ]])
 
+        child.api.nvim_eval("1")
         vim.uv.sleep(10)
     end
 
