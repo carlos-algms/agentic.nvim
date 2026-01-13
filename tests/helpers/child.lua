@@ -29,8 +29,9 @@ function M.new()
     function child.flush()
         child.lua([[
           vim.cmd("redraw")
-          vim.wait(10)
         ]])
+
+        vim.uv.sleep(10)
     end
 
     return child

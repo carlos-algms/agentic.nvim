@@ -480,6 +480,28 @@ local filetypes = child.lua([[
 - Cannot use functions or userdata for child's inputs/outputs
 - Move computations into child process rather than passing complex types
 
+#### Waiting for Async Operations in Child Process
+
+**🚨 CRITICAL: `vim.wait()` doesn't work with child processes**
+
+- **Problem:** `vim.wait()` fails across RPC boundaries (E5560 error in Neovim
+  0.10+)
+- **Solution:** Use `vim.uv.sleep()` in parent test, not `vim.wait()` in child
+
+```lua
+-- ❌ WRONG: vim.wait() in child doesn't work
+child.lua([[vim.wait(10)]])
+
+-- ✅ CORRECT: vim.uv.sleep() in parent
+child.lua([[-- async operation that sets vim.b.result]])
+vim.uv.sleep(10)  -- Wait in parent for child to complete
+local result = child.lua_get("vim.b.result")
+```
+
+**Why:** `vim.wait()` processes events and creates lua loop callback contexts
+where it's prohibited. `vim.uv.sleep()` is a simple blocking sleep that lets the
+child continue independently.
+
 ## Debugging Tests
 
 ### Verbose Output
