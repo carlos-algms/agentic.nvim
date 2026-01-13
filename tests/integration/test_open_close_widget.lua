@@ -1,7 +1,7 @@
 local assert = require("tests.helpers.assert")
 local Child = require("tests.helpers.child")
 
-describe("session_manager", function()
+describe("Open and Close Chat Widget", function()
     local child = Child:new()
 
     --- Flush pending scheduled callbacks in child neovim
@@ -29,12 +29,6 @@ describe("session_manager", function()
 
     before_each(function()
         child.setup()
-
-        child.lua([[
-            local ACPTransportMock = require("tests.mocks.acp_transport_mock")
-            package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
-            require("agentic").setup()
-        ]])
     end)
 
     after_each(function()
@@ -75,7 +69,7 @@ describe("session_manager", function()
         assert.same({ "" }, filetypes)
     end)
 
-    it("Creates independent sessions per tabpage", function()
+    it("Creates independent widgets per tabpage", function()
         child.lua([[ require("agentic").toggle() ]])
         flush_callbacks()
 

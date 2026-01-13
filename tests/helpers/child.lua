@@ -3,7 +3,7 @@
 local MiniTest = require("mini.test")
 
 --- @class tests.helpers.Child : MiniTest.child
---- @field setup fun() Restart child and load plugin
+--- @field setup fun() Restart child and load plugin and run agentic.setup() to run auto commands and configurations
 
 --- @class tests.helpers.ChildModule
 local M = {}
@@ -17,6 +17,12 @@ function M.new()
     function child.setup()
         child.restart({ "-u", "NONE" })
         child.lua("vim.opt.rtp:prepend(...)", { root_dir })
+
+        child.lua([[
+            local ACPTransportMock = require("tests.mocks.acp_transport_mock")
+            package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
+            require("agentic").setup()
+        ]])
     end
 
     return child
