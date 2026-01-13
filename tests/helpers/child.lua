@@ -32,7 +32,7 @@ function M.new()
         ]])
 
         child.api.nvim_eval("1")
-        vim.uv.sleep(10)
+        vim.uv.sleep(200)
     end
 
     return child
