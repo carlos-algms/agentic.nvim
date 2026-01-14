@@ -126,6 +126,8 @@ function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
             and content.content.text
         then
             message.body = vim.split(content.content.text, "\n")
+        elseif content.type == "diff" then -- luacheck: ignore 542 -- intentional empty block
+            -- ignore on purpose, diffs come only on tool call, not updates
         else
             Logger.debug("Unknown tool call update content type", {
                 content_type = content.type,
