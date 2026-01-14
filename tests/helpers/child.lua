@@ -40,7 +40,6 @@ function M.new()
         ]])
 
         child.api.nvim_eval("1")
-        vim.uv.sleep(10)
     end
 
     return child
