@@ -128,17 +128,28 @@ When implementing ANY feature:
   - Use namespaces to control WHERE highlights appear, not to isolate highlight
     definitions
 
-- **Buffer-scoped storage:** Use correct accessor for the use case
+- **Scoped storage:** Use correct accessor for the use case
 
-  | Accessor        | Purpose          | Use For         | Example                          |
-  | --------------- | ---------------- | --------------- | -------------------------------- |
-  | `vim.b[bufnr]`  | Custom variables | User data/state | `vim.b[bufnr].my_state = {}`     |
-  | `vim.bo[bufnr]` | Built-in options | Neovim settings | `vim.bo[bufnr].filetype = "lua"` |
+  | Scope   | Accessor         | Purpose          | Use For         | Example                          |
+  | ------- | ---------------- | ---------------- | --------------- | -------------------------------- |
+  | Buffer  | `vim.b[bufnr]`   | Custom variables | User data/state | `vim.b[bufnr].my_state = {}`     |
+  | Buffer  | `vim.bo[bufnr]`  | Built-in options | Neovim settings | `vim.bo[bufnr].filetype = "lua"` |
+  | Window  | `vim.w[winid]`   | Custom variables | User data/state | `vim.w[winid].my_state = {}`     |
+  | Window  | `vim.wo[winid]`  | Built-in options | Neovim settings | `vim.wo[winid].number = true`    |
+  | Tabpage | `vim.t[tabpage]` | Custom variables | User data/state | `vim.t[tabpage].my_state = {}`   |
+
+  **Notes:**
   - `vim.b` stores buffer-local variables (equivalent to Vimscript `b:`
     variables)
   - `vim.bo` sets buffer options (equivalent to `:setlocal`)
-  - State stored in `vim.b` is automatically cleaned up when buffer is deleted
-  - Invalid option names in `vim.bo` throw errors
+  - `vim.w` stores window-local variables (equivalent to Vimscript `w:`
+    variables)
+  - `vim.wo` sets window options
+  - `vim.t` stores tabpage-local variables (equivalent to Vimscript `t:`
+    variables)
+  - State stored in scoped storage is automatically cleaned up when the scope is
+    deleted
+  - Invalid option names in option accessors (`vim.bo`, `vim.wo`) throw errors
 
 - **Get tabpage ID correctly**
   - In instance methods with `self.tab_page_id`
@@ -687,4 +698,3 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
-
