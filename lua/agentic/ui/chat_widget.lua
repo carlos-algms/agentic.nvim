@@ -92,6 +92,7 @@ function ChatWidget:show(opts)
             "chat",
             {
                 winfixheight = false,
+                winfixwidth = true,
                 scrolloff = 4, -- Keep 4 lines visible above/below cursor (keeps animation visible)
             }
         )

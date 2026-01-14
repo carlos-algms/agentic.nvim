@@ -1,7 +1,5 @@
 # Testing Guide for agentic.nvim
 
-## Testing Framework Decision
-
 **Framework:** mini.test with Busted-style emulation
 
 **Why:**
@@ -44,6 +42,8 @@ lua/agentic/
 - `tests/init.lua` - Test runner
 - `tests/helpers/spy.lua` - Spy/stub utilities
 - `tests/unit/` - Legacy/shared test files (if needed)
+- `tests/functional/` - Functional tests
+- `tests/integration/` - Integration tests that requires multiple components
 
 ## Running Tests
 
@@ -385,19 +385,17 @@ For isolated integration tests, use mini.test's child process:
 
 ```lua
 local assert = require('tests.helpers.assert')
-local child = require('tests.helpers.child').new()
+local Child = require('tests.helpers.child')
 
 describe('integration', function()
-  setup(function()
+  local child = Child.new()
+
+  before_each(function()
     child.setup()  -- Restarts child and loads plugin
   end)
 
-  teardown(function()
+  after_each(function()
     child.stop()
-  end)
-
-  before_each(function()
-    child.cmd('enew')
   end)
 
   it('loads plugin correctly', function()
@@ -407,6 +405,102 @@ describe('integration', function()
   end)
 end)
 ```
+
+#### Child Instance Redirection Tables
+
+The child Neovim instance provides "redirection tables" that wrap corresponding
+`vim.*` tables, but gets executed in the child process:
+
+**API Access:**
+
+- `child.api` - Wraps `vim.api`
+- `child.api.nvim_buf_line_count(0)` - Returns result from child process
+
+**Variable and Option Access:**
+
+- `child.o` - Global options (`vim.o`)
+- `child.bo` - Buffer options (`vim.bo`)
+- `child.wo` - Window options (`vim.wo`)
+- `child.g`, `child.b`, `child.w`, `child.t`, `child.v` - Variables
+
+**Function Execution:**
+
+- `child.fn` - Wraps `vim.fn`
+- `child.lua(code)` - Executes multi-line Lua code and returns result
+- `child.lua_get(code)` - Executes single-line Lua expression and returns result
+  (auto-prepends `return`)
+- `child.lua_func(fn, ...)` - Executes a Lua function with parameters
+
+**Common Patterns:**
+
+```lua
+-- Get window count
+local win_count = #child.api.nvim_tabpage_list_wins(0)
+assert.equal(3, win_count)
+
+-- Check buffer line count
+local lines = child.api.nvim_buf_line_count(0)
+
+-- Get option value
+local colorscheme = child.o.colorscheme
+
+-- Count table entries - use vim.tbl_count
+local count = child.lua_get([[vim.tbl_count(some_table)]])
+
+-- Execute Lua and get single value result
+local result = child.lua_get([[require('mymodule').get_state()]])
+
+-- Execute multi-line Lua code and return result
+local filetypes = child.lua([[
+  local fts = {}
+  for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    table.insert(fts, vim.bo[vim.api.nvim_win_get_buf(winid)].filetype)
+  end
+  table.sort(fts)
+  return fts
+]])
+```
+
+**Critical Guidelines:**
+
+- **Use `#` operator with child.api results** -
+  `#child.api.nvim_tabpage_list_wins(0)` instead of wrapping in `lua_get`
+- **Use `vim.tbl_count()`** for counting table entries - Never manually iterate
+  with pairs()
+- **`child.lua_get()` limitations:**
+  - Auto-prepends `return` - ONLY for single-line expressions
+  - CANNOT use multi-line code (will error with "unexpected symbol")
+  - For multi-line code, use `child.lua()` instead
+- **When to use `child.lua()` vs `child.lua_get()`:**
+  - Single expression returning a value: `child.lua_get([[expression]])`
+  - Multi-line code or complex logic: `child.lua([[code]])`
+
+**Limitations:**
+
+- Cannot use functions or userdata for child's inputs/outputs
+- Move computations into child process rather than passing complex types
+
+#### Waiting for Async Operations in Child Process
+
+**🚨 CRITICAL: `vim.wait()` doesn't work with child processes**
+
+- **Problem:** `vim.wait()` fails across RPC boundaries (E5560 error in Neovim
+  0.10+)
+- **Solution:** Use `vim.uv.sleep()` in parent test, not `vim.wait()` in child
+
+```lua
+-- ❌ WRONG: vim.wait() in child doesn't work
+child.lua([[vim.wait(10)]])
+
+-- ✅ CORRECT: vim.uv.sleep() in parent
+child.lua([[-- async operation that sets vim.b.result]])
+vim.uv.sleep(10)  -- Wait in parent for child to complete
+local result = child.lua_get("vim.b.result")
+```
+
+**Why:** `vim.wait()` processes events and creates lua loop callback contexts
+where it's prohibited. `vim.uv.sleep()` is a simple blocking sleep that lets the
+child continue independently.
 
 ## Debugging Tests
 
@@ -424,6 +518,5 @@ make test-file FILE=lua/agentic/init.test.lua
 
 ## Resources
 
-- [mini.test Documentation](https://github.com/echasnovski/mini.nvim/blob/main/readmes/mini-test.md)
-- [mini.test Help](https://github.com/echasnovski/mini.nvim/blob/main/doc/mini-test.txt)
-
+- [mini.test Documentation](https://raw.githubusercontent.com/nvim-mini/mini.test/refs/heads/main/README.md)
+- [mini.test Help](https://raw.githubusercontent.com/nvim-mini/mini.nvim/refs/heads/main/doc/mini-test.txt)

@@ -156,11 +156,6 @@ describe("agentic.ui.ChatWidget", function()
             vim.api.nvim_set_current_win(widget.win_nrs.input)
             vim.cmd("startinsert")
 
-            -- Wait for mode change to take effect
-            vim.wait(100, function()
-                return vim.fn.mode() == "i"
-            end)
-
             widget:hide()
 
             -- Should exit insert mode

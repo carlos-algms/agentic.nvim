@@ -6,26 +6,6 @@ conversations.
 
 ## 📋 Documentation Scope
 
-This guide focuses on **architectural decisions and critical patterns** that
-agents must understand to work effectively with this codebase.
-
-**What belongs here:**
-
-- ✅ Multi-tabpage architecture and isolation requirements
-- ✅ Class design patterns and inheritance rules
-- ✅ Critical utility modules that are frequently used
-- ✅ Provider system and adapters
-- ✅ Code style conventions and LuaCATS standards
-- ✅ Development workflows and configuration protocols
-
-**What does NOT belong here:**
-
-- ❌ Exhaustive documentation of every file, module, or class
-- ❌ Implementation details that are self-documenting in code
-- ❌ Simple utility functions that have clear names and types
-- ❌ UI components unless they demonstrate critical patterns
-- ❌ Testing patterns and decisions (see `@tests/AGENTS.md`)
-
 **When to add documentation:**
 
 - Module introduces new architectural pattern
@@ -54,10 +34,10 @@ Before implementing, suggesting, or answering:
 
 ❌ **DON'T:**
 
-- "This probably uses X pattern" → Read the file
-- "I assume this field exists" → Check the type definition
-- "This likely works like Y" → Verify in code
-- "Based on similar projects..." → Check THIS codebase
+- "This probably uses X pattern"
+- "I assume this field exists"
+- "This likely works like Y"
+- "Based on similar projects..."
 
 ✅ **DO:**
 
@@ -68,18 +48,19 @@ Before implementing, suggesting, or answering:
 
 ### Incomplete Solutions Are Unacceptable
 
-- Don't suggest partial implementations hoping user fills gaps
-- Don't provide solutions with "you might need to..." caveats
-- Don't guess at parameter types or return values
+- Don't suggest partial implementations expecting me to fill gaps
+- Don't provide solutions with "you might need to..." suggestions
+- Don't guess parameter types or return values, read the files and find
+  implementation
 - If missing context, gather it first - don't ask user
 
-**Rule:** If you haven't read the relevant code, you don't have enough context
-to make decisions.
+**CRITICAL:** If you haven't read the relevant code, you don't have enough
+context to make decisions or suggestions!
 
 ## 🚨 CRITICAL: Multi-Tabpage Architecture
 
-**EVERY FEATURE MUST BE MULTI-TAB SAFE** - This plugin supports **one instance
-per tabpage**.
+**EVERY FEATURE MUST BE MULTI-TAB SAFE** - This plugin supports **one session
+instance per tabpage**.
 
 ### Architecture Overview
 
@@ -88,7 +69,7 @@ per tabpage**.
 - **1 ACP provider instance** (single subprocess per provider) shared across all
   tabpages (managed by `AgentInstance`)
 - **1 ACP session ID per tabpage** - The ACP protocol supports multiple sessions
-  per instance
+  per instance, but only one session is active at a time per tabpage
 - **1 SessionManager + 1 ChatWidget per tabpage** - Full UI isolation between
   tabpages
 
@@ -106,144 +87,152 @@ Each tabpage has independent:
 
 When implementing ANY feature:
 
-1. **NEVER use module-level shared state** for per-tabpage runtime data
-   - ❌ `local current_session = nil` (single session for all tabs)
-   - ✅ Store per-tabpage state in tabpage-scoped instances
-   - ✅ Module-level constants OK for truly global config: `local CONFIG = {}`
+- **NEVER use module-level shared state** for per-tabpage runtime data
+  - ❌ `local current_session = nil` (single session for all tabs)
+  - ✅ Store per-tabpage state in tabpage-scoped instances
+  - ✅ Module-level constants OK for truly global config: `local CONFIG = {}`
 
-2. **Namespaces are GLOBAL but extmarks are BUFFER-SCOPED**
-   - ✅ `local NS_ID = vim.api.nvim_create_namespace("agentic_animation")` -
-     Module-level OK
-   - ✅ Namespaces can be shared across tabpages safely
-   - **Why:** Extmarks are stored per-buffer, and each tabpage has its own
-     buffers
-   - **Key insight:** `nvim_create_namespace()` is idempotent (same name = same
-     ID globally)
-   - **Clearing extmarks:** Use
-     `vim.api.nvim_buf_clear_namespace(bufnr, ns_id, start_line, end_line)`
-   - **Pattern:** Module-level namespace constants are fine - isolation comes
-     from buffer separation
-   - **Example:**
+- **Namespaces are GLOBAL but extmarks are BUFFER-SCOPED**
+  - ✅ `local NS_ID = vim.api.nvim_create_namespace("agentic_animation")` -
+    Module-level OK
+  - ✅ Namespaces can be shared across tabpages safely
+  - **Why:** Extmarks are stored per-buffer, and each tabpage has its own
+    buffers
+  - **Key insight:** `nvim_create_namespace()` is idempotent (same name = same
+    ID globally)
+  - **Clearing extmarks:** Use
+    `vim.api.nvim_buf_clear_namespace(bufnr, ns_id, start_line, end_line)`
+  - **Pattern:** Module-level namespace constants are fine - isolation comes
+    from buffer separation
+  - **Example:**
 
-     ```lua
-     -- Module level (shared namespace ID is OK)
-     local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
+    ```lua
+    -- Module level (shared namespace ID is OK)
+    local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
 
-     -- Instance level (each instance has its own buffer)
-     function Animation:new(bufnr)
-         return { bufnr = bufnr }
-     end
+    -- Instance level (each instance has its own buffer)
+    function Animation:new(bufnr)
+        return { bufnr = bufnr }
+    end
 
-     -- Operations are buffer-specific using module-level namespace
-     vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, ...)
-     vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
-     ```
+    -- Operations are buffer-specific using module-level namespace
+    vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, ...)
+    vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
+    ```
 
-3. **Highlight groups are GLOBAL** (shared across all tabpages)
-   - ✅ `vim.api.nvim_set_hl(0, "AgenticTitle", {...})` - Defined once in
-     `lua/agentic/theme.lua`
-   - Highlight groups apply globally to all buffers/windows/tabpages
-   - Theme setup runs once during plugin initialization
-   - Use namespaces to control WHERE highlights appear, not to isolate highlight
-     definitions
+- **Highlight groups are GLOBAL** (shared across all tabpages)
+  - ✅ `vim.api.nvim_set_hl(0, "AgenticTitle", {...})` - Defined once in
+    `lua/agentic/theme.lua`
+  - Highlight groups apply globally to all buffers/windows/tabpages
+  - Theme setup runs once during plugin initialization
+  - Use namespaces to control WHERE highlights appear, not to isolate highlight
+    definitions
 
-4. **Get tabpage ID correctly**
-   - In instance methods with `self.tab_page_id`
-   - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
-   - Current tabpage: `vim.api.nvim_get_current_tabpage()`
+- **Scoped storage:** Use correct accessor for the use case
 
-5. **ACP sessions are per-tabpage**
-   - Each tabpage gets its own session ID from the shared ACP provider
-   - Session state tracked independently per tabpage via `SessionManager`
-   - Never mix session IDs between tabpages
+  | Scope   | Accessor         | Purpose          | Use For         | Example                          |
+  | ------- | ---------------- | ---------------- | --------------- | -------------------------------- |
+  | Buffer  | `vim.b[bufnr]`   | Custom variables | User data/state | `vim.b[bufnr].my_state = {}`     |
+  | Buffer  | `vim.bo[bufnr]`  | Built-in options | Neovim settings | `vim.bo[bufnr].filetype = "lua"` |
+  | Window  | `vim.w[winid]`   | Custom variables | User data/state | `vim.w[winid].my_state = {}`     |
+  | Window  | `vim.wo[winid]`  | Built-in options | Neovim settings | `vim.wo[winid].number = true`    |
+  | Tabpage | `vim.t[tabpage]` | Custom variables | User data/state | `vim.t[tabpage].my_state = {}`   |
 
-6. **Buffers/windows are tabpage-specific**
-   - Each tabpage manages its own buffers and windows
-   - Never assume buffer/window exists globally
-   - Use `vim.api.nvim_tabpage_*` APIs when needed
+  **Notes:**
+  - `vim.b` stores buffer-local variables (equivalent to Vimscript `b:`
+    variables)
+  - `vim.bo` sets buffer options (equivalent to `:setlocal`)
+  - `vim.w` stores window-local variables (equivalent to Vimscript `w:`
+    variables)
+  - `vim.wo` sets window options
+  - `vim.t` stores tabpage-local variables (equivalent to Vimscript `t:`
+    variables)
+  - State stored in scoped storage is automatically cleaned up when the scope is
+    deleted
+  - Invalid option names in option accessors (`vim.bo`, `vim.wo`) throw errors
 
-7. **Autocommands must be tabpage-aware**
-   - Prefer buffer-local: `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`
-   - Filter by tabpage in global autocommands if necessary
+- **Get tabpage ID correctly**
+  - In instance methods with `self.tab_page_id`
+  - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
+  - Current tabpage: `vim.api.nvim_get_current_tabpage()`
 
-8. **Keymaps must be buffer-local**
-   - Always use: `BufHelpers.keymap_set(bufnr, "n", "key", fn)`
-   - NEVER use global keymaps that affect all tabpages
+- **Buffers/windows are tabpage-specific**
+  - Each tabpage manages its own buffers and windows
+  - Never assume buffer/window exists globally
+  - Use `vim.api.nvim_tabpage_*` APIs when needed
 
-### Testing Multi-Tab Isolation
+- **Autocommands must be tabpage-aware**
+  - Prefer buffer-local: `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`
+  - Filter by tabpage in global autocommands if necessary
 
-Verify isolation before submitting:
+- **Keymaps must be buffer-local**
+  - Always use: `BufHelpers.keymap_set(bufnr, "n", "key", fn)`
+  - NEVER use global keymaps that affect all tabpages
 
-```vim
-:tabnew | AgenticChat    " Tab 2: start chat
-:tabprev | AgenticChat   " Tab 1: start chat
-" Both must work independently - no cross-contamination
-```
+### Class Design Guidelines: creating and modifying
 
-### Class Design Guidelines
+- **Minimize class properties** - Only include properties that:
+  - Are accessed by external code (other modules/classes)
+  - Are part of the public API
+  - Need to be accessed by subclasses
 
-When creating or modifying classes:
+- **Use visibility prefixes for encapsulation** - Control what external code can
+  access:
 
-1. **Minimize class properties** - Only include properties that:
-   - Are accessed by external code (other modules/classes)
-   - Are part of the public API
-   - Need to be accessed by subclasses or mixins
+  **Visibility levels (configured in `.luarc.json`):**
+  - `_*`: **Private** - Hidden from external consumers
+  - `__*`: **Protected** - Visible to subclasses
+  - No prefix: **Public** - Visible everywhere
 
-2. **Use visibility prefixes for encapsulation** - Control what external code
-   can access:
+  ```lua
+  -- ❌ Bad: Unnecessary public exposure of `counter` property, not used externally
+  --- @class MyClass
+  --- @field counter number
+  local MyClass = {}
+  MyClass.__index = MyClass
 
-   **Visibility levels (configured in `.luarc.json`):**
-   - `_*` → **Private** - Hidden from external consumers
-   - `__*` → **Protected** - Visible to subclasses, hidden from external
-     consumers
-   - No prefix → **Public** - Visible everywhere
+  function MyClass:new()
+      return setmetatable({ counter = 0 }, self)
+  end
 
-   ```lua
-   -- ❌ Bad: Unnecessary public exposure
-   --- @class MyClass
-   --- @field counter number
-   local MyClass = {}
-   MyClass.__index = MyClass
+  -- ✅ Good: Proper visibility control
+  --- @class MyClass
+  local MyClass = {}
+  MyClass.__index = MyClass
 
-   function MyClass:new()
-       return setmetatable({ counter = 0 }, self)
-   end
+  function MyClass:new()
+      return setmetatable({
+        -- Counter is internal state, not exposed publicly
+        _counter = 0
+      }, self)
+  end
 
-   -- ✅ Good: Proper visibility control
-   --- @class MyClass
-   --- @field _counter number
-   --- @private
-   local MyClass = {}
-   MyClass.__index = MyClass
+  --- @protected mandatory to use protected marker for luals to validate it
+  function MyClass:__protected_method()
+      self._counter = self._counter + 1
+  end
 
-   function MyClass:new()
-       return setmetatable({ _counter = 0 }, self)
-   end
 
-   --- @class Parent
-   --- @field __protected_state table
-   --- @protected
+  --- @class Child : MyClass
+  function Child:use_parent_state()
+      self:__protected_method()
+  end
+  ```
 
-   --- @class Child : Parent
-   function Child:use_parent_state()
-       self:__protected_method()
-   end
-   ```
+- **Document intent with LuaCATS** - Use visibility annotations:
 
-3. **Document intent with LuaCATS** - Use visibility annotations:
+  ```lua
+  --- @class MyClass
+  --- @field public_field string Public API
+  --- @field __protected_field table For subclasses
+  --- @field _private_field number Internal only
+  ```
 
-   ```lua
-   --- @class MyClass
-   --- @field public_field string Public API
-   --- @field __protected_field table For subclasses
-   --- @field _private_field number Internal only
-   ```
-
-4. **Regular cleanup** - When adding new code, review class definitions and
-   remove:
-   - Unused properties
-   - Properties that were needed during development but are no longer used
-   - Properties that could be local variables instead
+- **Regular cleanup** - When adding new code, review class definitions and
+  remove:
+  - Unused properties
+  - Properties that were needed during development but are no longer used
+  - Properties that could be local variables instead
 
 ## Utility Modules
 
@@ -252,9 +241,6 @@ When creating or modifying classes:
 Debug logging utility controlled by `Config.debug` setting.
 
 **Public Methods:**
-
-- **`Logger.get_timestamp()`** - Returns current timestamp string
-  (`YYYY-MM-DD HH:MM:SS`)
 
 - **`Logger.notify(msg, level, opts)`** - Safe wrapper around `vim.notify`
   - Prevents "fast context is active" errors via `vim.schedule`
@@ -266,6 +252,7 @@ Debug logging utility controlled by `Config.debug` setting.
   - Examples:
     - `Logger.notify("Session created")` - Uses default WARN level
     - `Logger.notify("Session created", vim.log.levels.INFO)` - Explicit level
+
 - **`Logger.debug(...)`** - Print debug messages that can be retrieved with the
   command `:messages`
   - Only outputs when `Config.debug = true`
@@ -278,7 +265,6 @@ Debug logging utility controlled by `Config.debug` setting.
   - Only writes when `Config.debug = true`
   - Log file location: `~/.cache/nvim/agentic_debug.log` (macOS/Linux)
   - Same formatting as `Logger.debug()`
-  - Includes separator lines between entries
   - Example: `Logger.debug_to_file("Complex state:", state_table)`
 
 **Important Notes:**
@@ -289,13 +275,6 @@ Debug logging utility controlled by `Config.debug` setting.
   `warn()`, `error()`, or `info()` methods
 - Logger.debug() and Logger.debug_to_file() output is conditional on
   `Config.debug` setting
-
-**When adding public methods to utility modules, update AGENTS.md with:**
-
-1. Method signature
-2. Brief description
-3. Usage example
-4. Important notes
 
 ## Code Style
 
@@ -309,8 +288,8 @@ local Animal = {}
 Animal.__index = Animal
 
 function Animal:new()
-    local instance = setmetatable({}, self)
-    return instance
+    self = setmetatable({}, self)
+    return self
 end
 
 function Animal:move()
@@ -330,7 +309,7 @@ end
   - Called as: `instance:method()` or `instance.method(instance)`
   - Use for methods that need access to instance state
 
-- `function Class.method()` - Module function, does NOT receive `self`
+- `function Class.method()` - Module function, static, does NOT receive `self`
   - Called as: `Class.method()` or `instance.method()` (both work, but no
     `self`)
   - Use for utility functions, constructors, or static helpers
@@ -373,17 +352,10 @@ end
 
 **Critical rules:**
 
-1. **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
-   `Parent.new(self, ...)`
-2. **Re-assign metatable to child class** after parent initialization
-3. **Inheritance chain:** `instance → Child → Parent`
-
-**Why:**
-
-- Parent constructor needs its own class as `self`
-- Parent initializes instance state
-- Child re-metatables instance to upgrade it
-- Method resolution follows `__index` chain
+- **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
+  `Parent.new(self, ...)`
+- **Re-assign metatable to child class** after parent initialization
+- **Inheritance chain:** `instance → Child → Parent`
 
 **Calling parent methods:**
 
@@ -424,14 +396,15 @@ end
 **Guidelines:**
 
 - Always include a space after `---` for both descriptions and annotations
-- Use `@private` or `@package` for internal implementation details
+- Use `@private` or `@protected` for internal implementation details
+
 - **Optional types:** Format depends on annotation type
 
   **`@param` and `@field` annotations - Use `variable? type` format:**
   - ✅ **CORRECT:** `@param winid? number` - `?` goes AFTER the variable name
   - ✅ **CORRECT:** `@field _state? string` - `?` goes AFTER the variable name
   - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also
-    support `?`
+    support optional `?`
   - ❌ **WRONG:** `@param winid number|nil` - Use `variable? type` instead
   - ❌ **WRONG:** `@param winid number?` - `?` must be after variable name, not
     type
@@ -468,6 +441,7 @@ end
 - Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
   `vim.*` are for this version or newer)
 - LuaJIT 2.1 (bundled with Neovim, based on Lua 5.1)
+  - Be ultra careful with lua features and neovim APIs based on version
 - Optional: https://github.com/hakonharnes/img-clip.nvim for Screenshot pasting
   from the clipboard (drag-and-drop works without it, it's terminal feature, not
   plugin, neither neovim specific)
@@ -480,8 +454,6 @@ end
 make luals      # REQUIRED: Run type checking
 make luacheck   # REQUIRED: Run style/syntax checking
 ```
-
-**Not optional.** Every Lua change must pass both checks before completion.
 
 ### 🚨 Output Management for Validation Commands
 
@@ -497,17 +469,16 @@ make test-file FILE=<test_file> > ./.local/agentic_test_output.log 2>&1; echo $?
 
 **Rules:**
 
-- Only read the exit code (0 = success, non-zero = failure)
-- Only read the log file if the command fails
-- Prevents large output from consuming context unnecessarily
 - Use unique log file names to avoid collisions
+- Only read the exit code (0 = success, non-zero = failure)
+- If the command fails, read the log file, this prevents large output from
+  consuming context window unnecessarily
 
 **Reading log files:**
 
 - **NEVER use Read tool** - floods context with entire file
 - **Use targeted commands instead:**
   - `tail -n 10 <logfile>` - Last 10 lines (errors usually at end)
-  - `head -n 10 <logfile>` - First 10 lines
   - `rg "error|warning|fail" <logfile>` - Search for specific patterns
     (smart-case by default)
   - `grep -i "error" <logfile>` - Search with grep (case-insensitive)
@@ -566,8 +537,6 @@ plugin.
 3. **Update the README.md** "Customization (Ricing)" section with:
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
-
-Documentation updates ensure users can discover and customize plugin features.
 
 ### Provider System
 
@@ -720,4 +689,3 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
-

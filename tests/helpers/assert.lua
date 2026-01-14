@@ -14,16 +14,16 @@ local expect = MiniTest.expect
 local M = {}
 
 --- Basic equality assertion
---- @param expected any Expected value
 --- @param actual any Actual value
-function M.equal(expected, actual)
+--- @param expected any Expected value
+function M.equal(actual, expected)
     expect.equality(actual, expected)
 end
 
 --- Deep equality assertion (same as equal in mini.test)
---- @param expected any Expected value
 --- @param actual any Actual value
-function M.same(expected, actual)
+--- @param expected any Expected value
+function M.same(actual, expected)
     expect.equality(actual, expected)
 end
 
@@ -78,10 +78,10 @@ end
 --- Negated equality assertions
 --- @class tests.helpers.AssertIsNot
 M.is_not = {
-    equal = function(expected, actual)
+    equal = function(actual, expected)
         expect.no_equality(actual, expected)
     end,
-    same = function(expected, actual)
+    same = function(actual, expected)
         expect.no_equality(actual, expected)
     end,
 }

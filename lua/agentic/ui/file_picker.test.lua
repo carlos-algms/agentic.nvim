@@ -149,10 +149,6 @@ describe("FilePicker keymap fallback", function()
         child.cmd(([[silent execute "normal i\%s"]]):format(key))
     end
 
-    teardown(function()
-        child.stop()
-    end)
-
     before_each(function()
         child.setup()
     end)
