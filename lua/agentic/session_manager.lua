@@ -409,7 +409,11 @@ function SessionManager:new_session()
             self.message_writer:update_tool_call_block(tool_call_update)
 
             -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
-            self:_clear_diff_in_buffer(tool_call_update.tool_call_id)
+            local is_rejection = tool_call_update.status == "failed"
+            self:_clear_diff_in_buffer(
+                tool_call_update.tool_call_id,
+                is_rejection
+            )
 
             -- I need to remove the permission request if the tool call failed before user granted it
             -- It could happen for many reasons, like invalid parameters, tool not found, etc.
@@ -434,7 +438,12 @@ function SessionManager:new_session()
             local function wrapped_callback(option_id)
                 callback(option_id)
 
-                self:_clear_diff_in_buffer(request.toolCall.toolCallId)
+                local is_rejection = option_id == "reject_once"
+                    or option_id == "reject_always"
+                self:_clear_diff_in_buffer(
+                    request.toolCall.toolCallId,
+                    is_rejection
+                )
 
                 if
                     not self.permission_manager.current_request
@@ -588,7 +597,8 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
 end
 
 --- @param tool_call_id string
-function SessionManager:_clear_diff_in_buffer(tool_call_id)
+--- @param is_rejection? boolean
+function SessionManager:_clear_diff_in_buffer(tool_call_id, is_rejection)
     local tracker = tool_call_id
         and self.message_writer.tool_call_blocks[tool_call_id]
 
@@ -596,7 +606,7 @@ function SessionManager:_clear_diff_in_buffer(tool_call_id)
         return
     end
 
-    DiffPreview.clear_diff(tracker.argument)
+    DiffPreview.clear_diff(tracker.argument, is_rejection)
 end
 
 function SessionManager:_get_system_info()

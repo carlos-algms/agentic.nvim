@@ -225,9 +225,25 @@ function M.show_diff(opts)
         end
 
         if new_count > 0 then
-            -- For new files (old_count == 0), buffer is empty so anchor at line 0
-            local anchor_line = old_count == 0 and 0
-                or (block.end_line == 0 and 0 or block.end_line - 1)
+            -- Determine anchor position - new lines always below anchor
+            local anchor_line, virt_lines_above
+            if old_count == 0 then
+                -- Pure insertion: place below the line before insertion point
+                -- start_line is 1-indexed "insert before this line"
+                if block.start_line <= 1 then
+                    -- Insert at beginning/new file: below line 0
+                    anchor_line = 0
+                    virt_lines_above = false
+                else
+                    -- Insert in middle: below the preceding line
+                    anchor_line = block.start_line - 2
+                    virt_lines_above = false
+                end
+            else
+                -- Modification/deletion: place below the last deleted line
+                anchor_line = block.end_line == 0 and 0 or (block.end_line - 1)
+                virt_lines_above = false
+            end
 
             -- Get treesitter language for syntax highlighting
             local ft = vim.bo[bufnr].filetype
@@ -250,7 +266,7 @@ function M.show_diff(opts)
                 0,
                 {
                     virt_lines = virt_lines,
-                    virt_lines_above = false,
+                    virt_lines_above = virt_lines_above,
                 }
             )
             if not ok then
@@ -269,17 +285,37 @@ function M.show_diff(opts)
 end
 
 --- Clears the diff highlights from the given buffer
---- @param buf number|string Buffer number or name
-function M.clear_diff(buf)
-    if type(buf) == "string" then
-        buf = vim.fn.bufnr(buf)
-    end
+--- @param buf number|string Buffer number or file path
+--- @param is_rejection? boolean If true and file doesn't exist, cleanup buffer
+function M.clear_diff(buf, is_rejection)
+    local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
 
-    if buf == -1 then
+    if bufnr == -1 then
         return
     end
 
-    return pcall(vim.api.nvim_buf_clear_namespace, buf, NS_DIFF, 0, -1)
+    pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
+
+    -- On rejection for new files, switch window to alternate buffer
+    if is_rejection then
+        local file_path = vim.api.nvim_buf_get_name(bufnr)
+        local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
+
+        if not stat then
+            local winid = vim.fn.bufwinid(bufnr)
+            if winid ~= -1 then
+                local alt = vim.fn.bufnr("#")
+                local target_buf
+                if alt ~= -1 and alt ~= bufnr then
+                    target_buf = alt
+                else
+                    target_buf = vim.api.nvim_create_buf(true, true)
+                end
+                pcall(vim.api.nvim_win_set_buf, winid, target_buf)
+            end
+            pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        end
+    end
 end
 
 return M

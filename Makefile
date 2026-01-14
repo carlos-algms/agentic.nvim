@@ -10,13 +10,13 @@ LOGDIR  ?= .luals-log
 .PHONY: luals luacheck format-check format check test install-hooks
 
 test:
-	$(NVIM) --headless -u tests/init.lua -c "lua MiniTest.run()"
+	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
 
 test-verbose:
-	$(NVIM) --headless -u tests/init.lua -c "lua MiniTest.run({execute = {reporter = MiniTest.gen_reporter.stdout({})}})"
+	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run({verbose = true})"
 
 test-file:
-	$(NVIM) --headless -u tests/init.lua -c "lua MiniTest.run_file('$(FILE)', {execute = {reporter = MiniTest.gen_reporter.stdout({})}})"
+	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
 
 # Lua Language Server headless diagnosis report
 luals:

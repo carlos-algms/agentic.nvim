@@ -6,8 +6,8 @@
 
 --- @class agentic.ui.ToolCallDiff.ExtractOpts
 --- @field path string
---- @field old_text string[]
---- @field new_text string[]
+--- @field new_text string|string[]
+--- @field old_text? string|string[]
 --- @field replace_all? boolean
 --- @field strict? boolean When true, don't return fallback blocks if match fails
 
@@ -24,12 +24,22 @@ function M.extract_diff_blocks(opts)
     --- @type agentic.ui.ToolCallDiff.DiffBlock[]
     local diff_blocks = {}
 
-    if not opts.path or not opts.new_text then
+    if not opts.path or opts.path == "" or not opts.new_text then
         return diff_blocks
     end
 
     local old_lines = M._normalize_text_to_lines(opts.old_text)
     local new_lines = M._normalize_text_to_lines(opts.new_text)
+
+    local abs_path = FileSystem.to_absolute_path(opts.path)
+    local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
+
+    -- When old_text is nil/empty but file exists, treat as full file replacement
+    local old_is_empty = #old_lines == 0
+        or (#old_lines == 1 and old_lines[1] == "")
+    if old_is_empty and #file_lines > 0 then
+        old_lines = file_lines
+    end
 
     local is_new_file = #old_lines == 0
         or (#old_lines == 1 and old_lines[1] == "")
@@ -37,9 +47,6 @@ function M.extract_diff_blocks(opts)
     if is_new_file then
         table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
-        local abs_path = FileSystem.to_absolute_path(opts.path)
-        local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
-
         local blocks =
             M._match_or_substring_fallback(file_lines, old_lines, new_lines)
 
