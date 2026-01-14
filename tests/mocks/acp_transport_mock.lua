@@ -21,20 +21,20 @@ function M.create_stdio_transport(config, callbacks)
 
     --- @param data string
     function transport:send(data)
-        if transport._stopped then
+        if self._stopped then
             return false
         end
         return true
     end
 
     function transport:start()
-        transport._started = true
-        callbacks.on_state_change("connecting")
+        self._started = true
+        self._callbacks.on_state_change("connecting")
     end
 
     function transport:stop()
-        transport._stopped = true
-        callbacks.on_state_change("disconnected")
+        self._stopped = true
+        self._callbacks.on_state_change("disconnected")
     end
 
     return transport

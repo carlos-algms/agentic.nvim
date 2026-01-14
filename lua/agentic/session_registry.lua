@@ -33,7 +33,7 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
         local ok, err = pcall(callback, instance)
 
         if not ok then
-            Logger.notify("Session create callback error:", err)
+            Logger.notify("Session create callback error: " .. vim.inspect(err))
         end
     end
 

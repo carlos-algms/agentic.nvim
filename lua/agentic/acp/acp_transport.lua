@@ -51,8 +51,8 @@ function M.create_stdio_transport(config, callbacks)
 
     --- @param data string
     function transport:send(data)
-        if transport.stdin and not transport.stdin:is_closing() then
-            transport.stdin:write(data .. "\n")
+        if self.stdin and not self.stdin:is_closing() then
+            self.stdin:write(data .. "\n")
             return true
         end
         return false
@@ -122,9 +122,9 @@ function M.create_stdio_transport(config, callbacks)
             )
             callbacks.on_state_change("disconnected")
 
-            if transport.process then
-                transport.process:close()
-                transport.process = nil
+            if self.process then
+                self.process:close()
+                self.process = nil
             end
 
             -- Handle reconnection if enabled
@@ -148,9 +148,9 @@ function M.create_stdio_transport(config, callbacks)
             error("Failed to spawn ACP agent process")
         end
 
-        transport.process = handle
-        transport.stdin = stdin
-        transport.stdout = stdout
+        self.process = handle
+        self.stdin = stdin
+        self.stdout = stdout
 
         callbacks.on_state_change("connected")
 
@@ -201,9 +201,9 @@ function M.create_stdio_transport(config, callbacks)
     end
 
     function transport:stop()
-        if transport.process and not transport.process:is_closing() then
-            local process = transport.process
-            transport.process = nil
+        if self.process and not self.process:is_closing() then
+            local process = self.process
+            self.process = nil
 
             if not process then
                 return
@@ -221,13 +221,14 @@ function M.create_stdio_transport(config, callbacks)
             process:close()
         end
 
-        if transport.stdin then
-            transport.stdin:close()
-            transport.stdin = nil
+        if self.stdin then
+            self.stdin:close()
+            self.stdin = nil
         end
-        if transport.stdout then
-            transport.stdout:close()
-            transport.stdout = nil
+
+        if self.stdout then
+            self.stdout:close()
+            self.stdout = nil
         end
 
         callbacks.on_state_change("disconnected")

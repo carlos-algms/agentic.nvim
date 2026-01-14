@@ -48,7 +48,7 @@ Before implementing, suggesting, or answering:
 
 ### Incomplete Solutions Are Unacceptable
 
-- Don't suggest partial implementations expecting me to fills gaps
+- Don't suggest partial implementations expecting me to fill gaps
 - Don't provide solutions with "you might need to..." suggestions
 - Don't guess parameter types or return values, read the files and find
   implementation
@@ -441,7 +441,7 @@ end
 - Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
   `vim.*` are for this version or newer)
 - LuaJIT 2.1 (bundled with Neovim, based on Lua 5.1)
-  - Be ultra careful with lua features and neovim APis based on version
+  - Be ultra careful with lua features and neovim APIs based on version
 - Optional: https://github.com/hakonharnes/img-clip.nvim for Screenshot pasting
   from the clipboard (drag-and-drop works without it, it's terminal feature, not
   plugin, neither neovim specific)

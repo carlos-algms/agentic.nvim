@@ -100,7 +100,7 @@ describe("BufHelpers", function()
     end)
 
     describe("is_buffer_empty", function()
-        it("should return true for buffer with no lines", function()
+        it("should return true for buffer with single empty line", function()
             local bufnr = vim.api.nvim_create_buf(false, true)
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
 
