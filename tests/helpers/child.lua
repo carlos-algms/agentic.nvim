@@ -21,9 +21,15 @@ function M.new()
 
         child.lua([[
             local ACPTransportMock = require("tests.mocks.acp_transport_mock")
-            local ACPHealthMock = require("tests.mocks.acp_health_mock")
             package.loaded["agentic.acp.acp_transport"] = ACPTransportMock
+        ]])
+
+        child.lua([[
+            local ACPHealthMock = require("tests.mocks.acp_health_mock")
             package.loaded["agentic.acp.acp_health"] = ACPHealthMock
+        ]])
+
+        child.lua([[
             require("agentic").setup()
         ]])
     end
