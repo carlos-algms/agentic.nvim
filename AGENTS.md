@@ -431,6 +431,33 @@ end
   - **Note:** `@param` and `@field` annotations can use `variable? type`, but
     inline `fun()` parameters must use `type|nil`
 
+- **Typed variables before return:** When returning complex types (tables,
+  arrays, custom classes), use a typed intermediate variable instead of
+  returning directly. LuaLS cannot infer types from inline return statements.
+
+  ```lua
+  -- ❌ Bad: LuaLS cannot infer the return type
+  function M.create_block(lines)
+      return {
+          start_line = 1,
+          end_line = #lines,
+          content = lines,
+      }
+  end
+
+  -- ✅ Good: Type annotation enables proper type checking
+  --- @return MyModule.Block
+  function M.create_block(lines)
+      --- @type MyModule.Block
+      local block = {
+          start_line = 1,
+          end_line = #lines,
+          content = lines,
+      }
+      return block
+  end
+  ```
+
 - Do NOT provide meaningful parameter and return descriptions, unless requested
 - Group related annotations together (class fields, function params, returns)
 

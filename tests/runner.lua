@@ -10,27 +10,27 @@ local function exit_success()
     vim.cmd("qall!")
 end
 
+--- @param fn function
+local function run_with_exit(fn)
+    local ok, err = pcall(fn)
+    if ok then
+        exit_success()
+    else
+        exit_with_error(err)
+    end
+end
+
 --- Run all tests
 --- @param opts? { verbose?: boolean }
 function M.run(opts)
     opts = opts or {}
-
-    local ok, err = pcall(function()
+    run_with_exit(function()
         local MiniTest = require("mini.test")
-        local run_opts = {}
-        if opts.verbose then
-            run_opts.execute = {
-                reporter = MiniTest.gen_reporter.stdout({}),
-            }
-        end
+        local run_opts = opts.verbose
+                and { execute = { reporter = MiniTest.gen_reporter.stdout({}) } }
+            or {}
         MiniTest.run(run_opts)
     end)
-
-    if not ok then
-        exit_with_error(err)
-    else
-        exit_success()
-    end
 end
 
 --- Run a specific test file
@@ -38,29 +38,18 @@ end
 function M.run_file(file)
     if not file or file == "" then
         exit_with_error("No file specified")
-        return
     end
 
-    local stat = vim.uv.fs_stat(file)
-    if not stat then
+    if not vim.uv.fs_stat(file) then
         exit_with_error("File not found: " .. file)
-        return
     end
 
-    local ok, err = pcall(function()
+    run_with_exit(function()
         local MiniTest = require("mini.test")
         MiniTest.run_file(file, {
-            execute = {
-                reporter = MiniTest.gen_reporter.stdout({}),
-            },
+            execute = { reporter = MiniTest.gen_reporter.stdout({}) },
         })
     end)
-
-    if not ok then
-        exit_with_error(err)
-    else
-        exit_success()
-    end
 end
 
 return M

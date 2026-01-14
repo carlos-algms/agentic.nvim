@@ -18,6 +18,12 @@ local TextMatcher = require("agentic.utils.text_matcher")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+--- @param lines string[]
+--- @return boolean
+local function is_empty_lines(lines)
+    return #lines == 0 or (#lines == 1 and lines[1] == "")
+end
+
 --- @param opts agentic.ui.ToolCallDiff.ExtractOpts
 --- @return agentic.ui.ToolCallDiff.DiffBlock[] diff_blocks
 function M.extract_diff_blocks(opts)
@@ -35,16 +41,11 @@ function M.extract_diff_blocks(opts)
     local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
 
     -- When old_text is nil/empty but file exists, treat as full file replacement
-    local old_is_empty = #old_lines == 0
-        or (#old_lines == 1 and old_lines[1] == "")
-    if old_is_empty and #file_lines > 0 then
+    if is_empty_lines(old_lines) and #file_lines > 0 then
         old_lines = file_lines
     end
 
-    local is_new_file = #old_lines == 0
-        or (#old_lines == 1 and old_lines[1] == "")
-
-    if is_new_file then
+    if is_empty_lines(old_lines) then
         table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
         local blocks =
@@ -52,9 +53,7 @@ function M.extract_diff_blocks(opts)
 
         if blocks then
             if opts.replace_all then
-                for _, block in ipairs(blocks) do
-                    table.insert(diff_blocks, block)
-                end
+                vim.list_extend(diff_blocks, blocks)
             else
                 -- Only use the first match if replace_all is false
                 table.insert(diff_blocks, blocks[1])
@@ -71,9 +70,7 @@ function M.extract_diff_blocks(opts)
         end
     end
 
-    diff_blocks = M._minimize_diff_blocks(diff_blocks)
-
-    return diff_blocks
+    return M._minimize_diff_blocks(diff_blocks)
 end
 
 --- Minimize diff blocks by removing unchanged lines using vim.diff
@@ -168,16 +165,13 @@ end
 --- @param new_lines string[]
 --- @return agentic.ui.ToolCallDiff.DiffBlock
 function M._create_new_file_diff_block(new_lines)
-    local line_count = #new_lines
-
     --- @type agentic.ui.ToolCallDiff.DiffBlock
     local block = {
         start_line = 1,
-        end_line = line_count > 0 and line_count or 1,
+        end_line = math.max(1, #new_lines),
         old_lines = {},
         new_lines = new_lines,
     }
-
     return block
 end
 

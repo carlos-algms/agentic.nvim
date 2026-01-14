@@ -70,6 +70,73 @@ local function get_diff_hl_for_col(col, change)
     return Theme.HL_GROUPS.DIFF_ADD
 end
 
+--- Builds segments for a line without syntax highlighting
+--- @param line string
+--- @param change? table Change info from find_inline_change
+--- @return table[] segments
+local function build_plain_segments(line, change)
+    if not change then
+        return { { line, Theme.HL_GROUPS.DIFF_ADD } }
+    end
+
+    local segments = {}
+    if change.new_start > 0 then
+        table.insert(
+            segments,
+            { line:sub(1, change.new_start), Theme.HL_GROUPS.DIFF_ADD }
+        )
+    end
+    if change.new_end > change.new_start then
+        table.insert(segments, {
+            line:sub(change.new_start + 1, change.new_end),
+            Theme.HL_GROUPS.DIFF_ADD_WORD,
+        })
+    end
+    if change.new_end < #line then
+        table.insert(
+            segments,
+            { line:sub(change.new_end + 1), Theme.HL_GROUPS.DIFF_ADD }
+        )
+    end
+    return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
+end
+
+--- Builds segments for a line with syntax highlighting
+--- @param line string
+--- @param col_hl table<number, string>
+--- @param change? table Change info from find_inline_change
+--- @return table[] segments
+local function build_highlighted_segments(line, col_hl, change)
+    local segments = {}
+    local current_hl = col_hl[0]
+    local current_diff_hl = get_diff_hl_for_col(0, change)
+    local seg_start = 0
+
+    for col = 1, #line do
+        local hl = col_hl[col]
+        local diff_hl = get_diff_hl_for_col(col, change)
+        if hl ~= current_hl or diff_hl ~= current_diff_hl then
+            local text = line:sub(seg_start + 1, col)
+            local hl_spec = current_hl and { current_hl, current_diff_hl }
+                or current_diff_hl
+            table.insert(segments, { text, hl_spec })
+            seg_start = col
+            current_hl = hl
+            current_diff_hl = diff_hl
+        end
+    end
+
+    -- Final segment
+    local text = line:sub(seg_start + 1)
+    if #text > 0 then
+        local hl_spec = current_hl and { current_hl, current_diff_hl }
+            or current_diff_hl
+        table.insert(segments, { text, hl_spec })
+    end
+
+    return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
+end
+
 --- Builds virt_lines with syntax highlighting and diff background
 --- @param new_lines string[]
 --- @param old_lines? string[] Optional old lines for word-level diff
@@ -81,79 +148,17 @@ local function get_highlighted_virt_lines(new_lines, old_lines, lang)
     local virt_lines = {}
     for row, line in ipairs(new_lines) do
         local col_hl = row_col_hl and row_col_hl[row - 1]
-        local line_len = #line
 
         -- Find word-level change if we have corresponding old line
         local old_line = old_lines and old_lines[row]
         local change = old_line
             and DiffHighlighter.find_inline_change(old_line, line)
 
-        -- No highlights or empty line: use word-level diff aware segments
-        if not col_hl or line_len == 0 then
-            if change then
-                -- Split into segments based on word-level change
-                local segments = {}
-                if change.new_start > 0 then
-                    table.insert(segments, {
-                        line:sub(1, change.new_start),
-                        Theme.HL_GROUPS.DIFF_ADD,
-                    })
-                end
-                if change.new_end > change.new_start then
-                    table.insert(segments, {
-                        line:sub(change.new_start + 1, change.new_end),
-                        Theme.HL_GROUPS.DIFF_ADD_WORD,
-                    })
-                end
-                if change.new_end < line_len then
-                    table.insert(segments, {
-                        line:sub(change.new_end + 1),
-                        Theme.HL_GROUPS.DIFF_ADD,
-                    })
-                end
-                table.insert(
-                    virt_lines,
-                    #segments > 0 and segments
-                        or { { line, Theme.HL_GROUPS.DIFF_ADD } }
-                )
-            else
-                table.insert(virt_lines, { { line, Theme.HL_GROUPS.DIFF_ADD } })
-            end
-        else
-            local segments = {}
-            local current_hl = col_hl[0]
-            local current_diff_hl = get_diff_hl_for_col(0, change)
-            local seg_start = 0
+        local segments = (col_hl and #line > 0)
+                and build_highlighted_segments(line, col_hl, change)
+            or build_plain_segments(line, change)
 
-            for col = 1, line_len do
-                local hl = col_hl[col]
-                local diff_hl = get_diff_hl_for_col(col, change)
-                if hl ~= current_hl or diff_hl ~= current_diff_hl then
-                    local text = line:sub(seg_start + 1, col)
-                    local hl_spec = current_hl
-                            and { current_hl, current_diff_hl }
-                        or current_diff_hl
-                    table.insert(segments, { text, hl_spec })
-                    seg_start = col
-                    current_hl = hl
-                    current_diff_hl = diff_hl
-                end
-            end
-
-            -- Final segment
-            local text = line:sub(seg_start + 1)
-            if #text > 0 then
-                local hl_spec = current_hl and { current_hl, current_diff_hl }
-                    or current_diff_hl
-                table.insert(segments, { text, hl_spec })
-            end
-
-            table.insert(
-                virt_lines,
-                #segments > 0 and segments
-                    or { { line, Theme.HL_GROUPS.DIFF_ADD } }
-            )
-        end
+        table.insert(virt_lines, segments)
     end
 
     return virt_lines
@@ -177,18 +182,11 @@ function M.show_diff(opts)
         bufnr = vim.fn.bufadd(opts.file_path)
     end
 
-    -- Check if buffer is already visible in some window
-    --- @type number|nil
-    local target_winid = vim.fn.bufwinid(bufnr)
-    if target_winid == -1 then
-        target_winid = nil
-    end
-
+    -- Check if buffer is already visible, otherwise request a window
+    local winid = vim.fn.bufwinid(bufnr)
+    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
     if not target_winid then
-        target_winid = opts.get_winid(bufnr)
-        if not target_winid then
-            return
-        end
+        return
     end
 
     M.clear_diff(bufnr)
@@ -225,31 +223,20 @@ function M.show_diff(opts)
         end
 
         if new_count > 0 then
-            -- Determine anchor position - new lines always below anchor
-            local anchor_line, virt_lines_above
+            -- Determine anchor position - virtual lines placed below anchor
+            local anchor_line
             if old_count == 0 then
                 -- Pure insertion: place below the line before insertion point
-                -- start_line is 1-indexed "insert before this line"
-                if block.start_line <= 1 then
-                    -- Insert at beginning/new file: below line 0
-                    anchor_line = 0
-                    virt_lines_above = false
-                else
-                    -- Insert in middle: below the preceding line
-                    anchor_line = block.start_line - 2
-                    virt_lines_above = false
-                end
+                anchor_line = math.max(0, block.start_line - 2)
             else
                 -- Modification/deletion: place below the last deleted line
-                anchor_line = block.end_line == 0 and 0 or (block.end_line - 1)
-                virt_lines_above = false
+                anchor_line = math.max(0, block.end_line - 1)
             end
 
             -- Get treesitter language for syntax highlighting
             local ft = vim.bo[bufnr].filetype
             local lang = vim.treesitter.language.get_lang(ft) or ft
 
-            -- Pass old_lines for word-level diff (only for modifications)
             local old_lines_for_diff = is_modification and block.old_lines
                 or nil
             local virt_lines = get_highlighted_virt_lines(
@@ -264,10 +251,7 @@ function M.show_diff(opts)
                 NS_DIFF,
                 anchor_line,
                 0,
-                {
-                    virt_lines = virt_lines,
-                    virt_lines_above = virt_lines_above,
-                }
+                { virt_lines = virt_lines }
             )
             if not ok then
                 Logger.notify("Failed to set virtual lines: " .. tostring(err))
