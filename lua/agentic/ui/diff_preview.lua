@@ -80,24 +80,20 @@ local function build_plain_segments(line, change)
     end
 
     local segments = {}
-    if change.new_start > 0 then
-        table.insert(
-            segments,
-            { line:sub(1, change.new_start), Theme.HL_GROUPS.DIFF_ADD }
-        )
+    local before = line:sub(1, change.new_start)
+    local changed = line:sub(change.new_start + 1, change.new_end)
+    local after = line:sub(change.new_end + 1)
+
+    if #before > 0 then
+        table.insert(segments, { before, Theme.HL_GROUPS.DIFF_ADD })
     end
-    if change.new_end > change.new_start then
-        table.insert(segments, {
-            line:sub(change.new_start + 1, change.new_end),
-            Theme.HL_GROUPS.DIFF_ADD_WORD,
-        })
+    if #changed > 0 then
+        table.insert(segments, { changed, Theme.HL_GROUPS.DIFF_ADD_WORD })
     end
-    if change.new_end < #line then
-        table.insert(
-            segments,
-            { line:sub(change.new_end + 1), Theme.HL_GROUPS.DIFF_ADD }
-        )
+    if #after > 0 then
+        table.insert(segments, { after, Theme.HL_GROUPS.DIFF_ADD })
     end
+
     return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
 end
 
@@ -205,24 +201,40 @@ function M.show_diff(opts)
         local is_modification = old_count == new_count and old_count > 0
 
         if old_count > 0 then
-            for i, old_line in ipairs(block.old_lines) do
-                local zero_indexed_line = block.start_line + i - 2
+            local filtered = ToolCallDiff.filter_unchanged_lines(
+                block.old_lines,
+                block.new_lines
+            )
 
-                -- Get corresponding new_line for word-level diff (only for modifications)
-                local new_line = is_modification and block.new_lines[i] or nil
+            for _, pair in ipairs(filtered.pairs) do
+                if pair.old_line and pair.old_idx then
+                    local zero_indexed_line = block.start_line
+                        + pair.old_idx
+                        - 2
 
-                -- Use DiffHighlighter for word-level diff support
-                DiffHighlighter.apply_diff_highlights(
-                    bufnr,
-                    NS_DIFF,
-                    zero_indexed_line,
-                    old_line,
-                    new_line
-                )
+                    -- Use DiffHighlighter for word-level diff support
+                    DiffHighlighter.apply_diff_highlights(
+                        bufnr,
+                        NS_DIFF,
+                        zero_indexed_line,
+                        pair.old_line,
+                        is_modification and pair.new_line or nil
+                    )
+                end
             end
         end
 
         if new_count > 0 then
+            local filtered = ToolCallDiff.filter_unchanged_lines(
+                block.old_lines,
+                block.new_lines
+            )
+
+            -- Skip virtual lines if all lines were unchanged
+            if #filtered.new_lines == 0 then
+                goto continue
+            end
+
             -- Determine anchor position - virtual lines placed below anchor
             local anchor_line
             if old_count == 0 then
@@ -237,11 +249,9 @@ function M.show_diff(opts)
             local ft = vim.bo[bufnr].filetype
             local lang = vim.treesitter.language.get_lang(ft) or ft
 
-            local old_lines_for_diff = is_modification and block.old_lines
-                or nil
             local virt_lines = get_highlighted_virt_lines(
-                block.new_lines,
-                old_lines_for_diff,
+                filtered.new_lines,
+                is_modification and filtered.old_lines or nil,
                 lang
             )
 
@@ -257,6 +267,8 @@ function M.show_diff(opts)
                 Logger.notify("Failed to set virtual lines: " .. tostring(err))
             end
         end
+
+        ::continue::
     end
 
     -- Scroll target window to first diff block without moving cursor

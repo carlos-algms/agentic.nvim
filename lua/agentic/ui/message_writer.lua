@@ -361,8 +361,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         local line_count = tool_call_block.body and #tool_call_block.body or 0
 
         if line_count > 0 then
-            local info_text = string.format("Read %d lines", line_count)
-            table.insert(lines, info_text)
+            table.insert(lines, string.format("Read %d lines", line_count))
 
             --- @type agentic.ui.MessageWriter.HighlightRange
             local range = {
@@ -408,50 +407,56 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
                     table.insert(lines, new_line)
                 end
             else
+                local filtered = ToolCallDiff.filter_unchanged_lines(
+                    block.old_lines,
+                    block.new_lines
+                )
+
                 -- Insert old lines (removed content)
-                for i, old_line in ipairs(block.old_lines) do
-                    local line_index = #lines
-                    table.insert(lines, old_line)
+                for _, pair in ipairs(filtered.pairs) do
+                    if pair.old_line then
+                        local line_index = #lines
+                        table.insert(lines, pair.old_line)
 
-                    local new_line = is_modification and block.new_lines[i]
-                        or nil
+                        --- @type agentic.ui.MessageWriter.HighlightRange
+                        local range = {
+                            line_index = line_index,
+                            type = "old",
+                            old_line = pair.old_line,
+                            new_line = is_modification and pair.new_line or nil,
+                        }
 
-                    --- @type agentic.ui.MessageWriter.HighlightRange
-                    local range = {
-                        line_index = line_index,
-                        type = "old",
-                        old_line = old_line,
-                        new_line = new_line,
-                    }
-
-                    table.insert(highlight_ranges, range)
+                        table.insert(highlight_ranges, range)
+                    end
                 end
 
                 -- Insert new lines (added content)
-                for i, new_line in ipairs(block.new_lines) do
-                    local line_index = #lines
-                    table.insert(lines, new_line)
+                for _, pair in ipairs(filtered.pairs) do
+                    if pair.new_line then
+                        local line_index = #lines
+                        table.insert(lines, pair.new_line)
 
-                    if not is_modification then
-                        --- @type agentic.ui.MessageWriter.HighlightRange
-                        local range = {
-                            line_index = line_index,
-                            type = "new",
-                            old_line = nil,
-                            new_line = new_line,
-                        }
+                        if not is_modification then
+                            --- @type agentic.ui.MessageWriter.HighlightRange
+                            local range = {
+                                line_index = line_index,
+                                type = "new",
+                                old_line = nil,
+                                new_line = pair.new_line,
+                            }
 
-                        table.insert(highlight_ranges, range)
-                    else
-                        --- @type agentic.ui.MessageWriter.HighlightRange
-                        local range = {
-                            line_index = line_index,
-                            type = "new_modification",
-                            old_line = block.old_lines[i],
-                            new_line = new_line,
-                        }
+                            table.insert(highlight_ranges, range)
+                        else
+                            --- @type agentic.ui.MessageWriter.HighlightRange
+                            local range = {
+                                line_index = line_index,
+                                type = "new_modification",
+                                old_line = pair.old_line,
+                                new_line = pair.new_line,
+                            }
 
-                        table.insert(highlight_ranges, range)
+                            table.insert(highlight_ranges, range)
+                        end
                     end
                 end
             end

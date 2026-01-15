@@ -475,31 +475,32 @@ end
 
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
-**ALWAYS run both linters after making ANY Lua file changes:**
+**ALWAYS run all validations after making ANY Lua file changes:**
 
 ```bash
-make luals      # REQUIRED: Run type checking
-make luacheck   # REQUIRED: Run style/syntax checking
+make validate
 ```
 
-### 🚨 Output Management for Validation Commands
+This single command runs:
+- `make luals` - Type checking
+- `make luacheck` - Linting
+- `make test` - All tests
 
-**When running tests, linters, docker build, or validation commands, redirect
-output to avoid context window flooding:**
+**Why use `make validate`:**
+- Validations are fast (< 5 seconds combined)
+- Single permission prompt for all checks
+- Ensures all checks pass together
+- Output redirected to log files automatically
 
-```bash
-# Redirect output to log file and capture exit code
-make luals > ./.local/agentic_luals_output.log 2>&1; echo $?
-make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo $?
-make test-file FILE=<test_file> > ./.local/agentic_test_output.log 2>&1; echo $?
-```
+**Exit codes:**
+- `0` = success (all checks passed)
+- `non-zero` = failure (check the corresponding log file)
 
 **Rules:**
 
 - Use unique log file names to avoid collisions
-- Only read the exit code (0 = success, non-zero = failure)
-- If the command fails, read the log file, this prevents large output from
-  consuming context window unnecessarily
+- Only read exit codes unless there's a failure
+- If any command fails, read the corresponding log file to diagnose the issue
 
 **Reading log files:**
 

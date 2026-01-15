@@ -4,6 +4,17 @@
 --- @field old_lines string[]
 --- @field new_lines string[]
 
+--- @class agentic.ui.ToolCallDiff.ChangedPair
+--- @field old_idx integer|nil Original index in old_lines (nil if pure insertion)
+--- @field new_idx integer|nil Original index in new_lines (nil if pure deletion)
+--- @field old_line string|nil Old line content
+--- @field new_line string|nil New line content
+
+--- @class agentic.ui.ToolCallDiff.FilteredLines
+--- @field old_lines string[] Filtered old lines (only changed)
+--- @field new_lines string[] Filtered new lines (only changed)
+--- @field pairs agentic.ui.ToolCallDiff.ChangedPair[] Paired changed lines with indices
+
 --- @class agentic.ui.ToolCallDiff.ExtractOpts
 --- @field path string
 --- @field new_text string|string[]
@@ -70,23 +81,31 @@ function M.extract_diff_blocks(opts)
         end
     end
 
-    return M._minimize_diff_blocks(diff_blocks)
+    return M.minimize_diff_blocks(diff_blocks)
 end
 
 --- Minimize diff blocks by removing unchanged lines using vim.diff
 --- @param diff_blocks agentic.ui.ToolCallDiff.DiffBlock[]
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]
-function M._minimize_diff_blocks(diff_blocks)
+function M.minimize_diff_blocks(diff_blocks)
     --- @type agentic.ui.ToolCallDiff.DiffBlock[]
     local minimized = {}
 
     for _, diff_block in ipairs(diff_blocks) do
         -- Skip minification for already-minimal single-line blocks
         if #diff_block.old_lines == 1 and #diff_block.new_lines == 1 then
-            table.insert(minimized, diff_block)
+            -- Only include if lines are actually different
+            if diff_block.old_lines[1] ~= diff_block.new_lines[1] then
+                table.insert(minimized, diff_block)
+            end
         else
             local old_string = table.concat(diff_block.old_lines, "\n")
             local new_string = table.concat(diff_block.new_lines, "\n")
+
+            -- Skip entirely unchanged blocks
+            if old_string == new_string then
+                goto continue_block
+            end
 
             -- vim.diff was renamed to vim.text.diff (identical signature, just namespace move)
             -- Fallback needed for backward compatibility with Neovim < 0.12
@@ -152,6 +171,8 @@ function M._minimize_diff_blocks(diff_blocks)
                 end
             end
         end
+
+        ::continue_block::
     end
 
     table.sort(minimized, function(a, b)
@@ -173,6 +194,47 @@ function M._create_new_file_diff_block(new_lines)
         new_lines = new_lines,
     }
     return block
+end
+
+--- Filter unchanged lines from old/new arrays, returning only changed pairs
+--- @param old_lines string[]
+--- @param new_lines string[]
+--- @return agentic.ui.ToolCallDiff.FilteredLines
+function M.filter_unchanged_lines(old_lines, new_lines)
+    --- @type agentic.ui.ToolCallDiff.FilteredLines
+    local result = {
+        old_lines = {},
+        new_lines = {},
+        pairs = {},
+    }
+
+    local max_len = math.max(#old_lines, #new_lines)
+
+    for i = 1, max_len do
+        local old_line = old_lines[i]
+        local new_line = new_lines[i]
+
+        -- Skip unchanged context lines
+        if not old_line or not new_line or old_line ~= new_line then
+            if old_line then
+                table.insert(result.old_lines, old_line)
+            end
+            if new_line then
+                table.insert(result.new_lines, new_line)
+            end
+
+            --- @type agentic.ui.ToolCallDiff.ChangedPair
+            local pair = {
+                old_idx = old_line and i or nil,
+                new_idx = new_line and i or nil,
+                old_line = old_line,
+                new_line = new_line,
+            }
+            table.insert(result.pairs, pair)
+        end
+    end
+
+    return result
 end
 
 --- Normalize text to lines array, handling nil and vim.NIL
