@@ -2,6 +2,14 @@ local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+--- @class agentic.acp.ClaudeRawInput : agentic.acp.RawInput
+--- @field content? string For creating new files instead of new_string
+--- @field subagent_type? string For sub-agent tasks (Task tool)
+--- @field model? string Model used for sub-agent tasks
+
+--- @class agentic.acp.ClaudeToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.ClaudeRawInput
+
 --- Claude-specific adapter that extends ACPClient with Claude-specific behaviors
 --- @class agentic.acp.ClaudeACPAdapter : agentic.acp.ACPClient
 local ClaudeACPAdapter = setmetatable({}, { __index = ACPClient })
@@ -34,7 +42,7 @@ function ClaudeACPAdapter:__handle_session_update(params)
 end
 
 --- @param session_id string
---- @param update agentic.acp.ToolCallMessage
+--- @param update agentic.acp.ClaudeToolCallMessage
 function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     -- expected state, claude is sending an empty content first, followed by the actual content
     if not update.rawInput or vim.tbl_isempty(update.rawInput) then
@@ -42,6 +50,11 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     end
 
     local kind = update.kind
+
+    -- Detect sub-agent tasks: Claude sends these as "think" with subagent_type in rawInput
+    if kind == "think" and update.rawInput.subagent_type then
+        kind = "SubAgent"
+    end
 
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
@@ -84,6 +97,17 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
             end
         else
             message.argument = "unknown fetch"
+        end
+    elseif kind == "SubAgent" then
+        message.argument = string.format(
+            "%s, %s: %s",
+            update.rawInput.model or "default",
+            update.rawInput.subagent_type or "",
+            update.rawInput.description or ""
+        )
+
+        if update.rawInput.prompt then
+            message.body = vim.split(update.rawInput.prompt, "\n")
         end
     elseif kind == "other" then
         if update.title == "SlashCommand" then

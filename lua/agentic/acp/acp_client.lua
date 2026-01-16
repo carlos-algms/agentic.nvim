@@ -698,6 +698,7 @@ return ACPClient
 --- | "fetch"
 --- | "WebSearch"
 --- | "SlashCommand"
+--- | "SubAgent"
 --- | "other"
 --- | "create"
 
@@ -772,7 +773,6 @@ return ACPClient
 
 --- @class agentic.acp.RawInput
 --- @field file_path string
---- @field content? string Claude can send it when creating new files instead of new_string
 --- @field new_string? string
 --- @field old_string? string
 --- @field replace_all? boolean
@@ -782,11 +782,6 @@ return ACPClient
 --- @field prompt? string Usually accompanying the fetch tool, not the web_search
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
---- @field parsed_cmd? {
----   cmd?: string,
----   path?: string,
----   query?: string|vim.NIL,
----   type?: string }[] First seem from Codex
 
 --- @class agentic.acp.ToolCall
 --- @field toolCallId string
@@ -870,7 +865,6 @@ return ACPClient
 --- @field content? agentic.acp.ACPToolCallContent[]
 --- @field locations? agentic.acp.ToolCallLocation[]
 --- @field rawInput? agentic.acp.RawInput
---- @field _meta? table Claude ACP is sending it
 
 --- @class agentic.acp.ToolCallUpdate
 --- @field sessionUpdate "tool_call_update"

@@ -53,6 +53,9 @@ function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
         message.kind = "search"
     elseif update.title == "websearch" then
         message.kind = "WebSearch"
+    elseif update.title == "task" then
+        -- rawInput is empty in tool_call, only populated in tool_call_update
+        message.kind = "SubAgent"
     end
 
     self:__with_subscriber(session_id, function(subscriber)
@@ -68,6 +71,9 @@ end
 --- @field oldString? string
 --- @field replaceAll? boolean
 --- @field error? string
+--- @field subagent_type? string For sub-agent tasks
+--- @field description? string For sub-agent tasks
+--- @field prompt? string For sub-agent tasks
 
 --- @class agentic.acp.OpenCodeToolCallUpdate : agentic.acp.ToolCallUpdate
 --- @field rawInput? agentic.acp.OpenCodeToolCallRawInput
@@ -86,6 +92,11 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
         tool_call_id = update.toolCallId,
         status = update.status,
     }
+
+    -- Detect SubAgent for ALL statuses (kind comes as "other" from OpenCode)
+    if update.rawInput and update.rawInput.subagent_type then
+        message.kind = "SubAgent"
+    end
 
     if update.status == "completed" or update.status == "failed" then
         if update.content and update.content[1] then
@@ -114,6 +125,15 @@ function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
 
                 if update.rawInput.description then
                     message.body = vim.split(update.rawInput.description, "\n")
+                end
+            elseif update.rawInput.subagent_type then
+                message.argument = string.format(
+                    "%s: %s",
+                    update.rawInput.subagent_type,
+                    update.rawInput.description or ""
+                )
+                if update.rawInput.prompt then
+                    message.body = vim.split(update.rawInput.prompt, "\n")
                 end
             elseif update.rawInput.error then
                 message.body = vim.split(update.rawInput.error, "\n")

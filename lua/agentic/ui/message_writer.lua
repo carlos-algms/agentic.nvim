@@ -229,8 +229,22 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
     -- Some ACP providers don't send the diff on the first tool_call
     local already_has_diff = tracker.diff ~= nil
+    local previous_body = tracker.body
 
     tracker = vim.tbl_deep_extend("force", tracker, tool_call_block)
+
+    -- Merge body: append new to previous with divider if both exist and are different
+    if
+        previous_body
+        and tool_call_block.body
+        and not vim.deep_equal(previous_body, tool_call_block.body)
+    then
+        local merged = vim.list_extend({}, previous_body)
+        vim.list_extend(merged, { "", "---", "" })
+        vim.list_extend(merged, tool_call_block.body)
+        tracker.body = merged
+    end
+
     self.tool_call_blocks[tool_call_block.tool_call_id] = tracker
 
     local pos = vim.api.nvim_buf_get_extmark_by_id(
@@ -376,6 +390,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         or kind == "WebSearch"
         or kind == "execute"
         or kind == "search"
+        or kind == "SubAgent"
     then
         if tool_call_block.body then
             vim.list_extend(lines, tool_call_block.body)
