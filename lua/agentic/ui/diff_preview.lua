@@ -200,12 +200,13 @@ function M.show_diff(opts)
         local new_count = #block.new_lines
         local is_modification = old_count == new_count and old_count > 0
 
-        if old_count > 0 then
-            local filtered = ToolCallDiff.filter_unchanged_lines(
-                block.old_lines,
-                block.new_lines
-            )
+        -- Filter unchanged lines once and reuse for both old and new highlighting
+        local filtered = ToolCallDiff.filter_unchanged_lines(
+            block.old_lines,
+            block.new_lines
+        )
 
+        if old_count > 0 then
             for _, pair in ipairs(filtered.pairs) do
                 if pair.old_line and pair.old_idx then
                     local zero_indexed_line = block.start_line
@@ -225,11 +226,6 @@ function M.show_diff(opts)
         end
 
         if new_count > 0 then
-            local filtered = ToolCallDiff.filter_unchanged_lines(
-                block.old_lines,
-                block.new_lines
-            )
-
             -- Skip virtual lines if all lines were unchanged
             if #filtered.new_lines == 0 then
                 goto continue

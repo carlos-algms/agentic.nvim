@@ -29,6 +29,12 @@ local TextMatcher = require("agentic.utils.text_matcher")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+-- vim.diff was renamed to vim.text.diff (identical signature, just namespace move)
+-- Fallback needed for backward compatibility with Neovim < 0.12
+--- @type fun(a: string, b: string, opts: table): integer[][]
+--- @diagnostic disable-next-line: deprecated
+local diff_fn = vim.text and vim.text.diff or vim.diff
+
 --- @param lines string[]
 --- @return boolean
 local function is_empty_lines(lines)
@@ -84,6 +90,52 @@ function M.extract_diff_blocks(opts)
     return M.minimize_diff_blocks(diff_blocks)
 end
 
+--- Convert a hunk to a minimized diff block
+--- @param diff_block agentic.ui.ToolCallDiff.DiffBlock
+--- @param hunk integer[]
+--- @return agentic.ui.ToolCallDiff.DiffBlock
+local function hunk_to_block(diff_block, hunk)
+    local start_a, count_a, start_b, count_b = unpack(hunk)
+
+    --- @type number|nil
+    local start_line
+    --- @type number|nil
+    local end_line
+    --- @type string[]|nil
+    local old_lines
+    --- @type string[]|nil
+    local new_lines
+
+    if count_a > 0 then
+        local end_a = math.min(start_a + count_a - 1, #diff_block.old_lines)
+        old_lines = vim.list_slice(diff_block.old_lines, start_a, end_a)
+        start_line = diff_block.start_line + start_a - 1
+        end_line = start_line + count_a - 1
+    else
+        -- Pure insertion: position before which to insert
+        old_lines = {}
+        start_line = diff_block.start_line + start_a
+        end_line = start_line - 1
+    end
+
+    if count_b > 0 then
+        local end_b = math.min(start_b + count_b - 1, #diff_block.new_lines)
+        new_lines = vim.list_slice(diff_block.new_lines, start_b, end_b)
+    else
+        new_lines = {}
+    end
+
+    --- @type agentic.ui.ToolCallDiff.DiffBlock
+    local result = {
+        start_line = start_line,
+        end_line = end_line,
+        old_lines = old_lines,
+        new_lines = new_lines,
+    }
+
+    return result
+end
+
 --- Minimize diff blocks by removing unchanged lines using vim.diff
 --- @param diff_blocks agentic.ui.ToolCallDiff.DiffBlock[]
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]
@@ -92,84 +144,33 @@ function M.minimize_diff_blocks(diff_blocks)
     local minimized = {}
 
     for _, diff_block in ipairs(diff_blocks) do
-        -- Skip minification for already-minimal single-line blocks
+        local old_string = table.concat(diff_block.old_lines, "\n")
+        local new_string = table.concat(diff_block.new_lines, "\n")
+
+        -- Skip unchanged blocks
+        if old_string == new_string then
+            goto continue_block
+        end
+
+        -- Fast path for single-line blocks
         if #diff_block.old_lines == 1 and #diff_block.new_lines == 1 then
-            -- Only include if lines are actually different
-            if diff_block.old_lines[1] ~= diff_block.new_lines[1] then
-                table.insert(minimized, diff_block)
+            table.insert(minimized, diff_block)
+            goto continue_block
+        end
+
+        local patch = diff_fn(old_string, new_string, {
+            algorithm = "histogram",
+            result_type = "indices",
+            ctxlen = 0,
+        })
+
+        if #patch > 0 then
+            for _, hunk in ipairs(patch) do
+                table.insert(minimized, hunk_to_block(diff_block, hunk))
             end
         else
-            local old_string = table.concat(diff_block.old_lines, "\n")
-            local new_string = table.concat(diff_block.new_lines, "\n")
-
-            -- Skip entirely unchanged blocks
-            if old_string == new_string then
-                goto continue_block
-            end
-
-            -- vim.diff was renamed to vim.text.diff (identical signature, just namespace move)
-            -- Fallback needed for backward compatibility with Neovim < 0.12
-            --- @type fun(a: string, b: string, opts: table): integer[][]
-            --- @diagnostic disable-next-line: deprecated
-            local diff_fn = vim.text and vim.text.diff or vim.diff
-
-            local patch = diff_fn(old_string, new_string, {
-                algorithm = "histogram",
-                result_type = "indices",
-                ctxlen = 0,
-            })
-
-            if #patch > 0 then
-                for _, hunk in ipairs(patch) do
-                    local start_a, count_a, start_b, count_b = unpack(hunk)
-
-                    --- @type agentic.ui.ToolCallDiff.DiffBlock
-                    local minimized_block = {
-                        start_line = 0,
-                        end_line = 0,
-                        old_lines = {},
-                        new_lines = {},
-                    }
-
-                    if count_a > 0 then
-                        local end_a = math.min(
-                            start_a + count_a - 1,
-                            #diff_block.old_lines
-                        )
-                        minimized_block.old_lines =
-                            vim.list_slice(diff_block.old_lines, start_a, end_a)
-                        minimized_block.start_line = diff_block.start_line
-                            + start_a
-                            - 1
-                        minimized_block.end_line = minimized_block.start_line
-                            + count_a
-                            - 1
-                    else
-                        -- For insertions, start_line is the position before which to insert
-                        minimized_block.start_line = diff_block.start_line
-                            + start_a
-                        minimized_block.end_line = minimized_block.start_line
-                            - 1
-                    end
-
-                    if count_b > 0 then
-                        local end_b = math.min(
-                            start_b + count_b - 1,
-                            #diff_block.new_lines
-                        )
-                        minimized_block.new_lines =
-                            vim.list_slice(diff_block.new_lines, start_b, end_b)
-                    end
-
-                    table.insert(minimized, minimized_block)
-                end
-            else
-                -- If vim.diff returns empty patch but we have changes, include the full block
-                -- This handles edge cases where the diff algorithm doesn't detect changes
-                if old_string ~= new_string then
-                    table.insert(minimized, diff_block)
-                end
-            end
+            -- Edge case: vim.diff returns empty patch but strings differ
+            table.insert(minimized, diff_block)
         end
 
         ::continue_block::
@@ -186,14 +187,57 @@ end
 --- @param new_lines string[]
 --- @return agentic.ui.ToolCallDiff.DiffBlock
 function M._create_new_file_diff_block(new_lines)
-    --- @type agentic.ui.ToolCallDiff.DiffBlock
-    local block = {
+    return {
         start_line = 1,
         end_line = math.max(1, #new_lines),
         old_lines = {},
         new_lines = new_lines,
     }
-    return block
+end
+
+--- Add a deletion pair to the result
+--- @param result agentic.ui.ToolCallDiff.FilteredLines
+--- @param old_idx integer
+--- @param old_line string
+local function add_deletion(result, old_idx, old_line)
+    table.insert(result.old_lines, old_line)
+    table.insert(result.pairs, {
+        old_idx = old_idx,
+        new_idx = nil,
+        old_line = old_line,
+        new_line = nil,
+    })
+end
+
+--- Add an insertion pair to the result
+--- @param result agentic.ui.ToolCallDiff.FilteredLines
+--- @param new_idx integer
+--- @param new_line string
+local function add_insertion(result, new_idx, new_line)
+    table.insert(result.new_lines, new_line)
+    table.insert(result.pairs, {
+        old_idx = nil,
+        new_idx = new_idx,
+        old_line = nil,
+        new_line = new_line,
+    })
+end
+
+--- Add a modification pair to the result
+--- @param result agentic.ui.ToolCallDiff.FilteredLines
+--- @param old_idx integer
+--- @param new_idx integer
+--- @param old_line string
+--- @param new_line string
+local function add_modification(result, old_idx, new_idx, old_line, new_line)
+    table.insert(result.old_lines, old_line)
+    table.insert(result.new_lines, new_line)
+    table.insert(result.pairs, {
+        old_idx = old_idx,
+        new_idx = new_idx,
+        old_line = old_line,
+        new_line = new_line,
+    })
 end
 
 --- Filter unchanged lines from old/new arrays, returning only changed pairs
@@ -202,35 +246,48 @@ end
 --- @return agentic.ui.ToolCallDiff.FilteredLines
 function M.filter_unchanged_lines(old_lines, new_lines)
     --- @type agentic.ui.ToolCallDiff.FilteredLines
-    local result = {
-        old_lines = {},
-        new_lines = {},
-        pairs = {},
-    }
+    local result = { old_lines = {}, new_lines = {}, pairs = {} }
 
-    local max_len = math.max(#old_lines, #new_lines)
+    local old_string = table.concat(old_lines, "\n")
+    local new_string = table.concat(new_lines, "\n")
 
-    for i = 1, max_len do
-        local old_line = old_lines[i]
-        local new_line = new_lines[i]
+    if old_string == new_string then
+        return result
+    end
 
-        -- Skip unchanged context lines
-        if not old_line or not new_line or old_line ~= new_line then
-            if old_line then
-                table.insert(result.old_lines, old_line)
+    local patch = diff_fn(old_string, new_string, {
+        algorithm = "histogram",
+        result_type = "indices",
+        ctxlen = 0,
+    })
+
+    for _, hunk in ipairs(patch) do
+        local start_a, count_a, start_b, count_b = unpack(hunk)
+        local pair_count = math.min(count_a, count_b)
+
+        -- Paired modifications: only include if lines differ
+        for i = 0, pair_count - 1 do
+            local old_line = old_lines[start_a + i]
+            local new_line = new_lines[start_b + i]
+            if old_line ~= new_line then
+                add_modification(
+                    result,
+                    start_a + i,
+                    start_b + i,
+                    old_line,
+                    new_line
+                )
             end
-            if new_line then
-                table.insert(result.new_lines, new_line)
-            end
+        end
 
-            --- @type agentic.ui.ToolCallDiff.ChangedPair
-            local pair = {
-                old_idx = old_line and i or nil,
-                new_idx = new_line and i or nil,
-                old_line = old_line,
-                new_line = new_line,
-            }
-            table.insert(result.pairs, pair)
+        -- Remaining deletions (old lines without corresponding new lines)
+        for i = pair_count, count_a - 1 do
+            add_deletion(result, start_a + i, old_lines[start_a + i])
+        end
+
+        -- Remaining insertions (new lines without corresponding old lines)
+        for i = pair_count, count_b - 1 do
+            add_insertion(result, start_b + i, new_lines[start_b + i])
         end
     end
 
@@ -258,26 +315,17 @@ end
 --- @param new_lines string[] New text lines
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
 function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
-    -- Find all matches using fuzzy matching
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then
-        --- @type agentic.ui.ToolCallDiff.DiffBlock[]
-        local blocks = {}
-
-        for _, match in ipairs(matches) do
-            --- @type agentic.ui.ToolCallDiff.DiffBlock
-            local block = {
+        return vim.tbl_map(function(match)
+            return {
                 start_line = match.start_line,
                 end_line = match.end_line,
                 old_lines = old_lines,
                 new_lines = new_lines,
             }
-
-            table.insert(blocks, block)
-        end
-
-        return blocks
+        end, matches)
     end
 
     -- Fallback to substring replacement for single-line cases
@@ -287,7 +335,6 @@ function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
             old_lines[1],
             new_lines[1]
         )
-
         return #blocks > 0 and blocks or nil
     end
 
