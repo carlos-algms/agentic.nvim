@@ -43,6 +43,11 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
 
     local kind = update.kind
 
+    -- Detect sub-agent tasks: Claude sends these as "think" with subagent_type in rawInput
+    if kind == "think" and update.rawInput.subagent_type then
+        kind = "SubAgent"
+    end
+
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
         tool_call_id = update.toolCallId,
@@ -84,6 +89,17 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
             end
         else
             message.argument = "unknown fetch"
+        end
+    elseif kind == "SubAgent" then
+        message.argument = string.format(
+            "%s, %s: %s",
+            update.rawInput.model or "default",
+            update.rawInput.subagent_type or "",
+            update.rawInput.description or ""
+        )
+
+        if update.rawInput.prompt then
+            message.body = vim.split(update.rawInput.prompt, "\n")
         end
     elseif kind == "other" then
         if update.title == "SlashCommand" then

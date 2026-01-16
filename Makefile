@@ -7,7 +7,7 @@ STYLUA   ?= stylua
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals luacheck format-check format check test install-hooks
+.PHONY: luals luacheck format-check format check test validate install-hooks
 
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua MiniTest.run()"
@@ -44,6 +44,11 @@ format:
 
 # Convenience aggregator, NOT to be used in the CI
 check: luals luacheck format-check
+
+validate:
+	@make luals > ./.local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
+	make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo "luacheck: $$?"; \
+	make test > ./.local/agentic_test_output.log 2>&1; echo "test: $$?"
 
 # Install pre-commit hook locally
 install-git-hooks:

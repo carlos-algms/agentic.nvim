@@ -698,6 +698,7 @@ return ACPClient
 --- | "fetch"
 --- | "WebSearch"
 --- | "SlashCommand"
+--- | "SubAgent"
 --- | "other"
 --- | "create"
 
@@ -782,6 +783,8 @@ return ACPClient
 --- @field prompt? string Usually accompanying the fetch tool, not the web_search
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
+--- @field subagent_type? string Claude sends this for sub-agent tasks (Task tool)
+--- @field model? string Model used for sub-agent tasks
 --- @field parsed_cmd? {
 ---   cmd?: string,
 ---   path?: string,
