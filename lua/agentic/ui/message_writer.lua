@@ -228,8 +228,12 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
     tracker = vim.tbl_deep_extend("force", tracker, tool_call_block)
 
-    -- Merge body: append new to previous with divider if both exist
-    if previous_body and tool_call_block.body then
+    -- Merge body: append new to previous with divider if both exist and are different
+    if
+        previous_body
+        and tool_call_block.body
+        and not vim.deep_equal(previous_body, tool_call_block.body)
+    then
         local merged = vim.list_extend({}, previous_body)
         vim.list_extend(merged, { "", "---", "" })
         vim.list_extend(merged, tool_call_block.body)
