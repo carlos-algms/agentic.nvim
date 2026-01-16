@@ -49,6 +49,12 @@ function WindowDecoration.render_window_header(winid, pieces)
 
         local text = table.concat(pieces, " | ")
 
+        -- Handle empty string case - disable winbar completely
+        if text == "" then
+            vim.api.nvim_set_option_value("winbar", nil, { win = winid })
+            return
+        end
+
         local opts = default_config
 
         local winbar_text = string.format("%%#%s# %s %%#Normal#", opts.hl, text)

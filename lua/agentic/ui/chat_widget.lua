@@ -5,15 +5,16 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"
 
+--- Runtime header parts with dynamic context
+--- @class agentic.ui.ChatWidget.HeaderParts
+--- @field title string Main header text
+--- @field context? string Dynamic info (managed internally)
+--- @field suffix? string Context help text
+
 --- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
 
---- @class agentic.ui.ChatWidget.HeaderConfig
---- @field title string
---- @field suffix? string
---- @field persistent? string
-
---- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderConfig>
+--- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts>
 
 --- Options for controlling widget display behavior
 --- @class agentic.ui.ChatWidget.ShowOpts
@@ -23,21 +24,34 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 local WINDOW_HEADERS = {
     chat = {
         title = "󰻞 Agentic Chat",
-        persistent = "<S-Tab>: change mode",
+        suffix = "<S-Tab>: change mode",
     },
-    input = { title = "󰦨 Prompt", persistent = "<C-s>: submit" },
+    input = { title = "󰦨 Prompt", suffix = "<C-s>: submit" },
     code = {
         title = "󰪸 Selected Code Snippets",
-        persistent = "d: remove block",
+        suffix = "d: remove block",
     },
     files = {
         title = " Referenced Files",
-        persistent = "d: remove file",
+        suffix = "d: remove file",
     },
     todos = {
         title = " TODO Items",
     },
 }
+
+--- @param winid integer
+--- @param parts agentic.ui.ChatWidget.HeaderParts
+local function render_header_parts(winid, parts)
+    local pieces = { parts.title }
+    if parts.context ~= nil then
+        table.insert(pieces, parts.context)
+    end
+    if parts.suffix ~= nil then
+        table.insert(pieces, parts.suffix)
+    end
+    WindowDecoration.render_window_header(winid, pieces)
+end
 
 --- A sidebar-style chat widget with multiple windows stacked vertically
 --- The main chat window is the first, and contains the width, the below ones adapt to its size
@@ -557,7 +571,7 @@ local function find_keymap(keymaps, mode)
     end
 end
 
---- Binds events to change the persistent header texts based on current mode keymaps
+--- Binds events to change the suffix header texts based on current mode keymaps
 --- For the Chat and Input buffers only
 --- @private
 function ChatWidget:_bind_events_to_change_headers()
@@ -571,20 +585,20 @@ function ChatWidget:_bind_events_to_change_headers()
                         find_keymap(Config.keymaps.widget.change_mode, mode)
 
                     if change_mode_key ~= nil then
-                        self.headers.chat.persistent =
+                        self.headers.chat.suffix =
                             string.format("%s: change mode", change_mode_key)
                     else
-                        self.headers.chat.persistent = nil
+                        self.headers.chat.suffix = nil
                     end
 
                     local submit_key =
                         find_keymap(Config.keymaps.prompt.submit, mode)
 
                     if submit_key ~= nil then
-                        self.headers.input.persistent =
+                        self.headers.input.suffix =
                             string.format("%s: submit", submit_key)
                     else
-                        self.headers.input.persistent = nil
+                        self.headers.input.suffix = nil
                     end
 
                     self:render_header("chat")
@@ -632,24 +646,63 @@ function ChatWidget:render_header(window_name)
         return
     end
 
-    local config = self.headers[window_name]
-    if not config then
+    local user_header = Config.headers and Config.headers[window_name]
+    local dynamic_header = self.headers[window_name]
+
+    if user_header == nil then
+        render_header_parts(winid, dynamic_header)
         return
     end
 
-    local opts = {
-        config.title,
-    }
-
-    if config.suffix ~= nil then
-        table.insert(opts, config.suffix)
+    if type(user_header) == "function" then
+        local ok, custom_header = pcall(user_header, dynamic_header)
+        if not ok then
+            Logger.notify(
+                string.format(
+                    "Error in custom header function for '%s': %s",
+                    window_name,
+                    custom_header
+                )
+            )
+            render_header_parts(winid, dynamic_header)
+            return
+        end
+        if custom_header == nil or custom_header == "" then
+            -- Clear winbar (WindowDecoration handles empty concat by disabling winbar)
+            WindowDecoration.render_window_header(winid, {})
+            return
+        end
+        if type(custom_header) ~= "string" then
+            Logger.notify(
+                string.format(
+                    "Custom header function for '%s' must return string|nil, got %s",
+                    window_name,
+                    type(custom_header)
+                )
+            )
+            render_header_parts(winid, dynamic_header)
+            return
+        end
+        WindowDecoration.render_window_header(winid, { custom_header })
+        return
     end
 
-    if config.persistent ~= nil then
-        table.insert(opts, config.persistent)
+    --- @type agentic.ui.ChatWidget.HeaderParts
+    local merged_header = dynamic_header
+
+    if type(user_header) == "table" then
+        merged_header = vim.tbl_extend("force", dynamic_header, user_header) --[[@as agentic.ui.ChatWidget.HeaderParts]]
+    else
+        Logger.notify(
+            string.format(
+                "Header for '%s' must be function|table|nil, got %s",
+                window_name,
+                type(user_header)
+            )
+        )
     end
 
-    WindowDecoration.render_window_header(winid, opts)
+    render_header_parts(winid, merged_header)
 end
 
 function ChatWidget:close_code_window()

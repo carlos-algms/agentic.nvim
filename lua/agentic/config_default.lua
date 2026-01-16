@@ -1,5 +1,10 @@
 --- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
 
+--- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
+
+--- User config headers - each panel can have either config parts or a custom render function
+--- @alias agentic.UserConfig.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts|agentic.UserConfig.HeaderRenderFn|nil>
+
 --- Data passed to the on_prompt_submit hook
 --- @class agentic.UserConfig.PromptSubmitData
 --- @field prompt string The user's prompt text
@@ -217,6 +222,16 @@ local ConfigDefault = {
         on_prompt_submit = nil,
         on_response_complete = nil,
     },
+
+    --- Customize window headers for each panel in the chat widget.
+    --- Each header can be either:
+    --- 1. A table with title and suffix fields
+    --- 2. A function that receives header parts and returns a custom header string
+    ---
+    --- The context field is managed internally and shows dynamic info like counts.
+    ---
+    --- @type agentic.UserConfig.Headers
+    headers = {},
 }
 
 return ConfigDefault

@@ -102,7 +102,7 @@ function SessionManager:new(tab_page_id)
             self.widget:close_files_window()
             self.widget:move_cursor_to(self.widget.win_nrs.input)
         else
-            self.widget.headers.files.suffix = tostring(#file_list:get_files())
+            self.widget.headers.files.context = tostring(#file_list:get_files())
             self.widget:render_header("files")
         end
     end)
@@ -114,7 +114,7 @@ function SessionManager:new(tab_page_id)
                 self.widget:close_code_window()
                 self.widget:move_cursor_to(self.widget.win_nrs.input)
             else
-                self.widget.headers.code.suffix =
+                self.widget.headers.code.context =
                     tostring(#code_selection:get_selections())
                 self.widget:render_header("code")
             end
@@ -194,9 +194,8 @@ end
 --- @param mode_id string
 function SessionManager:_set_mode_to_chat_header(mode_id)
     local mode = self.agent_modes:get_mode(mode_id)
-    self.widget.headers.chat.suffix =
+    self.widget.headers.chat.context =
         string.format("Mode: %s", mode and mode.name or mode_id)
-
     self.widget:render_header("chat")
 end
 

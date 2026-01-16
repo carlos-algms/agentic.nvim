@@ -218,6 +218,53 @@ You can customize the behavior of individual chat widget windows by configuring
 the `win_opts` property for each window. These options override the default
 window settings.
 
+### Customizing Window Headers
+
+You can customize the header text for each panel in the chat widget using either
+a table configuration or a custom render function.
+
+#### Table-Based Configuration
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    headers = {
+      chat = {
+        title = "󰻞 My Custom Chat Title",
+        suffix = "<S-Tab>: change mode",
+      },
+      -- ...
+    },
+  },
+}
+```
+
+#### Function-Based Configuration
+
+For complete control over header rendering, provide a function that receives the
+header parts:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    headers = {
+      chat = function(parts)
+        local header = parts.title
+        if parts.context then
+          header = header .. " [" .. parts.context .. "]"
+        end
+        if parts.suffix then
+          header = header .. " • " .. parts.suffix
+        end
+        return header
+      end,
+    },
+  },
+}
+```
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands
@@ -543,4 +590,3 @@ the the acknowledgments 😊.
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
-
