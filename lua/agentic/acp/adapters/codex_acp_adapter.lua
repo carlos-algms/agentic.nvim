@@ -2,6 +2,18 @@ local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+--- @class agentic.acp.CodexParsedCommand
+--- @field cmd? string
+--- @field path? string
+--- @field query? string|vim.NIL
+--- @field type? string
+
+--- @class agentic.acp.CodexRawInput : agentic.acp.RawInput
+--- @field parsed_cmd? agentic.acp.CodexParsedCommand[]
+
+--- @class agentic.acp.CodexToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.CodexRawInput
+
 --- Codex-specific adapter that extends ACPClient with Codex-specific behaviors
 --- @class agentic.acp.CodexACPAdapter : agentic.acp.ACPClient
 local CodexACPAdapter = setmetatable({}, { __index = ACPClient })
@@ -34,7 +46,7 @@ function CodexACPAdapter:__handle_session_update(params)
 end
 
 --- @param session_id string
---- @param update agentic.acp.ToolCallMessage
+--- @param update agentic.acp.CodexToolCallMessage
 function CodexACPAdapter:_handle_tool_call(session_id, update)
     local kind = update.kind
     --- @type agentic.ui.MessageWriter.ToolCallBlock
