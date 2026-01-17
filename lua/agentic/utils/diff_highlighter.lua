@@ -8,14 +8,21 @@ local function utf8_chars(str)
     local chars = {}
     local byte_positions = vim.str_utf_pos(str)
 
+    -- vim.str_utf_pos returns 1-indexed byte positions
+    -- For "cat" it returns {1, 2, 3}, for "世界" it returns {1, 4}
+    -- We need to add the string length + 1 as the final boundary
+    table.insert(byte_positions, #str + 1)
+
     for i = 1, #byte_positions - 1 do
         local start_byte = byte_positions[i]
         local end_byte = byte_positions[i + 1]
 
         --- @class agentic.utils.DiffHighlighter.Utf8CharPos
         local pos = {
-            text = str:sub(start_byte + 1, end_byte),
-            byte_pos = start_byte,
+            -- sub is 1-indexed, byte_positions are 1-indexed
+            text = str:sub(start_byte, end_byte - 1),
+            -- Store 0-indexed byte position for highlight.range compatibility
+            byte_pos = start_byte - 1,
         }
 
         table.insert(chars, pos)
@@ -61,18 +68,29 @@ function M.find_inline_change(old_line, new_line)
     end
 
     -- Calculate byte positions for change regions
-    local old_start = prefix_chars > 0
-            and old_chars[prefix_chars].byte_pos + #old_chars[prefix_chars].text
-        or 0
-    local old_end = #old_chars - suffix_chars > 0
-            and old_chars[#old_chars - suffix_chars].byte_pos + #old_chars[#old_chars - suffix_chars].text
-        or 0
-    local new_start = prefix_chars > 0
-            and new_chars[prefix_chars].byte_pos + #new_chars[prefix_chars].text
-        or 0
-    local new_end = #new_chars - suffix_chars > 0
-            and new_chars[#new_chars - suffix_chars].byte_pos + #new_chars[#new_chars - suffix_chars].text
-        or 0
+    local old_start = 0
+    local old_end = 0
+    local new_start = 0
+    local new_end = 0
+
+    if prefix_chars > 0 then
+        local prefix_char = old_chars[prefix_chars]
+        old_start = prefix_char.byte_pos + #prefix_char.text
+        new_start = new_chars[prefix_chars].byte_pos
+            + #new_chars[prefix_chars].text
+    end
+
+    local old_suffix_idx = #old_chars - suffix_chars
+    if old_suffix_idx > 0 then
+        local suffix_char = old_chars[old_suffix_idx]
+        old_end = suffix_char.byte_pos + #suffix_char.text
+    end
+
+    local new_suffix_idx = #new_chars - suffix_chars
+    if new_suffix_idx > 0 then
+        local suffix_char = new_chars[new_suffix_idx]
+        new_end = suffix_char.byte_pos + #suffix_char.text
+    end
 
     -- If no changes found, return nil
     if old_start >= old_end and new_start >= new_end then
@@ -142,35 +160,24 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
             return
         end
 
-        -- Modification: find word-level changes first to avoid redundant highlights
+        -- Modification: apply line-level highlight first
+        vim.highlight.range(
+            bufnr,
+            ns_id,
+            Theme.HL_GROUPS.DIFF_DELETE,
+            { line_number, 0 },
+            { line_number, #old_line }
+        )
+
+        -- Then apply word-level highlight on top for changed portion
         local change = M.find_inline_change(old_line, new_line)
         if change and change.old_end > change.old_start then
-            -- Only apply line-level highlight if change doesn't span entire line
-            if change.old_start > 0 or change.old_end < #old_line then
-                vim.highlight.range(
-                    bufnr,
-                    ns_id,
-                    Theme.HL_GROUPS.DIFF_DELETE,
-                    { line_number, 0 },
-                    { line_number, #old_line }
-                )
-            end
-            -- Word-level highlight for deleted portion (darker background, bold)
             vim.highlight.range(
                 bufnr,
                 ns_id,
                 Theme.HL_GROUPS.DIFF_DELETE_WORD,
                 { line_number, change.old_start },
                 { line_number, change.old_end }
-            )
-        else
-            -- Entire line changed, apply line-level highlight only
-            vim.highlight.range(
-                bufnr,
-                ns_id,
-                Theme.HL_GROUPS.DIFF_DELETE,
-                { line_number, 0 },
-                { line_number, #old_line }
             )
         end
     end
@@ -198,14 +205,10 @@ function M.apply_new_line_word_highlights(
         return
     end
 
-    -- Find word-level changes first to avoid overlapping highlights
+    -- Find word-level changes
     local change = M.find_inline_change(old_line, new_line)
     if change and change.new_end > change.new_start then
-        -- Only apply line-level highlight if change doesn't span entire line
-        if change.new_start > 0 or change.new_end < #new_line then
-            apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
-        end
-        -- Word-level highlight for changed portion (darker background, bold)
+        -- Word-level highlight for changed portion only (not entire line)
         vim.highlight.range(
             bufnr,
             ns_id,
@@ -214,7 +217,7 @@ function M.apply_new_line_word_highlights(
             { line_number, change.new_end }
         )
     else
-        -- Entire line changed, apply line-level highlight only
+        -- Entire line changed, apply line-level highlight
         apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
     end
 end

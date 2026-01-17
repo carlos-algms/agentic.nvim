@@ -482,38 +482,54 @@ make validate
 ```
 
 This single command runs:
+
 - `make luals` - Type checking
 - `make luacheck` - Linting
 - `make test` - All tests
 
 **Why use `make validate`:**
+
 - Validations are fast (< 5 seconds combined)
 - Single permission prompt for all checks
 - Ensures all checks pass together
 - Output redirected to log files automatically
 
 **Exit codes:**
+
 - `0` = success (all checks passed)
 - `non-zero` = failure (check the corresponding log file)
 
+**CRITICAL: Log file locations (defined by Makefile):**
+
+The `make validate` target writes output to these **exact paths** in the project
+root:
+
+- `.local/agentic_luals_output.log` - LuaLS type checking output
+- `.local/agentic_luacheck_output.log` - Luacheck linting output
+- `.local/agentic_test_output.log` - Test runner output
+
 **Rules:**
 
-- Use unique log file names to avoid collisions
-- Only read exit codes unless there's a failure
+- **NEVER create or write to different log file paths** - always use the paths
+  above
+- Only read exit codes from `make validate` output unless there's a failure
 - If any command fails, read the corresponding log file to diagnose the issue
 
 **Reading log files:**
 
 - **NEVER use Read tool** - floods context with entire file
 - **Use targeted commands instead:**
-  - `tail -n 10 <logfile>` - Last 10 lines (errors usually at end)
-  - `rg "error|warning|fail" <logfile>` - Search for specific patterns
-    (smart-case by default)
-  - `grep -i "error" <logfile>` - Search with grep (case-insensitive)
+  - `tail -n 10 .local/agentic_luals_output.log` - Last 10 lines (errors usually
+    at end)
+  - `rg "error|warning|fail" .local/agentic_test_output.log` - Search for
+    specific patterns (smart-case by default)
+  - `grep -i "error" .local/agentic_luacheck_output.log` - Search with grep
+    (case-insensitive)
 - Increase line count only if needed for context
 - Read only what's needed to diagnose the issue
-- **If multiple reads needed:** Use `cat <logfile>` once for entire file instead
-  of reading multiple chunks (avoids loops of reading trying to find info)
+- **If multiple reads needed:** Use `cat .local/agentic_*_output.log` once for
+  entire file instead of reading multiple chunks (avoids loops of reading trying
+  to find info)
 
 ### Testing
 
@@ -717,3 +733,4 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
+

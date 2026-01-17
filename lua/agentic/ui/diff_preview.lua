@@ -60,6 +60,7 @@ local function build_highlight_map(lines, lang)
 end
 
 --- Get the diff highlight for a column position based on word-level change
+--- Always returns DIFF_ADD for line background, DIFF_ADD_WORD for changed portions
 --- @param col integer 0-indexed column
 --- @param change? table Change info from find_inline_change
 --- @return string hl_group
@@ -84,6 +85,7 @@ local function build_plain_segments(line, change)
     local changed = line:sub(change.new_start + 1, change.new_end)
     local after = line:sub(change.new_end + 1)
 
+    -- Line-level highlight for unchanged portions, word-level for changed
     if #before > 0 then
         table.insert(segments, { before, Theme.HL_GROUPS.DIFF_ADD })
     end
@@ -113,6 +115,7 @@ local function build_highlighted_segments(line, col_hl, change)
         local diff_hl = get_diff_hl_for_col(col, change)
         if hl ~= current_hl or diff_hl ~= current_diff_hl then
             local text = line:sub(seg_start + 1, col)
+            -- Build highlight spec: syntax highlight + diff background
             local hl_spec = current_hl and { current_hl, current_diff_hl }
                 or current_diff_hl
             table.insert(segments, { text, hl_spec })
@@ -133,9 +136,32 @@ local function build_highlighted_segments(line, col_hl, change)
     return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
 end
 
+--- Build old_lines array aligned with filtered new_lines for word-level diff
+--- Iterates pairs in order to match the sequential order of filtered.new_lines
+--- @param pairs agentic.ui.ToolCallDiff.ChangedPair[]
+--- @return (string|nil)[]|nil aligned Array matching filtered.new_lines order, nil if no modifications
+local function build_aligned_old_lines(pairs)
+    --- @type (string|nil)[]
+    local aligned = {}
+    local has_modifications = false
+
+    for _, pair in ipairs(pairs) do
+        if pair.new_line then
+            -- For each new_line in pairs (which matches filtered.new_lines order),
+            -- store the corresponding old_line (nil for pure insertions)
+            table.insert(aligned, pair.old_line)
+            if pair.old_line then
+                has_modifications = true
+            end
+        end
+    end
+
+    return has_modifications and aligned or nil
+end
+
 --- Builds virt_lines with syntax highlighting and diff background
 --- @param new_lines string[]
---- @param old_lines? string[] Optional old lines for word-level diff
+--- @param old_lines? (string|nil)[] Sequential old lines aligned with new_lines
 --- @param lang string
 --- @return table virt_lines
 local function get_highlighted_virt_lines(new_lines, old_lines, lang)
@@ -198,7 +224,6 @@ function M.show_diff(opts)
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines
         local new_count = #block.new_lines
-        local is_modification = old_count == new_count and old_count > 0
 
         -- Filter unchanged lines once and reuse for both old and new highlighting
         local filtered = ToolCallDiff.filter_unchanged_lines(
@@ -213,13 +238,13 @@ function M.show_diff(opts)
                         + pair.old_idx
                         - 2
 
-                    -- Use DiffHighlighter for word-level diff support
+                    -- Use pair.new_line directly (nil for pure deletions)
                     DiffHighlighter.apply_diff_highlights(
                         bufnr,
                         NS_DIFF,
                         zero_indexed_line,
                         pair.old_line,
-                        is_modification and pair.new_line or nil
+                        pair.new_line
                     )
                 end
             end
@@ -245,9 +270,12 @@ function M.show_diff(opts)
             local ft = vim.bo[bufnr].filetype
             local lang = vim.treesitter.language.get_lang(ft) or ft
 
+            -- Build old_lines array aligned with new_lines for word-level diff
+            local aligned_old_lines = build_aligned_old_lines(filtered.pairs)
+
             local virt_lines = get_highlighted_virt_lines(
                 filtered.new_lines,
-                is_modification and filtered.old_lines or nil,
+                aligned_old_lines,
                 lang
             )
 
