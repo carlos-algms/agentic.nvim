@@ -301,6 +301,10 @@ function M.show_diff(opts)
         pcall(vim.api.nvim_win_call, target_winid, function()
             vim.fn.winrestview({ topline = first_block.start_line })
         end)
+
+        -- Make buffer read-only to prevent edits while diff is visible
+        vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
+        vim.bo[bufnr].modifiable = false
     end
 end
 
@@ -315,6 +319,13 @@ function M.clear_diff(buf, is_rejection)
     end
 
     pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
+
+    -- Restore modifiable state if it was saved
+    local prev_modifiable = vim.b[bufnr]._agentic_prev_modifiable
+    if prev_modifiable ~= nil then
+        vim.bo[bufnr].modifiable = prev_modifiable
+        vim.b[bufnr]._agentic_prev_modifiable = nil
+    end
 
     -- On rejection for new files, switch window to alternate buffer
     if is_rejection then

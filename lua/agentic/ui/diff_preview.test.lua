@@ -32,5 +32,44 @@ describe("diff_preview", function()
                 vim.cmd("bd") -- Close the current buffer to clean up
             end
         )
+
+        describe("set and revert modifiable buffer option", function()
+            it("restores modifiable state after clearing diff", function()
+                local bufnr = vim.api.nvim_create_buf(false, true)
+                vim.bo[bufnr].modifiable = true
+
+                -- Simulate what show_diff does: save state and set read-only
+                vim.b[bufnr]._agentic_prev_modifiable = true
+                vim.bo[bufnr].modifiable = false
+
+                assert.is_false(vim.bo[bufnr].modifiable)
+
+                DiffPreview.clear_diff(bufnr)
+
+                assert.is_true(vim.bo[bufnr].modifiable)
+                assert.is_nil(vim.b[bufnr]._agentic_prev_modifiable)
+
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+            end)
+
+            it(
+                "preserves non-modifiable state if buffer was already read-only",
+                function()
+                    local bufnr = vim.api.nvim_create_buf(false, true)
+                    vim.bo[bufnr].modifiable = false
+
+                    -- Simulate show_diff on already non-modifiable buffer
+                    vim.b[bufnr]._agentic_prev_modifiable = false
+                    vim.bo[bufnr].modifiable = false
+
+                    DiffPreview.clear_diff(bufnr)
+
+                    assert.is_false(vim.bo[bufnr].modifiable)
+                    assert.is_nil(vim.b[bufnr]._agentic_prev_modifiable)
+
+                    vim.api.nvim_buf_delete(bufnr, { force = true })
+                end
+            )
+        end)
     end)
 end)
