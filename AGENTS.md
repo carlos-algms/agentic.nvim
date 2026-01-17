@@ -660,6 +660,14 @@ The ACP documentation can be found at:
 - Extensibility: https://agentclientprotocol.com/protocol/extensibility.md
 - Transports: https://agentclientprotocol.com/protocol/transports.md
 
+##### ACP architectural limitations:
+
+- **No partial acceptance of file changes:** Users must accept or reject the
+  entire file's changes as a unit. The ACP protocol is async and transactional
+  (all-or-nothing tool calls). Implementing partial acceptance would require
+  complex workarounds (e.g., auto-accepting then partially reverting) which adds
+  significant complexity. This feature is deferred/out of scope.
+
 ### Neovim Documentation Files and help docs
 
 **IMPORTANT**: For dealing with neovim native features and APIs, refer to the
