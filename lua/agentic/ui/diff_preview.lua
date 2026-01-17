@@ -196,6 +196,7 @@ function M.show_diff(opts)
     -- Only show diff in normal mode to avoid disrupting user workflow
     local mode = vim.api.nvim_get_mode().mode
     if mode ~= "n" then
+        Logger.debug("show_diff: skipped, not in normal mode:", mode)
         return
     end
 
@@ -220,6 +221,10 @@ function M.show_diff(opts)
         replace_all = opts.diff.all,
         strict = true, -- don't show fallback if match fails
     })
+
+    if #diff_blocks == 0 then
+        Logger.debug("show_diff: no diff blocks matched for", opts.file_path)
+    end
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines
