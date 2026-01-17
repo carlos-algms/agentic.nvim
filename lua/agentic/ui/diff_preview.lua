@@ -324,7 +324,11 @@ function M.clear_diff(buf, is_rejection)
         if not stat then
             local winid = vim.fn.bufwinid(bufnr)
             if winid ~= -1 then
-                local alt = vim.fn.bufnr("#")
+                -- Get alternate buffer for the target window, not current window
+                local alt = vim.api.nvim_win_call(winid, function()
+                    return vim.fn.bufnr("#")
+                end)
+
                 local target_buf
                 if alt ~= -1 and alt ~= bufnr then
                     target_buf = alt

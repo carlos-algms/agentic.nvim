@@ -562,7 +562,12 @@ end
 
 --- @param tool_call_id string
 function SessionManager:_show_diff_in_buffer(tool_call_id)
-    if not Config.diff_preview.enabled then
+    -- Only show diff if enabled by user config,
+    -- and cursor is in the same tabpage as this session to avoid disruption
+    if
+        not Config.diff_preview.enabled
+        or vim.api.nvim_get_current_tabpage() ~= self.tab_page_id
+    then
         return
     end
 
