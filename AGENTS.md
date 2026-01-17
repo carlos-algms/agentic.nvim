@@ -483,6 +483,7 @@ make validate
 
 This single command runs:
 
+- `make format` - Format all Lua files
 - `make luals` - Type checking
 - `make luacheck` - Linting
 - `make test` - All tests
@@ -504,6 +505,7 @@ This single command runs:
 The `make validate` target writes output to these **exact paths** in the project
 root:
 
+- `.local/agentic_format_output.log` - StyLua formatting output
 - `.local/agentic_luals_output.log` - LuaLS type checking output
 - `.local/agentic_luacheck_output.log` - Luacheck linting output
 - `.local/agentic_test_output.log` - Test runner output
@@ -542,12 +544,14 @@ project and provides comprehensive type checking.
 
 ### Available Make targets:
 
-Make for running Lua linting and type checking tools:
-
 - `make luals` - Run Lua Language Server headless diagnosis (type checking) -
   **Use this for full project type checks**
 - `make luacheck` - Run Luacheck linter (style and syntax checking)
-- `make print-vimruntime` - Display the detected VIMRUNTIME path
+- `make format` - Format all Lua files with StyLua
+- `make format-file FILE=path/to/file.lua` - Format a specific file
+
+**For more targets and implementation details:** Read the `Makefile` at the
+project root
 
 ### Tool overrides:
 
@@ -733,4 +737,3 @@ https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc
 
 **Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
 contains needed info.
-

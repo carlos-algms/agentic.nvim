@@ -1,13 +1,13 @@
 # Default tools; override like: make NVIM=/opt/homebrew/bin/nvim
 NVIM     ?= nvim
 LUALS    ?= $(shell which lua-language-server 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/lua-language-server")
-LUACHECK ?= luacheck
-STYLUA   ?= stylua
+LUACHECK ?= $(shell which luacheck 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/luacheck")
+STYLUA   ?= $(shell which stylua 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/stylua")
 
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals luacheck format-check format check test validate install-hooks
+.PHONY: luals luacheck luacheck-file format-check format format-file check test validate install-hooks
 
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
@@ -34,6 +34,10 @@ luals:
 luacheck:
 	"$(LUACHECK)" .
 
+# Luacheck a specific file
+luacheck-file:
+	"$(LUACHECK)" "$(FILE)"
+
 # StyLua formatting check
 format-check:
 	"$(STYLUA)" --check .
@@ -42,12 +46,17 @@ format-check:
 format:
 	"$(STYLUA)" .
 
+# Format a specific file
+format-file:
+	"$(STYLUA)" "$(FILE)"
+
 # Convenience aggregator, NOT to be used in the CI
 check: luals luacheck format-check
 
 # Run all validations with output redirection for AI agents
 validate:
-	@make luals > ./.local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
+	@make format > ./.local/agentic_format_output.log 2>&1; echo "format: $$?"; \
+	make luals > ./.local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
 	make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo "luacheck: $$?"; \
 	make test > ./.local/agentic_test_output.log 2>&1; echo "test: $$?"
 
@@ -57,10 +66,11 @@ install-git-hooks:
 	@printf '%s\n' \
 		'#!/bin/sh' \
 		'set -e' \
+		'STYLUA=$$(which stylua 2>/dev/null || echo "$$HOME/.local/share/nvim/mason/bin/stylua")' \
 		'STAGED_LUA_FILES=$$(git diff --cached --name-only --diff-filter=ACM | grep "\.lua$$" || true)' \
 		'if [ -n "$$STAGED_LUA_FILES" ]; then' \
 		'  echo "Running stylua on staged files..."' \
-		'  stylua $$STAGED_LUA_FILES' \
+		'  "$$STYLUA" $$STAGED_LUA_FILES' \
 		'  git add $$STAGED_LUA_FILES' \
 		'fi' \
 		> .git/hooks/pre-commit
