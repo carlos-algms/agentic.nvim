@@ -51,7 +51,7 @@ function SlashCommands.setCommands(bufnr, available_commands)
         local new_command = {
             word = "new",
             menu = "Start a new session",
-            kind = "Slash",
+            kind = "/",
             icase = 1,
         }
         table.insert(commands, new_command)
