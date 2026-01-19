@@ -58,7 +58,7 @@ function M.setSlashCommands(bufnr, items)
     safe_set(vim.b, bufnr, "agentic_slash_commands", items)
 end
 
---- Retrieve slash commands for given buffer, we assume it's the correct one
+--- Retrieve slash commands for the current buffer, we assume it's the correct one
 --- as it can only be triggered in insert mode
 --- @return agentic.acp.CompletionItem[]
 function M.getSlashCommands()

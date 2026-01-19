@@ -9,7 +9,6 @@ local States = require("agentic.states")
 --- @field icase number 1 for case-insensitive, 0 for case-sensitive
 
 --- @class agentic.acp.SlashCommands
---- @field commands agentic.acp.CompletionItem[]
 local SlashCommands = {}
 
 --- Replace all commands with new list in completion format
