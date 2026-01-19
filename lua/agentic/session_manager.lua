@@ -8,6 +8,7 @@ local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
 local TodoList = require("agentic.ui.todo_list")
 local Config = require("agentic.config")
+local SlashCommands = require("agentic.acp.slash_commands")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -43,7 +44,6 @@ end
 --- @field current_provider string
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
---- @field slash_commands agentic.acp.SlashCommands
 --- @field agent_modes agentic.acp.AgentModes
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -55,7 +55,6 @@ function SessionManager:new(tab_page_id)
     local MessageWriter = require("agentic.ui.message_writer")
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
-    local SlashCommands = require("agentic.acp.slash_commands")
     local AgentModes = require("agentic.acp.agent_modes")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
@@ -89,8 +88,9 @@ function SessionManager:new(tab_page_id)
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
-    self.slash_commands = SlashCommands:new(self.widget.buf_nrs.input)
+
     FilePicker:new(self.widget.buf_nrs.input)
+    SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
     self.agent_modes = AgentModes:new(self.widget.buf_nrs, function(mode_id)
         self:_handle_mode_change(mode_id)
@@ -144,13 +144,9 @@ function SessionManager:_on_session_update(update)
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
     elseif update.sessionUpdate == "available_commands_update" then
-        self.slash_commands:setCommands(update.availableCommands)
-        Logger.debug(
-            string.format(
-                "Updated %d slash commands for session %s",
-                #self.slash_commands.commands,
-                self.session_id or "no-session-id"
-            )
+        SlashCommands.setCommands(
+            self.widget.buf_nrs.input,
+            update.availableCommands
         )
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
@@ -514,7 +510,7 @@ function SessionManager:_cancel_session()
 
     self.session_id = nil
     self.permission_manager:clear()
-    self.slash_commands:setCommands({})
+    SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 end
 
 function SessionManager:add_selection_or_file_to_session()

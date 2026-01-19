@@ -1,18 +1,18 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
+local States = require("agentic.states")
+
 describe("agentic.acp.SlashCommands", function()
     local SlashCommands = require("agentic.acp.slash_commands")
 
     --- @type integer
     local bufnr
-    --- @type agentic.acp.SlashCommands
-    local slash_commands
 
     before_each(function()
         bufnr = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_set_current_buf(bufnr)
-        slash_commands = SlashCommands:new(bufnr)
+        SlashCommands.setup_completion(bufnr)
     end)
 
     after_each(function()
@@ -26,43 +26,45 @@ describe("agentic.acp.SlashCommands", function()
             "sets commands from ACP provider and automatically adds /new",
             function()
                 --- @type agentic.acp.AvailableCommand[]
-                local commands = {
+                local commands_mock = {
                     { name = "plan", description = "Create a plan" },
                     { name = "review", description = "Review code" },
                 }
 
-                slash_commands:setCommands(commands)
+                SlashCommands.setCommands(bufnr, commands_mock)
+
+                local commands = States.getSlashCommands()
 
                 -- Verify total count includes /new
-                assert.equal(3, #slash_commands.commands)
+                assert.equal(3, #commands)
 
                 -- Verify provided commands are set correctly
-                assert.equal("plan", slash_commands.commands[1].word)
-                assert.equal("Create a plan", slash_commands.commands[1].menu)
-                assert.equal("review", slash_commands.commands[2].word)
-                assert.equal("Review code", slash_commands.commands[2].menu)
+                assert.equal("plan", commands[1].word)
+                assert.equal("Create a plan", commands[1].menu)
+                assert.equal("review", commands[2].word)
+                assert.equal("Review code", commands[2].menu)
 
                 -- Verify /new was automatically added at the end
-                assert.equal("new", slash_commands.commands[3].word)
-                assert.equal(
-                    "Start a new session",
-                    slash_commands.commands[3].menu
-                )
+                assert.equal("new", commands[3].word)
+                assert.equal("Start a new session", commands[3].menu)
             end
         )
 
         it("does not duplicate /new command if already provided", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "new", description = "Custom new description" },
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
 
-            assert.equal(2, #slash_commands.commands)
+            local commands = States.getSlashCommands()
+
+            assert.equal(2, #commands)
+
             local new_count = 0
-            for _, cmd in ipairs(slash_commands.commands) do
+            for _, cmd in ipairs(commands) do
                 if cmd.word == "new" then
                     new_count = new_count + 1
                     assert.equal("Custom new description", cmd.menu)
@@ -73,57 +75,62 @@ describe("agentic.acp.SlashCommands", function()
 
         it("filters out commands with spaces in name", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "valid", description = "Valid command" },
                 { name = "has space", description = "Invalid command" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
 
-            assert.equal(2, #slash_commands.commands) -- valid + /new
-            for _, cmd in ipairs(slash_commands.commands) do
+            local commands = States.getSlashCommands()
+
+            assert.equal(2, #commands) -- valid + /new
+            for _, cmd in ipairs(commands) do
                 assert.is_false(cmd.word:match("%s") ~= nil)
             end
         end)
 
         it("filters out clear command", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "plan", description = "Create a plan" },
                 { name = "clear", description = "Clear session" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
+            local commands = States.getSlashCommands()
 
-            assert.equal(2, #slash_commands.commands) -- plan + /new
-            for _, cmd in ipairs(slash_commands.commands) do
+            assert.equal(2, #commands) -- plan + /new
+            for _, cmd in ipairs(commands) do
                 assert.is_not.equal("clear", cmd.word)
             end
         end)
 
         it("skips commands with missing name or description", function()
             --- @type table[]
-            local commands = {
+            local commands_mock = {
                 { name = "valid", description = "Valid command" },
                 { name = "no-desc" }, -- Missing description
                 { description = "No name" }, -- Missing name
             }
 
             ---@diagnostic disable-next-line: param-type-mismatch
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
+            local commands = States.getSlashCommands()
 
-            assert.equal(2, #slash_commands.commands) -- valid + /new
+            assert.equal(2, #commands) -- valid + /new
         end)
 
         it("sets case-insensitive completion", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
+            local commands = States.getSlashCommands()
 
-            for _, cmd in ipairs(slash_commands.commands) do
+            for _, cmd in ipairs(commands) do
                 assert.equal(1, cmd.icase)
             end
         end)
@@ -135,12 +142,12 @@ describe("agentic.acp.SlashCommands", function()
             assert.equal("menu,menuone,noinsert,popup,fuzzy", completeopt)
         end)
 
-        it("adds - to iskeyword", function()
+        it("adds '-' to iskeyword", function()
             local iskeyword = vim.bo[bufnr].iskeyword
             assert.is_true(iskeyword:match(",-") ~= nil)
         end)
 
-        it("sets completefunc", function()
+        it("sets completefunc - must not use () - vim fallback", function()
             local completefunc = vim.bo[bufnr].completefunc
             assert.equal(
                 "v:lua.require'agentic.acp.slash_commands'.complete_func",
@@ -152,11 +159,11 @@ describe("agentic.acp.SlashCommands", function()
     describe("complete_func", function()
         it("returns commands on findstart=0", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
 
             local result = SlashCommands.complete_func(0, "pl")
             assert.is_table(result)
@@ -181,18 +188,18 @@ describe("agentic.acp.SlashCommands", function()
     describe("TextChangedI autocommand", function()
         it("triggers feedkeys when typing / at start of line", function()
             --- @type agentic.acp.AvailableCommand[]
-            local commands = {
+            local commands_mock = {
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands_mock)
 
             local feedkeys_spy = spy.on(vim.api, "nvim_feedkeys")
 
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "/p" })
             vim.api.nvim_win_set_cursor(0, { 1, 2 })
-            vim.cmd("startinsert")
 
+            vim.cmd("startinsert")
             vim.cmd("doautocmd TextChangedI")
 
             local completion_keys =
@@ -209,6 +216,7 @@ describe("agentic.acp.SlashCommands", function()
             local feedkeys_spy = spy.on(vim.api, "nvim_feedkeys")
 
             vim.cmd("startinsert")
+
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "/p" })
             vim.api.nvim_win_set_cursor(0, { 1, 2 })
 
@@ -225,7 +233,7 @@ describe("agentic.acp.SlashCommands", function()
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands)
 
             local feedkeys_spy = spy.on(vim.api, "nvim_feedkeys")
 
@@ -246,7 +254,7 @@ describe("agentic.acp.SlashCommands", function()
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands)
 
             local feedkeys_spy = spy.on(vim.api, "nvim_feedkeys")
 
@@ -267,7 +275,7 @@ describe("agentic.acp.SlashCommands", function()
                 { name = "plan", description = "Create a plan" },
             }
 
-            slash_commands:setCommands(commands)
+            SlashCommands.setCommands(bufnr, commands)
 
             local feedkeys_spy = spy.on(vim.api, "nvim_feedkeys")
 
@@ -284,21 +292,9 @@ describe("agentic.acp.SlashCommands", function()
     end)
 
     describe("instance management", function()
-        it("creates new instance per buffer", function()
-            local bufnr2 = vim.api.nvim_create_buf(false, true)
-            local slash_commands2 = SlashCommands:new(bufnr2)
-
-            -- Verify they are different instances by checking they're not the exact same reference
-            assert.is_not.equal(rawequal(slash_commands, slash_commands2), true)
-
-            if vim.api.nvim_buf_is_valid(bufnr2) then
-                vim.api.nvim_buf_delete(bufnr2, { force = true })
-            end
-        end)
-
         it("allows independent commands per buffer instance", function()
             local bufnr2 = vim.api.nvim_create_buf(false, true)
-            local slash_commands2 = SlashCommands:new(bufnr2)
+            SlashCommands.setup_completion(bufnr2)
 
             --- @type agentic.acp.AvailableCommand[]
             local commands1 = {
@@ -310,13 +306,17 @@ describe("agentic.acp.SlashCommands", function()
                 { name = "review", description = "Review code" },
             }
 
-            slash_commands:setCommands(commands1)
-            slash_commands2:setCommands(commands2)
+            SlashCommands.setCommands(bufnr, commands1)
+            SlashCommands.setCommands(bufnr2, commands2)
 
-            assert.equal(2, #slash_commands.commands) -- plan + /new
-            assert.equal(2, #slash_commands2.commands) -- review + /new
-            assert.equal("plan", slash_commands.commands[1].word)
-            assert.equal("review", slash_commands2.commands[1].word)
+            local commands_buf1 = States.getSlashCommands()
+            vim.api.nvim_set_current_buf(bufnr2)
+            local commands_buf2 = States.getSlashCommands()
+
+            assert.equal(2, #commands_buf1) -- plan + /new
+            assert.equal(2, #commands_buf2) -- review + /new
+            assert.equal("plan", commands_buf1[1].word)
+            assert.equal("review", commands_buf2[1].word)
 
             if vim.api.nvim_buf_is_valid(bufnr2) then
                 vim.api.nvim_buf_delete(bufnr2, { force = true })

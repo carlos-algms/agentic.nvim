@@ -46,9 +46,10 @@ format:
 check: luals luacheck format-check
 
 validate:
-	@make luals > ./.local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
-	make luacheck > ./.local/agentic_luacheck_output.log 2>&1; echo "luacheck: $$?"; \
-	make test > ./.local/agentic_test_output.log 2>&1; echo "test: $$?"
+	@mkdir -p .local; \
+	make luals > .local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
+	make luacheck > .local/agentic_luacheck_output.log 2>&1; echo "luacheck: $$?"; \
+	make test > .local/agentic_test_output.log 2>&1; echo "test: $$?"
 
 # Install pre-commit hook locally
 install-git-hooks:
