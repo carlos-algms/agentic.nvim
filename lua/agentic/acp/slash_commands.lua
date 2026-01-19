@@ -1,3 +1,5 @@
+local States = require("agentic.states")
+
 --- Neovim completion item structure (vim.fn.complete() dictionary format)
 --- For complete list of properties, see |complete-items| in insert.txt help manual
 --- @class agentic.acp.CompletionItem
@@ -7,32 +9,21 @@
 --- @field icase number 1 for case-insensitive, 0 for case-sensitive
 
 --- @class agentic.acp.SlashCommands
---- @field commands agentic.acp.CompletionItem[]
 local SlashCommands = {}
-SlashCommands.__index = SlashCommands
-
---- Weak map: bufnr -> SlashCommands instance
---- @type table<number, agentic.acp.SlashCommands>
-local instances_by_buffer = setmetatable({}, { __mode = "v" })
-
---- @param bufnr integer The input buffer number, the same as in the ChatWidget class instance
---- @return agentic.acp.SlashCommands
-function SlashCommands:new(bufnr)
-    local instance = setmetatable({ commands = {} }, self)
-    instance:_setup_completion(bufnr)
-    return instance
-end
 
 --- Replace all commands with new list in completion format
 --- Validates each command has required fields, skips invalid commands and commands with spaces
 --- Filters out `clear` command (handled by specific agents internally)
 --- Automatically adds `/new` command if not provided by agent
---- @param commands agentic.acp.AvailableCommand[]
-function SlashCommands:setCommands(commands)
-    self.commands = {}
+--- @param bufnr integer
+--- @param available_commands agentic.acp.AvailableCommand[]
+function SlashCommands.setCommands(bufnr, available_commands)
+    --- @type agentic.acp.CompletionItem[]
+    local commands = {}
+
     local has_new_command = false
 
-    for _, cmd in ipairs(commands) do
+    for _, cmd in ipairs(available_commands) do
         if
             cmd.name
             and cmd.description
@@ -47,10 +38,10 @@ function SlashCommands:setCommands(commands)
             local completion_item = {
                 word = cmd.name,
                 menu = cmd.description,
-                kind = "Slash",
+                kind = "/",
                 icase = 1,
             }
-            table.insert(self.commands, completion_item)
+            table.insert(commands, completion_item)
         end
     end
 
@@ -60,35 +51,36 @@ function SlashCommands:setCommands(commands)
         local new_command = {
             word = "new",
             menu = "Start a new session",
-            kind = "Slash",
+            kind = "/",
             icase = 1,
         }
-        table.insert(self.commands, new_command)
+        table.insert(commands, new_command)
     end
+
+    -- must be set at the end, as it gets serialized and loses the reference
+    States.setSlashCommands(bufnr, commands)
 end
 
 --- Setup native Neovim completion for slash commands in the input buffer
 --- Uses completefunc with <C-x><C-u> trigger
 --- Neovim handles fuzzy filtering automatically via completeopt
 --- @param bufnr integer The input buffer number
---- @private
-function SlashCommands:_setup_completion(bufnr)
+function SlashCommands.setup_completion(bufnr)
     vim.bo[bufnr].completeopt = "menu,menuone,noinsert,popup,fuzzy"
 
     -- Include `-` as keyword character so completion doesn't close when typing it
     vim.bo[bufnr].iskeyword = vim.bo[bufnr].iskeyword .. ",-"
 
-    -- Store instance for completefunc access
-    instances_by_buffer[bufnr] = self
-
     -- Set completefunc to return our commands
+    -- CRITICAL: v:lua syntax does NOT support parens in require call
     vim.bo[bufnr].completefunc =
         "v:lua.require'agentic.acp.slash_commands'.complete_func"
 
     vim.api.nvim_create_autocmd("TextChangedI", {
         buffer = bufnr,
         callback = function()
-            if #self.commands == 0 then
+            local commands = States.getSlashCommands()
+            if #commands == 0 then
                 return
             end
 
@@ -126,15 +118,7 @@ function SlashCommands.complete_func(findstart, _base)
         return 1
     end
 
-    local bufnr = vim.api.nvim_get_current_buf()
-    local instance = instances_by_buffer[bufnr]
-
-    -- Return the completion items
-    if instance and instance.commands then
-        return instance.commands
-    end
-
-    return {}
+    return States.getSlashCommands()
 end
 
 return SlashCommands
