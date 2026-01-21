@@ -390,6 +390,7 @@ function ACPClient:_connect()
 
     self:_send_request("initialize", {
         protocolVersion = self.protocol_version,
+        clientInfo = self.capabilities.clientInfo,
         clientCapabilities = self.capabilities,
     }, function(result, err)
         if not result or err then
