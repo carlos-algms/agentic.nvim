@@ -106,6 +106,10 @@ local ConfigDefault = {
             args = {
                 "--acp",
             },
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
     },
 

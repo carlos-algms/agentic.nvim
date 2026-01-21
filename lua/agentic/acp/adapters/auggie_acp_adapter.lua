@@ -33,11 +33,11 @@ end
 
 --- @param params table
 function AuggieACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
+    local update_type = params.update.sessionUpdate
 
-    if type == "tool_call" then
+    if update_type == "tool_call" then
         self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
+    elseif update_type == "tool_call_update" then
         self:_handle_tool_call_update(params.sessionId, params.update)
     else
         ACPClient.__handle_session_update(self, params)
