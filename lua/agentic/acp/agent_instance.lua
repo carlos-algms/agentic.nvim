@@ -62,6 +62,10 @@ function AgentInstance.get_instance(provider_name, on_ready)
         local CursorACPAdapter =
             require("agentic.acp.adapters.cursor_acp_adapter")
         client = CursorACPAdapter:new(config, on_ready)
+    elseif provider_name == "auggie-acp" then
+        local AuggieACPAdapter =
+            require("agentic.acp.adapters.auggie_acp_adapter")
+        client = AuggieACPAdapter:new(config, on_ready)
     else
         error("Unsupported ACP provider: " .. provider_name)
     end

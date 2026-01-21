@@ -574,6 +574,7 @@ Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
 - `codex_acp_adapter.lua` - Codex ACP adapter
 - `opencode_acp_adapter.lua` - OpenCode ACP adapter
 - `cursor_acp_adapter.lua` - Cursor Agent ACP adapter
+- `auggie_acp_adapter.lua` - Auggie ACP adapter
 
 These adapters implement provider-specific message formatting, tool call
 handling, and protocol quirks.

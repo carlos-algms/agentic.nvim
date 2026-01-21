@@ -90,6 +90,7 @@ tools like `nvm`, `fnm`, etc...
 | [codex-acp][codex-acp]             | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                    |
 | [opencode][opencode]               | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash` |
 | [cursor-agent][cursor-agent]       | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                    |
+| [auggie][auggie]                   | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                       |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -111,7 +112,7 @@ tools like `nvm`, `fnm`, etc...
   "carlos-algms/agentic.nvim",
 
   opts = {
-    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
+    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp"
     provider = "claude-acp", -- setting the name here is all you need to get started
   },
 
@@ -590,3 +591,5 @@ the the acknowledgments 😊.
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
+[auggie]: https://www.npmjs.com/package/@augmentcode/auggie
+[auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
