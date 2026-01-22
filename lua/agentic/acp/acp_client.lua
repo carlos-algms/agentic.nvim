@@ -12,6 +12,7 @@ DO NOT REMOVE them. Only update them if the underlying types change.
 --- @field id_counter number
 --- @field state agentic.acp.ClientConnectionState
 --- @field protocol_version number
+--- @field client_info agentic.acp.ClientInfo
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
@@ -42,16 +43,16 @@ function ACPClient:new(config, on_ready)
         subscribers = {},
         id_counter = 0,
         protocol_version = 1,
+        client_info = {
+            name = "Agentic.nvim",
+            version = "0.0.1",
+        },
         capabilities = {
             fs = {
                 readTextFile = true,
                 writeTextFile = true,
             },
             terminal = false,
-            clientInfo = {
-                name = "Agentic.nvim",
-                version = "0.0.1",
-            },
         },
         callbacks = {},
         transport = nil,
@@ -388,11 +389,14 @@ function ACPClient:_connect()
 
     self:_set_state("initializing")
 
-    self:_send_request("initialize", {
+    --- @type agentic.acp.InitializeParams
+    local init_params = {
         protocolVersion = self.protocol_version,
-        clientInfo = self.capabilities.clientInfo,
+        clientInfo = self.client_info,
         clientCapabilities = self.capabilities,
-    }, function(result, err)
+    }
+
+    self:_send_request("initialize", init_params, function(result, err)
         if not result or err then
             self:_set_state("error")
             Logger.notify(
@@ -648,10 +652,18 @@ end
 
 return ACPClient
 
+--- @class agentic.acp.ClientInfo
+--- @field name string
+--- @field version string
+
 --- @class agentic.acp.ClientCapabilities
 --- @field fs agentic.acp.FileSystemCapability
 --- @field terminal boolean
---- @field clientInfo { name: string, version: string }
+
+--- @class agentic.acp.InitializeParams
+--- @field protocolVersion number
+--- @field clientInfo agentic.acp.ClientInfo
+--- @field clientCapabilities agentic.acp.ClientCapabilities
 
 --- @class agentic.acp.FileSystemCapability
 --- @field readTextFile boolean
@@ -702,6 +714,7 @@ return ACPClient
 --- | "SubAgent"
 --- | "other"
 --- | "create"
+--- | "Skill"
 
 --- @alias agentic.acp.ToolCallStatus
 --- | "pending"

@@ -1,4 +1,4 @@
---- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp"
+--- @alias agentic.UserConfig.ProviderName "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
@@ -94,6 +94,18 @@ local ConfigDefault = {
             name = "Cursor Agent ACP",
             command = "cursor-agent-acp",
             args = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
+        },
+
+        ["auggie-acp"] = {
+            name = "Auggie ACP",
+            command = "auggie",
+            args = {
+                "--acp",
+            },
             env = {
                 NODE_NO_WARNINGS = "1",
                 IS_AI_TERMINAL = "1",
