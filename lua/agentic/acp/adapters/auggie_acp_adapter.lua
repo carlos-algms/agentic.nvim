@@ -2,13 +2,6 @@ local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
---- Auggie-specific RawInput that makes file_path optional
---- @class agentic.acp.AuggieRawInput : agentic.acp.RawInput
---- @field file_path? string Override to make file_path optional for Auggie
-
---- @class agentic.acp.AuggieToolCallMessage : agentic.acp.ToolCallMessage
---- @field rawInput? agentic.acp.AuggieRawInput
-
 --- Auggie-specific adapter that extends ACPClient with Auggie-specific behaviors
 --- @class agentic.acp.AuggieACPAdapter : agentic.acp.ACPClient
 local AuggieACPAdapter = setmetatable({}, { __index = ACPClient })
@@ -41,7 +34,7 @@ function AuggieACPAdapter:__handle_session_update(params)
 end
 
 --- @param session_id string
---- @param update agentic.acp.AuggieToolCallMessage
+--- @param update agentic.acp.ToolCallMessage
 function AuggieACPAdapter:_handle_tool_call(session_id, update)
     -- Skip empty tool calls
     if not update.rawInput or vim.tbl_isempty(update.rawInput) then
