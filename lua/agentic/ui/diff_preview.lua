@@ -304,13 +304,22 @@ function M.show_diff(opts)
     -- Scroll target window to first diff block without moving cursor
     if #diff_blocks > 0 then
         local first_block = diff_blocks[1]
-        pcall(vim.api.nvim_win_call, target_winid, function()
-            vim.fn.winrestview({ topline = first_block.start_line })
-        end)
 
         -- Make buffer read-only to prevent edits while diff is visible
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
         vim.bo[bufnr].modifiable = false
+
+        vim.schedule(function()
+            if not vim.api.nvim_win_is_valid(target_winid) then
+                return
+            end
+
+            -- Scroll window to show first diff block at top using normal mode commands
+            -- {line}Gzt = go to line, then position it at window top
+            pcall(vim.api.nvim_win_call, target_winid, function()
+                vim.cmd("normal! " .. first_block.start_line .. "Gzt")
+            end)
+        end)
     end
 end
 
