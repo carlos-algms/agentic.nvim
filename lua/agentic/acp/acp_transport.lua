@@ -70,6 +70,8 @@ function M.create_stdio_transport(config, callbacks)
             error("Failed to create pipes for ACP agent")
         end
 
+        -- Capture stderr for better error reporting
+        local stderr_buffer = {}
         local args = vim.deepcopy(config.args or {})
         local env = config.env
 
@@ -114,12 +116,40 @@ function M.create_stdio_transport(config, callbacks)
             stdio = { stdin, stdout, stderr },
             detached = false,
         }, function(code, signal)
-            Logger.debug(
-                "ACP agent exited with code ",
-                code,
-                " and signal ",
-                signal
-            )
+            local cmd_str = config.command
+                .. (#args > 0 and " " .. table.concat(args, " ") or "")
+
+            local exit_info = {
+                "ACP agent exited:",
+                "  Command: " .. cmd_str,
+                "  Exit code: " .. tostring(code),
+                "  Signal: " .. tostring(signal),
+            }
+
+            if code ~= 0 and #stderr_buffer > 0 then
+                table.insert(exit_info, "  Stderr output:")
+                for _, line in ipairs(stderr_buffer) do
+                    table.insert(exit_info, "    " .. line)
+                end
+            end
+
+            Logger.debug(table.concat(exit_info, "\n"))
+
+            if code ~= 0 then
+                local error_msg = string.format(
+                    "ACP agent '%s' failed (exit code %d)",
+                    config.command,
+                    code
+                )
+
+                if #stderr_buffer > 0 then
+                    error_msg = error_msg
+                        .. ":\n"
+                        .. table.concat(stderr_buffer, "\n")
+                end
+                Logger.notify(error_msg, vim.log.levels.ERROR)
+            end
+
             callbacks.on_state_change("disconnected")
 
             if self.process then
@@ -187,15 +217,26 @@ function M.create_stdio_transport(config, callbacks)
 
         stderr:read_start(function(_, data)
             if data then
+                -- Always capture stderr for error reporting
+                local trimmed = vim.trim(data)
+                if trimmed ~= "" then
+                    table.insert(stderr_buffer, trimmed)
+                end
+
+                -- Only skip logging if matches ignore patterns
+                local should_ignore = false
                 for _, pattern in ipairs(IGNORE_STDERR_PATTERNS) do
                     if data:match(pattern) then
-                        return
+                        should_ignore = true
+                        break
                     end
                 end
 
-                vim.schedule(function()
-                    Logger.debug("ACP stderr: ", data)
-                end)
+                if not should_ignore then
+                    vim.schedule(function()
+                        Logger.debug("ACP stderr: ", data)
+                    end)
+                end
             end
         end)
     end
