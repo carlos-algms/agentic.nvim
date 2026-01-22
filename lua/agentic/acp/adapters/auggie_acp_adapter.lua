@@ -2,13 +2,9 @@ local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+--- Auggie-specific RawInput that makes file_path optional
 --- @class agentic.acp.AuggieRawInput : agentic.acp.RawInput
---- @field file_path? string
---- @field old_string? string
---- @field new_string? string
---- @field replace_all? boolean
---- @field query? string
---- @field url? string
+--- @field file_path? string Override to make file_path optional for Auggie
 
 --- @class agentic.acp.AuggieToolCallMessage : agentic.acp.ToolCallMessage
 --- @field rawInput? agentic.acp.AuggieRawInput
