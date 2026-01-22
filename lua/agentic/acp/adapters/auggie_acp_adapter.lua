@@ -59,7 +59,8 @@ function AuggieACPAdapter:_handle_tool_call(session_id, update)
     }
 
     if kind == "read" or kind == "edit" then
-        message.argument = FileSystem.to_smart_path(update.rawInput.file_path or "")
+        message.argument =
+            FileSystem.to_smart_path(update.rawInput.file_path or "")
 
         if kind == "edit" then
             local new_string = update.rawInput.new_string or ""
@@ -135,4 +136,3 @@ function AuggieACPAdapter:_handle_tool_call_update(session_id, update)
 end
 
 return AuggieACPAdapter
-
