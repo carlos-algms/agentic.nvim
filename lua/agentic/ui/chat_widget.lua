@@ -128,56 +128,20 @@ function ChatWidget:show(opts)
         self:render_header("input")
     end
 
-    if
-        (
-            not self.win_nrs.code
-            or not vim.api.nvim_win_is_valid(self.win_nrs.code)
-        ) and not BufHelpers.is_buffer_empty(self.buf_nrs.code)
-    then
-        self.win_nrs.code = self:_open_win(self.buf_nrs.code, false, {
-            win = self.win_nrs.chat,
-            split = "below",
-            height = 15,
-        }, "code", {})
+    self:_open_or_resize_dynamic_window("code", {
+        win = self.win_nrs.chat,
+        split = "below",
+    }, Config.windows.code.max_height)
 
-        self:render_header("code")
-    end
+    self:_open_or_resize_dynamic_window("files", {
+        win = self.win_nrs.input,
+        split = "above",
+    }, Config.windows.files.max_height)
 
-    if
-        (
-            not self.win_nrs.files
-            or not vim.api.nvim_win_is_valid(self.win_nrs.files)
-        ) and not BufHelpers.is_buffer_empty(self.buf_nrs.files)
-    then
-        self.win_nrs.files = self:_open_win(self.buf_nrs.files, false, {
-            win = self.win_nrs.input,
-            split = "above",
-            height = 5,
-        }, "files", {})
-
-        self:render_header("files")
-    end
-
-    if
-        Config.windows.todos.display
-        and (not self.win_nrs.todos or not vim.api.nvim_win_is_valid(
-            self.win_nrs.todos
-        ))
-        and not BufHelpers.is_buffer_empty(self.buf_nrs.todos)
-    then
-        local line_count = vim.api.nvim_buf_line_count(self.buf_nrs.todos)
-
-        -- Add 1 for visual padding to prevent last line cutoff because of the header
-        local height = math.min(line_count + 1, Config.windows.todos.max_height)
-
-        self.win_nrs.todos = self:_open_win(self.buf_nrs.todos, false, {
-            win = self.win_nrs.chat,
-            split = "below",
-            height = height,
-        }, "todos", {})
-
-        self:render_header("todos")
-    end
+    self:_open_or_resize_dynamic_window("todos", {
+        win = self.win_nrs.chat,
+        split = "below",
+    }, Config.windows.todos.max_height, Config.windows.todos.display)
 
     if should_focus then
         self:move_cursor_to(
@@ -639,6 +603,67 @@ function ChatWidget._calculate_width(size)
     return value
 end
 
+--- Calculate dynamic height based on buffer line count
+--- Add 1 for visual padding to prevent last line cutoff because of the header
+--- @private
+--- @param bufnr number
+--- @param max_height number
+--- @return integer height
+function ChatWidget._calculate_dynamic_height(bufnr, max_height)
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    return math.min(line_count + 1, max_height)
+end
+
+--- Open or resize a dynamic height window
+--- Creates window if it doesn't exist, resizes if it does
+--- @private
+--- @param window_name agentic.ui.ChatWidget.PanelNames Window identifier (code, files, todos)
+--- @param open_win_opts table Options to pass to _open_win() for window creation
+--- @param max_height number Maximum height for the window
+--- @param should_display? boolean Optional condition for displaying (defaults to true)
+function ChatWidget:_open_or_resize_dynamic_window(
+    window_name,
+    open_win_opts,
+    max_height,
+    should_display
+)
+    if should_display == nil then
+        should_display = true
+    end
+
+    local bufnr = self.buf_nrs[window_name]
+    local winid = self.win_nrs[window_name]
+
+    -- Check if window should be created
+    if
+        should_display
+        and (not winid or not vim.api.nvim_win_is_valid(winid))
+        and not BufHelpers.is_buffer_empty(bufnr)
+    then
+        -- Create window with dynamic height
+        local height = self._calculate_dynamic_height(bufnr, max_height)
+        open_win_opts.height = height
+
+        self.win_nrs[window_name] =
+            self:_open_win(bufnr, false, open_win_opts, window_name, {})
+
+        self:render_header(window_name)
+    -- Check if window should be resized
+    elseif
+        should_display
+        and winid
+        and vim.api.nvim_win_is_valid(winid)
+        and not BufHelpers.is_buffer_empty(bufnr)
+    then
+        -- Resize existing window based on current buffer content
+        local new_height = self._calculate_dynamic_height(bufnr, max_height)
+
+        vim.api.nvim_win_set_config(winid, {
+            height = new_height,
+        })
+    end
+end
+
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 function ChatWidget:render_header(window_name)
     local winid = self.win_nrs[window_name]
@@ -723,6 +748,35 @@ function ChatWidget:close_todos_window()
     if self.win_nrs.todos and vim.api.nvim_win_is_valid(self.win_nrs.todos) then
         vim.api.nvim_win_close(self.win_nrs.todos, true)
         self.win_nrs.todos = nil
+    end
+end
+
+--- Resize a dynamic window based on its current buffer content
+--- Closes the window if buffer is empty
+--- @param window_name "code"|"files"|"todos" Window to resize
+function ChatWidget:resize_dynamic_window(window_name)
+    local bufnr = self.buf_nrs[window_name]
+    local winid = self.win_nrs[window_name]
+
+    -- Close window if buffer is empty
+    if BufHelpers.is_buffer_empty(bufnr) then
+        if winid and vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
+            self.win_nrs[window_name] = nil
+        end
+        return
+    end
+
+    -- Resize window if it exists and has content
+    if winid and vim.api.nvim_win_is_valid(winid) then
+        local window_config = Config.windows[window_name] or {}
+        local max_height = window_config.max_height or 10
+
+        local new_height = self._calculate_dynamic_height(bufnr, max_height)
+
+        vim.api.nvim_win_set_config(winid, {
+            height = new_height,
+        })
     end
 end
 

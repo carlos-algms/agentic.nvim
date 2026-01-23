@@ -122,9 +122,11 @@ local ConfigDefault = {
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows.Code
+    --- @field max_height number
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows.Files
+    --- @field max_height number
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows.Todos
@@ -143,8 +145,8 @@ local ConfigDefault = {
         width = "40%",
         chat = { win_opts = {} },
         input = { height = 10, win_opts = {} },
-        code = { win_opts = {} },
-        files = { win_opts = {} },
+        code = { max_height = 15, win_opts = {} },
+        files = { max_height = 10, win_opts = {} },
         todos = { display = true, max_height = 10, win_opts = {} },
     },
 

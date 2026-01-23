@@ -15,7 +15,7 @@ FilePicker.CMD_RG = {
     "never",
     "--hidden",
     "--glob",
-    "!.git/",
+    "!.git", -- Exclude .git (both directory and file used in worktrees)
 }
 
 FilePicker.CMD_FD = {
@@ -26,7 +26,7 @@ FilePicker.CMD_FD = {
     "never",
     "--hidden",
     "--exclude",
-    ".git/",
+    ".git", -- Exclude .git (both directory and file used in worktrees)
 }
 
 FilePicker.CMD_GIT = { "git", "ls-files", "-co", "--exclude-standard" }
@@ -250,6 +250,7 @@ FilePicker.GLOB_EXCLUDE_PATTERNS = {
     "^%.$",
     "^%.%.$",
     "%.git/",
+    "^%.git$", -- Exclude .git (both directory and file used in worktrees)
     "%.DS_Store$",
     "node_modules/",
     "%.pyc$",
@@ -268,7 +269,7 @@ FilePicker.GLOB_EXCLUDE_PATTERNS = {
     -- Build/Cache
     "%.cache/",
     "%.turbo/",
-    "out/",
+    "/out/", -- Build output directory (anchored to avoid matching "layout/")
     -- Coverage
     "coverage/",
     "%.nyc_output/",
