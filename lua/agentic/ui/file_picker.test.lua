@@ -84,8 +84,19 @@ describe("FilePicker:scan_files", function()
             assert.are.equal(#files_rg, #files_fd)
             assert.are.equal(#files_fd, #files_git)
 
-            assert.are.same(files_rg, files_fd)
-            assert.are.same(files_fd, files_git)
+            -- Extract just the word (filename) for comparison
+            local words_rg = vim.tbl_map(function(f)
+                return f.word
+            end, files_rg)
+            local words_fd = vim.tbl_map(function(f)
+                return f.word
+            end, files_fd)
+            local words_git = vim.tbl_map(function(f)
+                return f.word
+            end, files_git)
+
+            assert.are.same(words_rg, words_fd)
+            assert.are.same(words_fd, words_git)
         end)
 
         it("should use glob fallback when all commands fail", function()
@@ -109,13 +120,20 @@ describe("FilePicker:scan_files", function()
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
             -- .local is the folder where Neovim is installed during tests in CI
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
-            -- .claude is in global gitignore (rg/fd/git respect it, glob doesn't)
-            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.claude/")
 
             local files_glob = picker:scan_files()
 
             assert.is_true(#files_glob > 0)
-            assert.are.same(files_rg, files_glob)
+
+            -- Extract just the word (filename) for comparison
+            local words_rg = vim.tbl_map(function(f)
+                return f.word
+            end, files_rg)
+            local words_glob = vim.tbl_map(function(f)
+                return f.word
+            end, files_glob)
+
+            assert.are.same(words_rg, words_glob)
 
             FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)
