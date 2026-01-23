@@ -58,18 +58,26 @@ validate:
 	@mkdir -p .local; \
 	total_start=$$(date +%s); \
 	start=$$(date +%s); \
-	make format; \
-	echo "format: $$? (took $$(($$(date +%s) - start))s)"; \
+	make format > .local/agentic_format_output.log 2>&1; \
+	rc_format=$$?; \
+	echo "format: $$rc_format (took $$(($$(date +%s) - start))s) - log: .local/agentic_format_output.log"; \
 	start=$$(date +%s); \
 	make luals > .local/agentic_luals_output.log 2>&1; \
-	echo "luals: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_luals_output.log"; \
+	rc_luals=$$?; \
+	echo "luals: $$rc_luals (took $$(($$(date +%s) - start))s) - log: .local/agentic_luals_output.log"; \
 	start=$$(date +%s); \
 	make luacheck > .local/agentic_luacheck_output.log 2>&1; \
-	echo "luacheck: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_luacheck_output.log"; \
+	rc_luacheck=$$?; \
+	echo "luacheck: $$rc_luacheck (took $$(($$(date +%s) - start))s) - log: .local/agentic_luacheck_output.log"; \
 	start=$$(date +%s); \
 	make test > .local/agentic_test_output.log 2>&1; \
-	echo "test: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_test_output.log"; \
-	echo "Total: $$(($$(date +%s) - total_start))s"
+	rc_test=$$?; \
+	echo "test: $$rc_test (took $$(($$(date +%s) - start))s) - log: .local/agentic_test_output.log"; \
+	echo "Total: $$(($$(date +%s) - total_start))s"; \
+	if [ $$rc_format -ne 0 ] || [ $$rc_luals -ne 0 ] || [ $$rc_luacheck -ne 0 ] || [ $$rc_test -ne 0 ]; then \
+		echo "Validation failed! Check log files for details."; \
+		exit 1; \
+	fi
 
 # Install pre-commit hook locally
 install-git-hooks:

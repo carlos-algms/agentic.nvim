@@ -112,7 +112,8 @@ function M.get_scroll_cmd(bufnr, winid, anchor_line, namespace_id)
         return ""
     end
 
-    local virt_lines = extmarks[1][4].virt_lines or {}
+    local details = extmarks[1] and extmarks[1][4] or {}
+    local virt_lines = details.virt_lines or {}
     local hunk_height = #virt_lines
 
     local win_height = vim.api.nvim_win_get_height(winid)

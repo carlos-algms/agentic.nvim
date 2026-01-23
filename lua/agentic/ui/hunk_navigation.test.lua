@@ -34,7 +34,7 @@ end
 --- @param map table|nil
 --- @return boolean
 local function is_buffer_local(map)
-    return map and map.buffer == 1 or false
+    return map ~= nil and map.buffer == 1
 end
 
 local test_ns = vim.api.nvim_create_namespace("test_hunk_navigation")
