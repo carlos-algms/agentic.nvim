@@ -19,8 +19,8 @@ function M.create_stdio_transport(config, callbacks)
         callbacks = callbacks,
     }
 
-    --- @param data string
-    function transport:send(data)
+    --- @param _data string
+    function transport:send(_data)
         if self._stopped then
             return false
         end

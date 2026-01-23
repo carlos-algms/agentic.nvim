@@ -71,7 +71,7 @@ describe("BufHelpers", function()
 
     describe("execute_on_buffer", function()
         it("should return nil for invalid buffer number", function()
-            local result = BufHelpers.execute_on_buffer(9999, function(buf)
+            local result = BufHelpers.execute_on_buffer(9999, function(_buf)
                 return "should not execute"
             end)
 

@@ -707,27 +707,12 @@ with development environment.
 Always prefer reading local documentation files directly from the Neovim runtime
 path, because they reflect the exact version installed on my system.
 
-- **If Neovim binary path is known from context:**
-
-  Use the known path to derive the runtime documentation directory
-
-- **If Neovim binary path is unknown:**
-
-  Discover Neovim installation location:
-
-  ```bash
-  realpath $(which nvim)
-  ```
-
-Then, after getting the binary path, derive the runtime documentation directory:
-
 Common path patterns after discovery:
 
-- **macOS (Homebrew):** `/opt/homebrew/Cellar/neovim/<formula-version>/bin/nvim`
-  - Runtime docs:
-    `/opt/homebrew/Cellar/neovim/<formula-version>/share/nvim/runtime/doc/`
-  - Note: `<formula-version>` may include formula revision (e.g., `0.11.5_1`),
-    that's why knowing the real path is important.
+- **macOS (Homebrew):**
+  - Runtime docs: `/opt/homebrew/Cellar/neovim/*/share/nvim/runtime/doc/`
+  - Note: We don't need the exact version, just use the wildcard `*` to match
+    the installed version
 - **Linux (Snap):** `/snap/nvim/current/usr/bin/nvim`
   - Runtime docs: `/snap/nvim/current/usr/share/nvim/runtime/doc/`
 

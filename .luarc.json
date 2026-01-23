@@ -8,6 +8,9 @@
   "diagnostics": {
     "severity": {
       "undefined-global": "Error",
+      "unused-local": "Error",
+      "unused-function": "Error",
+      "unused-label": "Error",
       "deprecated": "Warning",
       "redundant-parameter": "Warning",
       "redundant-value": "Warning"

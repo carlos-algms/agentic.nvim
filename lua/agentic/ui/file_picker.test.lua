@@ -36,7 +36,7 @@ describe("FilePicker:scan_files", function()
             local call_count = 0
 
             ---@diagnostic disable-next-line: duplicate-set-field -- we must mock it to force specific behavior
-            vim.fn.system = function(cmd) -- luacheck: ignore
+            vim.fn.system = function(_cmd) -- luacheck: ignore 122 (setting read-only field for test mock)
                 call_count = call_count + 1
 
                 if call_count == 1 then

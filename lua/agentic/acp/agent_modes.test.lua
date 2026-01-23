@@ -90,7 +90,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("calls callback when selecting different mode", function()
-            select_stub:invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(items, _opts, on_choice)
                 on_choice(items[2]) -- Select "plan"
             end)
 
@@ -99,7 +99,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("does not call callback when selecting current mode", function()
-            select_stub:invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(items, _opts, on_choice)
                 on_choice(items[1]) -- Select "normal" (current)
             end)
 
@@ -108,7 +108,7 @@ describe("agentic.acp.AgentModes", function()
         end)
 
         it("does not call callback when user cancels", function()
-            select_stub:invokes(function(items, opts, on_choice)
+            select_stub:invokes(function(_items, _opts, on_choice)
                 on_choice(nil)
             end)
 

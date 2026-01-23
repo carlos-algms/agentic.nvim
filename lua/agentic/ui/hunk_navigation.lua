@@ -1,0 +1,255 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
+local Config = require("agentic.config")
+local Logger = require("agentic.utils.logger")
+
+--- Hunk navigation module for diff preview
+--- Manages navigation state, keymaps, and movement between diff hunks
+--- @class agentic.ui.HunkNavigation
+local M = {}
+
+--- Per-buffer state for hunk navigation
+--- needed because `vim.b` doesn't support saving callbacks, as it will serialize, to comply with vimscript
+--- @class agentic.ui.HunkNavigation.State
+--- @field saved_keymaps { next?: table, prev?: table } Saved keymaps for restoration
+--- @field hunk_index number Current hunk index (0-based, -1 means uninitialized)
+--- @field anchors_cache integer[]|nil Cached hunk anchor positions (0-indexed line numbers)
+
+--- Module-level state storage (per-buffer)
+--- @type table<number, agentic.ui.HunkNavigation.State>
+local buffer_state = {}
+
+--- Get or initialize state for buffer
+--- @param bufnr number
+--- @return agentic.ui.HunkNavigation.State
+local function get_state(bufnr)
+    if not buffer_state[bufnr] then
+        buffer_state[bufnr] = {
+            saved_keymaps = {},
+            hunk_index = -1,
+            anchors_cache = nil,
+        }
+    end
+    return buffer_state[bufnr]
+end
+
+--- Get all hunk anchor positions (where virtual lines start)
+--- @param bufnr number
+--- @param namespace_id number
+--- @return integer[] anchors 0-indexed line numbers where hunks are anchored
+function M._get_hunk_anchors(bufnr, namespace_id)
+    local state = get_state(bufnr)
+    if state.anchors_cache then
+        return state.anchors_cache
+    end
+
+    local extmarks = vim.api.nvim_buf_get_extmarks(
+        bufnr,
+        namespace_id,
+        0,
+        -1,
+        { details = true }
+    )
+
+    local anchors = {}
+    for _, extmark in ipairs(extmarks) do
+        local _, row, _, details = unpack(extmark)
+        if details and details.virt_lines and #details.virt_lines > 0 then
+            table.insert(anchors, row)
+        end
+    end
+
+    table.sort(anchors)
+    state.anchors_cache = anchors
+    return anchors
+end
+
+--- Find next/previous hunk position relative to current hunk index
+--- When only one hunk exists, navigation wraps to itself
+--- @param bufnr number
+--- @param namespace_id number
+--- @param direction "next"|"prev"
+--- @return number|nil target_line 1-indexed line number
+--- @return number|nil new_index 0-based hunk index
+local function find_hunk(bufnr, namespace_id, direction)
+    local anchors = M._get_hunk_anchors(bufnr, namespace_id)
+    if #anchors == 0 then
+        return nil, nil
+    end
+
+    local state = get_state(bufnr)
+    local current_index = state.hunk_index
+    local new_index
+
+    if direction == "next" then
+        new_index = (current_index + 1) % #anchors
+    else
+        new_index = current_index <= 0 and #anchors - 1 or current_index - 1
+    end
+
+    return anchors[new_index + 1] + 1, new_index
+end
+
+--- Calculate scroll command based on hunk size and window height
+--- @param bufnr number
+--- @param winid number
+--- @param anchor_line number 0-indexed anchor line
+--- @param namespace_id number
+--- @return string|nil scroll_cmd "zt", "zz", or nil if centering disabled or no extmarks
+function M.get_scroll_cmd(bufnr, winid, anchor_line, namespace_id)
+    if not Config.diff_preview.center_on_navigate_hunks then
+        return nil
+    end
+
+    local extmarks = vim.api.nvim_buf_get_extmarks(
+        bufnr,
+        namespace_id,
+        { anchor_line, 0 },
+        { anchor_line, -1 },
+        { details = true }
+    )
+
+    if #extmarks == 0 then
+        return nil
+    end
+
+    local virt_lines = extmarks[1][4].virt_lines or {}
+    local hunk_height = #virt_lines
+
+    local win_height = vim.api.nvim_win_get_height(winid)
+
+    return hunk_height > (win_height / 2) and "zt" or "zz"
+end
+
+--- Navigate to hunk in specified direction
+--- @param bufnr number
+--- @param namespace_id number
+--- @param direction "next"|"prev"
+local function navigate_hunk(bufnr, namespace_id, direction)
+    local target_line, new_index = find_hunk(bufnr, namespace_id, direction)
+    if not target_line or not new_index then
+        Logger.notify("No hunks found", vim.log.levels.INFO)
+        return
+    end
+
+    local target_winid = vim.fn.bufwinid(bufnr)
+    if target_winid == -1 then
+        Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
+        return
+    end
+
+    local state = get_state(bufnr)
+    state.hunk_index = new_index
+
+    local anchor_line = target_line - 1
+    local scroll_cmd =
+        M.get_scroll_cmd(bufnr, target_winid, anchor_line, namespace_id)
+
+    if not scroll_cmd then
+        return
+    end
+
+    pcall(vim.api.nvim_win_call, target_winid, function()
+        vim.cmd(string.format("normal! %dG%s", target_line, scroll_cmd))
+    end)
+end
+
+--- Save existing keymap for restoration
+--- @param bufnr number
+--- @param key string
+--- @return table|nil map_info
+local function save_keymap(bufnr, key)
+    local map_info
+    vim.api.nvim_buf_call(bufnr, function()
+        map_info = vim.fn.maparg(key, "n", false, true)
+    end)
+
+    if map_info and map_info.lhs then
+        -- vim.fn.maparg() returns buffer=1 as a flag indicating buffer-local mapping
+        -- (not the actual buffer number). We only save buffer-local keymaps.
+        if map_info.buffer == 1 then
+            return map_info
+        end
+    end
+    return nil
+end
+
+--- Navigate to next hunk
+--- @param bufnr number
+--- @param namespace_id number
+function M.navigate_next(bufnr, namespace_id)
+    navigate_hunk(bufnr, namespace_id, "next")
+end
+
+--- Navigate to previous hunk
+--- @param bufnr number
+--- @param namespace_id number
+function M.navigate_prev(bufnr, namespace_id)
+    navigate_hunk(bufnr, namespace_id, "prev")
+end
+
+--- Setup hunk navigation keymaps for buffer
+--- @param bufnr number
+--- @param namespace_id number
+function M.setup_keymaps(bufnr, namespace_id)
+    local keymaps = Config.keymaps.diff_preview
+    local state = get_state(bufnr)
+    state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
+    state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
+
+    BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
+        M.navigate_next(bufnr, namespace_id)
+    end, { desc = "Go to next hunk - Agentic DiffPreview" })
+
+    BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
+        M.navigate_prev(bufnr, namespace_id)
+    end, { desc = "Go to previous hunk - Agentic DiffPreview" })
+
+    state.hunk_index = -1
+end
+
+--- Restore saved keymaps for buffer
+--- @param bufnr number
+function M.restore_keymaps(bufnr)
+    local keymaps = Config.keymaps.diff_preview
+    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.next_hunk)
+    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.prev_hunk)
+
+    local state = buffer_state[bufnr]
+    if state and state.saved_keymaps then
+        for _, saved_map in pairs(state.saved_keymaps) do
+            if saved_map and saved_map.lhs then
+                local opts = { buffer = bufnr }
+                if saved_map.noremap == 1 then
+                    opts.noremap = true
+                end
+                if saved_map.silent == 1 then
+                    opts.silent = true
+                end
+                if saved_map.expr == 1 then
+                    opts.expr = true
+                end
+                if saved_map.nowait == 1 then
+                    opts.nowait = true
+                end
+
+                pcall(
+                    vim.keymap.set,
+                    "n",
+                    saved_map.lhs,
+                    saved_map.callback or saved_map.rhs,
+                    opts
+                )
+            end
+        end
+    end
+
+    M.clear_state(bufnr)
+end
+
+--- Clear all module state for buffer
+--- @param bufnr number
+function M.clear_state(bufnr)
+    buffer_state[bufnr] = nil
+end
+
+return M
