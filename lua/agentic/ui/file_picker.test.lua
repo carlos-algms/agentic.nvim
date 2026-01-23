@@ -2,6 +2,39 @@ local assert = require("tests.helpers.assert")
 
 local FilePicker = require("agentic.ui.file_picker")
 
+--- Computes the differences between two tables
+--- @param left table
+--- @param right table
+--- @return string[] only_in_left Items only in left table
+--- @return string[] only_in_right Items only in right table
+local function table_diff(left, right)
+    local left_set = {}
+    for _, v in ipairs(left) do
+        left_set[v] = true
+    end
+
+    local right_set = {}
+    for _, v in ipairs(right) do
+        right_set[v] = true
+    end
+
+    local only_in_left = {}
+    for _, v in ipairs(left) do
+        if not right_set[v] then
+            table.insert(only_in_left, v)
+        end
+    end
+
+    local only_in_right = {}
+    for _, v in ipairs(right) do
+        if not left_set[v] then
+            table.insert(only_in_right, v)
+        end
+    end
+
+    return only_in_left, only_in_right
+end
+
 describe("FilePicker:scan_files", function()
     local original_system
     local original_cmd_rg
@@ -80,10 +113,6 @@ describe("FilePicker:scan_files", function()
             assert.is_true(#files_fd > 0)
             assert.is_true(#files_git > 0)
 
-            -- All commands should return the same count
-            assert.are.equal(#files_rg, #files_fd)
-            assert.are.equal(#files_fd, #files_git)
-
             -- Extract just the word (filename) for comparison
             local words_rg = vim.tbl_map(function(f)
                 return f.word
@@ -95,8 +124,14 @@ describe("FilePicker:scan_files", function()
                 return f.word
             end, files_git)
 
-            assert.are.same(words_rg, words_fd)
-            assert.are.same(words_fd, words_git)
+            local rg_only, fd_only = table_diff(words_rg, words_fd)
+            assert.are.same(rg_only, fd_only)
+
+            local fd_only2, git_only = table_diff(words_fd, words_git)
+            assert.are.same(fd_only2, git_only)
+
+            assert.are.equal(#files_rg, #files_fd)
+            assert.are.equal(#files_fd, #files_git)
         end)
 
         it("should use glob fallback when all commands fail", function()
@@ -133,7 +168,10 @@ describe("FilePicker:scan_files", function()
                 return f.word
             end, files_glob)
 
-            assert.are.same(words_rg, words_glob)
+            local rg_only, glob_only = table_diff(words_rg, words_glob)
+            assert.are.same(rg_only, glob_only)
+
+            assert.are.equal(#words_rg, #words_glob)
 
             FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)
