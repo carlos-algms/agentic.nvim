@@ -9,6 +9,8 @@ describe("diff_preview", function()
             assert.has_no_errors(function()
                 DiffPreview.clear_diff(bufnr)
             end)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
 
         it(
@@ -29,7 +31,10 @@ describe("diff_preview", function()
 
                 current_bufnr = vim.api.nvim_get_current_buf()
                 assert.equal(current_bufnr, init_bufnr)
-                vim.cmd("bd") -- Close the current buffer to clean up
+
+                if vim.api.nvim_buf_is_valid(init_bufnr) then
+                    vim.api.nvim_buf_delete(init_bufnr, { force = true })
+                end
             end
         )
 

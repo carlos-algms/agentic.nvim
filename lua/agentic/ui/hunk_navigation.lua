@@ -94,10 +94,10 @@ end
 --- @param winid number
 --- @param anchor_line number 0-indexed anchor line
 --- @param namespace_id number
---- @return string|nil scroll_cmd "zt", "zz", or nil if centering disabled or no extmarks
+--- @return string scroll_cmd "zt", "zz", or empty string if centering disabled or no extmarks
 function M.get_scroll_cmd(bufnr, winid, anchor_line, namespace_id)
     if not Config.diff_preview.center_on_navigate_hunks then
-        return nil
+        return ""
     end
 
     local extmarks = vim.api.nvim_buf_get_extmarks(
@@ -109,7 +109,7 @@ function M.get_scroll_cmd(bufnr, winid, anchor_line, namespace_id)
     )
 
     if #extmarks == 0 then
-        return nil
+        return ""
     end
 
     local virt_lines = extmarks[1][4].virt_lines or {}
@@ -143,10 +143,6 @@ local function navigate_hunk(bufnr, namespace_id, direction)
     local anchor_line = target_line - 1
     local scroll_cmd =
         M.get_scroll_cmd(bufnr, target_winid, anchor_line, namespace_id)
-
-    if not scroll_cmd then
-        return
-    end
 
     pcall(vim.api.nvim_win_call, target_winid, function()
         vim.cmd(string.format("normal! %dG%s", target_line, scroll_cmd))
@@ -233,7 +229,8 @@ function M.restore_keymaps(bufnr)
                 end
 
                 pcall(
-                    vim.keymap.set,
+                    BufHelpers.keymap_set,
+                    bufnr,
                     "n",
                     saved_map.lhs,
                     saved_map.callback or saved_map.rhs,

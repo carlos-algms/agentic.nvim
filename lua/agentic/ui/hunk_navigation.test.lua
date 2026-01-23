@@ -240,4 +240,149 @@ describe("hunk_navigation", function()
             assert.equal(#anchors_after, 1)
         end)
     end)
+
+    describe("navigation with center_on_navigate_hunks config", function()
+        local Config
+        local original_center_setting
+        local winid
+
+        before_each(function()
+            Config = require("agentic.config")
+            original_center_setting =
+                Config.diff_preview.center_on_navigate_hunks
+            vim.cmd("buffer " .. test_bufnr)
+            winid = vim.api.nvim_get_current_win()
+        end)
+
+        after_each(function()
+            Config.diff_preview.center_on_navigate_hunks =
+                original_center_setting
+            HunkNavigation.clear_state(test_bufnr)
+        end)
+
+        it(
+            "CRITICAL: navigates even when center_on_navigate_hunks = false",
+            function()
+                -- This test would have caught the bug where navigation was blocked
+                -- when get_scroll_cmd returned nil (centering disabled)
+                Config.diff_preview.center_on_navigate_hunks = false
+
+                add_hunk(test_bufnr, test_ns, 1)
+                add_hunk(test_bufnr, test_ns, 3)
+
+                HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+
+                -- Start at line 1
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                -- Navigate to first hunk (line 2)
+                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
+
+                -- Navigate to second hunk (line 4)
+                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
+
+                -- Navigate back to first hunk (line 2)
+                HunkNavigation.navigate_prev(test_bufnr, test_ns)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
+            end
+        )
+
+        it(
+            "navigates with centering when center_on_navigate_hunks = true",
+            function()
+                Config.diff_preview.center_on_navigate_hunks = true
+
+                add_hunk(test_bufnr, test_ns, 1)
+                add_hunk(test_bufnr, test_ns, 3)
+
+                HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
+
+                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
+            end
+        )
+    end)
+
+    describe("get_scroll_cmd", function()
+        local Config
+        local original_center_setting
+        local winid
+
+        before_each(function()
+            Config = require("agentic.config")
+            original_center_setting =
+                Config.diff_preview.center_on_navigate_hunks
+            vim.cmd("buffer " .. test_bufnr)
+            winid = vim.api.nvim_get_current_win()
+        end)
+
+        after_each(function()
+            Config.diff_preview.center_on_navigate_hunks =
+                original_center_setting
+        end)
+
+        it(
+            "returns empty string when center_on_navigate_hunks = false",
+            function()
+                Config.diff_preview.center_on_navigate_hunks = false
+
+                add_hunk(test_bufnr, test_ns, 1)
+
+                local scroll_cmd =
+                    HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+
+                assert.equal(scroll_cmd, "")
+            end
+        )
+
+        it("returns empty string when no extmarks found", function()
+            Config.diff_preview.center_on_navigate_hunks = true
+
+            -- Don't add any hunks - no extmarks at line 1
+            local scroll_cmd =
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+
+            assert.equal(scroll_cmd, "")
+        end)
+
+        it("returns 'zz' for small hunks (< half window height)", function()
+            Config.diff_preview.center_on_navigate_hunks = true
+
+            -- Create small hunk (1 virt_line)
+            vim.api.nvim_buf_set_extmark(test_bufnr, test_ns, 1, 0, {
+                virt_lines = { { { "small hunk", "Comment" } } },
+            })
+
+            local scroll_cmd =
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+
+            assert.equal(scroll_cmd, "zz")
+        end)
+
+        it("returns 'zt' for large hunks (> half window height)", function()
+            Config.diff_preview.center_on_navigate_hunks = true
+
+            local win_height = vim.api.nvim_win_get_height(winid)
+            local large_virt_lines = {}
+            for i = 1, math.floor(win_height / 2) + 2 do
+                table.insert(large_virt_lines, { { "line " .. i, "Comment" } })
+            end
+
+            vim.api.nvim_buf_set_extmark(test_bufnr, test_ns, 1, 0, {
+                virt_lines = large_virt_lines,
+            })
+
+            local scroll_cmd =
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+
+            assert.equal(scroll_cmd, "zt")
+        end)
+    end)
 end)

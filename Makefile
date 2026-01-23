@@ -56,10 +56,20 @@ check: luals luacheck format-check
 # Run all validations with output redirection for AI agents
 validate:
 	@mkdir -p .local; \
-	make luaformat; \
-	make luals > .local/agentic_luals_output.log 2>&1; echo "luals: $$?"; \
-	make luacheck > .local/agentic_luacheck_output.log 2>&1; echo "luacheck: $$?"; \
-	make test > .local/agentic_test_output.log 2>&1; echo "test: $$?"
+	total_start=$$(date +%s); \
+	start=$$(date +%s); \
+	make format; \
+	echo "format: $$? (took $$(($$(date +%s) - start))s)"; \
+	start=$$(date +%s); \
+	make luals > .local/agentic_luals_output.log 2>&1; \
+	echo "luals: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_luals_output.log"; \
+	start=$$(date +%s); \
+	make luacheck > .local/agentic_luacheck_output.log 2>&1; \
+	echo "luacheck: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_luacheck_output.log"; \
+	start=$$(date +%s); \
+	make test > .local/agentic_test_output.log 2>&1; \
+	echo "test: $$? (took $$(($$(date +%s) - start))s) - log: .local/agentic_test_output.log"; \
+	echo "Total: $$(($$(date +%s) - total_start))s"
 
 # Install pre-commit hook locally
 install-git-hooks:
