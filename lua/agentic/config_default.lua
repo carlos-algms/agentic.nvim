@@ -31,6 +31,7 @@
 --- @class agentic.UserConfig.Keymaps
 --- @field widget table<string, agentic.UserConfig.KeymapValue>
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
+--- @field diff_preview table<string, string>
 
 --- Window options passed to nvim_set_option_value
 --- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
@@ -181,6 +182,12 @@ local ConfigDefault = {
                 },
             },
         },
+
+        --- Keys bindings for diff preview navigation
+        diff_preview = {
+            next_hunk = "]c",
+            prev_hunk = "[c",
+        },
     },
 
     -- stylua: ignore start
@@ -226,8 +233,11 @@ local ConfigDefault = {
 
     --- Show diff preview for edit tool calls in the buffer
     --- @class agentic.UserConfig.DiffPreview
+    --- @field enabled boolean
+    --- @field center_on_navigate_hunks boolean
     diff_preview = {
         enabled = true,
+        center_on_navigate_hunks = true,
     },
     --- @type agentic.UserConfig.Hooks
     hooks = {

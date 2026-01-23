@@ -311,6 +311,8 @@ These keybindings are automatically set in Agentic buffers:
 | `q`              | n     | Close chat widget                                             |
 | `d`              | n     | Remove file or code selection at cursor                       |
 | `d`              | v     | Remove multiple selected files or code selections             |
+| `]c`             | n     | Navigate to next diff hunk (when diff preview is active)      |
+| `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)  |
 
 #### Customizing Keybindings
 
@@ -349,6 +351,12 @@ your setup:
             mode = { "n", "i" }, -- I like normal and insert modes for this, but feel free to customize
           },
         },
+      },
+
+      -- Keybindings for diff preview navigation
+      diff_preview = {
+        next_hunk = "]c",
+        prev_hunk = "[c",
       },
     },
   },

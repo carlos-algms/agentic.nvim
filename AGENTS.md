@@ -379,15 +379,15 @@ local MyClass = {}
 MyClass.__index = MyClass
 
 --- Creates a new instance of MyClass
---- @param name string The name parameter
---- @param options table|nil Optional configuration table
---- @return MyClass instance The created instance
+--- @param name string
+--- @param options table|nil
+--- @return MyClass instance
 function MyClass:new(name, options)
     return setmetatable({ public_field = name }, self)
 end
 
 --- Performs an operation and returns success status
---- @return boolean success Whether the operation succeeded
+--- @return boolean success
 function MyClass:do_something()
     return true
 end
@@ -397,27 +397,49 @@ end
 
 - Always include a space after `---` for both descriptions and annotations
 - Use `@private` or `@protected` for internal implementation details
+- Do NOT provide meaningful parameter and return descriptions, unless requested
+
+- **Return annotation format:** Use `@return {type} return_name description`
+  format:
+  - ✅ **CORRECT:** `@return boolean success Whether the operation succeeded`
+  - ✅ **CORRECT:**
+    `@return string|nil result The result if successful, nil otherwise`
+  - ❌ **WRONG:** `@return boolean Whether the operation succeeded` - Missing
+    return name
+  - ❌ **WRONG:** `@return success boolean` - Wrong order (type must come first)
 
 - **Optional types:** Format depends on annotation type
 
-  **`@param` and `@field` annotations - Use `variable? type` format:**
-  - ✅ **CORRECT:** `@param winid? number` - `?` goes AFTER the variable name
+  **`@param` annotations - MUST use explicit `type|nil` union:**
+  - ✅ **CORRECT:** `@param winid number|nil` - Explicit union type required
+  - ✅ **CORRECT:** `@param options table|nil` - Optional parameter
+  - ❌ **WRONG:** `@param winid? number` - LuaLS doesn't properly validate
+    optional syntax
+  - ❌ **WRONG:** `@param winid number?` - Wrong syntax
+  - **Reason:** Due to
+    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385),
+    optional `?` syntax is not properly validated for function parameters, so
+    explicit `|nil` union must be used
+  - **Note:** Function type parameters also use `|nil`:
+    - ✅ **CORRECT:** `@param callback fun(result: table|nil)` - Explicit union
+      required
+    - ❌ **WRONG:** `@param callback fun(result?: table)` - LuaLS doesn't
+      validate this
+
+  **`@field` annotations - Use `variable? type` format:**
   - ✅ **CORRECT:** `@field _state? string` - `?` goes AFTER the variable name
   - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also
     support optional `?`
-  - ❌ **WRONG:** `@param winid number|nil` - Use `variable? type` instead
-  - ❌ **WRONG:** `@param winid number?` - `?` must be after variable name, not
-    type
   - ❌ **WRONG:** `@field _state string|nil` - Use `variable? type` instead
   - ❌ **WRONG:** `@field _state string?` - `?` must be after variable name, not
     type
 
   **`@return`, `@type`, and `@alias` annotations - Use explicit `type|nil`
   union:**
-  - ✅ **CORRECT:** `@return string|nil` - Explicit union type
+  - ✅ **CORRECT:** `@return string|nil result` - Explicit union type
   - ✅ **CORRECT:** `@type table<string, number|nil>` - Explicit union type
   - ✅ **CORRECT:** `@alias MyType string|nil` - Explicit union type
-  - ❌ **WRONG:** `@return string?` - Do NOT use `?` after type
+  - ❌ **WRONG:** `@return string? result` - Do NOT use `?` after type
   - ❌ **WRONG:** `@type table<string, number?>` - Do NOT use `?` after type
   - ❌ **WRONG:** `@alias MyType string?` - Do NOT use `?` after type
   - **Reason:** Makes the optional nature more explicit in type definitions
@@ -446,7 +468,7 @@ end
   end
 
   -- ✅ Good: Type annotation enables proper type checking
-  --- @return MyModule.Block
+  --- @return MyModule.Block block
   function M.create_block(lines)
       --- @type MyModule.Block
       local block = {
@@ -672,36 +694,7 @@ The ACP documentation can be found at:
 ### Neovim Documentation Files and help docs
 
 **IMPORTANT**: For dealing with neovim native features and APIs, refer to the
-official docs. Common documentation files include:
-
-- api.txt - Neovim Lua API
-- autocmd.txt - Autocommands
-- change.txt - Changing text
-- channel.txt - Channels and jobs
-- cmdline.txt - Command-line editing
-- diagnostic.txt - Diagnostics
-- diff.txt - Diff mode
-- editing.txt - Editing files
-- fold.txt - Folding
-- indent.txt - Indentation
-- insert.txt - Insert mode
-- job_control.txt - Job control
-- lsp.txt - LSP client
-- lua.txt - Lua API
-- lua-guide.txt - Lua guide
-- map.txt - Key mapping
-- motion.txt - Motion commands
-- options.txt - Options
-- pattern.txt - Patterns and search
-- quickfix.txt - Quickfix and location lists
-- syntax.txt - Syntax highlighting
-- tabpage.txt - Tab pages
-- terminal.txt - Terminal emulator
-- treesitter.txt - Treesitter
-- ui.txt - UI
-- undo.txt - Undo and redo
-- windows.txt - Windows
-- various.txt - Various commands
+official docs.
 
 **CRITICAL**: Do NOT run `nvim --headless` or any other `nvim` command to read
 help documentation. Use direct file access instead.
@@ -744,5 +737,5 @@ Common path patterns after discovery:
 https://raw.githubusercontent.com/neovim/neovim/refs/tags/v<version>/runtime/doc/<doc-name>.txt
 ```
 
-**Tip:** Use `rg`, or `grep` on the `runtime/doc` folder when unsure which file
-contains needed info.
+**Tip:** Do not assume a file contains what you need, use `rg`, or `grep` on the
+`runtime/doc` folder to find the file containing needed info.
