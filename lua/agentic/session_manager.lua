@@ -103,6 +103,7 @@ function SessionManager:new(tab_page_id)
         else
             self.widget.headers.files.context = tostring(#file_list:get_files())
             self.widget:render_header("files")
+            self.widget:resize_dynamic_window("files")
         end
     end)
 
@@ -116,6 +117,7 @@ function SessionManager:new(tab_page_id)
                 self.widget.headers.code.context =
                     tostring(#code_selection:get_selections())
                 self.widget:render_header("code")
+                self.widget:resize_dynamic_window("code")
             end
         end
     )
@@ -135,6 +137,7 @@ function SessionManager:_on_session_update(update)
                 self.widget:show({
                     focus_prompt = false,
                 })
+                self.widget:resize_dynamic_window("todos")
             end
         end
     elseif update.sessionUpdate == "agent_message_chunk" then

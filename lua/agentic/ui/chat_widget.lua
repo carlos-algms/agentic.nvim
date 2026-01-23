@@ -751,6 +751,35 @@ function ChatWidget:close_todos_window()
     end
 end
 
+--- Resize a dynamic window based on its current buffer content
+--- Closes the window if buffer is empty
+--- @param window_name "code"|"files"|"todos" Window to resize
+function ChatWidget:resize_dynamic_window(window_name)
+    local bufnr = self.buf_nrs[window_name]
+    local winid = self.win_nrs[window_name]
+
+    -- Close window if buffer is empty
+    if BufHelpers.is_buffer_empty(bufnr) then
+        if winid and vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
+            self.win_nrs[window_name] = nil
+        end
+        return
+    end
+
+    -- Resize window if it exists and has content
+    if winid and vim.api.nvim_win_is_valid(winid) then
+        local window_config = Config.windows[window_name] or {}
+        local max_height = window_config.max_height or 10
+
+        local new_height = self._calculate_dynamic_height(bufnr, max_height)
+
+        vim.api.nvim_win_set_config(winid, {
+            height = new_height,
+        })
+    end
+end
+
 --- Filetypes that should be excluded when finding fallback windows
 local EXCLUDED_FILETYPES = {
     -- File explorers

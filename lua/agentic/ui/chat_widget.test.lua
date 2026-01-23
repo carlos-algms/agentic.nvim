@@ -263,6 +263,88 @@ describe("agentic.ui.ChatWidget", function()
                 assert.equal(15, height) -- Capped at default max_height=15
             end)
         end)
+
+        -- Note: These tests call resize_dynamic_window() directly to simulate
+        -- user actions that trigger buffer changes (e.g., pressing 'd' to delete
+        -- files/code snippets, or agent updating todos). The resize_dynamic_window()
+        -- method is called by SessionManager callbacks when content changes.
+        describe("resize_dynamic_window()", function()
+            it("shrinks window when content is removed", function()
+                vim.bo[widget.buf_nrs.code].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    { "line1", "line2", "line3", "line4", "line5" }
+                )
+
+                widget:show()
+                assert.equal(
+                    6,
+                    vim.api.nvim_win_get_height(widget.win_nrs.code)
+                )
+
+                -- Simulate user removing content (e.g., pressing 'd' key)
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    { "line1", "line2" }
+                )
+
+                widget:resize_dynamic_window("code")
+
+                assert.equal(
+                    3,
+                    vim.api.nvim_win_get_height(widget.win_nrs.code)
+                )
+            end)
+
+            it("closes window when buffer becomes empty", function()
+                vim.bo[widget.buf_nrs.code].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    { "line1" }
+                )
+
+                widget:show()
+                assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.code))
+
+                -- Simulate user removing all content
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    {}
+                )
+
+                widget:resize_dynamic_window("code")
+
+                assert.is_nil(widget.win_nrs.code)
+            end)
+
+            it("does nothing if window doesn't exist", function()
+                vim.bo[widget.buf_nrs.code].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.code,
+                    0,
+                    -1,
+                    false,
+                    { "line1" }
+                )
+
+                -- Don't show widget, so window doesn't exist
+                assert.has_no_errors(function()
+                    widget:resize_dynamic_window("code")
+                end)
+            end)
+        end)
     end)
 
     describe("calculate dynamic height", function()
