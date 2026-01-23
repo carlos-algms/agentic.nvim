@@ -20,6 +20,23 @@ local function add_hunk(bufnr, ns, line)
     })
 end
 
+--- Get keymap info in buffer context
+--- @param bufnr number
+--- @param key string
+--- @return table
+local function get_keymap_in_buf(bufnr, key)
+    return vim.api.nvim_buf_call(bufnr, function()
+        return vim.fn.maparg(key, "n", false, true)
+    end)
+end
+
+--- Check if keymap is buffer-local
+--- @param map table|nil
+--- @return boolean
+local function is_buffer_local(map)
+    return map and map.buffer == 1 or false
+end
+
 local test_ns = vim.api.nvim_create_namespace("test_hunk_navigation")
 
 describe("hunk_navigation", function()
@@ -72,15 +89,17 @@ describe("hunk_navigation", function()
     end)
 
     describe("navigate_next and navigate_prev", function()
+        local winid
+
         before_each(function()
             vim.cmd("buffer " .. test_bufnr)
+            winid = vim.api.nvim_get_current_win()
         end)
 
         after_each(function()
             HunkNavigation.clear_state(test_bufnr)
         end)
 
-        -- Equivalence Class: Multiple hunks (>1)
         it("navigates through multiple hunks with wrapping", function()
             add_hunk(test_bufnr, test_ns, 1)
             add_hunk(test_bufnr, test_ns, 3)
@@ -89,75 +108,109 @@ describe("hunk_navigation", function()
 
             -- Forward navigation: start -> 1st -> 2nd -> wrap to 1st
             HunkNavigation.navigate_next(test_bufnr, test_ns)
-            assert.equal(vim.api.nvim_win_get_cursor(0)[1], 2)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
             HunkNavigation.navigate_next(test_bufnr, test_ns)
-            assert.equal(vim.api.nvim_win_get_cursor(0)[1], 4)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
 
             HunkNavigation.navigate_next(test_bufnr, test_ns)
-            assert.equal(vim.api.nvim_win_get_cursor(0)[1], 2)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
             -- Backward navigation: wrap to last -> 1st
             HunkNavigation.navigate_prev(test_bufnr, test_ns)
-            assert.equal(vim.api.nvim_win_get_cursor(0)[1], 4)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
 
             HunkNavigation.navigate_prev(test_bufnr, test_ns)
-            assert.equal(vim.api.nvim_win_get_cursor(0)[1], 2)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
         end)
 
-        -- Equivalence Class: Single hunk (boundary case)
         it("wraps to itself with single hunk", function()
             add_hunk(test_bufnr, test_ns, 1)
 
             HunkNavigation.setup_keymaps(test_bufnr, test_ns)
 
             HunkNavigation.navigate_next(test_bufnr, test_ns)
-            local pos1 = vim.api.nvim_win_get_cursor(0)[1]
+            local pos1 = vim.api.nvim_win_get_cursor(winid)[1]
 
             HunkNavigation.navigate_next(test_bufnr, test_ns)
-            local pos2 = vim.api.nvim_win_get_cursor(0)[1]
+            local pos2 = vim.api.nvim_win_get_cursor(winid)[1]
 
             assert.equal(pos1, pos2)
         end)
     end)
 
     describe("setup_keymaps and restore_keymaps", function()
+        local Config
+        local original_keymaps
+
         before_each(function()
             vim.cmd("buffer " .. test_bufnr)
+            Config = require("agentic.config")
+            original_keymaps = vim.deepcopy(Config.keymaps.diff_preview)
+            -- Use custom test keybindings to avoid conflicts with native vim keymaps
+            Config.keymaps.diff_preview.next_hunk = "<leader>hn"
+            Config.keymaps.diff_preview.prev_hunk = "<leader>hp"
         end)
 
-        it("sets buffer-local keymaps and restores originals", function()
-            -- Save original keymap
-            local original_fn = function()
-                -- Original keymap function
-            end
-            vim.keymap.set("n", "]c", original_fn, { buffer = test_bufnr })
+        after_each(function()
+            Config.keymaps.diff_preview = original_keymaps
+            pcall(vim.keymap.del, "n", "<leader>hn")
+            pcall(vim.keymap.del, "n", "<leader>hp")
+        end)
 
-            local before_map = vim.fn.maparg("]c", "n", false, true)
-            assert.is_not_nil(before_map)
+        it("does not save global keymaps", function()
+            vim.keymap.set("n", "<leader>hn", ":echo 'global'<CR>")
 
-            -- Setup hunk navigation keymaps
+            local global_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_not_nil(global_map)
+            assert.is_false(is_buffer_local(global_map))
+
             HunkNavigation.setup_keymaps(test_bufnr, test_ns)
 
-            local next_map = vim.fn.maparg("]c", "n", false, true)
-            local prev_map = vim.fn.maparg("[c", "n", false, true)
+            local during_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_true(is_buffer_local(during_map))
 
-            assert.is_not_nil(next_map)
-            assert.is_not_nil(prev_map)
-            assert.equal(next_map.buffer, 1)
-            assert.equal(prev_map.buffer, 1)
-
-            -- Restore original keymaps
             HunkNavigation.restore_keymaps(test_bufnr)
 
-            local after_next = vim.fn.maparg("]c", "n", false, true)
-            local after_prev = vim.fn.maparg("[c", "n", false, true)
+            -- CRITICAL: If global was saved and restored, it would be buffer-local
+            -- (because restore_keymaps always sets opts.buffer = bufnr)
+            local after_restore = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_false(is_buffer_local(after_restore))
+        end)
+
+        it("saves and restores buffer-local keymaps only", function()
+            vim.keymap.set(
+                "n",
+                "<leader>hn",
+                ":echo 'original'<CR>",
+                { buffer = test_bufnr }
+            )
+
+            local before_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_not_nil(before_map)
+            assert.is_true(is_buffer_local(before_map))
+            local original_rhs = before_map.rhs
+
+            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+
+            local next_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            local prev_map = get_keymap_in_buf(test_bufnr, "<leader>hp")
+            assert.is_not_nil(next_map)
+            assert.is_not_nil(prev_map)
+            assert.is_true(is_buffer_local(next_map))
+            assert.is_true(is_buffer_local(prev_map))
+
+            HunkNavigation.restore_keymaps(test_bufnr)
+
+            local after_next = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            local after_prev = get_keymap_in_buf(test_bufnr, "<leader>hp")
 
             -- Verify navigation keymaps removed and originals restored
-            if type(after_next) == "table" and next(after_next) ~= nil then
-                assert.is_not_nil(after_next.callback or after_next.rhs)
+            if next(after_next) ~= nil then
+                assert.is_true(is_buffer_local(after_next))
+                assert.equal(after_next.rhs, original_rhs)
             end
-            assert.equal(type(after_prev), "table")
+            -- Prev keymap should be removed (didn't exist before)
             assert.equal(next(after_prev), nil)
         end)
 
