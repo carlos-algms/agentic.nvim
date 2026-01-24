@@ -1,6 +1,7 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local Theme = require("agentic.theme")
 
 --- Hunk navigation module for diff preview
 --- Manages navigation state, keymaps, and movement between diff hunks
@@ -36,9 +37,11 @@ local function get_state(bufnr)
     return buffer_state[bufnr]
 end
 
---- Get all hunk anchor positions (where virtual lines start)
+--- Get all hunk positions (first deleted line per hunk)
+--- Falls back to virtual line anchor for pure insertions.
+--- Groups consecutive deleted lines (only returns first line of each group).
 --- @param bufnr number
---- @return integer[] anchors 0-indexed line numbers where hunks are anchored
+--- @return integer[] positions 0-indexed line numbers where hunks begin
 function M._get_hunk_anchors(bufnr)
     local state = get_state(bufnr)
     if state.anchors_cache then
@@ -48,17 +51,58 @@ function M._get_hunk_anchors(bufnr)
     local extmarks =
         vim.api.nvim_buf_get_extmarks(bufnr, NS_DIFF, 0, -1, { details = true })
 
-    local anchors = {}
+    local deleted_lines = {}
+    local virt_line_anchors = {}
+
     for _, extmark in ipairs(extmarks) do
         local _, row, _, details = unpack(extmark)
-        if details and details.virt_lines and #details.virt_lines > 0 then
-            table.insert(anchors, row)
+
+        if details then
+            if details.hl_group then
+                local hl = details.hl_group
+                if
+                    hl == Theme.HL_GROUPS.DIFF_DELETE
+                    or hl == Theme.HL_GROUPS.DIFF_DELETE_WORD
+                then
+                    deleted_lines[row] = true
+                end
+            end
+
+            if details.virt_lines then
+                virt_line_anchors[row] = true
+            end
         end
     end
 
-    table.sort(anchors)
-    state.anchors_cache = anchors
-    return anchors
+    local deleted_positions = {}
+    for line_num in pairs(deleted_lines) do
+        table.insert(deleted_positions, line_num)
+    end
+    table.sort(deleted_positions)
+
+    local positions = {}
+    local prev_line = -2
+
+    for _, line_num in ipairs(deleted_positions) do
+        if line_num > prev_line + 1 then
+            table.insert(positions, line_num)
+        end
+        prev_line = line_num
+    end
+
+    if #positions == 0 then
+        for anchor in pairs(virt_line_anchors) do
+            table.insert(positions, anchor)
+        end
+        table.sort(positions)
+    end
+
+    if #positions == 0 then
+        positions = { 0 }
+    end
+
+    state.anchors_cache = positions
+    return positions
 end
 
 --- Find next/previous hunk position relative to current hunk index
