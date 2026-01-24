@@ -201,6 +201,38 @@ describe("hunk_navigation", function()
             assert.equal(cursor[1], 11)
             assert.equal(cursor[2], 0)
         end)
+
+        it(
+            "navigates prev to closest hunk when cursor is between hunks",
+            function()
+                add_hunk(test_bufnr, test_ns, 1)
+                add_hunk(test_bufnr, test_ns, 5)
+
+                vim.api.nvim_win_set_cursor(winid, { 8, 0 })
+
+                HunkNavigation.navigate_prev(test_bufnr)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 6)
+
+                HunkNavigation.navigate_prev(test_bufnr)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
+
+                HunkNavigation.navigate_prev(test_bufnr)
+                assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 6)
+            end
+        )
+
+        it("navigates prev when cursor is exactly on hunk anchor", function()
+            add_hunk(test_bufnr, test_ns, 1)
+            add_hunk(test_bufnr, test_ns, 5)
+
+            vim.api.nvim_win_set_cursor(winid, { 6, 0 })
+
+            HunkNavigation.navigate_prev(test_bufnr)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
+
+            HunkNavigation.navigate_prev(test_bufnr)
+            assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 6)
+        end)
     end)
 
     describe("navigation with center_on_navigate_hunks config", function()

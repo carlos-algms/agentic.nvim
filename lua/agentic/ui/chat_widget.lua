@@ -409,7 +409,6 @@ function ChatWidget:_bind_keymaps()
         end
     end
 
-    -- Setup hunk navigation keymaps for all widget buffers
     DiffPreview.setup_diff_navigation_keymaps(self.buf_nrs)
 end
 

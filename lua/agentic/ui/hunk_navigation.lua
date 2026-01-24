@@ -16,7 +16,6 @@ local NS_DIFF = M.NS_DIFF
 --- needed because `vim.b` doesn't support saving callbacks, as it will serialize, to comply with vimscript
 --- @class agentic.ui.HunkNavigation.State
 --- @field saved_keymaps { next?: table, prev?: table } Saved keymaps for restoration
---- @field hunk_index number Current hunk index (0-based, -1 means uninitialized)
 --- @field anchors_cache integer[]|nil Cached hunk anchor positions (0-indexed line numbers)
 
 --- Module-level state storage (per-buffer)
@@ -30,7 +29,6 @@ local function get_state(bufnr)
     if not buffer_state[bufnr] then
         buffer_state[bufnr] = {
             saved_keymaps = {},
-            hunk_index = -1,
             anchors_cache = nil,
         }
     end
@@ -105,29 +103,51 @@ function M._get_hunk_anchors(bufnr)
     return positions
 end
 
---- Find next/previous hunk position relative to current hunk index
---- When only one hunk exists, navigation wraps to itself
+--- Find next/previous hunk position relative to buffer's cursor position
 --- @param bufnr number
 --- @param direction "next"|"prev"
 --- @return number|nil target_line 1-indexed line number
---- @return number|nil new_index 0-based hunk index
 local function find_hunk(bufnr, direction)
     local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
-        return nil, nil
+        return nil
     end
 
-    local state = get_state(bufnr)
-    local current_index = state.hunk_index
-    local new_index
+    local winid = vim.fn.bufwinid(bufnr)
+    if winid == -1 then
+        return nil
+    end
 
+    local cursor = vim.api.nvim_win_get_cursor(winid)
+    local current_line = cursor[1] - 1 -- 0-indexed
+
+    local current_index = -1
+    local is_exactly_on_anchor = false
+
+    for i, anchor in ipairs(anchors) do
+        if anchor == current_line then
+            current_index = i - 1
+            is_exactly_on_anchor = true
+            break
+        elseif anchor < current_line then
+            current_index = i - 1
+        else
+            break
+        end
+    end
+
+    local new_index
     if direction == "next" then
         new_index = (current_index + 1) % #anchors
     else
-        new_index = current_index <= 0 and #anchors - 1 or current_index - 1
+        if is_exactly_on_anchor then
+            new_index = current_index <= 0 and #anchors - 1 or current_index - 1
+        else
+            new_index = current_index < 0 and #anchors - 1 or current_index
+        end
     end
 
-    return anchors[new_index + 1] + 1, new_index
+    return anchors[new_index + 1] + 1 -- 1-indexed
 end
 
 --- Calculate scroll command based on hunk size and window height
@@ -165,8 +185,8 @@ end
 --- @param bufnr number
 --- @param direction "next"|"prev"
 local function navigate_hunk(bufnr, direction)
-    local target_line, new_index = find_hunk(bufnr, direction)
-    if not target_line or not new_index then
+    local target_line = find_hunk(bufnr, direction)
+    if not target_line then
         Logger.notify("No hunks found", vim.log.levels.INFO)
         return
     end
@@ -176,9 +196,6 @@ local function navigate_hunk(bufnr, direction)
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
     end
-
-    local state = get_state(bufnr)
-    state.hunk_index = new_index
 
     local anchor_line = target_line - 1
     local scroll_cmd = M.get_scroll_cmd(bufnr, target_winid, anchor_line)
@@ -235,8 +252,6 @@ function M.setup_keymaps(bufnr)
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
         M.navigate_prev(bufnr)
     end, { desc = "Go to previous hunk - Agentic DiffPreview" })
-
-    state.hunk_index = -1
 end
 
 --- Restore saved keymaps for buffer
