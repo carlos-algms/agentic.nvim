@@ -7,6 +7,10 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.ui.HunkNavigation
 local M = {}
 
+--- Namespace for diff preview extmarks (public for use by other modules and tests)
+M.NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
+local NS_DIFF = M.NS_DIFF
+
 --- Per-buffer state for hunk navigation
 --- needed because `vim.b` doesn't support saving callbacks, as it will serialize, to comply with vimscript
 --- @class agentic.ui.HunkNavigation.State
@@ -34,21 +38,15 @@ end
 
 --- Get all hunk anchor positions (where virtual lines start)
 --- @param bufnr number
---- @param namespace_id number
 --- @return integer[] anchors 0-indexed line numbers where hunks are anchored
-function M._get_hunk_anchors(bufnr, namespace_id)
+function M._get_hunk_anchors(bufnr)
     local state = get_state(bufnr)
     if state.anchors_cache then
         return state.anchors_cache
     end
 
-    local extmarks = vim.api.nvim_buf_get_extmarks(
-        bufnr,
-        namespace_id,
-        0,
-        -1,
-        { details = true }
-    )
+    local extmarks =
+        vim.api.nvim_buf_get_extmarks(bufnr, NS_DIFF, 0, -1, { details = true })
 
     local anchors = {}
     for _, extmark in ipairs(extmarks) do
@@ -66,12 +64,11 @@ end
 --- Find next/previous hunk position relative to current hunk index
 --- When only one hunk exists, navigation wraps to itself
 --- @param bufnr number
---- @param namespace_id number
 --- @param direction "next"|"prev"
 --- @return number|nil target_line 1-indexed line number
 --- @return number|nil new_index 0-based hunk index
-local function find_hunk(bufnr, namespace_id, direction)
-    local anchors = M._get_hunk_anchors(bufnr, namespace_id)
+local function find_hunk(bufnr, direction)
+    local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
         return nil, nil
     end
@@ -93,16 +90,15 @@ end
 --- @param bufnr number
 --- @param winid number
 --- @param anchor_line number 0-indexed anchor line
---- @param namespace_id number
 --- @return string scroll_cmd "zt", "zz", or empty string if centering disabled or no extmarks
-function M.get_scroll_cmd(bufnr, winid, anchor_line, namespace_id)
+function M.get_scroll_cmd(bufnr, winid, anchor_line)
     if not Config.diff_preview.center_on_navigate_hunks then
         return ""
     end
 
     local extmarks = vim.api.nvim_buf_get_extmarks(
         bufnr,
-        namespace_id,
+        NS_DIFF,
         { anchor_line, 0 },
         { anchor_line, -1 },
         { details = true }
@@ -123,10 +119,9 @@ end
 
 --- Navigate to hunk in specified direction
 --- @param bufnr number
---- @param namespace_id number
 --- @param direction "next"|"prev"
-local function navigate_hunk(bufnr, namespace_id, direction)
-    local target_line, new_index = find_hunk(bufnr, namespace_id, direction)
+local function navigate_hunk(bufnr, direction)
+    local target_line, new_index = find_hunk(bufnr, direction)
     if not target_line or not new_index then
         Logger.notify("No hunks found", vim.log.levels.INFO)
         return
@@ -142,8 +137,7 @@ local function navigate_hunk(bufnr, namespace_id, direction)
     state.hunk_index = new_index
 
     local anchor_line = target_line - 1
-    local scroll_cmd =
-        M.get_scroll_cmd(bufnr, target_winid, anchor_line, namespace_id)
+    local scroll_cmd = M.get_scroll_cmd(bufnr, target_winid, anchor_line)
 
     pcall(vim.api.nvim_win_call, target_winid, function()
         vim.cmd(string.format("normal! %dG%s", target_line, scroll_cmd))
@@ -172,33 +166,30 @@ end
 
 --- Navigate to next hunk
 --- @param bufnr number
---- @param namespace_id number
-function M.navigate_next(bufnr, namespace_id)
-    navigate_hunk(bufnr, namespace_id, "next")
+function M.navigate_next(bufnr)
+    navigate_hunk(bufnr, "next")
 end
 
 --- Navigate to previous hunk
 --- @param bufnr number
---- @param namespace_id number
-function M.navigate_prev(bufnr, namespace_id)
-    navigate_hunk(bufnr, namespace_id, "prev")
+function M.navigate_prev(bufnr)
+    navigate_hunk(bufnr, "prev")
 end
 
 --- Setup hunk navigation keymaps for buffer
 --- @param bufnr number
---- @param namespace_id number
-function M.setup_keymaps(bufnr, namespace_id)
+function M.setup_keymaps(bufnr)
     local keymaps = Config.keymaps.diff_preview
     local state = get_state(bufnr)
     state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
     state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
-        M.navigate_next(bufnr, namespace_id)
+        M.navigate_next(bufnr)
     end, { desc = "Go to next hunk - Agentic DiffPreview" })
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
-        M.navigate_prev(bufnr, namespace_id)
+        M.navigate_prev(bufnr)
     end, { desc = "Go to previous hunk - Agentic DiffPreview" })
 
     state.hunk_index = -1

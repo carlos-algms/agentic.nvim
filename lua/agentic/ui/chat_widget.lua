@@ -1,5 +1,7 @@
 local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local DiffPreview = require("agentic.ui.diff_preview")
+local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 
@@ -406,6 +408,33 @@ function ChatWidget:_bind_keymaps()
                 end)
             end
         end
+    end
+
+    -- Setup hunk navigation keymaps for all widget buffers
+    local diff_keymaps = Config.keymaps.diff_preview
+
+    for _, bufnr in pairs(self.buf_nrs) do
+        BufHelpers.keymap_set(bufnr, "n", diff_keymaps.next_hunk, function()
+            local diff_bufnr = DiffPreview.get_active_diff_buffer()
+            if not diff_bufnr then
+                Logger.notify("No active diff preview", vim.log.levels.INFO)
+                return
+            end
+            HunkNavigation.navigate_next(diff_bufnr)
+        end, {
+            desc = "Go to next hunk - Agentic DiffPreview",
+        })
+
+        BufHelpers.keymap_set(bufnr, "n", diff_keymaps.prev_hunk, function()
+            local diff_bufnr = DiffPreview.get_active_diff_buffer()
+            if not diff_bufnr then
+                Logger.notify("No active diff preview", vim.log.levels.INFO)
+                return
+            end
+            HunkNavigation.navigate_prev(diff_bufnr)
+        end, {
+            desc = "Go to previous hunk - Agentic DiffPreview",
+        })
     end
 end
 

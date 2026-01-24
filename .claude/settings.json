@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cat:*)",
+      "Bash(claude --version:*)",
+      "Bash(docker images:*)",
+      "Bash(echo:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh run view:*)",
+      "Bash(luac:*)",
+      "Bash(make format:*)",
+      "Bash(make luacheck:*)",
+      "Bash(make luals:*)",
+      "Bash(make test-file:*)",
+      "Bash(make test:*)",
+      "Bash(make validate:*)",
+      "Bash(nvim:*)",
+      "Bash(rg:*)",
+      "Bash(openspec list:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

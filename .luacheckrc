@@ -31,10 +31,11 @@ read_globals = {
 }
 
 globals = {
-    -- Allow setting buffer/window local variables
+    -- Allow setting buffer/window/tabpage local variables
     "vim.b",
     "vim.bo",
     "vim.wo",
+    "vim.t",
     "vim.opt_local",
     "vim.env", -- Allow setting vim.env in test runner and repro files
 }

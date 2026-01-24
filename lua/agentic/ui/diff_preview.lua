@@ -8,7 +8,15 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 --- @class agentic.ui.DiffPreview
 local M = {}
 
-local NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
+local NS_DIFF = HunkNavigation.NS_DIFF
+
+--- Get the buffer number with active diff preview for the current or specified tabpage
+--- @param tabpage? number Tabpage ID (defaults to current tabpage)
+--- @return number|nil bufnr Buffer number with active diff, or nil if none
+function M.get_active_diff_buffer(tabpage)
+    local tab = tabpage or vim.api.nvim_get_current_tabpage()
+    return vim.t[tab]._agentic_diff_preview_bufnr
+end
 
 --- Builds a highlight map for all lines parsed as a block
 --- @param lines string[]
@@ -304,15 +312,21 @@ function M.show_diff(opts)
 
     -- Scroll target window to first diff block without moving cursor
     if #diff_blocks > 0 then
+        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
+        if not ok then
+            return
+        end
+        vim.t[tabpage]._agentic_diff_preview_bufnr = bufnr
+
         -- Make buffer read-only to prevent edits while diff is visible
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
         vim.bo[bufnr].modifiable = false
 
         -- Setup navigation keymaps
-        HunkNavigation.setup_keymaps(bufnr, NS_DIFF)
+        HunkNavigation.setup_keymaps(bufnr)
 
         vim.schedule(function()
-            HunkNavigation.navigate_next(bufnr, NS_DIFF)
+            HunkNavigation.navigate_next(bufnr)
         end)
     end
 end
@@ -325,6 +339,12 @@ function M.clear_diff(buf, is_rejection)
 
     if bufnr == -1 then
         return
+    end
+
+    local winid = vim.fn.bufwinid(bufnr)
+    if winid ~= -1 then
+        local tabpage = vim.api.nvim_win_get_tabpage(winid)
+        vim.t[tabpage]._agentic_diff_preview_bufnr = nil
     end
 
     HunkNavigation.restore_keymaps(bufnr)
@@ -344,10 +364,10 @@ function M.clear_diff(buf, is_rejection)
         local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
 
         if not stat then
-            local winid = vim.fn.bufwinid(bufnr)
-            if winid ~= -1 then
+            local buf_winid = vim.fn.bufwinid(bufnr)
+            if buf_winid ~= -1 then
                 -- Get alternate buffer for the target window, not current window
-                local alt = vim.api.nvim_win_call(winid, function()
+                local alt = vim.api.nvim_win_call(buf_winid, function()
                     return vim.fn.bufnr("#")
                 end)
 
@@ -357,7 +377,7 @@ function M.clear_diff(buf, is_rejection)
                 else
                     target_buf = vim.api.nvim_create_buf(true, true)
                 end
-                pcall(vim.api.nvim_win_set_buf, winid, target_buf)
+                pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
             end
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         end

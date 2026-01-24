@@ -3,11 +3,10 @@ local HunkNavigation = require("agentic.ui.hunk_navigation")
 
 --- Access private function for testing
 --- @param bufnr number
---- @param namespace_id number
 --- @return integer[]
-local function get_hunk_anchors(bufnr, namespace_id)
+local function get_hunk_anchors(bufnr)
     ---@diagnostic disable-next-line: invisible
-    return HunkNavigation._get_hunk_anchors(bufnr, namespace_id)
+    return HunkNavigation._get_hunk_anchors(bufnr)
 end
 
 --- Helper to create extmark with virt_lines
@@ -37,7 +36,7 @@ local function is_buffer_local(map)
     return map ~= nil and map.buffer == 1
 end
 
-local test_ns = vim.api.nvim_create_namespace("test_hunk_navigation")
+local test_ns = HunkNavigation.NS_DIFF
 
 describe("hunk_navigation", function()
     local test_bufnr
@@ -70,7 +69,7 @@ describe("hunk_navigation", function()
                 })
                 add_hunk(test_bufnr, test_ns, 4) -- Last
 
-                local anchors = get_hunk_anchors(test_bufnr, test_ns)
+                local anchors = get_hunk_anchors(test_bufnr)
                 assert.equal(#anchors, 3)
                 assert.equal(anchors[1], 0)
                 assert.equal(anchors[2], 2)
@@ -81,8 +80,8 @@ describe("hunk_navigation", function()
         it("caches results on subsequent calls", function()
             add_hunk(test_bufnr, test_ns, 1)
 
-            local anchors1 = get_hunk_anchors(test_bufnr, test_ns)
-            local anchors2 = get_hunk_anchors(test_bufnr, test_ns)
+            local anchors1 = get_hunk_anchors(test_bufnr)
+            local anchors2 = get_hunk_anchors(test_bufnr)
 
             assert.equal(anchors1, anchors2)
         end)
@@ -104,35 +103,35 @@ describe("hunk_navigation", function()
             add_hunk(test_bufnr, test_ns, 1)
             add_hunk(test_bufnr, test_ns, 3)
 
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
             -- Forward navigation: start -> 1st -> 2nd -> wrap to 1st
-            HunkNavigation.navigate_next(test_bufnr, test_ns)
+            HunkNavigation.navigate_next(test_bufnr)
             assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
-            HunkNavigation.navigate_next(test_bufnr, test_ns)
+            HunkNavigation.navigate_next(test_bufnr)
             assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
 
-            HunkNavigation.navigate_next(test_bufnr, test_ns)
+            HunkNavigation.navigate_next(test_bufnr)
             assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
             -- Backward navigation: wrap to last -> 1st
-            HunkNavigation.navigate_prev(test_bufnr, test_ns)
+            HunkNavigation.navigate_prev(test_bufnr)
             assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
 
-            HunkNavigation.navigate_prev(test_bufnr, test_ns)
+            HunkNavigation.navigate_prev(test_bufnr)
             assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
         end)
 
         it("wraps to itself with single hunk", function()
             add_hunk(test_bufnr, test_ns, 1)
 
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
-            HunkNavigation.navigate_next(test_bufnr, test_ns)
+            HunkNavigation.navigate_next(test_bufnr)
             local pos1 = vim.api.nvim_win_get_cursor(winid)[1]
 
-            HunkNavigation.navigate_next(test_bufnr, test_ns)
+            HunkNavigation.navigate_next(test_bufnr)
             local pos2 = vim.api.nvim_win_get_cursor(winid)[1]
 
             assert.equal(pos1, pos2)
@@ -165,7 +164,7 @@ describe("hunk_navigation", function()
             assert.is_not_nil(global_map)
             assert.is_false(is_buffer_local(global_map))
 
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
             local during_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
             assert.is_true(is_buffer_local(during_map))
@@ -191,7 +190,7 @@ describe("hunk_navigation", function()
             assert.is_true(is_buffer_local(before_map))
             local original_rhs = before_map.rhs
 
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
             local next_map = get_keymap_in_buf(test_bufnr, "<leader>hn")
             local prev_map = get_keymap_in_buf(test_bufnr, "<leader>hp")
@@ -215,28 +214,28 @@ describe("hunk_navigation", function()
         end)
 
         it("clears module state after restore", function()
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
             add_hunk(test_bufnr, test_ns, 1)
-            get_hunk_anchors(test_bufnr, test_ns)
+            get_hunk_anchors(test_bufnr)
 
             HunkNavigation.restore_keymaps(test_bufnr)
 
-            local anchors = get_hunk_anchors(test_bufnr, test_ns)
+            local anchors = get_hunk_anchors(test_bufnr)
             assert.equal(#anchors, 1)
         end)
     end)
 
     describe("clear_state", function()
         it("clears per-buffer state", function()
-            HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+            HunkNavigation.setup_keymaps(test_bufnr)
 
             add_hunk(test_bufnr, test_ns, 1)
-            get_hunk_anchors(test_bufnr, test_ns)
+            get_hunk_anchors(test_bufnr)
 
             HunkNavigation.clear_state(test_bufnr)
 
-            local anchors_after = get_hunk_anchors(test_bufnr, test_ns)
+            local anchors_after = get_hunk_anchors(test_bufnr)
             assert.equal(#anchors_after, 1)
         end)
     end)
@@ -270,21 +269,21 @@ describe("hunk_navigation", function()
                 add_hunk(test_bufnr, test_ns, 1)
                 add_hunk(test_bufnr, test_ns, 3)
 
-                HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+                HunkNavigation.setup_keymaps(test_bufnr)
 
                 -- Start at line 1
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
                 -- Navigate to first hunk (line 2)
-                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                HunkNavigation.navigate_next(test_bufnr)
                 assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
                 -- Navigate to second hunk (line 4)
-                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                HunkNavigation.navigate_next(test_bufnr)
                 assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
 
                 -- Navigate back to first hunk (line 2)
-                HunkNavigation.navigate_prev(test_bufnr, test_ns)
+                HunkNavigation.navigate_prev(test_bufnr)
                 assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
             end
         )
@@ -297,14 +296,14 @@ describe("hunk_navigation", function()
                 add_hunk(test_bufnr, test_ns, 1)
                 add_hunk(test_bufnr, test_ns, 3)
 
-                HunkNavigation.setup_keymaps(test_bufnr, test_ns)
+                HunkNavigation.setup_keymaps(test_bufnr)
 
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
-                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                HunkNavigation.navigate_next(test_bufnr)
                 assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 2)
 
-                HunkNavigation.navigate_next(test_bufnr, test_ns)
+                HunkNavigation.navigate_next(test_bufnr)
                 assert.equal(vim.api.nvim_win_get_cursor(winid)[1], 4)
             end
         )
@@ -336,7 +335,7 @@ describe("hunk_navigation", function()
                 add_hunk(test_bufnr, test_ns, 1)
 
                 local scroll_cmd =
-                    HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+                    HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1)
 
                 assert.equal(scroll_cmd, "")
             end
@@ -347,7 +346,7 @@ describe("hunk_navigation", function()
 
             -- Don't add any hunks - no extmarks at line 1
             local scroll_cmd =
-                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1)
 
             assert.equal(scroll_cmd, "")
         end)
@@ -361,7 +360,7 @@ describe("hunk_navigation", function()
             })
 
             local scroll_cmd =
-                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1)
 
             assert.equal(scroll_cmd, "zz")
         end)
@@ -380,7 +379,7 @@ describe("hunk_navigation", function()
             })
 
             local scroll_cmd =
-                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1, test_ns)
+                HunkNavigation.get_scroll_cmd(test_bufnr, winid, 1)
 
             assert.equal(scroll_cmd, "zt")
         end)
