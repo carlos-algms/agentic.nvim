@@ -2,6 +2,7 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
+local DiffPreview = require("agentic.ui.diff_preview")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
@@ -546,6 +547,10 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     end
 
     table.insert(lines_to_append, "--- ---")
+
+    local hint_line_index =
+        DiffPreview.add_navigation_hint(tracker, lines_to_append)
+
     table.insert(lines_to_append, "")
 
     local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
@@ -555,6 +560,15 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     end)
 
     local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
+
+    if hint_line_index then
+        DiffPreview.apply_hint_styling(
+            self.bufnr,
+            NS_PERMISSION_BUTTONS,
+            button_start_row,
+            hint_line_index
+        )
+    end
 
     -- Create extmark to track button block
     vim.api.nvim_buf_set_extmark(

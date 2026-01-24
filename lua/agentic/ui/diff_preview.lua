@@ -384,4 +384,59 @@ function M.clear_diff(buf, is_rejection)
     end
 end
 
+--- Add hint line for navigation keybindings to permission request
+--- @param tracker? table Tool call tracker with kind field
+--- @param lines_to_append string[] Array of lines to append hint to
+--- @return number|nil hint_line_index Index of hint line in array, or nil if not added
+function M.add_navigation_hint(tracker, lines_to_append)
+    local Config = require("agentic.config")
+
+    -- Only add hint for edit tools with diff preview enabled
+    if
+        not tracker
+        or tracker.kind ~= "edit"
+        or not Config.diff_preview.enabled
+    then
+        return nil
+    end
+
+    local diff_keymaps = Config.keymaps.diff_preview
+    local hint_text = string.format(
+        "HINT: %s next hunk, %s previous hunk",
+        diff_keymaps.next_hunk,
+        diff_keymaps.prev_hunk
+    )
+
+    local hint_line_index = #lines_to_append
+    table.insert(lines_to_append, hint_text)
+
+    return hint_line_index
+end
+
+--- Apply low-contrast Comment styling to hint line
+--- Wrapped in pcall to prevent blocking user if styling fails
+--- @param bufnr number Buffer number
+--- @param ns_id number Namespace ID for extmark
+--- @param button_start_row number Start row of button block
+--- @param hint_line_index number Index of hint line in appended lines
+function M.apply_hint_styling(bufnr, ns_id, button_start_row, hint_line_index)
+    pcall(function()
+        local hint_line_row = button_start_row + hint_line_index
+        -- Get the actual line content to determine end column
+        local hint_line_content = vim.api.nvim_buf_get_lines(
+            bufnr,
+            hint_line_row,
+            hint_line_row + 1,
+            false
+        )[1] or ""
+
+        vim.api.nvim_buf_set_extmark(bufnr, ns_id, hint_line_row, 0, {
+            end_row = hint_line_row,
+            end_col = #hint_line_content,
+            hl_group = "Comment",
+            hl_eol = false,
+        })
+    end)
+end
+
 return M
