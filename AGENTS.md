@@ -1,27 +1,8 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
-
-These instructions are for AI assistants working in this project.
-
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
-
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
-
 # Agents Guide
 
 **agentic.nvim** is a Neovim plugin that emulates Cursor AI IDE behavior,
-providing AI-driven code assistance through a chat sidebar for interactive
-conversations.
+providing AI-driven code assistance through a chat interface for interactive
+conversations, code generation, and permission approvals.
 
 ## 📋 Documentation Scope
 
@@ -536,15 +517,44 @@ This single command runs:
 - Ensures all checks pass together
 - Output redirected to log files automatically
 
-**Exit codes:**
+**Output format (exactly 5-6 lines):**
 
-- `0` = success (all checks passed)
-- `non-zero` = failure (check the corresponding log file)
+The `make validate` command outputs **only 5-6 short lines** to stdout. Example:
+
+```
+format: 0 (took 1s) - log: .local/agentic_format_output.log
+luals: 0 (took 2s) - log: .local/agentic_luals_output.log
+luacheck: 0 (took 0s) - log: .local/agentic_luacheck_output.log
+test: 0 (took 1s) - log: .local/agentic_test_output.log
+Total: 4s
+```
+
+Each line shows: `{task}: {exit_code} (took {seconds}s) - log: {log_path}`
+
+- Exit code `0` = success, non-zero = failure
+- Verbose output is written to log files, NOT stdout
+
+**🚨 FORBIDDEN: Output redirection**
+
+- **NEVER redirect `make validate` output** - it's already minimal (5-6 lines)
+- **NEVER use `> file`, `>> file`, `2>&1`, `| tee`, etc.** on `make validate`
+- **NEVER use `head`, `tail`, or pipes** on `make validate` output
+- The command handles its own log file redirection internally
+
+```bash
+# ❌ FORBIDDEN - Don't redirect output
+make validate > my_output.log
+make validate 2>&1 | tee output.log
+make validate | head -20
+
+# ✅ CORRECT - Run directly, read the 5-6 lines output
+make validate
+```
 
 **CRITICAL: Log file locations (defined by Makefile):**
 
-The `make validate` target writes output to these **exact paths** in the project
-root:
+The `make validate` target writes verbose output to these **exact paths** in the
+project root:
 
 - `.local/agentic_format_output.log` - StyLua formatting output
 - `.local/agentic_luals_output.log` - LuaLS type checking output
@@ -558,7 +568,7 @@ root:
 - Only read exit codes from `make validate` output unless there's a failure
 - If any command fails, read the corresponding log file to diagnose the issue
 
-**Reading log files:**
+**Reading log files (only when validation fails):**
 
 - **NEVER use Read tool** - floods context with entire file
 - **Use targeted commands instead:**

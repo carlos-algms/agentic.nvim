@@ -324,7 +324,6 @@ function M.show_diff(opts)
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
         vim.bo[bufnr].modifiable = false
 
-        -- Setup navigation keymaps
         HunkNavigation.setup_keymaps(bufnr)
 
         vim.schedule(function()

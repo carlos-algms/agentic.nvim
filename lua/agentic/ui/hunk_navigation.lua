@@ -8,7 +8,7 @@ local Theme = require("agentic.theme")
 --- @class agentic.ui.HunkNavigation
 local M = {}
 
---- Namespace for diff preview extmarks (public for use by other modules and tests)
+--- Namespace for diff preview extmarks
 M.NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 local NS_DIFF = M.NS_DIFF
 
