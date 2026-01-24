@@ -521,7 +521,7 @@ This single command runs:
 
 The `make validate` command outputs **only 5-6 short lines** to stdout. Example:
 
-```
+```bash
 format: 0 (took 1s) - log: .local/agentic_format_output.log
 luals: 0 (took 2s) - log: .local/agentic_luals_output.log
 luacheck: 0 (took 0s) - log: .local/agentic_luacheck_output.log

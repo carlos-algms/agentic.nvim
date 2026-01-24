@@ -394,6 +394,7 @@ function M.add_navigation_hint(tracker, lines_to_append)
     if
         not tracker
         or tracker.kind ~= "edit"
+        or not Config.diff_preview
         or not Config.diff_preview.enabled
     then
         return nil

@@ -15,7 +15,9 @@
       "Bash(make test:*)",
       "Bash(make validate:*)",
       "Bash(nvim:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(git config --get remote.origin.url:*)"
     ],
     "deny": [],
     "ask": []
