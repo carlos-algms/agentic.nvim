@@ -15,8 +15,8 @@
       "Bash(make test:*)",
       "Bash(make validate:*)",
       "Bash(nvim:*)",
-      "Bash(rg:*)",
-      "Bash(git config --get remote.origin.url:*)"
+      "Bash(openspec list:*)",
+      "Bash(rg:*)"
     ],
     "deny": [],
     "ask": []
