@@ -185,15 +185,44 @@ end
 --- @param bufnr number
 --- @param direction "next"|"prev"
 local function navigate_hunk(bufnr, direction)
-    local target_line = find_hunk(bufnr, direction)
-    if not target_line then
-        Logger.notify("No hunks found", vim.log.levels.INFO)
-        return
-    end
-
     local target_winid = vim.fn.bufwinid(bufnr)
     if target_winid == -1 then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
+        return
+    end
+
+    if Config.diff_preview.layout == "split" then
+        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
+        if not ok then
+            return
+        end
+
+        local DiffSplitView = require("agentic.ui.diff_split_view")
+        local split_state = DiffSplitView.get_split_state(tabpage)
+
+        if split_state then
+            local diff_cmd = direction == "next" and "]c" or "[c"
+            local center_cmd = Config.diff_preview.center_on_navigate_hunks
+                    and "zz"
+                or ""
+
+            local nav_ok = pcall(vim.api.nvim_win_call, target_winid, function()
+                vim.cmd("normal! " .. diff_cmd .. center_cmd)
+            end)
+
+            if not nav_ok then
+                Logger.notify(
+                    "No more hunks in this direction",
+                    vim.log.levels.INFO
+                )
+            end
+            return
+        end
+    end
+
+    local target_line = find_hunk(bufnr, direction)
+    if not target_line then
+        Logger.notify("No hunks found", vim.log.levels.INFO)
         return
     end
 

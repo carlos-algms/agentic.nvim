@@ -1,6 +1,7 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
+local DiffSplitView = require("agentic.ui.diff_split_view")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
@@ -17,6 +18,12 @@ local NS_DIFF = HunkNavigation.NS_DIFF
 --- @return number|nil bufnr Buffer number with active diff, or nil if none
 function M.get_active_diff_buffer(tabpage)
     local tab = tabpage or vim.api.nvim_get_current_tabpage()
+
+    local split_state = DiffSplitView.get_split_state(tab)
+    if split_state then
+        return split_state.original_bufnr
+    end
+
     return vim.t[tab]._agentic_diff_preview_bufnr
 end
 
@@ -211,6 +218,14 @@ function M.show_diff(opts)
         return
     end
 
+    if Config.diff_preview.layout == "split" then
+        local success = DiffSplitView.show_split_diff(opts)
+        if success then
+            return
+        end
+        Logger.debug("show_diff: split view failed, falling back to inline")
+    end
+
     local bufnr = vim.fn.bufnr(opts.file_path)
     if bufnr == -1 then
         bufnr = vim.fn.bufadd(opts.file_path)
@@ -344,8 +359,14 @@ function M.clear_diff(buf, is_rejection)
 
     local winid = vim.fn.bufwinid(bufnr)
     if winid ~= -1 then
-        local tabpage = vim.api.nvim_win_get_tabpage(winid)
-        vim.t[tabpage]._agentic_diff_preview_bufnr = nil
+        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
+        if ok then
+            if DiffSplitView.get_split_state(tabpage) then
+                DiffSplitView.clear_split_diff(tabpage)
+                return
+            end
+            vim.t[tabpage]._agentic_diff_preview_bufnr = nil
+        end
     end
 
     HunkNavigation.restore_keymaps(bufnr)
