@@ -96,6 +96,24 @@ vim.api.nvim_buf_set_lines(bufnr, ...)
 - When ID is stored and used later (across function calls)
 - When ID comes from external/user input
 
+## Documentation Standards
+
+### Markdown Formatting
+
+All markdown files MUST follow standard formatting conventions:
+
+- **80 character line limit** - Break lines at natural word boundaries
+- **Consistent spacing** - One blank line between sections, before/after
+  headings, code blocks, and lists
+- **Heading hierarchy** - Use proper ATX-style headings without skipping levels
+- **List formatting** - Consistent markers (dash for bullets, numbers for
+  ordered)
+- short language name for the code block fences (e.g., ```lua, ```text, ```ts, ```md)
+
+**CRITICAL:** When creating or editing any markdown file, check if relevant
+skills are available to enforce these standards. Load and use appropriate skills
+before writing or modifying markdown content.
+
 ## Project Conventions
 
 ### Decoupling Through Callbacks
