@@ -374,6 +374,35 @@ your setup:
 The header text in the chat and prompt buffers will automatically update to show
 the appropriate keybinding for the current mode.
 
+### Diff Preview
+
+When the agent makes file edits, agentic.nvim can show a preview of the changes
+before you accept or reject them. You can configure the diff preview layout:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    diff_preview = {
+      enabled = true,
+      layout = "split",  -- "split" or "inline"
+      center_on_navigate_hunks = true,
+    },
+  },
+}
+```
+
+**Layout Options:**
+
+- `"split"` (default) - Side-by-side diff view
+- `"inline"` - Unified diff view in a single buffer
+
+**Navigation:**
+
+Use `]c` and `[c` to navigate between diff hunks (configurable).
+
+**Note:** Changing the layout requires restarting Neovim.
+
 ### Slash Commands
 
 Type `/` in the Prompt buffer to see available slash commands with
