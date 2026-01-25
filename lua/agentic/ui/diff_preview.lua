@@ -13,6 +13,20 @@ local M = {}
 
 local NS_DIFF = HunkNavigation.NS_DIFF
 
+--- Get diff preview buffer from tabpage
+--- @param tabpage number Tabpage ID
+--- @return number|nil bufnr
+local function get_diff_bufnr(tabpage)
+    return vim.t[tabpage]._agentic_diff_preview_bufnr
+end
+
+--- Set diff preview buffer for tabpage
+--- @param tabpage number Tabpage ID
+--- @param bufnr number|nil Buffer number (nil to clear)
+local function set_diff_bufnr(tabpage, bufnr)
+    vim.t[tabpage]._agentic_diff_preview_bufnr = bufnr
+end
+
 --- Get the buffer number with active diff preview for the current or specified tabpage
 --- @param tabpage? number Tabpage ID (defaults to current tabpage)
 --- @return number|nil bufnr Buffer number with active diff, or nil if none
@@ -24,7 +38,7 @@ function M.get_active_diff_buffer(tabpage)
         return split_state.original_bufnr
     end
 
-    return vim.t[tab]._agentic_diff_preview_bufnr
+    return get_diff_bufnr(tab)
 end
 
 --- Builds a highlight map for all lines parsed as a block
@@ -333,7 +347,7 @@ function M.show_diff(opts)
         if not ok then
             return
         end
-        vim.t[tabpage]._agentic_diff_preview_bufnr = bufnr
+        set_diff_bufnr(tabpage, bufnr)
 
         -- Make buffer read-only to prevent edits while diff is visible
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
@@ -365,7 +379,7 @@ function M.clear_diff(buf, is_rejection)
                 DiffSplitView.clear_split_diff(tabpage)
                 return
             end
-            vim.t[tabpage]._agentic_diff_preview_bufnr = nil
+            set_diff_bufnr(tabpage, nil)
         end
     end
 
