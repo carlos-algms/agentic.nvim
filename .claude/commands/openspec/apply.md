@@ -1,5 +1,5 @@
 ---
-name: OpenSpec: Apply
+name: "OpenSpec: Apply"
 description: Implement an approved OpenSpec change and keep tasks in sync.
 category: OpenSpec
 tags: [openspec, apply]
