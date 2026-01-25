@@ -32,8 +32,14 @@ end
 --- @param original_lines string[] Original file content
 --- @param old_lines string[] Old text from agent diff
 --- @param new_lines string[] New text from agent diff
+--- @param replace_all boolean If true, replace all matches; if false, replace only first match
 --- @return string[]|nil modified_lines Full modified file content, or nil if failed
-local function reconstruct_modified_file(original_lines, old_lines, new_lines)
+local function reconstruct_modified_file(
+    original_lines,
+    old_lines,
+    new_lines,
+    replace_all
+)
     if #old_lines == 0 then
         return new_lines
     end
@@ -43,14 +49,32 @@ local function reconstruct_modified_file(original_lines, old_lines, new_lines)
     local matches = TextMatcher.find_all_matches(original_lines, old_lines)
 
     if #matches > 0 then
-        local match = matches[1]
+        if replace_all then
+            -- Process all matches in reverse order to maintain line indices
+            for i = #matches, 1, -1 do
+                local match = matches[i]
 
-        for i = match.end_line, match.start_line, -1 do
-            table.remove(modified_lines, i)
-        end
+                -- Remove old lines
+                for j = match.end_line, match.start_line, -1 do
+                    table.remove(modified_lines, j)
+                end
 
-        for i = #new_lines, 1, -1 do
-            table.insert(modified_lines, match.start_line, new_lines[i])
+                -- Insert new lines
+                for j = #new_lines, 1, -1 do
+                    table.insert(modified_lines, match.start_line, new_lines[j])
+                end
+            end
+        else
+            -- Only process first match (original behavior)
+            local match = matches[1]
+
+            for i = match.end_line, match.start_line, -1 do
+                table.remove(modified_lines, i)
+            end
+
+            for i = #new_lines, 1, -1 do
+                table.insert(modified_lines, match.start_line, new_lines[i])
+            end
         end
 
         return modified_lines
@@ -91,8 +115,12 @@ function M.show_split_diff(opts)
         return false
     end
 
-    local modified_lines =
-        reconstruct_modified_file(original_lines, old_lines, new_lines)
+    local modified_lines = reconstruct_modified_file(
+        original_lines,
+        old_lines,
+        new_lines,
+        opts.diff.all
+    )
     if not modified_lines then
         Logger.notify("Failed to reconstruct modified file")
         return false
