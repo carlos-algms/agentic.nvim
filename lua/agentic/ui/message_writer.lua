@@ -161,9 +161,23 @@ end
 --- @private
 function MessageWriter:_auto_scroll(bufnr)
     vim.defer_fn(function()
-        BufHelpers.execute_on_buffer(bufnr, function()
-            vim.cmd("normal! G0zb")
-        end)
+        local should_auto_scroll = true
+
+        local winid = vim.fn.bufwinid(bufnr)
+        if winid ~= -1 then
+            -- Check cursor distance from bottom
+            local cursor_line = vim.api.nvim_win_get_cursor(winid)[1] -- 1-indexed
+            local total_lines = vim.api.nvim_buf_line_count(bufnr)
+            local distance_from_bottom = total_lines - cursor_line
+            local threshold = Config.auto_scroll.threshold
+            should_auto_scroll = distance_from_bottom <= threshold
+        end
+
+        if should_auto_scroll then
+            BufHelpers.execute_on_buffer(bufnr, function()
+                vim.cmd("normal! G0zb")
+            end)
+        end
     end, 150)
 end
 

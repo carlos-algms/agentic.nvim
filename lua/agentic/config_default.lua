@@ -233,6 +233,13 @@ local ConfigDefault = {
         enabled = true,
     },
 
+    --- Auto-scroll behavior for chat window
+    --- @class agentic.UserConfig.AutoScroll
+    --- @field threshold integer Lines from bottom to trigger auto-scroll (default: 10)
+    auto_scroll = {
+        threshold = 10,
+    },
+
     --- Show diff preview for edit tool calls in the buffer
     --- @class agentic.UserConfig.DiffPreview
     --- @field enabled boolean
