@@ -300,7 +300,7 @@ Open and Toggle supports optional parameter:
 
 ```lua
 -- Open the chat without adding anything to context
-require("agentic").open({ auto_add_to_context = true })
+require("agentic").open({ auto_add_to_context = false })
 ```
 
 When adding files or selections to context, you can also specify whether to
@@ -584,9 +584,10 @@ Copilot to attach to the `AgenticInput` filetype.
 {
   "zbirenbaum/copilot.lua",
   -- ....
-  -- Override should_attach to allow copilot in AgenticInput buffers
-  -- AgenticInput uses buftype = "nofile" which copilot.lua rejects by default
-  should_attach = function(bufnr, bufname)
+  opts = {
+    -- Override should_attach to allow copilot in AgenticInput buffers
+    -- AgenticInput uses buftype = "nofile" which copilot.lua rejects by default
+    should_attach = function(bufnr, bufname)
       local filetype = vim.bo[bufnr].filetype
 
       if filetype == "AgenticInput" then
@@ -597,7 +598,8 @@ Copilot to attach to the `AgenticInput` filetype.
       local default_should_attach =
           require("copilot.config.should_attach").default
       return default_should_attach(bufnr, bufname)
-  end,
+    end,
+  },
 }
 ```
 
@@ -623,7 +625,7 @@ correctly without interference from your statusline plugin.
 
 ### Markdown render plugins
 
-Only the `AgenticChat` buffer is proberly set as `markdown` and starts
+Only the `AgenticChat` buffer is properly set as `markdown` and starts
 Treesitter parser, you only need to mention it in your markdown render plugin
 setup.
 
@@ -741,3 +743,4 @@ the the acknowledgments 😊.
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 [auggie]: https://www.npmjs.com/package/@augmentcode/auggie
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
+

@@ -91,7 +91,7 @@ function ChatWidget:is_open()
     return win_id and vim.api.nvim_win_is_valid(win_id)
 end
 
---- @param opts? agentic.ui.ChatWidget.AddToContextOpts Options for showing the widget
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
 function ChatWidget:show(opts)
     local options = opts or {}
     local should_focus = options.focus_prompt == nil and true
