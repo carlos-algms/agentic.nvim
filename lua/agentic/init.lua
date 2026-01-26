@@ -21,10 +21,14 @@ end
 
 --- Opens the chat widget for the current tab page
 --- Safe to call multiple times
-function Agentic.open()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts
+function Agentic.open(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
-        session:add_selection_or_file_to_session()
-        session.widget:show()
+        if opts and opts.auto_add_to_context ~= false then
+            session:add_selection_or_file_to_session()
+        end
+
+        session.widget:show(opts)
     end)
 end
 
@@ -38,19 +42,23 @@ end
 
 --- Toggles the chat widget for the current tab page
 --- Safe to call multiple times
-function Agentic.toggle()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts
+function Agentic.toggle(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         if session.widget:is_open() then
             session.widget:hide()
         else
-            session:add_selection_or_file_to_session()
+            if opts and opts.auto_add_to_context ~= false then
+                session:add_selection_or_file_to_session()
+            end
+
             session.widget:show()
         end
     end)
 end
 
 --- Add the current visual selection to the Chat context
---- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding selection
+--- @param opts? agentic.ui.ChatWidget.AddToContextOpts Options for adding selection
 function Agentic.add_selection(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_selection_to_session()
@@ -59,7 +67,7 @@ function Agentic.add_selection(opts)
 end
 
 --- Add the current file to the Chat context
---- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding file
+--- @param opts? agentic.ui.ChatWidget.AddToContextOpts Options for adding file
 function Agentic.add_file(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_file_to_session()
@@ -68,7 +76,7 @@ function Agentic.add_file(opts)
 end
 
 --- Add either the current visual selection or the current file to the Chat context
---- @param opts? agentic.ui.ChatWidget.ShowOpts Options for adding content
+--- @param opts? agentic.ui.ChatWidget.AddToContextOpts Options for adding content
 function Agentic.add_selection_or_file_to_context(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         session:add_selection_or_file_to_session()
@@ -77,10 +85,13 @@ function Agentic.add_selection_or_file_to_context(opts)
 end
 
 --- Destroys the current Chat session and starts a new one
-function Agentic.new_session()
+--- @param opts? agentic.ui.ChatWidget.ShowOpts
+function Agentic.new_session(opts)
     local session = SessionRegistry.new_session()
     if session then
-        session:add_selection_or_file_to_session()
+        if opts and opts.auto_add_to_context ~= false then
+            session:add_selection_or_file_to_session()
+        end
         session.widget:show()
     end
 end

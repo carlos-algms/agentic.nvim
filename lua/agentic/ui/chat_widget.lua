@@ -18,8 +18,12 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts>
 
 --- Options for controlling widget display behavior
---- @class agentic.ui.ChatWidget.ShowOpts
+--- @class agentic.ui.ChatWidget.AddToContextOpts
 --- @field focus_prompt? boolean
+
+--- Options for showing the widget
+--- @class agentic.ui.ChatWidget.ShowOpts : agentic.ui.ChatWidget.AddToContextOpts
+--- @field auto_add_to_context? boolean Automatically add current selection or file to context when opening
 
 --- @type agentic.ui.ChatWidget.Headers
 local WINDOW_HEADERS = {
@@ -87,7 +91,7 @@ function ChatWidget:is_open()
     return win_id and vim.api.nvim_win_is_valid(win_id)
 end
 
---- @param opts? agentic.ui.ChatWidget.ShowOpts Options for showing the widget
+--- @param opts? agentic.ui.ChatWidget.AddToContextOpts Options for showing the widget
 function ChatWidget:show(opts)
     local options = opts or {}
     local should_focus = options.focus_prompt == nil and true
@@ -291,8 +295,6 @@ function ChatWidget:_initialize()
             end,
         })
     end
-
-    vim.b[self.buf_nrs.input].completion = false
 end
 
 function ChatWidget:_bind_keymaps()

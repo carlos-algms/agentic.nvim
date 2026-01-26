@@ -538,7 +538,9 @@ colorscheme.
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
 
-## Integration with Lualine
+## Integration with other Plugins
+
+### Lualine
 
 If you're using [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) or
 similar statusline plugins, configure it to ignore Agentic windows to prevent
@@ -557,6 +559,38 @@ require('lualine').setup({
 
 This ensures that Agentic's custom window titles and statuslines render
 correctly without interference from your statusline plugin.
+
+### Blink.cmp
+
+You can disable `blink.cmp` from attaching to Agentic prompt buffers by adding
+the following to your `blink.cmp` setup:
+
+```lua
+require('blink.cmp').setup({
+  enabled = function()
+    return not vim.tbl_contains({"AgenticInput"}, vim.bo.filetype)
+  end,
+})
+```
+
+### nvim-cmp
+
+You can disable `nvim-cmp` from attaching to Agentic prompt buffers by using
+filetype-specific setup or the `enabled` option:
+
+```lua
+-- Option 1: Filetype-specific setup (disable all sources)
+require('cmp').setup.filetype('AgenticInput', {
+  sources = {}
+})
+
+-- Option 2: Global enabled function
+require('cmp').setup({
+  enabled = function()
+    return not vim.tbl_contains({"AgenticInput"}, vim.bo.filetype)
+  end,
+})
+```
 
 ## 🔧 Development
 
