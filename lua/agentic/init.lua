@@ -24,7 +24,7 @@ end
 --- @param opts? agentic.ui.ChatWidget.ShowOpts
 function Agentic.open(opts)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
-        if opts and opts.auto_add_to_context ~= false then
+        if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
 
@@ -48,7 +48,7 @@ function Agentic.toggle(opts)
         if session.widget:is_open() then
             session.widget:hide()
         else
-            if opts and opts.auto_add_to_context ~= false then
+            if not opts or opts.auto_add_to_context ~= false then
                 session:add_selection_or_file_to_session()
             end
 
@@ -89,7 +89,7 @@ end
 function Agentic.new_session(opts)
     local session = SessionRegistry.new_session()
     if session then
-        if opts and opts.auto_add_to_context ~= false then
+        if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
         session.widget:show()
