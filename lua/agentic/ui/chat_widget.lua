@@ -88,7 +88,7 @@ end
 
 function ChatWidget:is_open()
     local win_id = self.win_nrs.chat
-    return win_id and vim.api.nvim_win_is_valid(win_id)
+    return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
 end
 
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
