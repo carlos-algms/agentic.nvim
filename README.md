@@ -540,6 +540,49 @@ ones.
 
 ## Integration with other Plugins
 
+### Prompt suggestions with Copilot
+
+To get Copilot suggestions while you are typing your prompt, you need to tell
+Copilot to attach to the `AgenticInput` filetype.
+
+#### copilot.vim
+
+```lua
+{
+  "github/copilot.vim",
+   -- ....
+  init = function()
+      vim.g.copilot_filetypes = {
+          AgenticInput = true,
+      }
+  end,
+}
+```
+
+#### copilot.lua
+
+```lua
+{
+  "zbirenbaum/copilot.lua",
+  -- ....
+  -- Override should_attach to allow copilot in AgenticInput buffers
+  -- AgenticInput uses buftype = "nofile" which copilot.lua rejects by default
+  should_attach = function(bufnr, bufname)
+      local filetype = vim.bo[bufnr].filetype
+
+      if filetype == "AgenticInput" then
+          return true
+      end
+
+      -- Delegate to default behavior for all other buffers
+      local default_should_attach =
+          require("copilot.config.should_attach").default
+      return default_should_attach(bufnr, bufname)
+  end,
+
+}
+```
+
 ### Lualine
 
 If you're using [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) or
