@@ -2,10 +2,20 @@
 
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
-> ⚡ A blazingly fast Chat interface for ACP providers in Neovim
+> ⚡ A Chat interface for Ai agents in Neovim that supports Claude, Gemini,
+> Codex, OpenCode, Cursor Agent, and Auggie through the Agent Client Protocol
+> (ACP).
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
+
+Without reinventing the wheel, Agentic.nvim is the interface, your agent is the
+Brain. This plugin will use all the same configurations and authentication
+methods you already have set up on your terminal.
+
+You can start your work in Neovim, close it, and resume from the terminal, if
+your agent supports session restoration. (Session restoration inside Neovim is
+not supported yet, ACP limitation)
 
 You'll get the same results and performance as you would when using the ACP
 provider's official CLI directly from the terminal.
