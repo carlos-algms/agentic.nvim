@@ -283,15 +283,24 @@ header parts:
 
 ### Optional Parameters
 
-Content-adding methods accept an optional `opts` table:
+Open and Toggle supports optional parameter:
 
-- **`focus_prompt`** (boolean, default: `true`) - Whether to move cursor to
-  prompt input after opening the chat
+- **auto_add_to_context** (boolean, default: `true`) - Whether to automatically
+  add the current visual selection or file to context when opening the Chat
+
+```lua
+-- Open the chat without adding anything to context
+require("agentic").open({ auto_add_to_context = true })
+```
+
+When adding files or selections to context, you can also specify whether to
+focus the prompt input after opening the chat:
+
+- **focus_prompt** (boolean, default: `true`) - Whether to move cursor to prompt
+  input after opening the chat
 
 Available on: `add_selection(opts)`, `add_file(opts)`,
 `add_selection_or_file_to_context(opts)`
-
-**Example:**
 
 ```lua
 -- Add selection without focusing the prompt
@@ -579,7 +588,6 @@ Copilot to attach to the `AgenticInput` filetype.
           require("copilot.config.should_attach").default
       return default_should_attach(bufnr, bufname)
   end,
-
 }
 ```
 
@@ -602,6 +610,22 @@ require('lualine').setup({
 
 This ensures that Agentic's custom window titles and statuslines render
 correctly without interference from your statusline plugin.
+
+### Markdown render plugins
+
+Only the `AgenticChat` buffer is proberly set as `markdown` and starts
+Treesitter parser, you only need to mention it in your markdown render plugin
+setup.
+
+```lua
+{
+  "MeanderingProgrammer/render-markdown.nvim",
+  -- ...
+  opts = {
+    file_types = { "markdown", "md", "AgenticChat" },
+  }
+}
+```
 
 ### Blink.cmp
 
