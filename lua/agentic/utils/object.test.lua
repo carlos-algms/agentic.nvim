@@ -123,4 +123,34 @@ describe("object utils", function()
             assert.same(expected_merged_config, merged_config)
         end
     )
+
+    describe("handles nil gracefully", function()
+        it("handles nill for keymaps", function()
+            local default_config = {
+                option1 = true,
+                keymaps = {
+                    widget = {
+                        close = "q",
+                    },
+                },
+            }
+            local user_config = {
+                option1 = false,
+                keymaps = nil,
+            }
+
+            local expected_merged_config = {
+                option1 = false,
+                keymaps = {
+                    widget = {
+                        close = "q",
+                    },
+                },
+            }
+
+            local merged_config =
+                Object.merge_config(default_config, user_config)
+            assert.same(expected_merged_config, merged_config)
+        end)
+    end)
 end)
