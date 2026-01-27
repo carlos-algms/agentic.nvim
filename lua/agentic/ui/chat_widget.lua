@@ -267,14 +267,19 @@ end
 --- @param winid? integer
 --- @param callback? fun()
 function ChatWidget:move_cursor_to(winid, callback)
-    if not Config.settings.move_cursor_to_chat_on_submit then
-        return
-    end
-
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
-            vim.api.nvim_set_current_win(winid)
-            vim.cmd("normal! G0zb")
+            if Config.settings.move_cursor_to_chat_on_submit then
+                vim.api.nvim_set_current_win(winid)
+            end
+
+            -- make sure to scroll to the bottom
+            -- 1. user can see the new message
+            -- 2. auto-scoll will start again
+            vim.api.nvim_win_call(winid, function()
+                vim.cmd("normal! G0zb")
+            end)
+
             if callback then
                 callback()
             end
