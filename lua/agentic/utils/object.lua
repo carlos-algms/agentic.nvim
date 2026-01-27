@@ -15,14 +15,14 @@ function M.deep_merge_into(target, ...)
 end
 
 --- @param config agentic.UserConfig
---- @param default_config agentic.UserConfig
---- @return agentic.UserConfig
-function M.merge_config(config, default_config)
-    local user_keys = config and config.keymaps or {}
-    local default_keys = default_config and default_config.keymaps or {}
+--- @param user_config agentic.UserConfig
+--- @return agentic.UserConfig Config the static Config table with user's config merged into it
+function M.merge_config(config, user_config)
+    local user_keys = config and config.keymaps
+    local default_keys = user_config and user_config.keymaps
 
     local merged =
-        M.deep_merge_into(vim.deepcopy(default_config or {}), config or {})
+        M.deep_merge_into(vim.deepcopy(user_config or {}), config or {})
 
     merged.keymaps = vim.tbl_deep_extend("force", default_keys, user_keys)
 
