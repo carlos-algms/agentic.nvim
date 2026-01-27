@@ -2,22 +2,10 @@ local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
+local Object = require("agentic.utils.object")
 
 --- @class agentic.Agentic
 local Agentic = {}
-
-local function deep_merge_into(target, ...)
-    for _, source in ipairs({ ... }) do
-        for k, v in pairs(source) do
-            if type(v) == "table" and type(target[k]) == "table" then
-                deep_merge_into(target[k], v)
-            else
-                target[k] = v
-            end
-        end
-    end
-    return target
-end
 
 --- Opens the chat widget for the current tab page
 --- Safe to call multiple times
@@ -118,7 +106,7 @@ local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
 --- This method should be safe to be called multiple times
 --- @param opts agentic.UserConfig
 function Agentic.setup(opts)
-    deep_merge_into(Config, opts or {})
+    Object.merge_config(Config, opts or {})
 
     if traps_set then
         return
