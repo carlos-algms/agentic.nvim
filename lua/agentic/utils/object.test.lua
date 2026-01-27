@@ -129,7 +129,7 @@ describe("object utils", function()
     )
 
     describe("handles nil gracefully", function()
-        it("handles nill for keymaps", function()
+        it("handles nil for keymaps", function()
             local default_config = {
                 option1 = true,
                 keymaps = {
