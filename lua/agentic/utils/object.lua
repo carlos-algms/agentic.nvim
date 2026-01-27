@@ -21,7 +21,7 @@ function M.merge_config(config, user_config)
     local default_keys = config and config.keymaps or {}
     local user_keys = user_config and user_config.keymaps or {}
 
-    local merged = M.deep_merge_into(vim.deepcopy(config), user_config)
+    local merged = M.deep_merge_into(config, user_config)
 
     merged.keymaps = vim.tbl_deep_extend("force", default_keys, user_keys)
 

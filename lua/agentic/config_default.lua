@@ -150,10 +150,6 @@ local ConfigDefault = {
         todos = { display = true, max_height = 10, win_opts = {} },
     },
 
-    --- Custom actions to be used with keymaps
-    --- @class agentic.UserConfig.Actions
-    actions = {},
-
     --- @type agentic.UserConfig.Keymaps
     keymaps = {
         --- Keys bindings for ALL buffers in the widget
@@ -249,6 +245,7 @@ local ConfigDefault = {
         layout = "split",
         center_on_navigate_hunks = true,
     },
+
     --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,
@@ -264,6 +261,14 @@ local ConfigDefault = {
     ---
     --- @type agentic.UserConfig.Headers
     headers = {},
+
+    --- Control various behaviors and features of the plugin
+    --- @class agentic.UserConfig.Settings
+    settings = {
+
+        --- Automatically move cursor to chat window after submitting a prompt
+        move_cursor_to_chat_on_submit = true,
+    },
 }
 
 return ConfigDefault

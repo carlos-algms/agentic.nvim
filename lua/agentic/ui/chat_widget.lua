@@ -267,6 +267,10 @@ end
 --- @param winid? integer
 --- @param callback? fun()
 function ChatWidget:move_cursor_to(winid, callback)
+    if not Config.settings.move_cursor_to_chat_on_submit then
+        return
+    end
+
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_set_current_win(winid)

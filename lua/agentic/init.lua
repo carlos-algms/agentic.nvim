@@ -3,6 +3,7 @@ local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
 local Object = require("agentic.utils.object")
+local Logger = require("agentic.utils.logger")
 
 --- @class agentic.Agentic
 local Agentic = {}
@@ -106,7 +107,18 @@ local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
 --- This method should be safe to be called multiple times
 --- @param opts agentic.UserConfig
 function Agentic.setup(opts)
-    Object.merge_config(Config, opts or {})
+    -- make sure invalid user config doesn't crash setup and leave things half-initialized
+    local ok, err = pcall(function()
+        Object.merge_config(Config, opts or {})
+    end)
+
+    if not ok then
+        Logger.notify(
+            "[Agentic] Error in user configuration: " .. tostring(err),
+            vim.log.levels.ERROR,
+            { title = "Agentic: user config merge error" }
+        )
+    end
 
     if traps_set then
         return

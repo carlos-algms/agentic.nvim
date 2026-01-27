@@ -20,12 +20,7 @@ function M.equal(actual, expected)
     expect.equality(actual, expected)
 end
 
---- Deep equality assertion (same as equal in mini.test)
---- @param actual any Actual value
---- @param expected any Expected value
-function M.same(actual, expected)
-    expect.equality(actual, expected)
-end
+M.same = M.equal
 
 --- Assert value is nil
 --- @param value any Value to check
