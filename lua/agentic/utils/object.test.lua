@@ -119,7 +119,7 @@ describe("object utils", function()
             }
 
             local merged_config =
-                Object.merge_config(user_config, default_config)
+                Object.merge_config(default_config, user_config)
             assert.same(expected_merged_config, merged_config)
         end
     )
