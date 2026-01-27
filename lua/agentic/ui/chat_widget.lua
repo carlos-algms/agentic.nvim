@@ -45,18 +45,9 @@ local WINDOW_HEADERS = {
     },
 }
 
---- @param winid integer
---- @param parts agentic.ui.ChatWidget.HeaderParts
-local function render_header_parts(winid, parts)
-    local pieces = { parts.title }
-    if parts.context ~= nil then
-        table.insert(pieces, parts.context)
-    end
-    if parts.suffix ~= nil then
-        table.insert(pieces, parts.suffix)
-    end
-    WindowDecoration.render_window_header(winid, pieces)
-end
+--- Counter to track total number of ChatWidget instances created
+--- Used to determine if we need to show tab numbers in buffer names
+local _instance_counter = 0
 
 --- A sidebar-style chat widget with multiple windows stacked vertically
 --- The main chat window is the first, and contains the width, the below ones adapt to its size
@@ -73,6 +64,8 @@ ChatWidget.__index = ChatWidget
 --- @param on_submit_input fun(prompt: string)
 function ChatWidget:new(tab_page_id, on_submit_input)
     self = setmetatable({}, self)
+
+    _instance_counter = _instance_counter + 1
 
     self.headers = vim.deepcopy(WINDOW_HEADERS)
     self.win_nrs = {}
@@ -212,6 +205,8 @@ end
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
     self:hide()
+
+    _instance_counter = math.max(0, _instance_counter - 1)
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
@@ -551,7 +546,6 @@ end
 
 --- Binds events to change the suffix header texts based on current mode keymaps
 --- For the Chat and Input buffers only
---- @private
 function ChatWidget:_bind_events_to_change_headers()
     for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
         vim.api.nvim_create_autocmd("ModeChanged", {
@@ -619,7 +613,6 @@ end
 
 --- Calculate dynamic height based on buffer line count
 --- Add 1 for visual padding to prevent last line cutoff because of the header
---- @private
 --- @param bufnr number
 --- @param max_height number
 --- @return integer height
@@ -630,7 +623,6 @@ end
 
 --- Open or resize a dynamic height window
 --- Creates window if it doesn't exist, resizes if it does
---- @private
 --- @param window_name agentic.ui.ChatWidget.PanelNames Window identifier (code, files, todos)
 --- @param open_win_opts table Options to pass to _open_win() for window creation
 --- @param max_height number Maximum height for the window
@@ -685,63 +677,14 @@ function ChatWidget:render_header(window_name)
         return
     end
 
-    local user_header = Config.headers and Config.headers[window_name]
-    local dynamic_header = self.headers[window_name]
-
-    if user_header == nil then
-        render_header_parts(winid, dynamic_header)
-        return
-    end
-
-    if type(user_header) == "function" then
-        local ok, custom_header = pcall(user_header, dynamic_header)
-        if not ok then
-            Logger.notify(
-                string.format(
-                    "Error in custom header function for '%s': %s",
-                    window_name,
-                    custom_header
-                )
-            )
-            render_header_parts(winid, dynamic_header)
-            return
-        end
-        if custom_header == nil or custom_header == "" then
-            -- Clear winbar (WindowDecoration handles empty concat by disabling winbar)
-            WindowDecoration.render_window_header(winid, {})
-            return
-        end
-        if type(custom_header) ~= "string" then
-            Logger.notify(
-                string.format(
-                    "Custom header function for '%s' must return string|nil, got %s",
-                    window_name,
-                    type(custom_header)
-                )
-            )
-            render_header_parts(winid, dynamic_header)
-            return
-        end
-        WindowDecoration.render_window_header(winid, { custom_header })
-        return
-    end
-
-    --- @type agentic.ui.ChatWidget.HeaderParts
-    local merged_header = dynamic_header
-
-    if type(user_header) == "table" then
-        merged_header = vim.tbl_extend("force", dynamic_header, user_header) --[[@as agentic.ui.ChatWidget.HeaderParts]]
-    else
-        Logger.notify(
-            string.format(
-                "Header for '%s' must be function|table|nil, got %s",
-                window_name,
-                type(user_header)
-            )
-        )
-    end
-
-    render_header_parts(winid, merged_header)
+    WindowDecoration.render_header(
+        winid,
+        self.buf_nrs[window_name],
+        window_name,
+        self.headers[window_name],
+        self.tab_page_id,
+        _instance_counter
+    )
 end
 
 function ChatWidget:close_code_window()

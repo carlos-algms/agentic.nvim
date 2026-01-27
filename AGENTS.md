@@ -180,9 +180,19 @@ When implementing ANY feature:
   access:
 
   **Visibility levels (configured in `.luarc.json`):**
-  - `_*`: **Private** - Hidden from external consumers
+  - `_*`: **Private** - Hidden from external consumers (applies to class
+    methods/fields ONLY)
   - `__*`: **Protected** - Visible to subclasses
   - No prefix: **Public** - Visible everywhere
+
+  **IMPORTANT:** Module-level local functions and variables do NOT need `_`
+  prefix:
+  - ✅ `local function helper()` - correct (already private by `local` scope)
+  - ❌ `local function _helper()` - incorrect (redundant `_` prefix)
+  - ✅ `local config = {}` - correct
+  - ❌ `local _config = {}` - incorrect (redundant `_` prefix)
+  - ✅ `function MyClass:_private_method()` - correct (class method needs `_`)
+  - ✅ `@field _private_field` - correct (class field needs `_`)
 
   ```lua
   -- ❌ Bad: Unnecessary public exposure of `counter` property, not used externally
@@ -207,17 +217,25 @@ When implementing ANY feature:
       }, self)
   end
 
-  --- @protected mandatory to use protected marker for luals to validate it
+  --- @protected
   function MyClass:__protected_method()
       self._counter = self._counter + 1
   end
 
+  --- Module-level helper functions (no underscore prefix needed)
+  local function format_value(val)
+      return tostring(val)
+  end
 
   --- @class Child : MyClass
   function Child:use_parent_state()
       self:__protected_method()
   end
   ```
+
+  **Note:** The `@private` annotation is NOT necessary for private class methods
+  - LuaLS infers privacy from the `_` prefix automatically
+  - Only use `@protected` for protected methods (`__*`, luals limitation)
 
 - **Document intent with LuaCATS** - Use visibility annotations:
 
