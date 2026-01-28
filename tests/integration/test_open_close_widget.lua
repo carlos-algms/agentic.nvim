@@ -124,4 +124,62 @@ describe("Open and Close Chat Widget", function()
             child.flush()
         end)
     end)
+
+    it("tabclose on widget tab leaves first tab clean", function()
+        -- Start with clean first tab (no widget)
+        local initial_windows = #child.api.nvim_tabpage_list_wins(0)
+
+        -- Create second tab and open widget there
+        child.cmd("tabnew")
+        child.lua([[ require("agentic").toggle() ]])
+        child.flush()
+
+        -- Ensure cursor is in input buffer
+        local current_bufnr = child.api.nvim_get_current_buf()
+        local expected_input_bufnr = child.lua_get([[
+(function()
+    local tab_id = vim.api.nvim_get_current_tabpage()
+    local session = require("agentic.session_registry").sessions[tab_id]
+    return session.widget.buf_nrs.input
+end)()
+]])
+        assert.equal(expected_input_bufnr, current_bufnr)
+
+        -- Close the second tab
+        assert.has_no_errors(function()
+            child.cmd("tabclose")
+            child.flush()
+        end)
+
+        -- Verify we're back on the first tab
+        local current_tab = child.api.nvim_get_current_tabpage()
+        assert.equal(1, current_tab)
+
+        -- First tab should be clean (same number of windows as initially)
+        local final_windows = #child.api.nvim_tabpage_list_wins(0)
+
+        -- Debug: what windows exist?
+        if final_windows ~= initial_windows then
+            local winids = child.api.nvim_tabpage_list_wins(0)
+            for i, winid in ipairs(winids) do
+                local bufnr = child.api.nvim_win_get_buf(winid)
+                local ft =
+                    child.lua_get(string.format([[vim.bo[%d].filetype]], bufnr))
+                print(
+                    string.format(
+                        "Window %d: winid=%d bufnr=%d filetype='%s'",
+                        i,
+                        winid,
+                        bufnr,
+                        ft
+                    )
+                )
+            end
+        end
+
+        assert.equal(initial_windows, final_windows)
+
+        -- Should only have 1 window visible
+        assert.equal(1, final_windows)
+    end)
 end)
