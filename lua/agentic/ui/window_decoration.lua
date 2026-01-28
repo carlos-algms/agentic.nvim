@@ -30,6 +30,26 @@ local Theme = require("agentic.theme")
 --- @class agentic.ui.WindowDecoration
 local WindowDecoration = {}
 
+--- @type agentic.ui.ChatWidget.Headers
+local WINDOW_HEADERS = {
+    chat = {
+        title = "󰻞 Agentic Chat",
+        suffix = "<S-Tab>: change mode",
+    },
+    input = { title = "󰦨 Prompt", suffix = "<C-s>: submit" },
+    code = {
+        title = "󰪸 Selected Code Snippets",
+        suffix = "d: remove block",
+    },
+    files = {
+        title = " Referenced Files",
+        suffix = "d: remove file",
+    },
+    todos = {
+        title = " TODO Items",
+    },
+}
+
 --- @class agentic.ui.WindowDecoration.Config
 --- @field align? "left"|"center"|"right" Header text alignment
 --- @field hl? string Highlight group for the header text
@@ -52,6 +72,16 @@ local function concat_header_parts(parts)
         table.insert(pieces, parts.suffix)
     end
     return table.concat(pieces, " | ")
+end
+
+--- Gets or initializes headers for a tabpage
+--- @param tab_page_id integer
+--- @return agentic.ui.ChatWidget.Headers
+local function get_or_init_headers(tab_page_id)
+    if vim.t[tab_page_id].agentic_headers == nil then
+        vim.t[tab_page_id].agentic_headers = vim.deepcopy(WINDOW_HEADERS)
+    end
+    return vim.t[tab_page_id].agentic_headers
 end
 
 --- Resolves the final header text applying user customization
@@ -116,6 +146,9 @@ local function set_winbar(winid, text)
 
     -- If winbar is already set (not empty), a plugin like lualine is managing it
     -- Skip setting ours to prevent flickering
+    -- FIXIT: REQUIRES ownership check! after we apply the winbar once, updates will be skipped
+    -- it might be safe to assume, that if winbar is empty, no plugin is managing it,
+    -- users must restart to enable it, so we can cache and not check for empty all the time
     local current_winbar = vim.wo[winid].winbar
     if current_winbar ~= "" then
         return
@@ -144,17 +177,12 @@ local function set_winbar(winid, text)
     vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
 end
 
---- Sets the buffer name based on header text and instance context
+--- Sets the buffer name based on header text and tab count
 --- @param bufnr integer Buffer number
 --- @param header_text string|nil Resolved header text
 --- @param tab_page_id integer Tab page ID for suffix
---- @param instance_counter integer Total instance count (shows tab suffix when > 1)
-local function set_buffer_name(
-    bufnr,
-    header_text,
-    tab_page_id,
-    instance_counter
-)
+--- @param total_tabs integer Total number of tabpages (shows suffix when > 1)
+local function set_buffer_name(bufnr, header_text, tab_page_id, total_tabs)
     if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
         return
     end
@@ -164,7 +192,7 @@ local function set_buffer_name(
     end
 
     local buf_name
-    if instance_counter > 1 then
+    if total_tabs > 1 then
         buf_name = string.format("%s (Tab %d)", header_text, tab_page_id)
     else
         buf_name = header_text
@@ -174,31 +202,47 @@ local function set_buffer_name(
 end
 
 --- Renders a header for a window, handling user customization, winbar, and buffer naming
---- @param winid integer Window ID to render header for
---- @param bufnr integer Buffer number to set name for
+--- Derives all context from bufnr: winid, tab_page_id, and dynamic header from vim.t
+--- @param bufnr integer Buffer number - stable reference to derive window and tab context
 --- @param window_name string Name of the window (for Config.headers lookup and error messages)
---- @param dynamic_header agentic.ui.ChatWidget.HeaderParts Runtime header parts with dynamic context
---- @param tab_page_id integer Tab page ID for buffer name suffix
---- @param instance_counter integer Total instance count (shows tab suffix when > 1)
-function WindowDecoration.render_header(
-    winid,
-    bufnr,
-    window_name,
-    dynamic_header,
-    tab_page_id,
-    instance_counter
-)
-    local header_text, err = resolve_header_text(dynamic_header, window_name)
-
-    if err then
-        Logger.notify(err)
-    end
-
-    local text = (header_text and header_text ~= "") and header_text or ""
-
+--- @param context? string Optional context to set in header (e.g., "Mode: chat", "3 files")
+function WindowDecoration.render_header(bufnr, window_name, context)
     vim.schedule(function()
+        -- Derive winid from bufnr
+        local winid = vim.fn.bufwinid(bufnr)
+        if winid == -1 then
+            -- Buffer not displayed in any window, skip rendering
+            return
+        end
+
+        -- Derive tab_page_id from winid
+        local tab_page_id = vim.api.nvim_win_get_tabpage(winid)
+
+        -- Get or initialize headers for this tabpage
+        local headers = get_or_init_headers(tab_page_id)
+        local dynamic_header = headers[window_name]
+
+        -- Set context if provided (must reassign to vim.t due to copy semantics)
+        if context ~= nil then
+            dynamic_header.context = context
+            headers[window_name] = dynamic_header
+            vim.t[tab_page_id].agentic_headers = headers
+        end
+
+        local header_text, err =
+            resolve_header_text(dynamic_header, window_name)
+
+        if err then
+            Logger.notify(err)
+        end
+
+        local text = (header_text and header_text ~= "") and header_text or ""
+
+        -- Determine if we should show tab suffix based on total tab count
+        local total_tabs = #vim.api.nvim_list_tabpages()
+
         set_winbar(winid, text)
-        set_buffer_name(bufnr, header_text, tab_page_id, instance_counter)
+        set_buffer_name(bufnr, header_text, tab_page_id, total_tabs)
     end)
 end
 

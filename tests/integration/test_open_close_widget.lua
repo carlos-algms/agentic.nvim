@@ -98,4 +98,30 @@ describe("Open and Close Chat Widget", function()
         ]])
         assert.equal(1, session_count_after)
     end)
+
+    it("handles tabclose while in insert mode without errors", function()
+        -- Open widget
+        child.lua([[ require("agentic").toggle() ]])
+        child.flush()
+
+        -- Enter insert mode in input buffer (triggers ModeChanged)
+        child.cmd("startinsert")
+        child.flush()
+
+        -- Create second tab
+        child.cmd("tabnew")
+        child.lua([[ require("agentic").toggle() ]])
+        child.flush()
+
+        -- Enter insert mode in second tab's input
+        child.cmd("startinsert")
+        child.flush()
+
+        -- Close the second tab while in insert mode
+        -- This should not error when ModeChanged fires during cleanup
+        assert.has_no_errors(function()
+            child.cmd("tabclose")
+            child.flush()
+        end)
+    end)
 end)

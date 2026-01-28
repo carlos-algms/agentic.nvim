@@ -25,37 +25,12 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @class agentic.ui.ChatWidget.ShowOpts : agentic.ui.ChatWidget.AddToContextOpts
 --- @field auto_add_to_context? boolean Automatically add current selection or file to context when opening
 
---- @type agentic.ui.ChatWidget.Headers
-local WINDOW_HEADERS = {
-    chat = {
-        title = "󰻞 Agentic Chat",
-        suffix = "<S-Tab>: change mode",
-    },
-    input = { title = "󰦨 Prompt", suffix = "<C-s>: submit" },
-    code = {
-        title = "󰪸 Selected Code Snippets",
-        suffix = "d: remove block",
-    },
-    files = {
-        title = " Referenced Files",
-        suffix = "d: remove file",
-    },
-    todos = {
-        title = " TODO Items",
-    },
-}
-
---- Counter to track total number of ChatWidget instances created
---- Used to determine if we need to show tab numbers in buffer names
-local _instance_counter = 0
-
 --- A sidebar-style chat widget with multiple windows stacked vertically
 --- The main chat window is the first, and contains the width, the below ones adapt to its size
 --- @class agentic.ui.ChatWidget
 --- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
---- @field headers agentic.ui.ChatWidget.Headers
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -65,9 +40,6 @@ ChatWidget.__index = ChatWidget
 function ChatWidget:new(tab_page_id, on_submit_input)
     self = setmetatable({}, self)
 
-    _instance_counter = _instance_counter + 1
-
-    self.headers = vim.deepcopy(WINDOW_HEADERS)
     self.win_nrs = {}
 
     self.on_submit_input = on_submit_input
@@ -205,8 +177,6 @@ end
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
     self:hide()
-
-    _instance_counter = math.max(0, _instance_counter - 1)
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
@@ -547,31 +517,48 @@ end
 --- Binds events to change the suffix header texts based on current mode keymaps
 --- For the Chat and Input buffers only
 function ChatWidget:_bind_events_to_change_headers()
+    local tab_page_id = self.tab_page_id
+
     for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
         vim.api.nvim_create_autocmd("ModeChanged", {
             buffer = bufnr,
             callback = function()
                 vim.schedule(function()
+                    -- Check if tabpage is still valid before accessing vim.t
+                    -- FIXIT: WRITE a tdd test for this
+                    -- if not vim.api.nvim_tabpage_is_valid(tab_page_id) then
+                    --     return
+                    -- end
+
+                    -- Get headers from tabpage-local storage (must reassign after modification)
+                    local headers = vim.t[tab_page_id].agentic_headers
+                    if not headers then
+                        return
+                    end
+
                     local mode = vim.fn.mode()
                     local change_mode_key =
                         find_keymap(Config.keymaps.widget.change_mode, mode)
 
                     if change_mode_key ~= nil then
-                        self.headers.chat.suffix =
+                        headers.chat.suffix =
                             string.format("%s: change mode", change_mode_key)
                     else
-                        self.headers.chat.suffix = nil
+                        headers.chat.suffix = nil
                     end
 
                     local submit_key =
                         find_keymap(Config.keymaps.prompt.submit, mode)
 
                     if submit_key ~= nil then
-                        self.headers.input.suffix =
+                        headers.input.suffix =
                             string.format("%s: submit", submit_key)
                     else
-                        self.headers.input.suffix = nil
+                        headers.input.suffix = nil
                     end
+
+                    -- Reassign to persist changes
+                    vim.t[tab_page_id].agentic_headers = headers
 
                     self:render_header("chat")
                     self:render_header("input")
@@ -671,20 +658,14 @@ function ChatWidget:_open_or_resize_dynamic_window(
 end
 
 --- @param window_name agentic.ui.ChatWidget.PanelNames
-function ChatWidget:render_header(window_name)
-    local winid = self.win_nrs[window_name]
-    if not winid then
+--- @param context? string Optional context to set in header (e.g., "Mode: chat", "3 files")
+function ChatWidget:render_header(window_name, context)
+    local bufnr = self.buf_nrs[window_name]
+    if not bufnr then
         return
     end
 
-    WindowDecoration.render_header(
-        winid,
-        self.buf_nrs[window_name],
-        window_name,
-        self.headers[window_name],
-        self.tab_page_id,
-        _instance_counter
-    )
+    WindowDecoration.render_header(bufnr, window_name, context)
 end
 
 function ChatWidget:close_code_window()
