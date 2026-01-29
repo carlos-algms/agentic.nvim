@@ -531,10 +531,10 @@ function ChatWidget:_bind_events_to_change_headers()
             callback = function()
                 vim.schedule(function()
                     -- Check if tabpage is still valid before accessing vim.t
-                    -- FIXIT: WRITE a tdd test for this
-                    -- if not vim.api.nvim_tabpage_is_valid(tab_page_id) then
-                    --     return
-                    -- end
+                    -- I couldn't test it, it seems to only happen from command -> normal, not from insert -> normal
+                    if not vim.api.nvim_tabpage_is_valid(tab_page_id) then
+                        return
+                    end
 
                     -- Get headers from tabpage-local storage (must reassign after modification)
                     local headers = vim.t[tab_page_id].agentic_headers
