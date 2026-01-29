@@ -77,11 +77,20 @@ end
 --- Gets or initializes headers for a tabpage
 --- @param tab_page_id integer
 --- @return agentic.ui.ChatWidget.Headers
-local function get_or_init_headers(tab_page_id)
+function WindowDecoration.get_headers_state(tab_page_id)
     if vim.t[tab_page_id].agentic_headers == nil then
         vim.t[tab_page_id].agentic_headers = WINDOW_HEADERS
     end
     return vim.t[tab_page_id].agentic_headers
+end
+
+--- Sets headers for a tabpage
+--- @param tab_page_id integer
+--- @param headers agentic.ui.ChatWidget.Headers
+function WindowDecoration.set_headers_state(tab_page_id, headers)
+    if vim.api.nvim_tabpage_is_valid(tab_page_id) then
+        vim.t[tab_page_id].agentic_headers = headers
+    end
 end
 
 --- Resolves the final header text applying user customization
@@ -220,14 +229,14 @@ function WindowDecoration.render_header(bufnr, window_name, context)
 
         local tab_page_id = vim.api.nvim_win_get_tabpage(winid)
 
-        local headers = get_or_init_headers(tab_page_id)
+        local headers = WindowDecoration.get_headers_state(tab_page_id)
         local dynamic_header = headers[window_name]
 
         -- Set context if provided (must reassign to vim.t due to copy semantics)
         if context ~= nil then
             dynamic_header.context = context
             headers[window_name] = dynamic_header
-            vim.t[tab_page_id].agentic_headers = headers
+            WindowDecoration.set_headers_state(tab_page_id, headers)
         end
 
         local header_text, err =

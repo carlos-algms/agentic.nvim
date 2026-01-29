@@ -537,10 +537,8 @@ function ChatWidget:_bind_events_to_change_headers()
                     end
 
                     -- Get headers from tabpage-local storage (must reassign after modification)
-                    local headers = vim.t[tab_page_id].agentic_headers
-                    if not headers then
-                        return
-                    end
+                    local headers =
+                        WindowDecoration.get_headers_state(tab_page_id)
 
                     local mode = vim.fn.mode()
                     local change_mode_key =
@@ -564,7 +562,7 @@ function ChatWidget:_bind_events_to_change_headers()
                     end
 
                     -- Reassign to persist changes
-                    vim.t[tab_page_id].agentic_headers = headers
+                    WindowDecoration.set_headers_state(tab_page_id, headers)
 
                     self:render_header("chat")
                     self:render_header("input")
