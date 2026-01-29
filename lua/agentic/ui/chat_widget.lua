@@ -662,7 +662,7 @@ function ChatWidget:_open_or_resize_dynamic_window(
 end
 
 --- @param window_name agentic.ui.ChatWidget.PanelNames
---- @param context? string Optional context to set in header (e.g., "Mode: chat", "3 files")
+--- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
 function ChatWidget:render_header(window_name, context)
     local bufnr = self.buf_nrs[window_name]
     if not bufnr then

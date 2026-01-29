@@ -218,7 +218,7 @@ end
 --- Derives all context from bufnr: winid, tab_page_id, and dynamic header from vim.t
 --- @param bufnr integer Buffer number - stable reference to derive window and tab context
 --- @param window_name string Name of the window (for Config.headers lookup and error messages)
---- @param context? string Optional context to set in header (e.g., "Mode: chat", "3 files")
+--- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
 function WindowDecoration.render_header(bufnr, window_name, context)
     vim.schedule(function()
         local winid = vim.fn.bufwinid(bufnr)
@@ -231,6 +231,16 @@ function WindowDecoration.render_header(bufnr, window_name, context)
 
         local headers = WindowDecoration.get_headers_state(tab_page_id)
         local dynamic_header = headers[window_name]
+
+        if not dynamic_header then
+            Logger.debug(
+                string.format(
+                    "No header configuration found for window name '%s'",
+                    window_name
+                )
+            )
+            return
+        end
 
         -- Set context if provided (must reassign to vim.t due to copy semantics)
         if context ~= nil then
