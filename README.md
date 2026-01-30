@@ -326,7 +326,8 @@ These keybindings are automatically set in Agentic buffers:
 | `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes) |
 | `<CR>`           | n     | Submit prompt                                                 |
 | `<C-s>`          | n/v/i | Submit prompt                                                 |
-| `<localleader>p` | n/i   | Paste image from clipboard in the Prompt buffer               |
+| `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer               |
+| `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)              |
 | `q`              | n     | Close chat widget                                             |
 | `d`              | n     | Remove file or code selection at cursor                       |
 | `d`              | v     | Remove multiple selected files or code selections             |
@@ -366,9 +367,13 @@ your setup:
 
         paste_image = {
           {
-            "<localleader>p",
-            mode = { "n", "i" }, -- I like normal and insert modes for this, but feel free to customize
+            "<localLeader>p",
+            mode = { "n" },
           },
+          {
+            "<C-v>", -- Same as Claude-code in insert mode
+            mode = { "i" },
+          }
         },
       },
 
@@ -743,4 +748,3 @@ the the acknowledgments 😊.
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 [auggie]: https://www.npmjs.com/package/@augmentcode/auggie
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
-
