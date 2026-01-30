@@ -50,14 +50,20 @@ local ConfigDefault = {
         ["claude-acp"] = {
             name = "Claude ACP",
             command = "claude-code-acp",
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
 
         ["gemini-acp"] = {
             name = "Gemini ACP",
             command = "gemini",
             args = { "--experimental-acp" },
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
 
         ["codex-acp"] = {
@@ -69,21 +75,30 @@ local ConfigDefault = {
                 -- "-c",
                 -- "features.web_search_request=true", -- disabled as it doesn't send proper tool call messages
             },
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
 
         ["opencode-acp"] = {
             name = "OpenCode ACP",
             command = "opencode",
             args = { "acp" },
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
 
         ["cursor-acp"] = {
             name = "Cursor Agent ACP",
             command = "cursor-agent-acp",
             args = {},
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
 
         ["auggie-acp"] = {
@@ -92,7 +107,10 @@ local ConfigDefault = {
             args = {
                 "--acp",
             },
-            env = {},
+            env = {
+                NODE_NO_WARNINGS = "1",
+                IS_AI_TERMINAL = "1",
+            },
         },
     },
 
