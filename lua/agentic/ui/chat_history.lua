@@ -2,20 +2,20 @@ local Logger = require("agentic.utils.logger")
 
 --- Message types stored in chat history (raw data, not UI-formatted)
 
---- @class agentic.ChatHistory.UserMessage
+--- @class agentic.ui.ChatHistory.UserMessage
 --- @field type "user"
 --- @field text string Raw user input text
 --- @field timestamp? integer Unix timestamp when message was sent
 
---- @class agentic.ChatHistory.AgentMessage
+--- @class agentic.ui.ChatHistory.AgentMessage
 --- @field type "agent"
 --- @field text string Agent response text (concatenated chunks)
 
---- @class agentic.ChatHistory.ThoughtMessage
+--- @class agentic.ui.ChatHistory.ThoughtMessage
 --- @field type "thought"
 --- @field text string Agent thought text (concatenated chunks)
 
---- @class agentic.ChatHistory.ToolCall
+--- @class agentic.ui.ChatHistory.ToolCall
 --- @field type "tool_call"
 --- @field tool_call_id string
 --- @field kind agentic.acp.ToolKind
@@ -24,16 +24,16 @@ local Logger = require("agentic.utils.logger")
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 
---- @alias agentic.ChatHistory.Message
---- | agentic.ChatHistory.UserMessage
---- | agentic.ChatHistory.AgentMessage
---- | agentic.ChatHistory.ThoughtMessage
---- | agentic.ChatHistory.ToolCall
+--- @alias agentic.ui.ChatHistory.Message
+--- | agentic.ui.ChatHistory.UserMessage
+--- | agentic.ui.ChatHistory.AgentMessage
+--- | agentic.ui.ChatHistory.ThoughtMessage
+--- | agentic.ui.ChatHistory.ToolCall
 
---- @class agentic.ChatHistory
+--- @class agentic.ui.ChatHistory
 --- @field session_id string
 --- @field timestamp integer Unix timestamp when session was created
---- @field messages agentic.ChatHistory.Message[]
+--- @field messages agentic.ui.ChatHistory.Message[]
 --- @field _dir_path? string Custom base directory path (default: stdpath("cache"))
 --- @field _title_override? string Manual title override (takes precedence over first user message)
 local ChatHistory = {}
@@ -41,10 +41,10 @@ ChatHistory.__index = ChatHistory
 
 --- Creates a new ChatHistory instance
 --- @param session_id string
---- @param dir_path? string|nil Custom base directory path
---- @return agentic.ChatHistory
+--- @param dir_path string|nil Custom base directory path
+--- @return agentic.ui.ChatHistory
 function ChatHistory:new(session_id, dir_path)
-    --- @type agentic.ChatHistory
+    --- @type agentic.ui.ChatHistory
     local instance = {
         session_id = session_id,
         timestamp = os.time(),
@@ -82,7 +82,7 @@ function ChatHistory:_get_file_path()
 end
 
 --- Add a message to the history
---- @param msg agentic.ChatHistory.Message
+--- @param msg agentic.ui.ChatHistory.Message
 function ChatHistory:add_message(msg)
     table.insert(self.messages, msg)
 end
@@ -95,7 +95,7 @@ function ChatHistory:append_agent_text(msg_type, text)
     if last and last.type == msg_type then
         last.text = last.text .. text
     else
-        --- @type agentic.ChatHistory.AgentMessage | agentic.ChatHistory.ThoughtMessage
+        --- @type agentic.ui.ChatHistory.AgentMessage | agentic.ui.ChatHistory.ThoughtMessage
         local new_msg = { type = msg_type, text = text }
         table.insert(self.messages, new_msg)
     end
@@ -114,7 +114,7 @@ function ChatHistory:update_tool_call(tool_call_id, update)
 end
 
 --- Get all messages
---- @return agentic.ChatHistory.Message[]
+--- @return agentic.ui.ChatHistory.Message[]
 function ChatHistory:get_messages()
     return self.messages
 end
@@ -160,7 +160,7 @@ function ChatHistory:clear()
 end
 
 --- Save history to disk asynchronously
---- @param callback? fun(err: string|nil)
+--- @param callback fun(err: string|nil)|nil
 function ChatHistory:save(callback)
     local path = self:_get_file_path()
     local dir = vim.fn.fnamemodify(path, ":h")
@@ -220,8 +220,8 @@ end
 
 --- Load history from disk asynchronously
 --- @param session_id string
---- @param dir_path? string|nil Custom base directory path
---- @param callback fun(history: agentic.ChatHistory|nil, err: string|nil)
+--- @param dir_path string|nil Custom base directory path
+--- @param callback fun(history: agentic.ui.ChatHistory|nil, err: string|nil)
 function ChatHistory.load(session_id, dir_path, callback)
     -- Create temp instance to get file path
     local temp = ChatHistory:new(session_id, dir_path)
@@ -279,7 +279,7 @@ function ChatHistory.load(session_id, dir_path, callback)
 end
 
 --- List all sessions for the current project
---- @param dir_path? string|nil Custom base directory path
+--- @param dir_path string|nil Custom base directory path
 --- @param callback fun(sessions: {session_id: string, title: string, timestamp: integer}[])
 function ChatHistory.list_sessions(dir_path, callback)
     local temp = ChatHistory:new("temp", dir_path)

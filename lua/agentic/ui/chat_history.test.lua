@@ -3,12 +3,12 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 describe("ChatHistory", function()
-    --- @type agentic.ChatHistory
+    --- @type agentic.ui.ChatHistory
     local ChatHistory
 
     before_each(function()
-        package.loaded["agentic.chat_history"] = nil
-        ChatHistory = require("agentic.chat_history")
+        package.loaded["agentic.ui.chat_history"] = nil
+        ChatHistory = require("agentic.ui.chat_history")
     end)
 
     describe("constructor", function()
@@ -179,7 +179,7 @@ describe("ChatHistory", function()
             it("adds message to messages array", function()
                 local history = ChatHistory:new("test")
 
-                --- @type agentic.ChatHistory.UserMessage
+                --- @type agentic.ui.ChatHistory.UserMessage
                 local msg = { type = "user", text = "Hello" }
 
                 history:add_message(msg)
@@ -484,7 +484,7 @@ describe("ChatHistory", function()
             assert.is_nil(load_err)
             assert.is_not_nil(loaded)
 
-            --- @cast loaded agentic.ChatHistory
+            --- @cast loaded agentic.ui.ChatHistory
             assert.equal("load-test-123", loaded.session_id)
             assert.equal(original.timestamp, loaded.timestamp)
             assert.equal(1, #loaded.messages)

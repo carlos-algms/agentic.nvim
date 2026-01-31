@@ -4,7 +4,7 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
-local ChatHistory = require("agentic.chat_history")
+local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local FileSystem = require("agentic.utils.file_system")
@@ -47,9 +47,9 @@ end
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
---- @field chat_history? agentic.ChatHistory
+--- @field chat_history? agentic.ui.ChatHistory
 --- @field _needs_history_send boolean Flag to send history on first submit after restore
---- @field _history_to_send? agentic.ChatHistory.Message[] Messages to send on first submit
+--- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -390,7 +390,7 @@ function SessionManager:_handle_input_submit(input_text)
 
     -- Store raw user input text in chat history
     if self.chat_history then
-        --- @type agentic.ChatHistory.UserMessage
+        --- @type agentic.ui.ChatHistory.UserMessage
         local user_msg = {
             type = "user",
             text = input_text,
@@ -493,7 +493,7 @@ function SessionManager:new_session(opts)
             self.message_writer:write_tool_call_block(tool_call)
             -- Store full tool_call in chat history
             if self.chat_history then
-                --- @type agentic.ChatHistory.ToolCall
+                --- @type agentic.ui.ChatHistory.ToolCall
                 local tool_msg = {
                     type = "tool_call",
                     tool_call_id = tool_call.tool_call_id,
@@ -827,7 +827,7 @@ function SessionManager:destroy()
 end
 
 --- Replay stored messages to the UI
---- @param messages agentic.ChatHistory.Message[]
+--- @param messages agentic.ui.ChatHistory.Message[]
 function SessionManager:_replay_messages(messages)
     for _, msg in ipairs(messages) do
         if msg.type == "user" then
@@ -873,8 +873,8 @@ end
 --- Restore session from loaded chat history
 --- Creates a new ACP session (agent doesn't know old session_id)
 --- and replays messages to UI. History is sent on first prompt submit.
---- @param history agentic.ChatHistory
---- @param opts? {reuse_session?: boolean} If reuse_session=true, replay into current session without creating new one
+--- @param history agentic.ui.ChatHistory
+--- @param opts {reuse_session?: boolean}|nil If reuse_session=true, replay into current session without creating new one
 function SessionManager:restore_from_history(history, opts)
     opts = opts or {}
 

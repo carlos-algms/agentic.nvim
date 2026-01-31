@@ -1,4 +1,4 @@
-local ChatHistory = require("agentic.chat_history")
+local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
