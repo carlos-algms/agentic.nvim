@@ -42,7 +42,7 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
         tool_call_id = update.toolCallId,
         kind = kind,
         status = update.status,
-        argument = update.title,
+        argument = update.title or "unknown codex command",
     }
 
     if kind == "read" or kind == "edit" then
@@ -63,19 +63,19 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
                 old = vim.split(old_string, "\n"),
             }
         end
-    elseif
-        update.rawInput
-        and update.rawInput.parsed_cmd
-        and update.rawInput.parsed_cmd[1]
-    then
-        message.argument = update.rawInput.parsed_cmd[1].cmd or ""
-    else
-        local command = update.rawInput.command
-        if type(command) == "table" then
-            command = table.concat(command, " ")
-        end
+    elseif update.rawInput then
+        if update.rawInput.parsed_cmd and update.rawInput.parsed_cmd[1] then
+            message.argument = update.rawInput.parsed_cmd[1].cmd or ""
+        else
+            local command = update.rawInput.command
+            if type(command) == "table" then
+                command = table.concat(command, " ")
+            end
 
-        message.argument = command or update.title or "unknown codex command"
+            message.argument = command
+                or update.title
+                or "unknown codex command"
+        end
     end
 
     self:__with_subscriber(session_id, function(subscriber)
