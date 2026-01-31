@@ -874,25 +874,48 @@ end
 --- Creates a new ACP session (agent doesn't know old session_id)
 --- and replays messages to UI. History is sent on first prompt submit.
 --- @param history agentic.ChatHistory
-function SessionManager:restore_from_history(history)
+--- @param opts? {reuse_session?: boolean} If reuse_session=true, replay into current session without creating new one
+function SessionManager:restore_from_history(history, opts)
+    opts = opts or {}
+
     -- Prevent constructor's auto-new_session from running
     self._restoring = true
-    self.chat_history = history
     self._needs_history_send = true
     self._is_first_message = false
 
     -- Store messages for history send and replay
     self._history_to_send = history:get_messages()
 
+    -- Update existing chat_history with loaded data, keeping current session_id
+    if opts.reuse_session and self.chat_history then
+        -- Copy messages to existing history (keeps current session_id)
+        for _, msg in ipairs(self._history_to_send) do
+            self.chat_history:add_message(msg)
+        end
+        -- Set title override from loaded history
+        local loaded_title = history:get_title()
+        if loaded_title and loaded_title ~= "" then
+            self.chat_history:set_title(loaded_title)
+        end
+    else
+        self.chat_history = history
+    end
+
     local function do_restore()
-        -- Create fresh ACP session, then replay messages after session is ready
-        self:new_session({
-            restore_mode = true,
-            on_created = function()
-                self._restoring = false
-                self:_replay_messages(self._history_to_send)
-            end,
-        })
+        if opts.reuse_session then
+            -- Just replay messages into current session
+            self._restoring = false
+            self:_replay_messages(self._history_to_send)
+        else
+            -- Create fresh ACP session, then replay messages after session is ready
+            self:new_session({
+                restore_mode = true,
+                on_created = function()
+                    self._restoring = false
+                    self:_replay_messages(self._history_to_send)
+                end,
+            })
+        end
     end
 
     -- If agent is ready, restore immediately; otherwise wait for it

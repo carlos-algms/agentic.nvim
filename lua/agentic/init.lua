@@ -101,11 +101,9 @@ end
 --- @class agentic.RestoreSessionOpts
 --- @field focus_prompt? boolean Focus the input prompt after restore (default: true)
 
---- Restore a previous session by ID
---- If session_id is nil, shows a picker with available sessions
---- @param session_id? string|nil Session ID to restore
+--- Restore a previous session from a picker
 --- @param opts? agentic.RestoreSessionOpts|nil Options
-function Agentic.restore_session(session_id, opts)
+function Agentic.restore_session(opts)
     opts = opts or {}
     local tab_page_id = vim.api.nvim_get_current_tabpage()
     local current_session = SessionRegistry.sessions[tab_page_id]
@@ -115,6 +113,11 @@ function Agentic.restore_session(session_id, opts)
         and current_session.session_id
         and current_session.chat_history
         and #current_session.chat_history:get_messages() > 0
+
+    -- Check if current session is empty (no messages)
+    local current_is_empty = not current_session
+        or not current_session.chat_history
+        or #current_session.chat_history:get_messages() == 0
 
     local function do_restore(sid)
         ChatHistory.load(sid, nil, function(history, err)
@@ -130,14 +133,21 @@ function Agentic.restore_session(session_id, opts)
             SessionRegistry.get_session_for_tab_page(
                 tab_page_id,
                 function(session)
-                    -- Cancel any existing session first via new_session-like behavior
-                    -- but without creating a new ACP session
-                    if session.session_id then
-                        session.agent:cancel_session(session.session_id)
-                        session.widget:clear()
+                    if current_is_empty then
+                        -- Reuse current session, just replay messages
+                        session:restore_from_history(
+                            history,
+                            { reuse_session = true }
+                        )
+                    else
+                        -- Cancel existing session and create new one
+                        if session.session_id then
+                            session.agent:cancel_session(session.session_id)
+                            session.widget:clear()
+                        end
+                        session:restore_from_history(history)
                     end
 
-                    session:restore_from_history(history)
                     session.widget:show({
                         focus_prompt = opts.focus_prompt ~= false,
                     })
@@ -163,46 +173,42 @@ function Agentic.restore_session(session_id, opts)
         end
     end
 
-    if session_id then
-        restore_with_conflict_check(session_id)
-    else
-        -- Show session picker
-        ChatHistory.list_sessions(nil, function(sessions)
-            if #sessions == 0 then
-                Logger.notify("No saved sessions found", vim.log.levels.INFO)
-                return
-            end
+    -- Show session picker
+    ChatHistory.list_sessions(nil, function(sessions)
+        if #sessions == 0 then
+            Logger.notify("No saved sessions found", vim.log.levels.INFO)
+            return
+        end
 
-            -- Sort by timestamp descending (most recent first)
-            table.sort(sessions, function(a, b)
-                return (a.timestamp or 0) > (b.timestamp or 0)
-            end)
-
-            local items = {}
-            for _, s in ipairs(sessions) do
-                local date = os.date("%Y-%m-%d %H:%M", s.timestamp or 0)
-                local title = s.title or "(no title)"
-                if #title > 50 then
-                    title = title:sub(1, 50) .. "..."
-                end
-                table.insert(items, {
-                    display = string.format("%s - %s", date, title),
-                    session_id = s.session_id,
-                })
-            end
-
-            vim.ui.select(items, {
-                prompt = "Select session to restore:",
-                format_item = function(item)
-                    return item.display
-                end,
-            }, function(choice)
-                if choice then
-                    restore_with_conflict_check(choice.session_id)
-                end
-            end)
+        -- Sort by timestamp descending (most recent first)
+        table.sort(sessions, function(a, b)
+            return (a.timestamp or 0) > (b.timestamp or 0)
         end)
-    end
+
+        local items = {}
+        for _, s in ipairs(sessions) do
+            local date = os.date("%Y-%m-%d %H:%M", s.timestamp or 0)
+            local title = s.title or "(no title)"
+            if #title > 50 then
+                title = title:sub(1, 50) .. "..."
+            end
+            table.insert(items, {
+                display = string.format("%s - %s", date, title),
+                session_id = s.session_id,
+            })
+        end
+
+        vim.ui.select(items, {
+            prompt = "Select session to restore:",
+            format_item = function(item)
+                return item.display
+            end,
+        }, function(choice)
+            if choice then
+                restore_with_conflict_check(choice.session_id)
+            end
+        end)
+    end)
 end
 
 --- List all saved sessions for the current project
