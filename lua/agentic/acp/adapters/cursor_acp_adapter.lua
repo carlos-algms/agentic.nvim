@@ -52,12 +52,12 @@ end
 
 --- @param params table
 function CursorACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
+    local update_type = params.update.sessionUpdate
 
-    if type == "user_message_chunk" then
+    if update_type == "user_message_chunk" then
         -- Ignore user message chunks to prevent duplication
         return
-    elseif type == "available_commands_update" then
+    elseif update_type == "available_commands_update" then
         -- Store for later processing if session not yet subscribed
         if not self.subscribers[params.sessionId] then
             Logger.debug(

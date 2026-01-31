@@ -294,11 +294,14 @@ function ACPClient:__handle_session_update(params)
         return
     end
 
-    local type = update.sessionUpdate
+    local session_update_type = update.sessionUpdate
 
-    if type == "tool_call" and self.__handle_tool_call then
+    if session_update_type == "tool_call" and self.__handle_tool_call then
         self:__handle_tool_call(session_id, update)
-    elseif type == "tool_call_update" and self.__handle_tool_call_update then
+    elseif
+        session_update_type == "tool_call_update"
+        and self.__handle_tool_call_update
+    then
         self:__handle_tool_call_update(session_id, update)
     else
         self:__with_subscriber(session_id, function(subscriber)
