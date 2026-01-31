@@ -30,22 +30,10 @@ function ClaudeACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function ClaudeACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
-
-    if type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    else
-        ACPClient.__handle_session_update(self, params)
-    end
-end
-
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ClaudeToolCallMessage
-function ClaudeACPAdapter:_handle_tool_call(session_id, update)
+function ClaudeACPAdapter:__handle_tool_call(session_id, update)
     -- expected state, claude is sending an empty content first, followed by the actual content
     if not update.rawInput or vim.tbl_isempty(update.rawInput) then
         return
@@ -137,9 +125,10 @@ function ClaudeACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function ClaudeACPAdapter:_handle_tool_call_update(session_id, update)
+function ClaudeACPAdapter:__handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end

@@ -19,22 +19,10 @@ function GeminiACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function GeminiACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
-
-    if type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    else
-        ACPClient.__handle_session_update(self, params)
-    end
-end
-
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function GeminiACPAdapter:_handle_tool_call(session_id, update)
+function GeminiACPAdapter:__handle_tool_call(session_id, update)
     local kind = update.kind
 
     if
@@ -86,9 +74,10 @@ function GeminiACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function GeminiACPAdapter:_handle_tool_call_update(session_id, update)
+function GeminiACPAdapter:__handle_tool_call_update(session_id, update)
     --- @type agentic.ui.MessageWriter.ToolCallBase
     local message = {
         tool_call_id = update.toolCallId,
@@ -135,7 +124,7 @@ function GeminiACPAdapter:__handle_request_permission(message_id, request)
             sessionUpdate = "tool_call",
         }, request.toolCall) --[[@as agentic.acp.ToolCallMessage]]
 
-        self:_handle_tool_call(request.sessionId, update)
+        self:__handle_tool_call(request.sessionId, update)
     end
 
     -- Gemini also don't send "cancel" tool_call_update, so I have to generate a synthetic one
@@ -151,7 +140,7 @@ function GeminiACPAdapter:__handle_request_permission(message_id, request)
                     status = "failed",
                 }
 
-                self:_handle_tool_call_update(session_id, update)
+                self:__handle_tool_call_update(session_id, update)
             end
 
             self:__send_result(

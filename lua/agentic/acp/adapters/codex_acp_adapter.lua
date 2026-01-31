@@ -32,22 +32,10 @@ function CodexACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function CodexACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
-
-    if type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    else
-        ACPClient.__handle_session_update(self, params)
-    end
-end
-
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.CodexToolCallMessage
-function CodexACPAdapter:_handle_tool_call(session_id, update)
+function CodexACPAdapter:__handle_tool_call(session_id, update)
     local kind = update.kind
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
@@ -95,9 +83,10 @@ function CodexACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function CodexACPAdapter:_handle_tool_call_update(session_id, update)
+function CodexACPAdapter:__handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end

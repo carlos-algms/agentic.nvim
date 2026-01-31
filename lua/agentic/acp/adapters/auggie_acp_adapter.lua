@@ -20,22 +20,10 @@ function AuggieACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function AuggieACPAdapter:__handle_session_update(params)
-    local update_type = params.update.sessionUpdate
-
-    if update_type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif update_type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    else
-        ACPClient.__handle_session_update(self, params)
-    end
-end
-
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function AuggieACPAdapter:_handle_tool_call(session_id, update)
+function AuggieACPAdapter:__handle_tool_call(session_id, update)
     -- Skip empty tool calls
     if not update.rawInput or vim.tbl_isempty(update.rawInput) then
         return
@@ -95,9 +83,10 @@ function AuggieACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function AuggieACPAdapter:_handle_tool_call_update(session_id, update)
+function AuggieACPAdapter:__handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end

@@ -19,22 +19,10 @@ function OpenCodeACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function OpenCodeACPAdapter:__handle_session_update(params)
-    local type = params.update.sessionUpdate
-
-    if type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    else
-        ACPClient.__handle_session_update(self, params)
-    end
-end
-
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function OpenCodeACPAdapter:_handle_tool_call(session_id, update)
+function OpenCodeACPAdapter:__handle_tool_call(session_id, update)
     -- generating an empty tool call block on purpose,
     -- all OpenCode's useful data comes in tool_call_update
     -- having an empty tool call block helps unnecessary data conversions
@@ -78,9 +66,10 @@ end
 --- @class agentic.acp.OpenCodeToolCallUpdate : agentic.acp.ToolCallUpdate
 --- @field rawInput? agentic.acp.OpenCodeToolCallRawInput
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function OpenCodeACPAdapter:_handle_tool_call_update(session_id, update)
+function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end

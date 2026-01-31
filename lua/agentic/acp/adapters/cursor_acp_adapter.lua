@@ -54,33 +54,29 @@ end
 function CursorACPAdapter:__handle_session_update(params)
     local type = params.update.sessionUpdate
 
-    if type == "tool_call" then
-        self:_handle_tool_call(params.sessionId, params.update)
-    elseif type == "tool_call_update" then
-        self:_handle_tool_call_update(params.sessionId, params.update)
-    elseif type == "user_message_chunk" then
-        -- Ignore user message chunks, otherwise it would duplicate messages in the Chat buffer
+    if type == "user_message_chunk" then
+        -- Ignore user message chunks to prevent duplication
         return
     elseif type == "available_commands_update" then
+        -- Store for later processing if session not yet subscribed
         if not self.subscribers[params.sessionId] then
             Logger.debug(
                 "CursorACPAdapter",
                 "Storing available commands update for session "
                     .. params.sessionId
             )
-            -- Store available commands update indexed by session ID
             self._available_commands_updates[params.sessionId] = params
-        else
-            ACPClient.__handle_session_update(self, params)
+            return
         end
-    else
-        ACPClient.__handle_session_update(self, params)
     end
+
+    ACPClient.__handle_session_update(self, params)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function CursorACPAdapter:_handle_tool_call(session_id, update)
+function CursorACPAdapter:__handle_tool_call(session_id, update)
     local kind = update.kind
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
@@ -97,9 +93,10 @@ function CursorACPAdapter:_handle_tool_call(session_id, update)
     end)
 end
 
+--- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function CursorACPAdapter:_handle_tool_call_update(session_id, update)
+function CursorACPAdapter:__handle_tool_call_update(session_id, update)
     if not update.status then
         return
     end
