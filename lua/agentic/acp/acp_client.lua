@@ -19,8 +19,8 @@ DO NOT REMOVE them. Only update them if the underlying types change.
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
---- @field __handle_tool_call? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallMessage) Proctected method to allow for overriding in adapters
---- @field __handle_tool_call_update? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallUpdate) Proctected method to allow for overriding in adapters
+--- @field __handle_tool_call? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallMessage) Protected method to allow for overriding in adapters
+--- @field __handle_tool_call_update? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallUpdate) Protected method to allow for overriding in adapters
 local ACPClient = {}
 ACPClient.__index = ACPClient
 
