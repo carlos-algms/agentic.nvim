@@ -1,3 +1,4 @@
+local ChatHistory = require("agentic.chat_history")
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
@@ -95,6 +96,119 @@ function Agentic.stop_generation()
             session.permission_manager:clear()
         end
     end)
+end
+
+--- @class agentic.RestoreSessionOpts
+--- @field focus_prompt? boolean Focus the input prompt after restore (default: true)
+
+--- Restore a previous session by ID
+--- If session_id is nil, shows a picker with available sessions
+--- @param session_id? string|nil Session ID to restore
+--- @param opts? agentic.RestoreSessionOpts|nil Options
+function Agentic.restore_session(session_id, opts)
+    opts = opts or {}
+    local tab_page_id = vim.api.nvim_get_current_tabpage()
+    local current_session = SessionRegistry.sessions[tab_page_id]
+
+    -- Check for conflict: existing session with messages
+    local has_conflict = current_session
+        and current_session.session_id
+        and current_session.chat_history
+        and #current_session.chat_history:get_messages() > 0
+
+    local function do_restore(sid)
+        ChatHistory.load(sid, nil, function(history, err)
+            if err or not history then
+                Logger.notify(
+                    "Failed to load session: " .. (err or "unknown error"),
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            -- Get or create session for this tab
+            SessionRegistry.get_session_for_tab_page(
+                tab_page_id,
+                function(session)
+                    -- Cancel any existing session first via new_session-like behavior
+                    -- but without creating a new ACP session
+                    if session.session_id then
+                        session.agent:cancel_session(session.session_id)
+                        session.widget:clear()
+                    end
+
+                    session:restore_from_history(history)
+                    session.widget:show({
+                        focus_prompt = opts.focus_prompt ~= false,
+                    })
+                end
+            )
+        end)
+    end
+
+    local function restore_with_conflict_check(sid)
+        if has_conflict then
+            vim.ui.select({
+                "Cancel",
+                "Clear current session and restore",
+            }, {
+                prompt = "Current session has messages. What would you like to do?",
+            }, function(choice)
+                if choice == "Clear current session and restore" then
+                    do_restore(sid)
+                end
+            end)
+        else
+            do_restore(sid)
+        end
+    end
+
+    if session_id then
+        restore_with_conflict_check(session_id)
+    else
+        -- Show session picker
+        ChatHistory.list_sessions(nil, function(sessions)
+            if #sessions == 0 then
+                Logger.notify("No saved sessions found", vim.log.levels.INFO)
+                return
+            end
+
+            -- Sort by timestamp descending (most recent first)
+            table.sort(sessions, function(a, b)
+                return (a.timestamp or 0) > (b.timestamp or 0)
+            end)
+
+            local items = {}
+            for _, s in ipairs(sessions) do
+                local date = os.date("%Y-%m-%d %H:%M", s.timestamp or 0)
+                local title = s.title or "(no title)"
+                if #title > 50 then
+                    title = title:sub(1, 50) .. "..."
+                end
+                table.insert(items, {
+                    display = string.format("%s - %s", date, title),
+                    session_id = s.session_id,
+                })
+            end
+
+            vim.ui.select(items, {
+                prompt = "Select session to restore:",
+                format_item = function(item)
+                    return item.display
+                end,
+            }, function(choice)
+                if choice then
+                    restore_with_conflict_check(choice.session_id)
+                end
+            end)
+        end)
+    end
+end
+
+--- List all saved sessions for the current project
+--- @param callback fun(sessions: {session_id: string, title: string, timestamp: integer}[])
+function Agentic.list_sessions(callback)
+    ChatHistory.list_sessions(nil, callback)
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times

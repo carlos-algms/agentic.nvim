@@ -4,6 +4,7 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
+local ChatHistory = require("agentic.chat_history")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local FileSystem = require("agentic.utils.file_system")
@@ -46,6 +47,10 @@ end
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
+--- @field chat_history? agentic.ChatHistory
+--- @field _needs_history_send boolean Flag to send history on first submit after restore
+--- @field _history_to_send? agentic.ChatHistory.Message[] Messages to send on first submit
+--- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -67,11 +72,17 @@ function SessionManager:new(tab_page_id)
         _is_first_message = true,
         is_generating = false,
         current_provider = Config.provider,
+        chat_history = nil,
+        _needs_history_send = false,
+        _restoring = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
-            self:new_session()
+            -- Skip auto-new_session if restore_from_history was called
+            if not self._restoring then
+                self:new_session()
+            end
         end)
     end)
 
@@ -144,9 +155,17 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
         self.message_writer:write_message_chunk(update)
+        -- Store raw text (append to existing or create new)
+        if self.chat_history and update.content and update.content.text then
+            self.chat_history:append_agent_text("agent", update.content.text)
+        end
     elseif update.sessionUpdate == "agent_thought_chunk" then
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
+        -- Store raw text (append to existing or create new)
+        if self.chat_history and update.content and update.content.text then
+            self.chat_history:append_agent_text("thought", update.content.text)
+        end
     elseif update.sessionUpdate == "available_commands_update" then
         SlashCommands.setCommands(
             self.widget.buf_nrs.input,
@@ -211,6 +230,51 @@ function SessionManager:_handle_input_submit(input_text)
 
     --- @type agentic.acp.Content[]
     local prompt = {}
+
+    -- If restored session, prepend history on first submit
+    if self._needs_history_send and self._history_to_send then
+        self._needs_history_send = false
+
+        -- Update title from this prompt (first prompt after restore)
+        if self.chat_history then
+            self.chat_history:set_title(input_text)
+        end
+
+        for _, msg in ipairs(self._history_to_send) do
+            -- Convert stored messages to ACP Content format
+            if msg.type == "user" then
+                table.insert(
+                    prompt,
+                    { type = "text", text = "User: " .. msg.text }
+                )
+            elseif msg.type == "agent" then
+                table.insert(
+                    prompt,
+                    { type = "text", text = "Assistant: " .. msg.text }
+                )
+            elseif msg.type == "thought" then
+                table.insert(prompt, {
+                    type = "text",
+                    text = "Assistant (thinking): " .. msg.text,
+                })
+            elseif msg.type == "tool_call" and msg.argument then
+                local tool_text = string.format(
+                    "Tool call (%s): %s",
+                    msg.kind or "unknown",
+                    msg.argument
+                )
+                -- Include tool output if available
+                if msg.body and #msg.body > 0 then
+                    tool_text = tool_text
+                        .. "\nResult:\n"
+                        .. table.concat(msg.body, "\n")
+                end
+                table.insert(prompt, { type = "text", text = tool_text })
+            end
+        end
+        -- Clear after use
+        self._history_to_send = nil
+    end
 
     -- Add system info on first message only
     if self._is_first_message then
@@ -321,9 +385,19 @@ function SessionManager:_handle_input_submit(input_text)
         "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name
     )
 
-    self.message_writer:write_message(
-        self.agent:generate_user_message(message_lines)
-    )
+    local user_message = self.agent:generate_user_message(message_lines)
+    self.message_writer:write_message(user_message)
+
+    -- Store raw user input text in chat history
+    if self.chat_history then
+        --- @type agentic.ChatHistory.UserMessage
+        local user_msg = {
+            type = "user",
+            text = input_text,
+            timestamp = os.time(),
+        }
+        self.chat_history:add_message(user_msg)
+    end
 
     self.status_animation:start("thinking")
 
@@ -372,13 +446,28 @@ function SessionManager:_handle_input_submit(input_text)
                 success = err == nil,
                 error = err,
             })
+
+            -- Save chat history after successful turn completion
+            if not err and self.chat_history then
+                self.chat_history:save(function(save_err)
+                    if save_err then
+                        Logger.debug("Chat history save error:", save_err)
+                    end
+                end)
+            end
         end)
     end)
 end
 
---- Create a new session, cancelling any existing one and clearing buffers content
-function SessionManager:new_session()
-    self:_cancel_session()
+--- Create a new session, optionally cancelling any existing one
+--- @param opts? {restore_mode?: boolean, on_created?: fun()}
+function SessionManager:new_session(opts)
+    opts = opts or {}
+    local restore_mode = opts.restore_mode or false
+    local on_created = opts.on_created
+    if not restore_mode then
+        self:_cancel_session()
+    end
 
     self.status_animation:start("busy")
 
@@ -402,10 +491,35 @@ function SessionManager:new_session()
 
         on_tool_call = function(tool_call)
             self.message_writer:write_tool_call_block(tool_call)
+            -- Store full tool_call in chat history
+            if self.chat_history then
+                --- @type agentic.ChatHistory.ToolCall
+                local tool_msg = {
+                    type = "tool_call",
+                    tool_call_id = tool_call.tool_call_id,
+                    kind = tool_call.kind,
+                    status = tool_call.status,
+                    argument = tool_call.argument,
+                    body = tool_call.body,
+                    diff = tool_call.diff,
+                }
+                self.chat_history:add_message(tool_msg)
+            end
         end,
 
         on_tool_call_update = function(tool_call_update)
             self.message_writer:update_tool_call_block(tool_call_update)
+            -- Update tool_call in chat history with all available fields
+            if self.chat_history then
+                self.chat_history:update_tool_call(
+                    tool_call_update.tool_call_id,
+                    {
+                        status = tool_call_update.status,
+                        body = tool_call_update.body,
+                        diff = tool_call_update.diff,
+                    }
+                )
+            end
 
             -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
             local is_rejection = tool_call_update.status == "failed"
@@ -468,6 +582,21 @@ function SessionManager:new_session()
 
         self.session_id = response.sessionId
 
+        -- Initialize ChatHistory for this session (preserve existing if restoring)
+        if not self.chat_history then
+            self.chat_history = ChatHistory:new(response.sessionId)
+        else
+            -- Update existing history with new session_id for saving
+            Logger.debug(
+                "Updating chat_history session_id from",
+                self.chat_history.session_id,
+                "to",
+                response.sessionId
+            )
+            self.chat_history.session_id = response.sessionId
+            self.chat_history.timestamp = os.time()
+        end
+
         if response.modes then
             self.agent_modes:set_modes(response.modes)
 
@@ -495,11 +624,14 @@ function SessionManager:new_session()
             end
         end
 
-        -- Reset first message flag for new session, so system info is added again for this session
-        self._is_first_message = true
+        -- Reset first message flag for new session (skip when restoring)
+        if not restore_mode then
+            self._is_first_message = true
+        end
 
         -- Add initial welcome message after session is created
         -- Defer to avoid fast event context issues
+        -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
             local timestamp = os.date("%Y-%m-%d %H:%M:%S")
             local provider_name = self.agent.provider_config.name
@@ -514,6 +646,11 @@ function SessionManager:new_session()
             self.message_writer:write_message(
                 self.agent:generate_user_message(welcome_message)
             )
+
+            -- Invoke on_created callback after welcome message is written
+            if on_created then
+                on_created()
+            end
         end)
     end)
 end
@@ -531,6 +668,13 @@ function SessionManager:_cancel_session()
     self.session_id = nil
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
+
+    -- Clear chat history
+    if self.chat_history then
+        self.chat_history:clear()
+    end
+    self.chat_history = nil
+    self._needs_history_send = false
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -680,6 +824,91 @@ end
 function SessionManager:destroy()
     self:_cancel_session()
     self.widget:destroy()
+end
+
+--- Replay stored messages to the UI
+--- @param messages agentic.ChatHistory.Message[]
+function SessionManager:_replay_messages(messages)
+    for _, msg in ipairs(messages) do
+        if msg.type == "user" then
+            -- Format user message for display with original timestamp
+            local timestamp_str = msg.timestamp
+                    and os.date("%Y-%m-%d %H:%M:%S", msg.timestamp)
+                or os.date("%Y-%m-%d %H:%M:%S")
+            local message_lines = {
+                string.format("##  User - %s", timestamp_str),
+                "",
+                msg.text,
+                "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name,
+            }
+            local user_message = self.agent:generate_user_message(message_lines)
+            self.message_writer:write_message(user_message)
+        elseif msg.type == "agent" then
+            -- Write agent message
+            local agent_message = self.agent:generate_agent_message(msg.text)
+            self.message_writer:write_message(agent_message)
+        elseif msg.type == "thought" then
+            -- Write thought as a chunk
+            --- @type agentic.acp.AgentThoughtChunk
+            local thought_chunk = {
+                sessionUpdate = "agent_thought_chunk",
+                content = { type = "text", text = msg.text },
+            }
+            self.message_writer:write_message_chunk(thought_chunk)
+        elseif msg.type == "tool_call" then
+            --- @type agentic.ui.MessageWriter.ToolCallBlock
+            local tool_block = {
+                tool_call_id = msg.tool_call_id,
+                kind = msg.kind,
+                argument = msg.argument or "",
+                status = msg.status,
+                body = msg.body,
+                diff = msg.diff,
+            }
+            self.message_writer:write_tool_call_block(tool_block)
+        end
+    end
+end
+
+--- Restore session from loaded chat history
+--- Creates a new ACP session (agent doesn't know old session_id)
+--- and replays messages to UI. History is sent on first prompt submit.
+--- @param history agentic.ChatHistory
+function SessionManager:restore_from_history(history)
+    -- Prevent constructor's auto-new_session from running
+    self._restoring = true
+    self.chat_history = history
+    self._needs_history_send = true
+    self._is_first_message = false
+
+    -- Store messages for history send and replay
+    self._history_to_send = history:get_messages()
+
+    local function do_restore()
+        -- Create fresh ACP session, then replay messages after session is ready
+        self:new_session({
+            restore_mode = true,
+            on_created = function()
+                self._restoring = false
+                self:_replay_messages(self._history_to_send)
+            end,
+        })
+    end
+
+    -- If agent is ready, restore immediately; otherwise wait for it
+    if self.agent.state == "ready" then
+        do_restore()
+    else
+        -- Store original on_ready and chain our restore
+        --- @diagnostic disable-next-line: invisible
+        local original_on_ready = self.agent._on_ready
+        --- @diagnostic disable-next-line: invisible
+        self.agent._on_ready = function(client)
+            original_on_ready(client)
+            -- Schedule to avoid fast event context errors
+            vim.schedule(do_restore)
+        end
+    end
 end
 
 return SessionManager
