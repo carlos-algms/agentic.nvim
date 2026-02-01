@@ -661,6 +661,35 @@ function ChatWidget._calculate_width(size)
     return value
 end
 
+--- Calculate height based on editor dimensions
+--- Accepts percentage strings ("30%"), decimals (0.3), or absolute numbers
+--- @param size number|string
+--- @return integer height
+function ChatWidget._calculate_height(size)
+    local editor_height = vim.o.lines
+
+    local is_percentage = type(size) == "string" and string.sub(size, -1) == "%"
+    local value
+
+    if is_percentage then
+        value = tonumber(string.sub(size, 1, #size - 1)) / 100
+    else
+        value = tonumber(size)
+        is_percentage = (value and value > 0 and value < 1) or false
+    end
+
+    if not value then
+        is_percentage = true
+        value = 0.3
+    end
+
+    if is_percentage then
+        return math.floor(editor_height * value)
+    end
+
+    return value
+end
+
 --- Calculate dynamic height based on buffer line count
 --- Add 1 for visual padding to prevent last line cutoff because of the header
 --- @param bufnr number
