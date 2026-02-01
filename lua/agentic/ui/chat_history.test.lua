@@ -138,7 +138,6 @@ describe("ChatHistory", function()
             local path = ChatHistory.get_file_path("session-abc")
 
             assert.truthy(path:match("^" .. vim.pesc(test_dir)))
-            assert.truthy(path:match("agentic/sessions"))
             assert.truthy(path:match("session%-abc%.json$"))
         end)
 

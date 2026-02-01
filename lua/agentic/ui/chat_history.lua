@@ -72,9 +72,10 @@ end
 --- @param session_id string
 --- @return string file_path
 function ChatHistory.get_file_path(session_id)
-    local base = Config.session_restore.storage_path or vim.fn.stdpath("cache")
+    local base = Config.session_restore.storage_path
+        or vim.fs.joinpath(vim.fn.stdpath("cache"), "agentic", "sessions")
     local project_folder = ChatHistory.get_project_folder()
-    local folder = vim.fs.joinpath(base, "agentic", "sessions", project_folder)
+    local folder = vim.fs.joinpath(base, project_folder)
     return vim.fs.joinpath(folder, session_id .. ".json")
 end
 

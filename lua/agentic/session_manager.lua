@@ -567,12 +567,6 @@ function SessionManager:new_session(opts)
         end
 
         self.session_id = response.sessionId
-
-        -- need a new instance after a session was cancelled
-        if not self.chat_history then
-            self.chat_history = ChatHistory:new()
-        end
-
         self.chat_history.session_id = response.sessionId
         self.chat_history.timestamp = os.time()
 
@@ -648,8 +642,7 @@ function SessionManager:_cancel_session()
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
-    self.chat_history:clear()
-    self.chat_history = nil
+    self.chat_history = ChatHistory:new()
     self._needs_history_send = false
 end
 
