@@ -98,6 +98,54 @@ function ChatWidget:_show_right_layout(opts)
     end
 end
 
+--- Creates bottom horizontal split layout
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
+function ChatWidget:_show_bottom_layout(opts)
+    local options = opts or {}
+    local should_focus = options.focus_prompt == nil and true
+        or options.focus_prompt
+
+    self:_get_or_create_window("chat", self.buf_nrs.chat, false, {
+        split = "below",
+        win = -1,
+        height = self._calculate_height(Config.windows.height),
+    }, self._get_chat_window_opts("bottom"))
+
+    local chat_width = vim.api.nvim_win_get_width(self.win_nrs.chat)
+    local stack_width = math.floor(chat_width * 0.4)
+
+    self:_get_or_create_window("input", self.buf_nrs.input, true, {
+        win = self.win_nrs.chat,
+        split = "right",
+        width = stack_width,
+        fixed = true,
+    }, {})
+
+    self:_open_or_resize_dynamic_window("code", {
+        win = self.win_nrs.input,
+        split = "below",
+    }, Config.windows.code.max_height)
+
+    local ref_win = self.win_nrs.code or self.win_nrs.input
+    self:_open_or_resize_dynamic_window("files", {
+        win = ref_win,
+        split = "below",
+    }, Config.windows.files.max_height)
+
+    ref_win = self.win_nrs.files or self.win_nrs.code or self.win_nrs.input
+    self:_open_or_resize_dynamic_window("todos", {
+        win = ref_win,
+        split = "below",
+    }, Config.windows.todos.max_height, Config.windows.todos.display)
+
+    if should_focus then
+        self:move_cursor_to(
+            self.win_nrs.input,
+            BufHelpers.start_insert_on_last_char
+        )
+    end
+end
+
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
 function ChatWidget:show(opts)
     self:_show_right_layout(opts)
