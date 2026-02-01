@@ -887,10 +887,18 @@ function SessionManager:restore_from_history(history, opts)
     self._history_to_send = history:get_messages()
 
     -- Update existing chat_history with loaded data, keeping current session_id
-    if opts.reuse_session and self.chat_history then
-        -- Copy messages to existing history (keeps current session_id)
-        for _, msg in ipairs(self._history_to_send) do
-            self.chat_history:add_message(msg)
+    if opts.reuse_session then
+        if self.chat_history then
+            -- Copy messages to existing history (keeps current session_id)
+            for _, msg in ipairs(self._history_to_send) do
+                self.chat_history:add_message(msg)
+            end
+        else
+            -- Create new history with current session_id, copy messages
+            self.chat_history = ChatHistory:new(self.session_id)
+            for _, msg in ipairs(self._history_to_send) do
+                self.chat_history:add_message(msg)
+            end
         end
         -- Set title override from loaded history
         local loaded_title = history:get_title()

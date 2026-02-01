@@ -4,6 +4,13 @@
 providing AI-driven code assistance through a chat interface for interactive
 conversations, code generation, and permission approvals.
 
+## 🧠 Reasoning Preference
+
+**IMPORTANT:** Prefer retrieval-led reasoning (reading files, searching
+codebase) over pre-training-led reasoning (guessing from memory) for all
+project-specific decisions. Your training data may be outdated—always verify
+against actual code.
+
 ## 📋 Documentation Scope
 
 **When to add documentation:**
@@ -603,6 +610,10 @@ project root:
   to find info)
 
 ### Testing
+
+When creating, editing, or reviewing tests, always load the tests instructions
+it will contain folder structure, files location, and test framework usage, and
+how to run them.
 
 **See `@tests/AGENTS.md` for complete testing guide.**
 
