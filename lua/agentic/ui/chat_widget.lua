@@ -666,7 +666,7 @@ end
 --- @param bufnr integer
 --- @param enter boolean
 --- @param open_opts vim.api.keyset.win_config
---- @param win_opts? table<string, any>
+--- @param win_opts table<string, any>|nil
 --- @return integer winid
 function ChatWidget:_get_or_create_window(
     panel_name,
