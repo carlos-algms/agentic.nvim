@@ -47,6 +47,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 
     self:_initialize()
     self:_bind_events_to_change_headers()
+    self:_bind_resize_handler()
 
     return self
 end
@@ -570,6 +571,21 @@ function ChatWidget:_bind_events_to_change_headers()
             end,
         })
     end
+end
+
+function ChatWidget:_bind_resize_handler()
+    vim.api.nvim_create_autocmd("VimResized", {
+        callback = function()
+            if not self:is_open() then
+                return
+            end
+
+            vim.schedule(function()
+                self:_clear_all_windows()
+                self:show({ focus_prompt = false })
+            end)
+        end,
+    })
 end
 
 --- Get existing valid window or create new one
