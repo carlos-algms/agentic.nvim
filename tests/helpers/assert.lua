@@ -118,7 +118,7 @@ local function create_spy_chain(spy_or_stub)
 end
 
 --- Create assertion chain for a spy
---- @param s TestSpy Spy to create assertion chain for
+--- @param s TestSpy|TestStub Spy or stub to create assertion chain for
 --- @return tests.helpers.AssertSpyChain
 function M.spy(s)
     return create_spy_chain(s)

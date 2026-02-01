@@ -167,6 +167,27 @@ helper module:
 local spy = require('tests.helpers.spy')
 ```
 
+### 🚨 CRITICAL: Discovering Spy/Stub/Assert APIs
+
+**ALWAYS read the helper files before writing tests** to understand the exact
+API:
+
+- **Spy/stub implementation**: `tests/helpers/spy.lua` - Shows available methods
+  and data structures
+- **Assert helper**: `tests/helpers/assert.lua` - Shows available assertions and
+  their signatures
+
+**Key API differences from other testing frameworks:**
+
+- **No `spy:call(n)` method** - Access `spy.calls[n]` array directly
+- **`calls` array structure** - Each call is stored as
+  `{ arg1, arg2, ..., n = arg_count }`
+- **Method calls include `self`** - When spying on methods called with `:`,
+  first argument is `self`
+- **`called_with()` limitations** - Cannot compare functions (callbacks), check
+  manually instead
+- **Type annotations** - `assert.spy()` accepts both `TestSpy` and `TestStub`
+
 ### Creating Spies
 
 ```lua
@@ -188,12 +209,14 @@ assert.spy(callback_spy).was.called(0)  -- Not called (use 0)
 local expect = require('mini.test').expect
 expect.equality(callback_spy.call_count, 1)
 
--- Check if called with specific arguments
+-- Check if called with specific arguments (works for non-function args)
 assert.is_true(callback_spy:called_with('arg1', 'arg2'))
 assert.spy(callback_spy).was.called_with('arg1', 'arg2')
 
--- Get arguments from specific call
-local args = callback_spy:call(1)  -- First call arguments
+-- Access arguments from specific call (NO :call() method!)
+local call_args = callback_spy.calls[1]  -- First call: { arg1, arg2, ..., n = count }
+assert.equal('expected_value', call_args[1])  -- First argument
+assert.equal('expected_value', call_args[2])  -- Second argument
 ```
 
 ### Spying on Existing Methods
@@ -276,6 +299,84 @@ describe('MyModule', function()
     -- Or: require('mini.test').expect.equality(my_stub.call_count, 1)
   end)
 end)
+```
+
+### Common Pitfalls and Solutions
+
+#### 1. Accessing Call Arguments Incorrectly
+
+```lua
+-- ❌ WRONG: No :call() method exists
+local args = my_spy:call(1)
+
+-- ✅ CORRECT: Access .calls array directly
+local args = my_spy.calls[1]
+```
+
+#### 2. Method Calls Include `self`
+
+When spying on methods called with `:` syntax, the first argument is always
+`self`:
+
+```lua
+local obj = {
+  method = spy.new(function(self, arg1, arg2) end)
+}
+
+obj:method('value1', 'value2')
+
+-- Arguments in calls[1]: { obj, 'value1', 'value2', n = 3 }
+local call_args = obj.method.calls[1]
+assert.equal(obj, call_args[1])          -- self
+assert.equal('value1', call_args[2])     -- First actual argument
+assert.equal('value2', call_args[3])     -- Second actual argument
+```
+
+#### 3. `called_with()` Cannot Compare Functions
+
+`called_with()` uses `vim.deep_equal()` which cannot match function arguments:
+
+```lua
+-- ❌ WRONG: Will always return false when callback is involved
+stub:invokes(function(id, callback)
+  callback(result)
+end)
+some_function('id', function() end)
+assert.is_true(stub:called_with('id', function() end))  -- Always fails!
+
+-- ✅ CORRECT: Check arguments manually
+local call_args = stub.calls[1]
+assert.equal('id', call_args[1])
+assert.equal('function', type(call_args[2]))
+```
+
+#### 4. Unused Function Parameters in Stubs
+
+Prefix unused parameters with `_` to avoid linting errors:
+
+```lua
+-- ❌ WRONG: Linter warns about unused 'sid' parameter
+stub:invokes(function(sid, callback)
+  callback(mock_result)
+end)
+
+-- ✅ CORRECT: Use _ prefix for intentionally unused parameters
+stub:invokes(function(_sid, callback)
+  callback(mock_result)
+end)
+```
+
+#### 5. Type Mismatches with Mocked Objects
+
+Use type casts when passing incomplete mock objects:
+
+```lua
+-- ❌ WRONG: Type error - table doesn't match SessionManager
+local mock_session = { session_id = "test" }
+SessionRestore.show_picker(1, mock_session)
+
+-- ✅ CORRECT: Cast to expected type
+SessionRestore.show_picker(1, mock_session --[[@as agentic.SessionManager]])
 ```
 
 ## Test Types
