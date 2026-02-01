@@ -698,25 +698,26 @@ function ChatWidget:render_header(window_name, context)
     WindowDecoration.render_header(bufnr, window_name, context)
 end
 
-function ChatWidget:close_code_window()
-    if self.win_nrs.code and vim.api.nvim_win_is_valid(self.win_nrs.code) then
-        vim.api.nvim_win_close(self.win_nrs.code, true)
-        self.win_nrs.code = nil
+--- Close optional window (code, files, todos)
+--- @param panel_name agentic.ui.ChatWidget.PanelNames
+function ChatWidget:_close_optional_window(panel_name)
+    local winid = self.win_nrs[panel_name]
+    if winid and vim.api.nvim_win_is_valid(winid) then
+        pcall(vim.api.nvim_win_close, winid, true)
+        self.win_nrs[panel_name] = nil
     end
+end
+
+function ChatWidget:close_code_window()
+    self:_close_optional_window("code")
 end
 
 function ChatWidget:close_files_window()
-    if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
-        vim.api.nvim_win_close(self.win_nrs.files, true)
-        self.win_nrs.files = nil
-    end
+    self:_close_optional_window("files")
 end
 
 function ChatWidget:close_todos_window()
-    if self.win_nrs.todos and vim.api.nvim_win_is_valid(self.win_nrs.todos) then
-        vim.api.nvim_win_close(self.win_nrs.todos, true)
-        self.win_nrs.todos = nil
-    end
+    self:_close_optional_window("todos")
 end
 
 --- Resize a dynamic window based on its current buffer content
