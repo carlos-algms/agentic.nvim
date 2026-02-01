@@ -148,7 +148,23 @@ end
 
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
 function ChatWidget:show(opts)
-    self:_show_right_layout(opts)
+    local current_position = Config.windows.position
+
+    if self:_needs_layout_rebuild() then
+        self:_clear_all_windows()
+    end
+
+    if current_position == "right" then
+        self:_show_right_layout(opts)
+    elseif current_position == "bottom" then
+        self:_show_bottom_layout(opts)
+    else
+        Logger.notify(
+            "Invalid windows.position config: "
+                .. tostring(Config.windows.position),
+            vim.log.levels.ERROR
+        )
+    end
 end
 
 --- Closes all windows but keeps buffers in memory
