@@ -1,8 +1,8 @@
-local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
+local SessionRestore = require("agentic.session_restore")
 local Object = require("agentic.utils.object")
 local Logger = require("agentic.utils.logger")
 
@@ -98,102 +98,11 @@ function Agentic.stop_generation()
     end)
 end
 
---- @class agentic.RestoreSessionOpts
---- @field focus_prompt? boolean Focus the input prompt after restore (default: true)
-
+--- show a selector to restore a previous session
 function Agentic.restore_session()
     local tab_page_id = vim.api.nvim_get_current_tabpage()
     local current_session = SessionRegistry.sessions[tab_page_id]
-
-    -- Check for conflict: existing session with messages
-    local has_conflict = current_session
-        and current_session.session_id
-        and current_session.chat_history
-        and #current_session.chat_history.messages > 0
-
-    local function do_restore(sid)
-        ChatHistory.load(sid, function(history, err)
-            if err or not history then
-                Logger.notify(
-                    "Failed to load session: " .. (err or "unknown error"),
-                    vim.log.levels.WARN
-                )
-                return
-            end
-
-            SessionRegistry.get_session_for_tab_page(
-                tab_page_id,
-                function(session)
-                    if not has_conflict then
-                        -- Reuse current session, just replay messages
-                        session:restore_from_history(
-                            history,
-                            { reuse_session = true }
-                        )
-                    else
-                        -- Cancel existing session and create new one
-                        if session.session_id then
-                            session.agent:cancel_session(session.session_id)
-                            session.widget:clear()
-                        end
-                        session:restore_from_history(history)
-                    end
-
-                    session.widget:show()
-                end
-            )
-        end)
-    end
-
-    local function restore_with_conflict_check(sid)
-        if has_conflict then
-            vim.ui.select({
-                "Cancel",
-                "Clear current session and restore",
-            }, {
-                prompt = "Current session has messages. What would you like to do?",
-            }, function(choice)
-                if choice == "Clear current session and restore" then
-                    do_restore(sid)
-                end
-            end)
-        else
-            do_restore(sid)
-        end
-    end
-
-    ChatHistory.list_sessions(function(sessions)
-        if #sessions == 0 then
-            Logger.notify("No saved sessions found", vim.log.levels.INFO)
-            return
-        end
-
-        table.sort(sessions, function(a, b)
-            return (a.timestamp or 0) > (b.timestamp or 0)
-        end)
-
-        local items = {}
-        for _, s in ipairs(sessions) do
-            local date = os.date("%Y-%m-%d %H:%M", s.timestamp or 0)
-            local title = s.title or "(no title)"
-
-            table.insert(items, {
-                display = string.format("%s - %s", date, title),
-                session_id = s.session_id,
-            })
-        end
-
-        vim.ui.select(items, {
-            prompt = "Select session to restore:",
-            format_item = function(item)
-                return item.display
-            end,
-        }, function(choice)
-            if choice then
-                restore_with_conflict_check(choice.session_id)
-            end
-        end)
-    end)
+    SessionRestore.show_picker(tab_page_id, current_session)
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times

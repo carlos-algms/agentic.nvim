@@ -267,7 +267,7 @@ function ChatHistory.load(session_id, callback)
     end)
 end
 
---- List all sessions for the current project
+--- List all sessions for the current project, sorted by timestamp descending
 --- @param callback fun(sessions: agentic.ui.ChatHistory.SessionMeta[])
 function ChatHistory.list_sessions(callback)
     local folder = ChatHistory.get_sessions_folder()
@@ -279,8 +279,8 @@ function ChatHistory.list_sessions(callback)
         return
     end
 
-    for filename, type in vim.fs.dir(folder) do
-        if type == "file" and filename:match("%.json$") then
+    for filename, file_type in vim.fs.dir(folder) do
+        if file_type == "file" and filename:match("%.json$") then
             local file_path = vim.fs.joinpath(folder, filename)
             local content = vim.fn.readfile(file_path)
             if #content > 0 then
@@ -302,6 +302,10 @@ function ChatHistory.list_sessions(callback)
             end
         end
     end
+
+    table.sort(sessions, function(a, b)
+        return a.timestamp > b.timestamp
+    end)
 
     callback(sessions)
 end

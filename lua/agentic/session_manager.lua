@@ -423,7 +423,7 @@ function SessionManager:_handle_input_submit(input_text)
 end
 
 --- Create a new session, optionally cancelling any existing one
---- @param opts? {restore_mode?: boolean, on_created?: fun()}
+--- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
 function SessionManager:new_session(opts)
     opts = opts or {}
     local restore_mode = opts.restore_mode or false
@@ -832,36 +832,19 @@ function SessionManager:restore_from_history(history, opts)
         self.chat_history = history
     end
 
-    local function do_restore()
-        if opts.reuse_session and self.session_id then
-            -- Reuse existing ACP session, just replay messages
-            self._restoring = false
-            self:_replay_messages(self._history_to_send)
-        else
-            -- Create fresh ACP session, then replay messages after session is ready
-            self:new_session({
-                restore_mode = true,
-                on_created = function()
-                    self._restoring = false
-                    self:_replay_messages(self._history_to_send)
-                end,
-            })
-        end
-    end
-
-    -- If agent is ready, restore immediately; otherwise wait for it
-    if self.agent.state == "ready" then
-        do_restore()
+    if opts.reuse_session and self.session_id then
+        -- Reuse existing ACP session, just replay messages
+        self._restoring = false
+        self:_replay_messages(self._history_to_send)
     else
-        -- Store original on_ready and chain our restore
-        --- @diagnostic disable-next-line: invisible
-        local original_on_ready = self.agent._on_ready
-        --- @diagnostic disable-next-line: invisible
-        self.agent._on_ready = function(client)
-            original_on_ready(client)
-            -- Schedule to avoid fast event context errors
-            vim.schedule(do_restore)
-        end
+        -- Create fresh ACP session, then replay messages after session is ready
+        self:new_session({
+            restore_mode = true,
+            on_created = function()
+                self._restoring = false
+                self:_replay_messages(self._history_to_send)
+            end,
+        })
     end
 end
 
