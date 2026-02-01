@@ -864,8 +864,8 @@ function SessionManager:restore_from_history(history, opts)
     end
 
     local function do_restore()
-        if opts.reuse_session then
-            -- Just replay messages into current session
+        if opts.reuse_session and self.session_id then
+            -- Reuse existing ACP session, just replay messages
             self._restoring = false
             self:_replay_messages(self._history_to_send)
         else
