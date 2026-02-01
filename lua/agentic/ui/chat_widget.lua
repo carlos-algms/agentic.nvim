@@ -709,7 +709,7 @@ function ChatWidget._calculate_width(size)
         return math.floor(editor_width * value)
     end
 
-    return value
+    return math.floor(value)
 end
 
 --- Calculate height based on editor dimensions
@@ -738,7 +738,7 @@ function ChatWidget._calculate_height(size)
         return math.floor(editor_height * value)
     end
 
-    return value
+    return math.floor(value)
 end
 
 --- Calculate dynamic height based on buffer line count
