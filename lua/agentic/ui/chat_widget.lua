@@ -721,10 +721,10 @@ function ChatWidget._calculate_width(size)
     end
 
     if is_percentage then
-        return math.floor(editor_width * value)
+        return math.max(1, math.floor(editor_width * value))
     end
 
-    return math.floor(value)
+    return math.max(1, math.floor(value))
 end
 
 --- Calculate height based on editor dimensions
@@ -750,10 +750,10 @@ function ChatWidget._calculate_height(size)
     end
 
     if is_percentage then
-        return math.floor(editor_height * value)
+        return math.max(1, math.floor(editor_height * value))
     end
 
-    return math.floor(value)
+    return math.max(1, math.floor(value))
 end
 
 --- Calculate dynamic height based on buffer line count
