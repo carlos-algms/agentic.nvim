@@ -31,6 +31,7 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
+--- @field _layout_position? "right"|"bottom"
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -41,6 +42,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self = setmetatable({}, self)
 
     self.win_nrs = {}
+    self._layout_position = nil
 
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
@@ -168,6 +170,8 @@ function ChatWidget:show(opts)
             vim.log.levels.ERROR
         )
     end
+
+    self._layout_position = Config.windows.position
 end
 
 --- Closes all windows but keeps buffers in memory
@@ -832,11 +836,8 @@ function ChatWidget:_needs_layout_rebuild()
         return false
     end
 
-    local chat_config = vim.api.nvim_win_get_config(self.win_nrs.chat)
-    local is_horizontal = chat_config.split == "below"
-    local should_be_horizontal = Config.windows.position == "bottom"
-
-    return is_horizontal ~= should_be_horizontal
+    return self._layout_position == nil
+        or self._layout_position ~= Config.windows.position
 end
 
 --- Close all windows and clear state (for layout switching)
