@@ -57,47 +57,23 @@ function ChatWidget:is_open()
     return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
 end
 
---- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
-function ChatWidget:show(opts)
+--- Creates right sidebar layout (current behavior)
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
+function ChatWidget:_show_right_layout(opts)
     local options = opts or {}
     local should_focus = options.focus_prompt == nil and true
         or options.focus_prompt
 
-    if
-        not self.win_nrs.chat
-        or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
-    then
-        self.win_nrs.chat = self:_open_win(
-            self.buf_nrs.chat,
-            false,
-            {
-                -- Only the top most needs a fixed width, others adapt to available space
-                width = self._calculate_width(Config.windows.width),
-            },
-            "chat",
-            {
-                winfixheight = false,
-                winfixwidth = true,
-                scrolloff = 4, -- Keep 4 lines visible above/below cursor (keeps animation visible)
-            }
-        )
+    self:_get_or_create_window("chat", self.buf_nrs.chat, false, {
+        width = self._calculate_width(Config.windows.width),
+    }, self._get_chat_window_opts("right"))
 
-        self:render_header("chat")
-    end
-
-    if
-        not self.win_nrs.input
-        or not vim.api.nvim_win_is_valid(self.win_nrs.input)
-    then
-        self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
-            win = self.win_nrs.chat,
-            split = "below",
-            height = Config.windows.input.height,
-            fixed = true,
-        }, "input", {})
-
-        self:render_header("input")
-    end
+    self:_get_or_create_window("input", self.buf_nrs.input, true, {
+        win = self.win_nrs.chat,
+        split = "below",
+        height = Config.windows.input.height,
+        fixed = true,
+    }, {})
 
     self:_open_or_resize_dynamic_window("code", {
         win = self.win_nrs.chat,
@@ -120,6 +96,11 @@ function ChatWidget:show(opts)
             BufHelpers.start_insert_on_last_char
         )
     end
+end
+
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
+function ChatWidget:show(opts)
+    self:_show_right_layout(opts)
 end
 
 --- Closes all windows but keeps buffers in memory
