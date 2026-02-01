@@ -112,15 +112,15 @@ function Agentic.restore_session(opts)
     local has_conflict = current_session
         and current_session.session_id
         and current_session.chat_history
-        and #current_session.chat_history:get_messages() > 0
+        and #current_session.chat_history.messages > 0
 
     -- Check if current session is empty (no messages)
     local current_is_empty = not current_session
         or not current_session.chat_history
-        or #current_session.chat_history:get_messages() == 0
+        or #current_session.chat_history.messages == 0
 
     local function do_restore(sid)
-        ChatHistory.load(sid, nil, function(history, err)
+        ChatHistory.load(sid, function(history, err)
             if err or not history then
                 Logger.notify(
                     "Failed to load session: " .. (err or "unknown error"),
@@ -173,8 +173,7 @@ function Agentic.restore_session(opts)
         end
     end
 
-    -- Show session picker
-    ChatHistory.list_sessions(nil, function(sessions)
+    ChatHistory.list_sessions(function(sessions)
         if #sessions == 0 then
             Logger.notify("No saved sessions found", vim.log.levels.INFO)
             return
@@ -189,9 +188,7 @@ function Agentic.restore_session(opts)
         for _, s in ipairs(sessions) do
             local date = os.date("%Y-%m-%d %H:%M", s.timestamp or 0)
             local title = s.title or "(no title)"
-            if #title > 50 then
-                title = title:sub(1, 50) .. "..."
-            end
+
             table.insert(items, {
                 display = string.format("%s - %s", date, title),
                 session_id = s.session_id,
@@ -209,12 +206,6 @@ function Agentic.restore_session(opts)
             end
         end)
     end)
-end
-
---- List all saved sessions for the current project
---- @param callback fun(sessions: {session_id: string, title: string, timestamp: integer}[])
-function Agentic.list_sessions(callback)
-    ChatHistory.list_sessions(nil, callback)
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times

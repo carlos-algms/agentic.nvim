@@ -47,7 +47,7 @@ end
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
---- @field chat_history? agentic.ui.ChatHistory
+--- @field chat_history agentic.ui.ChatHistory
 --- @field _needs_history_send boolean Flag to send history on first submit after restore
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
@@ -72,7 +72,6 @@ function SessionManager:new(tab_page_id)
         _is_first_message = true,
         is_generating = false,
         current_provider = Config.provider,
-        chat_history = nil,
         _needs_history_send = false,
         _restoring = false,
     }, self)
@@ -93,6 +92,7 @@ function SessionManager:new(tab_page_id)
 
     self.agent = agent
 
+    self.chat_history = ChatHistory:new()
     self.widget = ChatWidget:new(tab_page_id, function(input_text)
         self:_handle_input_submit(input_text)
     end)
@@ -155,15 +155,15 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
         self.message_writer:write_message_chunk(update)
-        -- Store raw text (append to existing or create new)
-        if self.chat_history and update.content and update.content.text then
+
+        if update.content and update.content.text then
             self.chat_history:append_agent_text("agent", update.content.text)
         end
     elseif update.sessionUpdate == "agent_thought_chunk" then
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
-        -- Store raw text (append to existing or create new)
-        if self.chat_history and update.content and update.content.text then
+
+        if update.content and update.content.text then
             self.chat_history:append_agent_text("thought", update.content.text)
         end
     elseif update.sessionUpdate == "available_commands_update" then
@@ -235,10 +235,7 @@ function SessionManager:_handle_input_submit(input_text)
     if self._needs_history_send and self._history_to_send then
         self._needs_history_send = false
 
-        -- Update title from this prompt (first prompt after restore)
-        if self.chat_history then
-            self.chat_history:set_title(input_text)
-        end
+        self.chat_history:set_title(input_text)
 
         for _, msg in ipairs(self._history_to_send) do
             -- Convert stored messages to ACP Content format
@@ -388,16 +385,13 @@ function SessionManager:_handle_input_submit(input_text)
     local user_message = self.agent:generate_user_message(message_lines)
     self.message_writer:write_message(user_message)
 
-    -- Store raw user input text in chat history
-    if self.chat_history then
-        --- @type agentic.ui.ChatHistory.UserMessage
-        local user_msg = {
-            type = "user",
-            text = input_text,
-            timestamp = os.time(),
-        }
-        self.chat_history:add_message(user_msg)
-    end
+    --- @type agentic.ui.ChatHistory.UserMessage
+    local user_msg = {
+        type = "user",
+        text = input_text,
+        timestamp = os.time(),
+    }
+    self.chat_history:add_message(user_msg)
 
     self.status_animation:start("thinking")
 
@@ -448,7 +442,7 @@ function SessionManager:_handle_input_submit(input_text)
             })
 
             -- Save chat history after successful turn completion
-            if not err and self.chat_history then
+            if not err then
                 self.chat_history:save(function(save_err)
                     if save_err then
                         Logger.debug("Chat history save error:", save_err)
@@ -492,34 +486,26 @@ function SessionManager:new_session(opts)
         on_tool_call = function(tool_call)
             self.message_writer:write_tool_call_block(tool_call)
             -- Store full tool_call in chat history
-            if self.chat_history then
-                --- @type agentic.ui.ChatHistory.ToolCall
-                local tool_msg = {
-                    type = "tool_call",
-                    tool_call_id = tool_call.tool_call_id,
-                    kind = tool_call.kind,
-                    status = tool_call.status,
-                    argument = tool_call.argument,
-                    body = tool_call.body,
-                    diff = tool_call.diff,
-                }
-                self.chat_history:add_message(tool_msg)
-            end
+            --- @type agentic.ui.ChatHistory.ToolCall
+            local tool_msg = {
+                type = "tool_call",
+                tool_call_id = tool_call.tool_call_id,
+                kind = tool_call.kind,
+                status = tool_call.status,
+                argument = tool_call.argument,
+                body = tool_call.body,
+                diff = tool_call.diff,
+            }
+            self.chat_history:add_message(tool_msg)
         end,
 
         on_tool_call_update = function(tool_call_update)
             self.message_writer:update_tool_call_block(tool_call_update)
-            -- Update tool_call in chat history with all available fields
-            if self.chat_history then
-                self.chat_history:update_tool_call(
-                    tool_call_update.tool_call_id,
-                    {
-                        status = tool_call_update.status,
-                        body = tool_call_update.body,
-                        diff = tool_call_update.diff,
-                    }
-                )
-            end
+            self.chat_history:update_tool_call(tool_call_update.tool_call_id, {
+                status = tool_call_update.status,
+                body = tool_call_update.body,
+                diff = tool_call_update.diff,
+            })
 
             -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
             local is_rejection = tool_call_update.status == "failed"
@@ -582,20 +568,13 @@ function SessionManager:new_session(opts)
 
         self.session_id = response.sessionId
 
-        -- Initialize ChatHistory for this session (preserve existing if restoring)
+        -- need a new instance after a session was cancelled
         if not self.chat_history then
-            self.chat_history = ChatHistory:new(response.sessionId)
-        else
-            -- Update existing history with new session_id for saving
-            Logger.debug(
-                "Updating chat_history session_id from",
-                self.chat_history.session_id,
-                "to",
-                response.sessionId
-            )
-            self.chat_history.session_id = response.sessionId
-            self.chat_history.timestamp = os.time()
+            self.chat_history = ChatHistory:new()
         end
+
+        self.chat_history.session_id = response.sessionId
+        self.chat_history.timestamp = os.time()
 
         if response.modes then
             self.agent_modes:set_modes(response.modes)
@@ -669,10 +648,7 @@ function SessionManager:_cancel_session()
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
-    -- Clear chat history
-    if self.chat_history then
-        self.chat_history:clear()
-    end
+    self.chat_history:clear()
     self.chat_history = nil
     self._needs_history_send = false
 end
@@ -884,23 +860,12 @@ function SessionManager:restore_from_history(history, opts)
     self._is_first_message = false
 
     -- Store messages for history send and replay
-    self._history_to_send = history:get_messages()
+    self._history_to_send = history.messages
 
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then
-        if self.chat_history then
-            -- Copy messages to existing history (keeps current session_id)
-            for _, msg in ipairs(self._history_to_send) do
-                self.chat_history:add_message(msg)
-            end
-        else
-            -- Create new history with current session_id, copy messages
-            self.chat_history = ChatHistory:new(self.session_id)
-            for _, msg in ipairs(self._history_to_send) do
-                self.chat_history:add_message(msg)
-            end
-        end
-        -- Set title override from loaded history
+        self.chat_history.messages = vim.deepcopy(history.messages)
+
         local loaded_title = history:get_title()
         if loaded_title and loaded_title ~= "" then
             self.chat_history:set_title(loaded_title)

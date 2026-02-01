@@ -5,31 +5,43 @@ local spy = require("tests.helpers.spy")
 describe("ChatHistory", function()
     --- @type agentic.ui.ChatHistory
     local ChatHistory
+    local original_storage_path
+    local test_dir
 
     before_each(function()
         package.loaded["agentic.ui.chat_history"] = nil
+
+        test_dir = vim.fn.tempname()
+        vim.fn.mkdir(test_dir, "p")
+
+        -- Load real Config and override only the storage_path
+        local Config = require("agentic.config")
+        original_storage_path = Config.session_restore.storage_path
+        Config.session_restore.storage_path = test_dir
+
         ChatHistory = require("agentic.ui.chat_history")
     end)
 
-    describe("constructor", function()
-        it("creates instance with session_id and empty messages", function()
-            local history = ChatHistory:new("test-session-123")
+    after_each(function()
+        vim.fn.delete(test_dir, "rf")
+        -- Restore original storage path
+        local Config = require("agentic.config")
+        Config.session_restore.storage_path = original_storage_path
+        package.loaded["agentic.ui.chat_history"] = nil
+    end)
 
-            assert.equal("test-session-123", history.session_id)
+    describe("constructor", function()
+        it("creates instance with nil session_id and empty messages", function()
+            local history = ChatHistory:new()
+
+            assert.is_nil(history.session_id)
             assert.is_table(history.messages)
             assert.equal(0, #history.messages)
             assert.is_not_nil(history.timestamp)
         end)
-
-        it("accepts optional dir_path", function()
-            local history = ChatHistory:new("test-session", "/custom/path")
-
-            --- @diagnostic disable-next-line: invisible
-            assert.equal("/custom/path", history._dir_path)
-        end)
     end)
 
-    describe("_get_project_folder", function()
+    describe("get_project_folder", function()
         local original_cwd
 
         before_each(function()
@@ -45,9 +57,7 @@ describe("ChatHistory", function()
                 return "/Users/me/projects/myapp"
             end
 
-            local history = ChatHistory:new("test")
-            --- @diagnostic disable-next-line: invisible
-            local folder = history:_get_project_folder()
+            local folder = ChatHistory.get_project_folder()
 
             -- Should not start with underscore
             assert.is_nil(folder:match("^_"))
@@ -60,9 +70,7 @@ describe("ChatHistory", function()
                 return "/Users/my user/my projects"
             end
 
-            local history = ChatHistory:new("test")
-            --- @diagnostic disable-next-line: invisible
-            local folder = history:_get_project_folder()
+            local folder = ChatHistory.get_project_folder()
 
             assert.truthy(folder:match("my_user"))
             assert.truthy(folder:match("my_projects"))
@@ -73,9 +81,7 @@ describe("ChatHistory", function()
                 return "C:\\Users\\me\\projects"
             end
 
-            local history = ChatHistory:new("test")
-            --- @diagnostic disable-next-line: invisible
-            local folder = history:_get_project_folder()
+            local folder = ChatHistory.get_project_folder()
 
             assert.truthy(folder:match("C_"))
             assert.truthy(folder:match("Users_me_projects"))
@@ -86,9 +92,7 @@ describe("ChatHistory", function()
                 return "/test/path"
             end
 
-            local history = ChatHistory:new("test")
-            --- @diagnostic disable-next-line: invisible
-            local folder = history:_get_project_folder()
+            local folder = ChatHistory.get_project_folder()
 
             -- Should end with _<8 hex chars>
             local hash_part = folder:match("_(%x+)$")
@@ -103,27 +107,23 @@ describe("ChatHistory", function()
             vim.uv.cwd = function()
                 return "/path/one"
             end
-            --- @diagnostic disable-next-line: invisible
-            folder1 = ChatHistory:new("test"):_get_project_folder()
+            folder1 = ChatHistory.get_project_folder()
 
             --- @diagnostic disable-next-line: duplicate-set-field
             vim.uv.cwd = function()
                 return "/path/two"
             end
-            --- @diagnostic disable-next-line: invisible
-            folder2 = ChatHistory:new("test"):_get_project_folder()
+            folder2 = ChatHistory.get_project_folder()
 
             assert.are_not.equal(folder1, folder2)
         end)
     end)
 
-    describe("_get_file_path", function()
+    describe("get_file_path", function()
         local original_cwd
-        local original_stdpath
 
         before_each(function()
             original_cwd = vim.uv.cwd
-            original_stdpath = vim.fn.stdpath
 
             vim.uv.cwd = function()
                 return "/test/project"
@@ -132,52 +132,28 @@ describe("ChatHistory", function()
 
         after_each(function()
             vim.uv.cwd = original_cwd
-            vim.fn.stdpath = original_stdpath
         end)
 
-        it("uses stdpath cache by default", function()
-            --- @diagnostic disable-next-line: duplicate-set-field
-            vim.fn.stdpath = function(what)
-                if what == "cache" then
-                    return "/home/user/.cache/nvim"
-                end
-                return original_stdpath(what)
-            end
+        it("uses Config.session_restore.storage_path", function()
+            local path = ChatHistory.get_file_path("session-abc")
 
-            local history = ChatHistory:new("session-abc")
-            --- @diagnostic disable-next-line: invisible
-            local path = history:_get_file_path()
-
-            assert.truthy(path:match("^/home/user/.cache/nvim"))
-            assert.truthy(path:match("agentic/sessions"))
-            assert.truthy(path:match("session%-abc%.json$"))
-        end)
-
-        it("uses custom dir_path when provided", function()
-            local history = ChatHistory:new("session-abc", "/custom/cache")
-            --- @diagnostic disable-next-line: invisible
-            local path = history:_get_file_path()
-
-            assert.truthy(path:match("^/custom/cache"))
+            assert.truthy(path:match("^" .. vim.pesc(test_dir)))
             assert.truthy(path:match("agentic/sessions"))
             assert.truthy(path:match("session%-abc%.json$"))
         end)
 
         it("includes project folder in path", function()
-            local history = ChatHistory:new("session-abc", "/cache")
-            --- @diagnostic disable-next-line: invisible
-            local path = history:_get_file_path()
-            --- @diagnostic disable-next-line: invisible
-            local project_folder = history:_get_project_folder()
+            local path = ChatHistory.get_file_path("session-abc")
+            local project_folder = ChatHistory.get_project_folder()
 
-            assert.truthy(path:match(project_folder))
+            assert.truthy(path:find(project_folder, 1, true))
         end)
     end)
 
     describe("message operations", function()
         describe("add_message", function()
             it("adds message to messages array", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 --- @type agentic.ui.ChatHistory.UserMessage
                 local msg = { type = "user", text = "Hello" }
@@ -189,7 +165,7 @@ describe("ChatHistory", function()
             end)
 
             it("preserves message order", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({ type = "user", text = "First" })
                 history:add_message({ type = "agent", text = "Second" })
@@ -201,7 +177,7 @@ describe("ChatHistory", function()
 
         describe("append_agent_text", function()
             it("creates new message when none exists", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:append_agent_text("agent", "Hello")
 
@@ -211,7 +187,7 @@ describe("ChatHistory", function()
             end)
 
             it("appends to existing agent message", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:append_agent_text("agent", "Hello")
                 history:append_agent_text("agent", " World")
@@ -221,7 +197,7 @@ describe("ChatHistory", function()
             end)
 
             it("creates new message when last is different type", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({ type = "user", text = "Hi" })
                 history:append_agent_text("agent", "Hello")
@@ -231,7 +207,7 @@ describe("ChatHistory", function()
             end)
 
             it("handles thought type separately", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:append_agent_text("agent", "Response")
                 history:append_agent_text("thought", "Thinking...")
@@ -244,7 +220,7 @@ describe("ChatHistory", function()
 
         describe("update_tool_call", function()
             it("finds and merges tool_call by ID", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({
                     type = "tool_call",
@@ -263,7 +239,7 @@ describe("ChatHistory", function()
             end)
 
             it("does nothing if tool_call not found", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({ type = "user", text = "Hello" })
 
@@ -276,32 +252,34 @@ describe("ChatHistory", function()
                 assert.equal(1, #history.messages)
                 assert.equal("user", history.messages[1].type)
             end)
-        end)
 
-        describe("get_messages", function()
-            it("returns all messages", function()
-                local history = ChatHistory:new("test")
+            it("finds latest tool_call when multiple exist", function()
+                local history = ChatHistory:new()
 
-                history:add_message({ type = "user", text = "One" })
-                history:add_message({ type = "agent", text = "Two" })
+                history:add_message({
+                    type = "tool_call",
+                    tool_call_id = "tc-123",
+                    status = "pending",
+                    kind = "read",
+                })
+                history:add_message({
+                    type = "tool_call",
+                    tool_call_id = "tc-123",
+                    status = "pending",
+                    kind = "edit",
+                })
 
-                local messages = history:get_messages()
+                history:update_tool_call("tc-123", { status = "completed" })
 
-                assert.equal(2, #messages)
-            end)
-
-            it("returns empty array when no messages", function()
-                local history = ChatHistory:new("test")
-
-                local messages = history:get_messages()
-
-                assert.equal(0, #messages)
+                -- Should update the latest (second) one
+                assert.equal("pending", history.messages[1].status)
+                assert.equal("completed", history.messages[2].status)
             end)
         end)
 
         describe("get_title", function()
             it("extracts first user message text", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({
                     type = "user",
@@ -316,7 +294,7 @@ describe("ChatHistory", function()
             end)
 
             it("truncates to 100 characters", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 local long_text = string.rep("a", 150)
                 history:add_message({ type = "user", text = long_text })
@@ -327,17 +305,36 @@ describe("ChatHistory", function()
             end)
 
             it("returns empty string when no user messages", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({ type = "agent", text = "Hello" })
 
                 assert.equal("", history:get_title())
             end)
+
+            it("returns title override when set", function()
+                local history = ChatHistory:new()
+
+                history:add_message({ type = "user", text = "Original" })
+                history:set_title("Override Title")
+
+                assert.equal("Override Title", history:get_title())
+            end)
+        end)
+
+        describe("set_title", function()
+            it("sets title override", function()
+                local history = ChatHistory:new()
+
+                history:set_title("Custom Title")
+
+                assert.equal("Custom Title", history:get_title())
+            end)
         end)
 
         describe("clear", function()
             it("empties messages array", function()
-                local history = ChatHistory:new("test")
+                local history = ChatHistory:new()
 
                 history:add_message({ type = "user", text = "Hello" })
 
@@ -349,13 +346,10 @@ describe("ChatHistory", function()
     end)
 
     describe("save", function()
-        local test_dir
         local original_cwd
 
         before_each(function()
             original_cwd = vim.uv.cwd
-            test_dir = vim.fn.tempname()
-            vim.fn.mkdir(test_dir, "p")
 
             vim.uv.cwd = function()
                 return "/test/project"
@@ -364,11 +358,11 @@ describe("ChatHistory", function()
 
         after_each(function()
             vim.uv.cwd = original_cwd
-            vim.fn.delete(test_dir, "rf")
         end)
 
         it("creates JSON file with correct structure", function()
-            local history = ChatHistory:new("save-test-123", test_dir)
+            local history = ChatHistory:new()
+            history.session_id = "save-test-123"
 
             history:add_message({ type = "user", text = "Test message" })
 
@@ -388,8 +382,7 @@ describe("ChatHistory", function()
             assert.is_nil(save_err)
 
             -- Verify file exists and has correct content
-            --- @diagnostic disable-next-line: invisible
-            local path = history:_get_file_path()
+            local path = ChatHistory.get_file_path("save-test-123")
             local content = vim.fn.readfile(path)
             local json_str = table.concat(content, "\n")
             local parsed = vim.json.decode(json_str)
@@ -401,7 +394,8 @@ describe("ChatHistory", function()
         end)
 
         it("creates directory if not exists", function()
-            local history = ChatHistory:new("dir-test", test_dir)
+            local history = ChatHistory:new()
+            history.session_id = "dir-test"
 
             local done = false
             history:save(function()
@@ -412,15 +406,15 @@ describe("ChatHistory", function()
                 return done
             end)
 
-            --- @diagnostic disable-next-line: invisible
-            local path = history:_get_file_path()
+            local path = ChatHistory.get_file_path("dir-test")
             local dir = vim.fn.fnamemodify(path, ":h")
 
             assert.equal(1, vim.fn.isdirectory(dir))
         end)
 
         it("calls callback on success", function()
-            local history = ChatHistory:new("callback-test", test_dir)
+            local history = ChatHistory:new()
+            history.session_id = "callback-test"
             local callback_spy = spy.new(function() end)
 
             history:save(callback_spy --[[@as function]])
@@ -434,13 +428,10 @@ describe("ChatHistory", function()
     end)
 
     describe("load", function()
-        local test_dir
         local original_cwd
 
         before_each(function()
             original_cwd = vim.uv.cwd
-            test_dir = vim.fn.tempname()
-            vim.fn.mkdir(test_dir, "p")
 
             vim.uv.cwd = function()
                 return "/test/project"
@@ -449,12 +440,12 @@ describe("ChatHistory", function()
 
         after_each(function()
             vim.uv.cwd = original_cwd
-            vim.fn.delete(test_dir, "rf")
         end)
 
         it("reads JSON and restores ChatHistory instance", function()
             -- First save a session
-            local original = ChatHistory:new("load-test-123", test_dir)
+            local original = ChatHistory:new()
+            original.session_id = "load-test-123"
             original:add_message({ type = "user", text = "Saved message" })
 
             local saved = false
@@ -471,7 +462,7 @@ describe("ChatHistory", function()
             local load_err = nil
             local loaded_done = false
 
-            ChatHistory.load("load-test-123", test_dir, function(history, err)
+            ChatHistory.load("load-test-123", function(history, err)
                 loaded = history
                 load_err = err
                 loaded_done = true
@@ -497,7 +488,7 @@ describe("ChatHistory", function()
             local load_err = nil
             local done = false
 
-            ChatHistory.load("non-existent", test_dir, function(history, err)
+            ChatHistory.load("non-existent", function(history, err)
                 loaded = history
                 load_err = err
                 done = true
@@ -513,9 +504,7 @@ describe("ChatHistory", function()
 
         it("returns error for corrupted JSON", function()
             -- Create a corrupted file
-            local temp = ChatHistory:new("corrupted-test", test_dir)
-            --- @diagnostic disable-next-line: invisible
-            local path = temp:_get_file_path()
+            local path = ChatHistory.get_file_path("corrupted-test")
             local dir = vim.fn.fnamemodify(path, ":h")
             vim.fn.mkdir(dir, "p")
             vim.fn.writefile({ "not valid json {{{" }, path)
@@ -524,7 +513,7 @@ describe("ChatHistory", function()
             local load_err = nil
             local done = false
 
-            ChatHistory.load("corrupted-test", test_dir, function(history, err)
+            ChatHistory.load("corrupted-test", function(history, err)
                 loaded = history
                 load_err = err
                 done = true
@@ -540,13 +529,10 @@ describe("ChatHistory", function()
     end)
 
     describe("list_sessions", function()
-        local test_dir
         local original_cwd
 
         before_each(function()
             original_cwd = vim.uv.cwd
-            test_dir = vim.fn.tempname()
-            vim.fn.mkdir(test_dir, "p")
 
             vim.uv.cwd = function()
                 return "/test/project"
@@ -555,14 +541,13 @@ describe("ChatHistory", function()
 
         after_each(function()
             vim.uv.cwd = original_cwd
-            vim.fn.delete(test_dir, "rf")
         end)
 
         it("returns empty array when no sessions", function()
             local sessions = nil
             local done = false
 
-            ChatHistory.list_sessions(test_dir, function(result)
+            ChatHistory.list_sessions(function(result)
                 sessions = result
                 done = true
             end)
@@ -577,10 +562,12 @@ describe("ChatHistory", function()
 
         it("returns all sessions in project folder", function()
             -- Create two sessions
-            local session1 = ChatHistory:new("session-1", test_dir)
+            local session1 = ChatHistory:new()
+            session1.session_id = "session-1"
             session1:add_message({ type = "user", text = "First session" })
 
-            local session2 = ChatHistory:new("session-2", test_dir)
+            local session2 = ChatHistory:new()
+            session2.session_id = "session-2"
             session2:add_message({ type = "user", text = "Second session" })
 
             local saved1, saved2 = false, false
@@ -599,7 +586,7 @@ describe("ChatHistory", function()
             local sessions = nil
             local done = false
 
-            ChatHistory.list_sessions(test_dir, function(result)
+            ChatHistory.list_sessions(function(result)
                 sessions = result
                 done = true
             end)
