@@ -30,10 +30,12 @@ local Logger = require("agentic.utils.logger")
 --- | agentic.ui.ChatHistory.ThoughtMessage
 --- | agentic.ui.ChatHistory.ToolCall
 
---- @class agentic.ui.ChatHistory.StorageData
+--- @class agentic.ui.ChatHistory.SessionMeta
 --- @field session_id string
 --- @field title string
 --- @field timestamp integer
+
+--- @class agentic.ui.ChatHistory.StorageData : agentic.ui.ChatHistory.SessionMeta
 --- @field messages agentic.ui.ChatHistory.Message[]
 
 --- @class agentic.ui.ChatHistory
@@ -266,7 +268,7 @@ function ChatHistory.load(session_id, callback)
 end
 
 --- List all sessions for the current project
---- @param callback fun(sessions: {session_id: string, title: string, timestamp: integer}[])
+--- @param callback fun(sessions: agentic.ui.ChatHistory.SessionMeta[])
 function ChatHistory.list_sessions(callback)
     local folder = ChatHistory.get_sessions_folder()
     local sessions = {}
