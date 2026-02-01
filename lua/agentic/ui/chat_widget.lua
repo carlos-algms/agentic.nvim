@@ -698,6 +698,23 @@ function ChatWidget:render_header(window_name, context)
     WindowDecoration.render_header(bufnr, window_name, context)
 end
 
+--- Check if existing windows match current position config
+--- @return boolean needs_rebuild
+function ChatWidget:_needs_layout_rebuild()
+    if
+        not self.win_nrs.chat
+        or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
+    then
+        return false
+    end
+
+    local chat_config = vim.api.nvim_win_get_config(self.win_nrs.chat)
+    local is_horizontal = chat_config.split == "below"
+    local should_be_horizontal = Config.windows.position == "bottom"
+
+    return is_horizontal ~= should_be_horizontal
+end
+
 --- Close all windows and clear state (for layout switching)
 function ChatWidget:_clear_all_windows()
     for name, winid in pairs(self.win_nrs) do
