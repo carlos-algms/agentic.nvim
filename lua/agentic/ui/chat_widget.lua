@@ -698,6 +698,16 @@ function ChatWidget:render_header(window_name, context)
     WindowDecoration.render_header(bufnr, window_name, context)
 end
 
+--- Close all windows and clear state (for layout switching)
+function ChatWidget:_clear_all_windows()
+    for name, winid in pairs(self.win_nrs) do
+        if vim.api.nvim_win_is_valid(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
+        end
+        self.win_nrs[name] = nil
+    end
+end
+
 --- Close optional window (code, files, todos)
 --- @param panel_name agentic.ui.ChatWidget.PanelNames
 function ChatWidget:_close_optional_window(panel_name)
