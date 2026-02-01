@@ -101,10 +101,7 @@ end
 --- @class agentic.RestoreSessionOpts
 --- @field focus_prompt? boolean Focus the input prompt after restore (default: true)
 
---- Restore a previous session from a picker
---- @param opts? agentic.RestoreSessionOpts|nil Options
-function Agentic.restore_session(opts)
-    opts = opts or {}
+function Agentic.restore_session()
     local tab_page_id = vim.api.nvim_get_current_tabpage()
     local current_session = SessionRegistry.sessions[tab_page_id]
 
@@ -113,11 +110,6 @@ function Agentic.restore_session(opts)
         and current_session.session_id
         and current_session.chat_history
         and #current_session.chat_history.messages > 0
-
-    -- Check if current session is empty (no messages)
-    local current_is_empty = not current_session
-        or not current_session.chat_history
-        or #current_session.chat_history.messages == 0
 
     local function do_restore(sid)
         ChatHistory.load(sid, function(history, err)
@@ -129,11 +121,10 @@ function Agentic.restore_session(opts)
                 return
             end
 
-            -- Get or create session for this tab
             SessionRegistry.get_session_for_tab_page(
                 tab_page_id,
                 function(session)
-                    if current_is_empty then
+                    if not has_conflict then
                         -- Reuse current session, just replay messages
                         session:restore_from_history(
                             history,
@@ -148,9 +139,7 @@ function Agentic.restore_session(opts)
                         session:restore_from_history(history)
                     end
 
-                    session.widget:show({
-                        focus_prompt = opts.focus_prompt ~= false,
-                    })
+                    session.widget:show()
                 end
             )
         end)
@@ -179,7 +168,6 @@ function Agentic.restore_session(opts)
             return
         end
 
-        -- Sort by timestamp descending (most recent first)
         table.sort(sessions, function(a, b)
             return (a.timestamp or 0) > (b.timestamp or 0)
         end)
