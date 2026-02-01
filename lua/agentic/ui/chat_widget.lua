@@ -643,17 +643,22 @@ end
 --- @param position "right"|"bottom"
 --- @return table win_opts
 function ChatWidget._get_chat_window_opts(position)
+    --- @type table
+    local win_opts
+
     if position == "bottom" then
-        return {
+        win_opts = {
             winfixheight = true,
+            scrolloff = 4,
+        }
+    else
+        win_opts = {
+            winfixheight = false,
             scrolloff = 4,
         }
     end
 
-    return {
-        winfixheight = false,
-        scrolloff = 4,
-    }
+    return win_opts
 end
 
 --- Get existing valid window or create new one
