@@ -588,6 +588,23 @@ function ChatWidget:_bind_resize_handler()
     })
 end
 
+--- Get window options for chat window based on layout
+--- @param position "right"|"bottom"
+--- @return table win_opts
+function ChatWidget._get_chat_window_opts(position)
+    if position == "bottom" then
+        return {
+            winfixheight = true,
+            scrolloff = 4,
+        }
+    end
+
+    return {
+        winfixheight = false,
+        scrolloff = 4,
+    }
+end
+
 --- Get existing valid window or create new one
 --- @param panel_name agentic.ui.ChatWidget.PanelNames
 --- @param bufnr integer
