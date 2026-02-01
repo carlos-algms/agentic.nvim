@@ -231,6 +231,11 @@ end
 function ChatWidget:destroy()
     self:hide()
 
+    if self._resize_autocmd_id then
+        pcall(vim.api.nvim_del_autocmd, self._resize_autocmd_id)
+        self._resize_autocmd_id = nil
+    end
+
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
         local ok = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
@@ -620,7 +625,7 @@ function ChatWidget:_bind_events_to_change_headers()
 end
 
 function ChatWidget:_bind_resize_handler()
-    vim.api.nvim_create_autocmd("VimResized", {
+    self._resize_autocmd_id = vim.api.nvim_create_autocmd("VimResized", {
         callback = function()
             if not self:is_open() then
                 return
