@@ -572,6 +572,32 @@ function ChatWidget:_bind_events_to_change_headers()
     end
 end
 
+--- Get existing valid window or create new one
+--- @param panel_name agentic.ui.ChatWidget.PanelNames
+--- @param bufnr integer
+--- @param enter boolean
+--- @param open_opts vim.api.keyset.win_config
+--- @param win_opts? table<string, any>
+--- @return integer winid
+function ChatWidget:_get_or_create_window(
+    panel_name,
+    bufnr,
+    enter,
+    open_opts,
+    win_opts
+)
+    local cached_winid = self.win_nrs[panel_name]
+    if cached_winid and vim.api.nvim_win_is_valid(cached_winid) then
+        return cached_winid
+    end
+
+    local new_winid =
+        self:_open_win(bufnr, enter, open_opts, panel_name, win_opts or {})
+    self.win_nrs[panel_name] = new_winid
+    self:render_header(panel_name)
+    return new_winid
+end
+
 --- Calculate width based on editor dimensions
 --- Accepts percentage strings ("30%"), decimals (0.3), or absolute numbers (80)
 --- @param size number|string
