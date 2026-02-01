@@ -61,8 +61,9 @@ end
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:_show_right_layout(opts)
     local options = opts or {}
-    local should_focus = options.focus_prompt == nil and true
-        or options.focus_prompt
+    local should_focus = (
+        options.focus_prompt == nil and true or options.focus_prompt
+    ) == true
 
     self:_get_or_create_window("chat", self.buf_nrs.chat, false, {
         width = self._calculate_width(Config.windows.width),
@@ -102,8 +103,9 @@ end
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:_show_bottom_layout(opts)
     local options = opts or {}
-    local should_focus = options.focus_prompt == nil and true
-        or options.focus_prompt
+    local should_focus = (
+        options.focus_prompt == nil and true or options.focus_prompt
+    ) == true
 
     self:_get_or_create_window("chat", self.buf_nrs.chat, false, {
         split = "below",
