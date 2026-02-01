@@ -40,7 +40,7 @@ local Logger = require("agentic.utils.logger")
 --- @field session_id? string
 --- @field timestamp integer Unix timestamp when session was created
 --- @field messages agentic.ui.ChatHistory.Message[]
---- @field _title_override? string Manual title override (takes precedence over first user message)
+--- @field title string
 local ChatHistory = {}
 ChatHistory.__index = ChatHistory
 
@@ -51,6 +51,7 @@ function ChatHistory:new()
         session_id = nil,
         timestamp = os.time(),
         messages = {},
+        title = "",
     }
 
     return setmetatable(instance, self)
@@ -68,15 +69,23 @@ function ChatHistory.get_project_folder()
     return normalized .. "_" .. hash
 end
 
+--- Get the folder path for storing sessions for the current project
+--- @return string folder_path
+function ChatHistory.get_sessions_folder()
+    local base = Config.session_restore.storage_path
+        or vim.fs.joinpath(vim.fn.stdpath("cache"), "agentic", "sessions")
+    local project_folder = ChatHistory.get_project_folder()
+    return vim.fs.joinpath(base, project_folder)
+end
+
 --- Generate the full file path for this session's JSON file
 --- @param session_id string
 --- @return string file_path
 function ChatHistory.get_file_path(session_id)
-    local base = Config.session_restore.storage_path
-        or vim.fs.joinpath(vim.fn.stdpath("cache"), "agentic", "sessions")
-    local project_folder = ChatHistory.get_project_folder()
-    local folder = vim.fs.joinpath(base, project_folder)
-    return vim.fs.joinpath(folder, session_id .. ".json")
+    return vim.fs.joinpath(
+        ChatHistory.get_sessions_folder(),
+        session_id .. ".json"
+    )
 end
 
 --- @param msg agentic.ui.ChatHistory.Message
@@ -111,44 +120,6 @@ function ChatHistory:update_tool_call(tool_call_id, update)
     end
 end
 
---- Set a manual title override (takes precedence over first user message)
---- @param title string
-function ChatHistory:set_title(title)
-    self._title_override = title
-end
-
---- Get the session title (manual override or first user message, truncated to 100 chars)
---- @return string title
-function ChatHistory:get_title()
-    --- @type string
-    local text
-
-    if self._title_override then
-        text = self._title_override
-    else
-        for _, msg in ipairs(self.messages) do
-            if msg.type == "user" and msg.text then
-                text = msg.text
-                break
-            end
-        end
-    end
-
-    if not text then
-        return ""
-    end
-
-    if #text > 100 then
-        return text:sub(1, 100)
-    end
-
-    return text
-end
-
-function ChatHistory:clear()
-    self.messages = {}
-end
-
 --- @param callback fun(err: string|nil)|nil
 function ChatHistory:save(callback)
     local path = ChatHistory.get_file_path(self.session_id)
@@ -159,7 +130,7 @@ function ChatHistory:save(callback)
     --- @type agentic.ui.ChatHistory.StorageData
     local data = {
         session_id = self.session_id,
-        title = self:get_title(),
+        title = self.title,
         timestamp = self.timestamp,
         messages = self.messages,
     }
@@ -243,10 +214,13 @@ function ChatHistory.load(session_id, callback)
                     return
                 end
 
+                --- @cast parsed agentic.ui.ChatHistory.StorageData
+
                 local instance = ChatHistory:new()
                 instance.session_id = parsed.session_id
                 instance.timestamp = parsed.timestamp
-                instance.messages = parsed.messages or {}
+                instance.messages = parsed.messages
+                instance.title = parsed.title
 
                 vim.schedule(function()
                     callback(instance, nil)
@@ -259,10 +233,7 @@ end
 --- List all sessions for the current project
 --- @param callback fun(sessions: {session_id: string, title: string, timestamp: integer}[])
 function ChatHistory.list_sessions(callback)
-    local project_folder = ChatHistory.get_project_folder()
-    local base = Config.session_restore.storage_path or vim.fn.stdpath("cache")
-    local folder = vim.fs.joinpath(base, "agentic", "sessions", project_folder)
-
+    local folder = ChatHistory.get_sessions_folder()
     local sessions = {}
 
     if vim.fn.isdirectory(folder) == 0 then

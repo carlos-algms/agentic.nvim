@@ -235,7 +235,7 @@ function SessionManager:_handle_input_submit(input_text)
     if self._needs_history_send and self._history_to_send then
         self._needs_history_send = false
 
-        self.chat_history:set_title(input_text)
+        self.chat_history.title = input_text
 
         for _, msg in ipairs(self._history_to_send) do
             -- Convert stored messages to ACP Content format
@@ -858,11 +858,7 @@ function SessionManager:restore_from_history(history, opts)
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then
         self.chat_history.messages = vim.deepcopy(history.messages)
-
-        local loaded_title = history:get_title()
-        if loaded_title and loaded_title ~= "" then
-            self.chat_history:set_title(loaded_title)
-        end
+        self.chat_history.title = history.title or ""
     else
         self.chat_history = history
     end
