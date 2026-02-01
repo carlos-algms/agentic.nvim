@@ -32,6 +32,7 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field _layout_position? "right"|"bottom"
+--- @field _resize_autocmd_id? integer
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
