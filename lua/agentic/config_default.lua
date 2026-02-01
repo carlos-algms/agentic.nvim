@@ -123,14 +123,18 @@ local ConfigDefault = {
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows
+    --- @field position "right"|"bottom"
     --- @field width string|number
+    --- @field height string|number
     --- @field chat agentic.UserConfig.Windows.Chat
     --- @field input agentic.UserConfig.Windows.Input
     --- @field code agentic.UserConfig.Windows.Code
     --- @field files agentic.UserConfig.Windows.Files
     --- @field todos agentic.UserConfig.Windows.Todos
     windows = {
+        position = "right",
         width = "40%",
+        height = "30%",
         chat = { win_opts = {} },
         input = { height = 10, win_opts = {} },
         code = { max_height = 15, win_opts = {} },
