@@ -48,8 +48,8 @@ end
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
 --- @field chat_history agentic.ui.ChatHistory
---- @field _needs_history_send boolean Flag to send history on first submit after restore
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
+--- @field _needs_history_send boolean Flag to send history on first submit after restore
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -237,39 +237,8 @@ function SessionManager:_handle_input_submit(input_text)
 
         self.chat_history.title = input_text
 
-        for _, msg in ipairs(self._history_to_send) do
-            -- Convert stored messages to ACP Content format
-            if msg.type == "user" then
-                table.insert(
-                    prompt,
-                    { type = "text", text = "User: " .. msg.text }
-                )
-            elseif msg.type == "agent" then
-                table.insert(
-                    prompt,
-                    { type = "text", text = "Assistant: " .. msg.text }
-                )
-            elseif msg.type == "thought" then
-                table.insert(prompt, {
-                    type = "text",
-                    text = "Assistant (thinking): " .. msg.text,
-                })
-            elseif msg.type == "tool_call" and msg.argument then
-                local tool_text = string.format(
-                    "Tool call (%s): %s",
-                    msg.kind or "unknown",
-                    msg.argument
-                )
-                -- Include tool output if available
-                if msg.body and #msg.body > 0 then
-                    tool_text = tool_text
-                        .. "\nResult:\n"
-                        .. table.concat(msg.body, "\n")
-                end
-                table.insert(prompt, { type = "text", text = tool_text })
-            end
-        end
-        -- Clear after use
+        ChatHistory.prepend_restored_messages(self._history_to_send, prompt)
+
         self._history_to_send = nil
     end
 

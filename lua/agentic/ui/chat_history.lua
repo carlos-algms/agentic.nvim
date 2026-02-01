@@ -120,6 +120,41 @@ function ChatHistory:update_tool_call(tool_call_id, update)
     end
 end
 
+--- Prepend restored messages to prompt in ACP Content format
+--- @param messages agentic.ui.ChatHistory.Message[]
+--- @param prompt agentic.acp.Content[] The prompt array to prepend to
+function ChatHistory.prepend_restored_messages(messages, prompt)
+    for _, msg in ipairs(messages) do
+        -- Convert stored messages to ACP Content format
+        if msg.type == "user" then
+            table.insert(prompt, { type = "text", text = "User: " .. msg.text })
+        elseif msg.type == "agent" then
+            table.insert(
+                prompt,
+                { type = "text", text = "Assistant: " .. msg.text }
+            )
+        elseif msg.type == "thought" then
+            table.insert(prompt, {
+                type = "text",
+                text = "Assistant (thinking): " .. msg.text,
+            })
+        elseif msg.type == "tool_call" and msg.argument then
+            local tool_text = string.format(
+                "Tool call (%s): %s",
+                msg.kind or "unknown",
+                msg.argument
+            )
+            -- Include tool output if available
+            if msg.body and #msg.body > 0 then
+                tool_text = tool_text
+                    .. "\nResult:\n"
+                    .. table.concat(msg.body, "\n")
+            end
+            table.insert(prompt, { type = "text", text = tool_text })
+        end
+    end
+end
+
 --- @param callback fun(err: string|nil)|nil
 function ChatHistory:save(callback)
     local path = ChatHistory.get_file_path(self.session_id)
