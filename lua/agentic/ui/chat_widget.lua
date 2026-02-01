@@ -68,7 +68,7 @@ function ChatWidget:_show_right_layout(opts)
         width = self._calculate_width(Config.windows.width),
     }, self._get_chat_window_opts("right"))
 
-    self:_get_or_create_window("input", self.buf_nrs.input, true, {
+    self:_get_or_create_window("input", self.buf_nrs.input, should_focus, {
         win = self.win_nrs.chat,
         split = "below",
         height = Config.windows.input.height,
@@ -115,7 +115,7 @@ function ChatWidget:_show_bottom_layout(opts)
     local raw_width = math.floor(chat_width * Config.windows.stack_width_ratio)
     local stack_width = math.max(1, math.min(raw_width, chat_width - 1))
 
-    self:_get_or_create_window("input", self.buf_nrs.input, true, {
+    self:_get_or_create_window("input", self.buf_nrs.input, should_focus, {
         win = self.win_nrs.chat,
         split = "right",
         width = stack_width,
@@ -627,6 +627,10 @@ end
 function ChatWidget:_bind_resize_handler()
     self._resize_autocmd_id = vim.api.nvim_create_autocmd("VimResized", {
         callback = function()
+            if vim.api.nvim_get_current_tabpage() ~= self.tab_page_id then
+                return
+            end
+
             if not self:is_open() then
                 return
             end
