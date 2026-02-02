@@ -32,7 +32,6 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field _layout_position? "right"|"bottom"
---- @field _resize_autocmd_id? integer
 --- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -50,7 +49,6 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 
     self:_initialize()
     self:_bind_events_to_change_headers()
-    self:_bind_resize_handler()
 
     return self
 end
@@ -236,11 +234,6 @@ end
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
     self:hide()
-
-    if self._resize_autocmd_id then
-        pcall(vim.api.nvim_del_autocmd, self._resize_autocmd_id)
-        self._resize_autocmd_id = nil
-    end
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
@@ -628,25 +621,6 @@ function ChatWidget:_bind_events_to_change_headers()
             end,
         })
     end
-end
-
-function ChatWidget:_bind_resize_handler()
-    self._resize_autocmd_id = vim.api.nvim_create_autocmd("VimResized", {
-        callback = function()
-            if vim.api.nvim_get_current_tabpage() ~= self.tab_page_id then
-                return
-            end
-
-            if not self:is_open() then
-                return
-            end
-
-            vim.schedule(function()
-                self:_clear_all_windows()
-                self:show({ focus_prompt = false })
-            end)
-        end,
-    })
 end
 
 --- Get window options for chat window based on layout
