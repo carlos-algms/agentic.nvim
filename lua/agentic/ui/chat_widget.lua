@@ -60,7 +60,6 @@ function ChatWidget:is_open()
     return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
 end
 
---- Creates right sidebar layout (current behavior)
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:_show_right_layout(opts)
     local options = opts or {}
