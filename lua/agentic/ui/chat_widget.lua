@@ -114,7 +114,8 @@ function ChatWidget:_show_bottom_layout(opts)
     }, self._get_chat_window_opts("bottom"))
 
     local chat_width = vim.api.nvim_win_get_width(self.win_nrs.chat)
-    local raw_width = math.floor(chat_width * Config.windows.stack_width_ratio)
+    local ratio = tonumber(Config.windows.stack_width_ratio) or 0.4
+    local raw_width = math.floor(chat_width * ratio)
     local stack_width = math.max(1, math.min(raw_width, chat_width - 1))
 
     self:_get_or_create_window("input", self.buf_nrs.input, should_focus, {
@@ -773,7 +774,7 @@ function ChatWidget:_open_or_resize_dynamic_window(
             self:_open_win(bufnr, false, open_win_opts, window_name, {})
 
         self:render_header(window_name)
-    -- Check if window should be resized
+        -- Check if window should be resized
     elseif
         should_display
         and winid
