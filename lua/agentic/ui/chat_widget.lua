@@ -285,9 +285,9 @@ function ChatWidget:_submit_input()
 
     self.on_submit_input(prompt)
 
-    self:close_code_window()
-    self:close_files_window()
-    self:close_todos_window()
+    self:close_optional_window("code")
+    self:close_optional_window("files")
+    self:close_optional_window("todos")
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
@@ -852,24 +852,12 @@ end
 
 --- Close optional window (code, files, todos)
 --- @param panel_name agentic.ui.ChatWidget.PanelNames
-function ChatWidget:_close_optional_window(panel_name)
+function ChatWidget:close_optional_window(panel_name)
     local winid = self.win_nrs[panel_name]
     if winid and vim.api.nvim_win_is_valid(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
         self.win_nrs[panel_name] = nil
     end
-end
-
-function ChatWidget:close_code_window()
-    self:_close_optional_window("code")
-end
-
-function ChatWidget:close_files_window()
-    self:_close_optional_window("files")
-end
-
-function ChatWidget:close_todos_window()
-    self:_close_optional_window("todos")
 end
 
 --- Resize a dynamic window based on its current buffer content
