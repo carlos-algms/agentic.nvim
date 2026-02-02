@@ -651,9 +651,9 @@ end
 
 --- Get window options for chat window based on layout
 --- @param position "right"|"bottom"
---- @return table win_opts
+--- @return table<string, any> win_opts
 function ChatWidget._get_chat_window_opts(position)
-    --- @type table
+    --- @type table<string, any>
     local win_opts
 
     if position == "bottom" then
