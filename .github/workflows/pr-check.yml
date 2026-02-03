@@ -79,7 +79,7 @@ jobs:
       - name: Install Selene
         if: steps.cache-selene.outputs.cache-hit != 'true'
         run: |
-          curl -sL "https://github.com/Kampfkarren/selene/releases/download/${{ env.SELENE_VERSION }}/selene-${{ env.SELENE_VERSION }}-linux-x86_64.zip" -o selene.zip
+          curl -sL "https://github.com/Kampfkarren/selene/releases/download/${{ env.SELENE_VERSION }}/selene-${{ env.SELENE_VERSION }}-linux.zip" -o selene.zip
           unzip -q selene.zip -d .local/bin/
           chmod +x .local/bin/selene
           rm selene.zip
