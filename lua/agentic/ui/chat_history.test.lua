@@ -130,8 +130,17 @@ describe("ChatHistory", function()
         it("add_message preserves insertion order", function()
             local history = ChatHistory:new()
 
-            history:add_message({ type = "user", text = "First" })
-            history:add_message({ type = "agent", text = "Second" })
+            history:add_message({
+                type = "user",
+                text = "First",
+                timestamp = os.time(),
+                provider_name = "test-provider",
+            })
+            history:add_message({
+                type = "agent",
+                text = "Second",
+                provider_name = "test-provider",
+            })
 
             assert.equal(2, #history.messages)
             assert.equal("user", history.messages[1].type)
@@ -142,16 +151,33 @@ describe("ChatHistory", function()
             it("creates new or appends based on last message type", function()
                 local history = ChatHistory:new()
 
-                history:append_agent_text("agent", "Hello")
+                history:append_agent_text({
+                    msg_type = "agent",
+                    text = "Hello",
+                    provider_name = "test-provider",
+                })
                 assert.equal(1, #history.messages)
                 assert.equal("Hello", history.messages[1].text)
 
-                history:append_agent_text("agent", " World")
+                history:append_agent_text({
+                    msg_type = "agent",
+                    text = " World",
+                    provider_name = "test-provider",
+                })
                 assert.equal(1, #history.messages)
                 assert.equal("Hello World", history.messages[1].text)
 
-                history:add_message({ type = "user", text = "Hi" })
-                history:append_agent_text("agent", "Response")
+                history:add_message({
+                    type = "user",
+                    text = "Hi",
+                    timestamp = os.time(),
+                    provider_name = "test-provider",
+                })
+                history:append_agent_text({
+                    msg_type = "agent",
+                    text = "Response",
+                    provider_name = "test-provider",
+                })
                 assert.equal(3, #history.messages)
                 assert.equal("agent", history.messages[3].type)
             end)
@@ -159,8 +185,16 @@ describe("ChatHistory", function()
             it("treats agent and thought as separate types", function()
                 local history = ChatHistory:new()
 
-                history:append_agent_text("agent", "Response")
-                history:append_agent_text("thought", "Thinking...")
+                history:append_agent_text({
+                    msg_type = "agent",
+                    text = "Response",
+                    provider_name = "test-provider",
+                })
+                history:append_agent_text({
+                    msg_type = "thought",
+                    text = "Thinking...",
+                    provider_name = "test-provider",
+                })
 
                 assert.equal(2, #history.messages)
                 assert.equal("agent", history.messages[1].type)
@@ -192,7 +226,12 @@ describe("ChatHistory", function()
 
             it("does nothing if tool_call not found", function()
                 local history = ChatHistory:new()
-                history:add_message({ type = "user", text = "Hello" })
+                history:add_message({
+                    type = "user",
+                    text = "Hello",
+                    timestamp = os.time(),
+                    provider_name = "test-provider",
+                })
 
                 history:update_tool_call(
                     "non-existent",
@@ -213,7 +252,12 @@ describe("ChatHistory", function()
         it("persists and restores ChatHistory instance", function()
             local original = ChatHistory:new()
             original.session_id = "roundtrip-test"
-            original:add_message({ type = "user", text = "Test message" })
+            original:add_message({
+                type = "user",
+                text = "Test message",
+                timestamp = os.time(),
+                provider_name = "test-provider",
+            })
 
             local save_done = false
             local save_err = nil
@@ -323,7 +367,12 @@ describe("ChatHistory", function()
             for _, id in ipairs(session_ids) do
                 local s = ChatHistory:new()
                 s.session_id = id
-                s:add_message({ type = "user", text = id .. " message" })
+                s:add_message({
+                    type = "user",
+                    text = id .. " message",
+                    timestamp = os.time(),
+                    provider_name = "test-provider",
+                })
 
                 local saved = false
                 s:save(function()
