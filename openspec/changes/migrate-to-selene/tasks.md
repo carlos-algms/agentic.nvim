@@ -123,11 +123,11 @@ positives.
 
 Before proceeding to Phase 2:
 
-- [ ] Selene is installed and runs successfully
-- [ ] `selene.toml` is configured correctly
-- [ ] Output is clean except for 5 known inline directive locations
-- [ ] No false positives detected
-- [ ] User approves configuration
+- [x] Selene is installed and runs successfully
+- [x] `selene.toml` is configured correctly
+- [x] Output is clean except for 5 known inline directive locations
+- [x] No false positives detected
+- [x] User approves configuration
 
 ---
 
@@ -222,11 +222,11 @@ equivalents.
 
 Before proceeding to Phase 3:
 
-- [ ] All inline luacheck comments are updated
-- [ ] `.luacheckrc` is deleted
-- [ ] `selene .` runs clean (exit code 0)
-- [ ] No luacheck references remain in code
-- [ ] User approves changes
+- [x] All inline luacheck comments are updated
+- [x] `.luacheckrc` is deleted
+- [x] `selene .` runs clean (exit code 0)
+- [x] No luacheck references remain in code
+- [x] User approves changes
 
 ---
 
@@ -361,11 +361,11 @@ Before proceeding to Phase 3:
 
 Before proceeding to Phase 4:
 
-- [ ] All Makefile targets updated
-- [ ] `make validate` works correctly
-- [ ] Log files are created with correct names
-- [ ] All make targets tested and working
-- [ ] User approves Makefile changes
+- [x] All Makefile targets updated
+- [x] `make validate` works correctly
+- [x] Log files are created with correct names
+- [x] All make targets tested and working
+- [x] User approves Makefile changes
 
 ---
 
@@ -596,12 +596,12 @@ pipeline.
 
 Before proceeding to Phase 5:
 
-- [ ] GitHub Actions workflow updated and passes
-- [ ] Docker image builds successfully with selene
-- [ ] Documentation is updated
-- [ ] CI pipeline tested on feature branch
-- [ ] All jobs are green
-- [ ] User approves CI/CD changes
+- [x] GitHub Actions workflow updated and passes
+- [x] Docker image builds successfully with selene
+- [x] Documentation is updated
+- [x] CI pipeline tested on feature branch
+- [x] All jobs are green
+- [x] User approves CI/CD changes
 
 ---
 
@@ -754,13 +754,13 @@ appropriate.
 
 Before merging to main:
 
-- [ ] Full validation suite passes locally
-- [ ] No luacheck references remain in active code
-- [ ] Docker image works end-to-end
-- [ ] All changed files reviewed and approved
-- [ ] CI pipeline is green
-- [ ] Documentation is complete and accurate
-- [ ] User gives final approval to merge
+- [x] Full validation suite passes locally
+- [x] No luacheck references remain in active code
+- [x] Docker image works end-to-end
+- [x] All changed files reviewed and approved
+- [x] CI pipeline is green
+- [x] Documentation is complete and accurate
+- [x] User gives final approval to merge
 
 ---
 
