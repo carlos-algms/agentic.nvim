@@ -470,11 +470,19 @@ function SessionManager:new_session(opts)
 
         on_tool_call_update = function(tool_call_update)
             self.message_writer:update_tool_call_block(tool_call_update)
-            self.chat_history:update_tool_call(tool_call_update.tool_call_id, {
+            --- @type agentic.ui.ChatHistory.ToolCall
+            local tool_call = {
+                type = "tool_call",
+                tool_call_id = tool_call_update.tool_call_id,
                 status = tool_call_update.status,
                 body = tool_call_update.body,
                 diff = tool_call_update.diff,
-            })
+            }
+
+            self.chat_history:update_tool_call(
+                tool_call_update.tool_call_id,
+                tool_call
+            )
 
             -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
             local is_rejection = tool_call_update.status == "failed"
