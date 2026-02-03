@@ -190,11 +190,13 @@ end
 --- @return boolean success
 --- @return string|nil error
 function FileSystem.mkdirp(path)
-    local ok, err = pcall(vim.fn.mkdir, path, "p")
-    if ok then
+    local result = vim.fn.mkdir(path, "p")
+    if result == 1 then
         return true, nil
     end
-    return false, tostring(err)
+    local errmsg = vim.v.errmsg
+    local error_str = errmsg ~= "" and errmsg or "mkdir failed"
+    return false, error_str
 end
 
 return FileSystem

@@ -156,7 +156,16 @@ function ChatHistory:save(callback)
     local path = ChatHistory.get_file_path(self.session_id)
     local dir = vim.fn.fnamemodify(path, ":h")
 
-    FileSystem.mkdirp(dir)
+    local dir_ok, dir_err = FileSystem.mkdirp(dir)
+    if not dir_ok then
+        Logger.debug("Failed to create directory:", dir, dir_err)
+        if callback then
+            callback(
+                "Failed to create directory: " .. (dir_err or "unknown error")
+            )
+        end
+        return
+    end
 
     --- @type agentic.ui.ChatHistory.StorageData
     local data = {
@@ -166,8 +175,8 @@ function ChatHistory:save(callback)
         messages = self.messages,
     }
 
-    local ok, json = pcall(vim.json.encode, data)
-    if not ok then
+    local encode_ok, json = pcall(vim.json.encode, data)
+    if not encode_ok then
         Logger.debug("JSON encoding failed:", json)
         if callback then
             callback("JSON encoding error")
@@ -175,10 +184,10 @@ function ChatHistory:save(callback)
         return
     end
 
-    FileSystem.write_file(path, json, function(err)
+    FileSystem.write_file(path, json, function(write_err)
         if callback then
             vim.schedule(function()
-                callback(err)
+                callback(write_err)
             end)
         end
     end)
