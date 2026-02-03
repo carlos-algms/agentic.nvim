@@ -179,7 +179,7 @@ end
 --- @param window_name string
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
---- @param should_display? boolean
+--- @param should_display boolean|nil
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
