@@ -5,15 +5,16 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic.ui.ChatHistory.UserMessage
 --- @field type "user"
 --- @field text string Raw user input text, not the buffer formatted content
---- @field timestamp? integer Unix timestamp when message was sent
+--- @field timestamp integer Unix timestamp when message was sent
+--- @field provider_name string
 
 --- @class agentic.ui.ChatHistory.AgentMessage
 --- @field type "agent"
+--- @field provider_name string
 --- @field text string Agent response text (concatenated chunks)
 
---- @class agentic.ui.ChatHistory.ThoughtMessage
+--- @class agentic.ui.ChatHistory.ThoughtMessage : agentic.ui.ChatHistory.AgentMessage
 --- @field type "thought"
---- @field text string Agent thought text (concatenated chunks)
 
 --- @class agentic.ui.ChatHistory.ToolCall : agentic.ui.MessageWriter.ToolCallBase
 --- @field tool_call_id? string
@@ -91,16 +92,14 @@ function ChatHistory:add_message(msg)
 end
 
 --- Append text to the last agent or thought message, or create a new one
---- @param msg_type "agent"|"thought"
---- @param text string
-function ChatHistory:append_agent_text(msg_type, text)
+--- @param msg { msg_type: "agent"|"thought", text: string, provider_name: string  }
+function ChatHistory:append_agent_text(msg)
     local last = self.messages[#self.messages]
-    if last and last.type == msg_type then
-        last.text = last.text .. text
+    if last and last.type == msg.msg_type then
+        last.text = last.text .. msg.text
     else
         --- @type agentic.ui.ChatHistory.AgentMessage | agentic.ui.ChatHistory.ThoughtMessage
-        local new_msg = { type = msg_type, text = text }
-        table.insert(self.messages, new_msg)
+        table.insert(self.messages, msg)
     end
 end
 

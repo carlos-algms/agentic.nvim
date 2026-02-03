@@ -4,11 +4,13 @@
 -- When the user switches the provider, the SessionManager should handle the transition smoothly,
 -- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
 
+local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
+local SessionRestore = require("agentic.session_restore")
 local SlashCommands = require("agentic.acp.slash_commands")
 local TodoList = require("agentic.ui.todo_list")
 
@@ -93,6 +95,7 @@ function SessionManager:new(tab_page_id)
     self.agent = agent
 
     self.chat_history = ChatHistory:new()
+
     self.widget = ChatWidget:new(tab_page_id, function(input_text)
         self:_handle_input_submit(input_text)
     end)
@@ -157,14 +160,22 @@ function SessionManager:_on_session_update(update)
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
-            self.chat_history:append_agent_text("agent", update.content.text)
+            self.chat_history:append_agent_text({
+                msg_type = "agent",
+                text = update.content.text,
+                provider_name = self.agent.provider_config.name,
+            })
         end
     elseif update.sessionUpdate == "agent_thought_chunk" then
         self.status_animation:start("thinking")
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
-            self.chat_history:append_agent_text("thought", update.content.text)
+            self.chat_history:append_agent_text({
+                msg_type = "thought",
+                text = update.content.text,
+                provider_name = self.agent.provider_config.name,
+            })
         end
     elseif update.sessionUpdate == "available_commands_update" then
         SlashCommands.setCommands(
@@ -337,7 +348,7 @@ function SessionManager:_handle_input_submit(input_text)
         self.file_list:clear()
 
         for _, file_path in ipairs(files) do
-            table.insert(prompt, self.agent:create_file_content(file_path))
+            table.insert(prompt, ACPPayloads.create_file_content(file_path))
 
             table.insert(
                 message_lines,
@@ -351,7 +362,7 @@ function SessionManager:_handle_input_submit(input_text)
         "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name
     )
 
-    local user_message = self.agent:generate_user_message(message_lines)
+    local user_message = ACPPayloads.generate_user_message(message_lines)
     self.message_writer:write_message(user_message)
 
     --- @type agentic.ui.ChatHistory.UserMessage
@@ -359,6 +370,7 @@ function SessionManager:_handle_input_submit(input_text)
         type = "user",
         text = input_text,
         timestamp = os.time(),
+        provider_name = self.agent.provider_config.name,
     }
     self.chat_history:add_message(user_msg)
 
@@ -398,7 +410,7 @@ function SessionManager:_handle_input_submit(input_text)
             end
 
             self.message_writer:write_message(
-                self.agent:generate_agent_message(finish_message)
+                ACPPayloads.generate_agent_message(finish_message)
             )
 
             self.status_animation:stop()
@@ -440,7 +452,7 @@ function SessionManager:new_session(opts)
             Logger.debug("Agent error: ", err)
 
             self.message_writer:write_message(
-                self.agent:generate_agent_message({
+                ACPPayloads.generate_agent_message({
                     "🐞 Agent Error:",
                     "",
                     vim.inspect(err),
@@ -594,7 +606,7 @@ function SessionManager:new_session(opts)
             )
 
             self.message_writer:write_message(
-                self.agent:generate_user_message(welcome_message)
+                ACPPayloads.generate_user_message(welcome_message)
             )
 
             -- Invoke on_created callback after welcome message is written
@@ -772,50 +784,6 @@ function SessionManager:destroy()
     self.widget:destroy()
 end
 
---- Replay stored messages to the UI
---- @param messages agentic.ui.ChatHistory.Message[]
-function SessionManager:_replay_messages(messages)
-    for _, msg in ipairs(messages) do
-        if msg.type == "user" then
-            -- Format user message for display with original timestamp
-            local timestamp_str = msg.timestamp
-                    and os.date("%Y-%m-%d %H:%M:%S", msg.timestamp)
-                or os.date("%Y-%m-%d %H:%M:%S")
-            local message_lines = {
-                string.format("##  User - %s", timestamp_str),
-                "",
-                msg.text,
-                "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name,
-            }
-            local user_message = self.agent:generate_user_message(message_lines)
-            self.message_writer:write_message(user_message)
-        elseif msg.type == "agent" then
-            -- Write agent message
-            local agent_message = self.agent:generate_agent_message(msg.text)
-            self.message_writer:write_message(agent_message)
-        elseif msg.type == "thought" then
-            -- Write thought as a chunk
-            --- @type agentic.acp.AgentThoughtChunk
-            local thought_chunk = {
-                sessionUpdate = "agent_thought_chunk",
-                content = { type = "text", text = msg.text },
-            }
-            self.message_writer:write_message_chunk(thought_chunk)
-        elseif msg.type == "tool_call" then
-            --- @type agentic.ui.MessageWriter.ToolCallBlock
-            local tool_block = {
-                tool_call_id = msg.tool_call_id,
-                kind = msg.kind,
-                argument = msg.argument or "",
-                status = msg.status,
-                body = msg.body,
-                diff = msg.diff,
-            }
-            self.message_writer:write_tool_call_block(tool_block)
-        end
-    end
-end
-
 --- Restore session from loaded chat history
 --- Creates a new ACP session (agent doesn't know old session_id)
 --- and replays messages to UI. History is sent on first prompt submit.
@@ -843,14 +811,20 @@ function SessionManager:restore_from_history(history, opts)
     if opts.reuse_session and self.session_id then
         -- Reuse existing ACP session, just replay messages
         self._restoring = false
-        self:_replay_messages(self._history_to_send)
+        SessionRestore.replay_messages(
+            self.message_writer,
+            self._history_to_send
+        )
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({
             restore_mode = true,
             on_created = function()
                 self._restoring = false
-                self:_replay_messages(self._history_to_send)
+                SessionRestore.replay_messages(
+                    self.message_writer,
+                    self._history_to_send
+                )
             end,
         })
     end

@@ -1,3 +1,4 @@
+local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
@@ -106,6 +107,50 @@ function SessionRestore.show_picker(tab_page_id, current_session)
             end
         end)
     end)
+end
+
+--- Replay stored messages to the UI
+--- @param writer agentic.ui.MessageWriter
+--- @param messages agentic.ui.ChatHistory.Message[]
+function SessionRestore.replay_messages(writer, messages)
+    for _, msg in ipairs(messages) do
+        if msg.type == "user" then
+            -- Format user message for display with original timestamp
+            local timestamp_str = msg.timestamp
+                    and os.date("%Y-%m-%d %H:%M:%S", msg.timestamp)
+                or os.date("%Y-%m-%d %H:%M:%S")
+            local message_lines = {
+                string.format("##  User - %s", timestamp_str),
+                "",
+                msg.text,
+                "\n\n### 󱚠 Agent - " .. msg.provider_name,
+            }
+            local user_message =
+                ACPPayloads.generate_user_message(message_lines)
+            writer:write_message(user_message)
+        elseif msg.type == "agent" then
+            local agent_message = ACPPayloads.generate_agent_message(msg.text)
+            writer:write_message(agent_message)
+        elseif msg.type == "thought" then
+            --- @type agentic.acp.AgentThoughtChunk
+            local thought_chunk = {
+                sessionUpdate = "agent_thought_chunk",
+                content = { type = "text", text = msg.text },
+            }
+            writer:write_message_chunk(thought_chunk)
+        elseif msg.type == "tool_call" then
+            --- @type agentic.ui.MessageWriter.ToolCallBlock
+            local tool_block = {
+                tool_call_id = msg.tool_call_id,
+                kind = msg.kind,
+                argument = msg.argument or "",
+                status = msg.status,
+                body = msg.body,
+                diff = msg.diff,
+            }
+            writer:write_tool_call_block(tool_block)
+        end
+    end
 end
 
 return SessionRestore
