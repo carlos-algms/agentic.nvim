@@ -123,7 +123,8 @@ function SessionRestore.replay_messages(writer, messages)
                 string.format("##  User - %s", timestamp_str),
                 "",
                 msg.text,
-                "\n\n### 󱚠 Agent - " .. msg.provider_name,
+                "\n\n### 󱚠 Agent - "
+                    .. (msg.provider_name or "Unknown provider"),
             }
             local user_message =
                 ACPPayloads.generate_user_message(message_lines)

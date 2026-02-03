@@ -52,7 +52,8 @@ function ChatHistory:new()
         title = "",
     }
 
-    return setmetatable(instance, self)
+    setmetatable(instance, self)
+    return instance
 end
 
 --- Generate the project folder name from CWD
