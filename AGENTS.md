@@ -525,7 +525,7 @@ This single command runs:
 
 - `make format` - Format all Lua files
 - `make luals` - Type checking
-- `make luacheck` - Linting
+- `make selene` - Linting
 - `make test` - All tests
 
 **Why use `make validate`:**
@@ -542,7 +542,7 @@ The `make validate` command outputs **only 5-6 short lines** to stdout. Example:
 ```bash
 format: 0 (took 1s) - log: .local/agentic_format_output.log
 luals: 0 (took 2s) - log: .local/agentic_luals_output.log
-luacheck: 0 (took 0s) - log: .local/agentic_luacheck_output.log
+selene: 0 (took 0s) - log: .local/agentic_selene_output.log
 test: 0 (took 1s) - log: .local/agentic_test_output.log
 Total: 4s
 ```
@@ -576,7 +576,7 @@ project root:
 
 - `.local/agentic_format_output.log` - StyLua formatting output
 - `.local/agentic_luals_output.log` - LuaLS type checking output
-- `.local/agentic_luacheck_output.log` - Luacheck linting output
+- `.local/agentic_selene_output.log` - Selene linting output
 - `.local/agentic_test_output.log` - Test runner output
 
 **Rules:**
@@ -594,7 +594,7 @@ project root:
     at end)
   - `rg "error|warning|fail" .local/agentic_test_output.log` - Search for
     specific patterns (smart-case by default)
-  - `grep -i "error" .local/agentic_luacheck_output.log` - Search with grep
+  - `grep -i "error" .local/agentic_selene_output.log` - Search with grep
     (case-insensitive)
 - Increase line count only if needed for context
 - Read only what's needed to diagnose the issue
@@ -615,7 +615,7 @@ project and provides comprehensive type checking.
 
 - `make luals` - Run Lua Language Server headless diagnosis (type checking) -
   **Use this for full project type checks**
-- `make luacheck` - Run Luacheck linter (style and syntax checking)
+- `make selene` - Run Selene linter (Lua linting)
 - `make format` - Format all Lua files with StyLua
 - `make format-file FILE=path/to/file.lua` - Format a specific file
 
@@ -629,7 +629,7 @@ Override default tool paths if needed:
 ```bash
 make NVIM=/path/to/nvim luals
 make LUALS=/path/to/lua-language-server luals
-make LUACHECK=/path/to/luacheck luacheck
+make SELENE=/path/to/selene selene
 ```
 
 **Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type

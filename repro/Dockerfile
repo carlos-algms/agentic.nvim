@@ -4,22 +4,18 @@ FROM ubuntu:noble
 # Tool versions matching PR check workflow
 ENV LUALS_VERSION=3.16.2 \
   STYLUA_VERSION=2.3.1 \
+  SELENE_VERSION=0.30.0 \
   NVIM_VERSION=0.11.5 \
   DEBIAN_FRONTEND=noninteractive
 
-# Install minimal dependencies, build luacheck, then remove build tools in single layer
+# Install minimal dependencies
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
   curl \
   ca-certificates \
   unzip \
   git \
-  lua5.1 \
-  luarocks \
-  gcc \
-  libc6-dev && \
-  luarocks install luacheck && \
-  apt-get purge -y --auto-remove gcc && \
+  lua5.1 && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -47,6 +43,14 @@ RUN ARCH=$(uname -m) && \
   unzip -q stylua.zip -d /usr/local/bin/ && \
   chmod +x /usr/local/bin/stylua && \
   rm stylua.zip
+
+# Install Selene (detect architecture)
+RUN ARCH=$(uname -m) && \
+  if [ "$ARCH" = "aarch64" ]; then SELENE_ARCH="linux-aarch64"; else SELENE_ARCH="linux-x86_64"; fi && \
+  curl -sL "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-${SELENE_VERSION}-${SELENE_ARCH}.zip" -o selene.zip && \
+  unzip -q selene.zip -d /usr/local/bin/ && \
+  chmod +x /usr/local/bin/selene && \
+  rm selene.zip
 
 WORKDIR /workspace/repro
 

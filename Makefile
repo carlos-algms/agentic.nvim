@@ -1,13 +1,13 @@
 # Default tools; override like: make NVIM=/opt/homebrew/bin/nvim
 NVIM     ?= nvim
 LUALS    ?= $(shell which lua-language-server 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/lua-language-server")
-LUACHECK ?= $(shell which luacheck 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/luacheck")
+SELENE   ?= $(shell which selene 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/selene")
 STYLUA   ?= $(shell which stylua 2>/dev/null || echo "$(HOME)/.local/share/nvim/mason/bin/stylua")
 
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals luacheck luacheck-file format-check format format-file check test validate install-hooks
+.PHONY: luals selene selene-file format-check format format-file check test validate install-hooks
 
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
@@ -30,13 +30,13 @@ luals:
 		VIMRUNTIME="$$VIMRUNTIME" "$(LUALS)" --check "$$dir" --checklevel=Warning --configpath="$(CURDIR)/.luarc.json" || exit 1; \
 	done
 
-# Luacheck linter
-luacheck:
-	"$(LUACHECK)" .
+# Selene linter
+selene:
+	"$(SELENE)" .
 
-# Luacheck a specific file
-luacheck-file:
-	"$(LUACHECK)" "$(FILE)"
+# Selene a specific file
+selene-file:
+	"$(SELENE)" "$(FILE)"
 
 # StyLua formatting check
 format-check:
@@ -51,7 +51,7 @@ format-file:
 	"$(STYLUA)" "$(FILE)"
 
 # Convenience aggregator, NOT to be used in the CI
-check: luals luacheck format-check
+check: format-check luals selene
 
 # Run all validations with output redirection for AI agents
 validate:
@@ -66,15 +66,15 @@ validate:
 	rc_luals=$$?; \
 	echo "luals: $$rc_luals (took $$(($$(date +%s) - start))s) - log: .local/agentic_luals_output.log"; \
 	start=$$(date +%s); \
-	make luacheck > .local/agentic_luacheck_output.log 2>&1; \
-	rc_luacheck=$$?; \
-	echo "luacheck: $$rc_luacheck (took $$(($$(date +%s) - start))s) - log: .local/agentic_luacheck_output.log"; \
+	make selene > .local/agentic_selene_output.log 2>&1; \
+	rc_selene=$$?; \
+	echo "selene: $$rc_selene (took $$(($$(date +%s) - start))s) - log: .local/agentic_selene_output.log"; \
 	start=$$(date +%s); \
 	make test > .local/agentic_test_output.log 2>&1; \
 	rc_test=$$?; \
 	echo "test: $$rc_test (took $$(($$(date +%s) - start))s) - log: .local/agentic_test_output.log"; \
 	echo "Total: $$(($$(date +%s) - total_start))s"; \
-	if [ $$rc_format -ne 0 ] || [ $$rc_luals -ne 0 ] || [ $$rc_luacheck -ne 0 ] || [ $$rc_test -ne 0 ]; then \
+	if [ $$rc_format -ne 0 ] || [ $$rc_luals -ne 0 ] || [ $$rc_selene -ne 0 ] || [ $$rc_test -ne 0 ]; then \
 		echo "Validation failed! Check log files for details."; \
 		exit 1; \
 	fi

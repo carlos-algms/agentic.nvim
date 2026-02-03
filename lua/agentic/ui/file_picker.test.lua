@@ -53,7 +53,7 @@ describe("FilePicker:scan_files", function()
     end)
 
     after_each(function()
-        vim.fn.system = original_system -- luacheck: ignore
+        vim.fn.system = original_system
         FilePicker.CMD_RG[1] = original_cmd_rg
         FilePicker.CMD_FD[1] = original_cmd_fd
         FilePicker.CMD_GIT[1] = original_cmd_git
@@ -69,7 +69,7 @@ describe("FilePicker:scan_files", function()
             local call_count = 0
 
             ---@diagnostic disable-next-line: duplicate-set-field -- we must mock it to force specific behavior
-            vim.fn.system = function(_cmd) -- luacheck: ignore 122 (setting read-only field for test mock)
+            vim.fn.system = function(_cmd)
                 call_count = call_count + 1
 
                 if call_count == 1 then

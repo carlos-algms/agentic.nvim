@@ -1,0 +1,62 @@
+[selene]
+base = "lua51"
+name = "vim"
+
+[vim]
+any = true
+
+[jit]
+any = true
+
+[Snacks]
+any = true
+
+[io.stderr.write]
+method = true
+[[io.stderr.write.args]]
+type = "string"
+
+[io.stdout.write]
+method = true
+[[io.stdout.write.args]]
+type = "string"
+
+[[describe.args]]
+type = "string"
+[[describe.args]]
+type = "function"
+
+[[it.args]]
+type = "string"
+[[it.args]]
+type = "function"
+
+[[before_each.args]]
+type = "function"
+[[after_each.args]]
+type = "function"
+
+[assert.is_not]
+any = true
+
+[[assert.equals.args]]
+type = "any"
+[[assert.equals.args]]
+type = "any"
+[[assert.equals.args]]
+type = "any"
+required = false
+
+[[assert.same.args]]
+type = "any"
+[[assert.same.args]]
+type = "any"
+
+[[assert.truthy.args]]
+type = "any"
+
+[[assert.spy.args]]
+type = "any"
+
+[[assert.stub.args]]
+type = "any"

@@ -7,15 +7,14 @@ Slim Docker image with all PR check tools matching the CI pipeline environment.
 - **Neovim** v0.11.5
 - **LuaLS** (Lua Language Server) v3.16.2
 - **StyLua** v2.3.1
-- **Luacheck** v1.2.0 (installed via luarocks)
+- **Selene** v0.30.0
 
 ## Size Optimization
 
 The image is optimized through several techniques:
 
 - `--no-install-recommends` to avoid unnecessary packages
-- Build tools (gcc) are removed after luacheck compilation using
-  `apt-get purge --auto-remove`
+- Pre-built binaries (no build tools needed)
 - `make` is not included (not needed for running the tools)
 - APT caches and temporary files are cleaned up in the same layer
 - Single-layer RUN commands to minimize image layers
@@ -41,7 +40,7 @@ docker run --rm -it -v "`pwd`:/workspace" agentic-nvim-dev
 docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev make luals
 
 # Linting
-docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev make luacheck
+docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev make selene
 
 # Format checking
 docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev make format-check
@@ -50,7 +49,7 @@ docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev make format-check
 ### Run All Checks
 
 ```bash
-docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev sh -c "make luals && make luacheck && make format-check"
+docker run --rm -v "`pwd`:/workspace" agentic-nvim-dev sh -c "make luals && make selene && make format-check"
 ```
 
 ## Notes

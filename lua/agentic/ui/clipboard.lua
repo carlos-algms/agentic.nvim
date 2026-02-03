@@ -135,7 +135,6 @@ end
 --- Setup image paste/drag-and-drop support via vim.paste override
 --- @param opts agentic.Clipboard.SetupOpts
 function M.setup(opts)
-    -- luacheck: ignore 122 (setting read-only field paste of global vim)
     vim.paste = (function(original_paste)
         --- @param lines string[]
         --- @param phase -1|1|2|3
