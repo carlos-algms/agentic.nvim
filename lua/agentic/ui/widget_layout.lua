@@ -195,6 +195,14 @@ local function open_or_resize_dynamic_window(
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
 
+    if not should_display then
+        if winid and vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
+            win_nrs[window_name] = nil
+        end
+        return
+    end
+
     if
         should_display
         and (not winid or not vim.api.nvim_win_is_valid(winid))
@@ -334,7 +342,25 @@ end
 
 --- @param params agentic.ui.WidgetLayout.Params
 function WidgetLayout.open(params)
+    if
+        not params.tab_page_id
+        or not vim.api.nvim_tabpage_is_valid(params.tab_page_id)
+    then
+        Logger.notify(
+            "Invalid tab_page_id in WidgetLayout.open: "
+                .. tostring(params.tab_page_id),
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
     local current_position = Config.windows.position
+    local saved_tabpage = vim.api.nvim_get_current_tabpage()
+    local is_same_tabpage = saved_tabpage == params.tab_page_id
+
+    if not is_same_tabpage then
+        vim.api.nvim_set_current_tabpage(params.tab_page_id)
+    end
 
     if current_position == "right" then
         show_right_layout(params)
@@ -346,6 +372,10 @@ function WidgetLayout.open(params)
                 .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
+    end
+
+    if not is_same_tabpage then
+        vim.api.nvim_set_current_tabpage(saved_tabpage)
     end
 
     set_layout_state(params.tab_page_id, current_position)
