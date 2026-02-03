@@ -185,4 +185,16 @@ function FileSystem.get_file_extension(file_path)
     return vim.fn.fnamemodify(file_path, ":e"):lower()
 end
 
+--- Create directory recursively (equivalent to mkdir -p)
+--- @param path string
+--- @return boolean success
+--- @return string|nil error
+function FileSystem.mkdirp(path)
+    local ok, err = pcall(vim.fn.mkdir, path, "p")
+    if ok then
+        return true, nil
+    end
+    return false, tostring(err)
+end
+
 return FileSystem

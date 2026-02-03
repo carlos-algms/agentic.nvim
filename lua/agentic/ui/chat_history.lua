@@ -1,5 +1,6 @@
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local FileSystem = require("agentic.utils.file_system")
 
 --- @class agentic.ui.ChatHistory.UserMessage
 --- @field type "user"
@@ -156,7 +157,7 @@ function ChatHistory:save(callback)
     local path = ChatHistory.get_file_path(self.session_id)
     local dir = vim.fn.fnamemodify(path, ":h")
 
-    vim.fn.mkdir(dir, "p")
+    FileSystem.mkdirp(dir)
 
     --- @type agentic.ui.ChatHistory.StorageData
     local data = {
@@ -175,29 +176,12 @@ function ChatHistory:save(callback)
         return
     end
 
-    -- FIXIT: replace this with FileSystem.write_file
-    vim.uv.fs_open(path, "w", 420, function(err_open, fd) -- 420 = 0644
-        if err_open then
-            Logger.debug("Failed to open:", err_open)
-            if callback then
-                vim.schedule(function()
-                    callback(err_open)
-                end)
-            end
-            return
+    FileSystem.write_file(path, json, function(err)
+        if callback then
+            vim.schedule(function()
+                callback(err)
+            end)
         end
-
-        vim.uv.fs_write(fd, json, 0, function(err_write)
-            vim.uv.fs_close(fd)
-            if err_write then
-                Logger.debug("Failed to write:", err_write)
-            end
-            if callback then
-                vim.schedule(function()
-                    callback(err_write)
-                end)
-            end
-        end)
     end)
 end
 
@@ -206,57 +190,33 @@ end
 function ChatHistory.load(session_id, callback)
     local path = ChatHistory.get_file_path(session_id)
 
-    -- FIXIT: replace this with FileSystem.read_file
-    vim.uv.fs_open(path, "r", 420, function(err_open, fd)
-        if err_open then
-            Logger.debug("Failed to open for read:", err_open)
+    FileSystem.read_file(path, nil, nil, function(content)
+        if not content then
             vim.schedule(function()
-                callback(nil, err_open)
+                callback(nil, "Failed to read file")
             end)
             return
         end
 
-        vim.uv.fs_fstat(fd, function(err_stat, stat)
-            if err_stat or not stat then
-                vim.uv.fs_close(fd)
-                vim.schedule(function()
-                    callback(nil, err_stat or "Failed to stat file")
-                end)
-                return
-            end
-
-            vim.uv.fs_read(fd, stat.size, 0, function(err_read, data)
-                vim.uv.fs_close(fd)
-
-                if err_read then
-                    Logger.debug("Failed to read:", err_read)
-                    vim.schedule(function()
-                        callback(nil, err_read)
-                    end)
-                    return
-                end
-
-                local ok, parsed = pcall(vim.json.decode, data)
-                if not ok then
-                    Logger.debug("JSON decode failed:", parsed)
-                    vim.schedule(function()
-                        callback(nil, "JSON decode error")
-                    end)
-                    return
-                end
-
-                --- @cast parsed agentic.ui.ChatHistory.StorageData
-
-                local instance = ChatHistory:new()
-                instance.session_id = parsed.session_id
-                instance.timestamp = parsed.timestamp
-                instance.messages = parsed.messages
-                instance.title = parsed.title
-
-                vim.schedule(function()
-                    callback(instance, nil)
-                end)
+        local ok, parsed = pcall(vim.json.decode, content)
+        if not ok then
+            Logger.debug("JSON decode failed:", parsed)
+            vim.schedule(function()
+                callback(nil, "JSON decode error")
             end)
+            return
+        end
+
+        --- @cast parsed agentic.ui.ChatHistory.StorageData
+
+        local instance = ChatHistory:new()
+        instance.session_id = parsed.session_id
+        instance.timestamp = parsed.timestamp
+        instance.messages = parsed.messages
+        instance.title = parsed.title
+
+        vim.schedule(function()
+            callback(instance, nil)
         end)
     end)
 end

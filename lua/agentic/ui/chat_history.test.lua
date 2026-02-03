@@ -6,34 +6,59 @@ local TEST_CWD = "/test/project"
 describe("ChatHistory", function()
     --- @type agentic.ui.ChatHistory
     local ChatHistory
+    --- @type agentic.utils.FileSystem
+    local FileSystem
     local original_storage_path
-    local test_dir
     --- @type TestStub|nil
     local cwd_stub
+    --- @type TestStub
+    local mkdirp_stub
+    --- @type TestStub
+    local write_file_stub
+    --- @type TestStub
+    local read_file_stub
+    --- @type table<string, string>
+    local mock_files
 
     before_each(function()
         package.loaded["agentic.ui.chat_history"] = nil
 
-        test_dir = vim.fn.tempname()
-        vim.fn.mkdir(test_dir, "p")
+        mock_files = {}
+
+        FileSystem = require("agentic.utils.file_system")
+
+        mkdirp_stub = spy.stub(FileSystem, "mkdirp")
+        mkdirp_stub:returns(true)
+
+        write_file_stub = spy.stub(FileSystem, "write_file")
+        write_file_stub:invokes(function(path, content, callback)
+            mock_files[path] = content
+            callback(nil)
+        end)
+
+        read_file_stub = spy.stub(FileSystem, "read_file")
+        read_file_stub:invokes(function(path, _, _, callback)
+            callback(mock_files[path])
+        end)
 
         local Config = require("agentic.config")
         original_storage_path = Config.session_restore.storage_path
-        Config.session_restore.storage_path = test_dir
+        Config.session_restore.storage_path = "/test/storage"
 
         ChatHistory = require("agentic.ui.chat_history")
     end)
 
     after_each(function()
-        vim.fn.delete(test_dir, "rf")
-        local Config = require("agentic.config")
-        Config.session_restore.storage_path = original_storage_path
-        package.loaded["agentic.ui.chat_history"] = nil
-
         if cwd_stub then
             cwd_stub:revert()
             cwd_stub = nil
         end
+        mkdirp_stub:revert()
+        write_file_stub:revert()
+        read_file_stub:revert()
+        local Config = require("agentic.config")
+        Config.session_restore.storage_path = original_storage_path
+        package.loaded["agentic.ui.chat_history"] = nil
     end)
 
     --- @param path string|nil
@@ -94,7 +119,7 @@ describe("ChatHistory", function()
                 local path = ChatHistory.get_file_path("session-abc")
                 local project_folder = ChatHistory.get_project_folder()
 
-                assert.truthy(path:match("^" .. vim.pesc(test_dir)))
+                assert.truthy(path:match("^" .. vim.pesc("/test/storage")))
                 assert.truthy(path:find(project_folder, 1, true))
                 assert.truthy(path:match("session%-abc%.json$"))
             end
@@ -203,11 +228,13 @@ describe("ChatHistory", function()
             assert.is_nil(save_err)
 
             local path = ChatHistory.get_file_path(original.session_id)
-            local dir = vim.fn.fnamemodify(path, ":h")
-            assert.equal(1, vim.fn.isdirectory(dir))
+            assert.equal(1, mkdirp_stub.call_count)
+            assert.equal(1, write_file_stub.call_count)
 
-            local content = vim.fn.readfile(path)
-            local parsed = vim.json.decode(table.concat(content, "\n"))
+            local saved_content = mock_files[path]
+            assert.is_not_nil(saved_content)
+
+            local parsed = vim.json.decode(saved_content)
             assert.equal(original.session_id, parsed.session_id)
             assert.equal("Test message", parsed.title)
             assert.is_not_nil(parsed.timestamp)
@@ -246,8 +273,7 @@ describe("ChatHistory", function()
             for _, tc in ipairs(test_cases) do
                 if tc.content then
                     local path = ChatHistory.get_file_path(tc.session_id)
-                    vim.fn.mkdir(vim.fn.fnamemodify(path, ":h"), "p")
-                    vim.fn.writefile({ tc.content }, path)
+                    mock_files[path] = tc.content
                 end
 
                 local loaded = nil
