@@ -401,8 +401,8 @@ function WidgetLayout.close_optional_window(win_nrs, window_name)
     local winid = win_nrs[window_name]
     if winid and vim.api.nvim_win_is_valid(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
-        win_nrs[window_name] = nil
     end
+    win_nrs[window_name] = nil
 end
 
 return WidgetLayout
