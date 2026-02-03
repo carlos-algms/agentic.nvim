@@ -234,7 +234,7 @@ describe("agentic.ui.ChatWidget", function()
                     { "line4", "line5", "line6", "line7" }
                 )
 
-                widget:show({ focus_prompt = false })
+                widget:resize_dynamic_window("code")
 
                 local new_height =
                     vim.api.nvim_win_get_height(widget.win_nrs.code)
@@ -344,71 +344,6 @@ describe("agentic.ui.ChatWidget", function()
                     widget:resize_dynamic_window("code")
                 end)
             end)
-        end)
-    end)
-
-    describe("calculate dynamic height", function()
-        --- Access private function for testing
-        --- @param bufnr number
-        --- @param max_height number
-        --- @return integer
-        local function calculate_dynamic_height(bufnr, max_height)
-            ---@diagnostic disable-next-line: invisible
-            return ChatWidget._calculate_dynamic_height(bufnr, max_height)
-        end
-
-        --- @param line_count number
-        --- @return number bufnr
-        local function create_buffer_with_lines(line_count)
-            local bufnr = vim.api.nvim_create_buf(false, true)
-            if line_count > 0 then
-                local lines = {}
-                for i = 1, line_count do
-                    lines[i] = "line" .. i
-                end
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
-            end
-            return bufnr
-        end
-
-        local test_bufnr
-
-        after_each(function()
-            if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
-            end
-        end)
-
-        -- Equivalence classes for: math.min(line_count + 1, max_height)
-        -- 1. Below max: line_count + 1 < max_height -> returns line_count + 1
-        -- 2. At boundary: line_count + 1 == max_height -> returns max_height
-        -- 3. Above max: line_count + 1 > max_height -> returns max_height
-
-        it("returns line_count + 1 when below max_height", function()
-            test_bufnr = create_buffer_with_lines(3)
-            -- 3 lines + 1 = 4, which is < 15
-            assert.equal(4, calculate_dynamic_height(test_bufnr, 15))
-        end)
-
-        it(
-            "returns max_height at boundary (line_count + 1 == max_height)",
-            function()
-                test_bufnr = create_buffer_with_lines(9)
-                -- 9 lines + 1 = 10, which equals max_height
-                assert.equal(10, calculate_dynamic_height(test_bufnr, 10))
-            end
-        )
-
-        it("returns max_height when line_count + 1 exceeds it", function()
-            test_bufnr = create_buffer_with_lines(20)
-            -- 20 lines + 1 = 21, capped at 15
-            assert.equal(15, calculate_dynamic_height(test_bufnr, 15))
-        end)
-
-        it("treats empty buffer as 1 line (Neovim default)", function()
-            test_bufnr = vim.api.nvim_create_buf(false, true)
-            -- Empty buffer has 1 line by default, so 1 + 1 = 2
-            assert.equal(2, calculate_dynamic_height(test_bufnr, 15))
         end)
     end)
 end)
