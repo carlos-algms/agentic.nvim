@@ -43,12 +43,21 @@ globals = {
 -- Test files: use busted standard for describe/it/before_each/etc
 files["**/*.test.lua"] = {
     std = "+busted",
+    globals = {
+        "vim.o",
+    },
 }
 
 files["**/tests/**/test_*.lua"] = {
     std = "+busted",
+    globals = {
+        "vim.o",
+    },
 }
 
 files["**/tests/**/*_test.lua"] = {
     std = "+busted",
+    globals = {
+        "vim.o",
+    },
 }
