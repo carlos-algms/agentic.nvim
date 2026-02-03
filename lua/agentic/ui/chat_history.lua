@@ -14,15 +14,9 @@ local Logger = require("agentic.utils.logger")
 --- @field type "thought"
 --- @field text string Agent thought text (concatenated chunks)
 
--- FIXIT: check if it's not duplicated, we already have a type for tool calls, maybe?
---- @class agentic.ui.ChatHistory.ToolCall
+--- @class agentic.ui.ChatHistory.ToolCall : agentic.ui.MessageWriter.ToolCallBase
+--- @field tool_call_id? string
 --- @field type "tool_call"
---- @field tool_call_id string
---- @field kind agentic.acp.ToolKind
---- @field status agentic.acp.ToolCallStatus
---- @field argument? string
---- @field body? string[]
---- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 
 --- @alias agentic.ui.ChatHistory.Message
 --- | agentic.ui.ChatHistory.UserMessage
@@ -111,7 +105,7 @@ end
 
 --- Update an existing tool_call by merging update data
 --- @param tool_call_id string
---- @param update table -- FIXIT: if we have a better type for tool calls, use it here instead of table
+--- @param update agentic.ui.ChatHistory.ToolCall
 function ChatHistory:update_tool_call(tool_call_id, update)
     for i = #self.messages, 1, -1 do
         local msg = self.messages[i]

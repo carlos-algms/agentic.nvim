@@ -166,17 +166,20 @@ describe("ChatHistory", function()
         describe("update_tool_call", function()
             it("finds and merges tool_call by ID", function()
                 local history = ChatHistory:new()
+                local tool_call_id = "tc-123"
 
                 history:add_message({
                     type = "tool_call",
-                    tool_call_id = "tc-123",
+                    tool_call_id = tool_call_id,
                     status = "pending",
                     kind = "read",
                 })
 
-                history:update_tool_call("tc-123", {
+                history:update_tool_call(tool_call_id, {
+                    tool_call_id = tool_call_id,
                     status = "completed",
                     body = { "file content" },
+                    type = "tool_call",
                 })
 
                 assert.equal("completed", history.messages[1].status)
@@ -189,7 +192,7 @@ describe("ChatHistory", function()
 
                 history:update_tool_call(
                     "non-existent",
-                    { status = "completed" }
+                    { status = "completed", type = "tool_call" }
                 )
 
                 assert.equal(1, #history.messages)
@@ -207,12 +210,15 @@ describe("ChatHistory", function()
                 })
                 history:add_message({
                     type = "tool_call",
-                    tool_call_id = "tc-123",
+                    tool_call_id = "tc-444",
                     status = "pending",
                     kind = "edit",
                 })
 
-                history:update_tool_call("tc-123", { status = "completed" })
+                history:update_tool_call(
+                    "tc-123",
+                    { status = "completed", type = "tool_call" }
+                )
 
                 assert.equal("pending", history.messages[1].status)
                 assert.equal("completed", history.messages[2].status)
@@ -255,14 +261,14 @@ describe("ChatHistory", function()
             assert.is_nil(save_err)
             assert.spy(callback_spy).was.called(1)
 
-            local path = ChatHistory.get_file_path("save-test-123")
+            local path = ChatHistory.get_file_path(history.session_id)
             local dir = vim.fn.fnamemodify(path, ":h")
             assert.equal(1, vim.fn.isdirectory(dir))
 
             local content = vim.fn.readfile(path)
             local parsed = vim.json.decode(table.concat(content, "\n"))
 
-            assert.equal("save-test-123", parsed.session_id)
+            assert.equal(history.session_id, parsed.session_id)
             assert.equal("Test message", parsed.title)
             assert.is_not_nil(parsed.timestamp)
             assert.equal(1, #parsed.messages)
@@ -301,7 +307,7 @@ describe("ChatHistory", function()
             local load_err = nil
             local loaded_done = false
 
-            ChatHistory.load("load-test-123", function(history, err)
+            ChatHistory.load(original.session_id, function(history, err)
                 loaded = history
                 load_err = err
                 loaded_done = true
@@ -314,7 +320,7 @@ describe("ChatHistory", function()
             assert.is_nil(load_err)
             assert.is_not_nil(loaded)
             --- @cast loaded agentic.ui.ChatHistory
-            assert.equal("load-test-123", loaded.session_id)
+            assert.equal(original.session_id, loaded.session_id)
             assert.equal(original.timestamp, loaded.timestamp)
             assert.equal(1, #loaded.messages)
             --- @diagnostic disable-next-line: need-check-nil
