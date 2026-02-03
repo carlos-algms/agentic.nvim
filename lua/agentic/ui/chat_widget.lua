@@ -66,8 +66,9 @@ function ChatWidget:show(opts)
     end
 
     if self:is_open() then
-        if opts.focus_prompt then
-            self:move_cursor_to(self.win_nrs.input)
+        local should_focus = (opts.focus_prompt == nil and true or opts.focus_prompt) == true
+        if should_focus then
+            self:move_cursor_to(self.win_nrs.input, BufHelpers.start_insert_on_last_char)
         end
         return
     end
