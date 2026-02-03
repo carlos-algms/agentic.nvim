@@ -130,6 +130,76 @@ mutation {
 }'
 ```
 
+## Update Discussion
+
+Update discussion title, body, or category:
+
+```bash
+gh api graphql -f query='
+mutation {
+  updateDiscussion(input: {
+    discussionId: "D_kwDOQXqKi84...",
+    title: "New Title",
+    body: "New Body"
+  }) {
+    discussion {
+      id
+      url
+    }
+  }
+}'
+```
+
+## Add Comment to Discussion
+
+Get discussion ID first, then add comment using variables to avoid escaping:
+
+```bash
+# Get discussion ID
+gh api graphql -f query='
+{
+  repository(owner: "carlos-algms", name: "agentic.nvim") {
+    discussion(number: 108) {
+      id
+    }
+  }
+}' --jq '.data.repository.discussion.id'
+
+# Add comment using file for complex content
+COMMENT_BODY=$(cat comment.md)
+gh api graphql -F discussionId="D_kwDOQXqKi84..." -F body="$COMMENT_BODY" -f query='
+mutation($discussionId: ID!, $body: String!) {
+  addDiscussionComment(input: {
+    discussionId: $discussionId,
+    body: $body
+  }) {
+    comment {
+      id
+      url
+    }
+  }
+}'
+```
+
+## Update Discussion Comment
+
+Requires comment ID (starts with `DC_`):
+
+```bash
+gh api graphql -f query='
+mutation {
+  updateDiscussionComment(input: {
+    commentId: "DC_kwDOQXqKi84...",
+    body: "Updated comment body"
+  }) {
+    comment {
+      id
+      url
+    }
+  }
+}'
+```
+
 ## Critical Notes
 
 - **Escape quotes** in body: use `\"` for literal quotes
