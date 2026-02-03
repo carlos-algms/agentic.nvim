@@ -261,6 +261,12 @@ local ConfigDefault = {
         --- Automatically move cursor to chat window after submitting a prompt
         move_cursor_to_chat_on_submit = true,
     },
+
+    --- @class agentic.UserConfig.SessionRestore
+    --- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
+    session_restore = {
+        storage_path = nil,
+    },
 }
 
 return ConfigDefault

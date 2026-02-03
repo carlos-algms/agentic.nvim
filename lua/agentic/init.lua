@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
+local SessionRestore = require("agentic.session_restore")
 local Object = require("agentic.utils.object")
 local Logger = require("agentic.utils.logger")
 
@@ -95,6 +96,13 @@ function Agentic.stop_generation()
             session.permission_manager:clear()
         end
     end)
+end
+
+--- show a selector to restore a previous session
+function Agentic.restore_session()
+    local tab_page_id = vim.api.nvim_get_current_tabpage()
+    local current_session = SessionRegistry.sessions[tab_page_id]
+    SessionRestore.show_picker(tab_page_id, current_session)
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times

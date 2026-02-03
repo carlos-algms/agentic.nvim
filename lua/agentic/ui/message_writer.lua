@@ -860,23 +860,4 @@ function MessageWriter:_apply_status_highlights_if_present(
     end
 end
 
-function MessageWriter:clear()
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        return
-    end
-
-    local namespaces_to_clean = {
-        NS_TOOL_BLOCKS,
-        NS_DECORATIONS,
-        NS_PERMISSION_BUTTONS,
-        NS_DIFF_HIGHLIGHTS,
-        NS_STATUS,
-    }
-
-    for _, ns in ipairs(namespaces_to_clean) do
-        pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, ns, 0, -1)
-    end
-    self.tool_call_blocks = {}
-end
-
 return MessageWriter
