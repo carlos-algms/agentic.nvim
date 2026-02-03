@@ -245,12 +245,11 @@ function SessionManager:_handle_input_submit(input_text)
     -- If restored session, prepend history on first submit
     if self._needs_history_send and self._history_to_send then
         self._needs_history_send = false
-
-        self.chat_history.title = input_text
-
+        self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self._history_to_send, prompt)
-
         self._history_to_send = nil
+    elseif self.chat_history.title == "" then
+        self.chat_history.title = input_text -- Set title for new session
     end
 
     -- Add system info on first message only

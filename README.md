@@ -13,9 +13,15 @@ Without reinventing the wheel, Agentic.nvim is the interface, your agent is the
 Brain. This plugin will use all the same configurations and authentication
 methods you already have set up on your terminal.
 
-You can start your work in Neovim, close it, and resume from the terminal, if
-your agent supports session restoration. (Session restoration inside Neovim is
-not supported yet, ACP limitation)
+Including your MCP servers, commands, SKILLs, and sub-agents, you don't have to
+recreate your configuration to use Agentic.nvim.
+
+You can start your work in Neovim, close it, and continue from the terminal, if
+your provider supports session restoration, or restore previous Neovim sessions
+using Agentic's built-in session persistence feature. Note: Sessions started in
+the terminal cannot be restored in Neovim (Agentic.nvim has its own session
+management separate from providers to maintain compatibility across all
+providers).
 
 You'll get the same results and performance as you would when using the ACP
 provider's official CLI directly from the terminal.
@@ -290,6 +296,7 @@ header parts:
 | `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                    |
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one  |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active) |
+| `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue   |
 
 ### Optional Parameters
 
@@ -485,6 +492,60 @@ Clipboard, there's no way of intercepting it, as it's considered binary and not
 text, so either your Terminal or Neovim will just ignore and do nothing with it,
 that's why we need the help of the external plugin. It's totally out of our
 control.
+
+### Session Persistence and Restoration
+
+Agentic automatically saves your conversation history to disk, allowing you to
+restore previous sessions across Neovim restarts at any time.
+
+**Storage location:**
+
+Default: `~/.cache/nvim/agentic/sessions/<normalized_project_path>/`
+
+For example, if your project is at `/Users/me/projects/myapp`, sessions will be
+stored in:  
+`~/.cache/nvim/agentic/sessions/Users_me_projects_myapp_abc12345/`
+
+The hash is to avoid collisions with projects with similar paths.
+
+**Restoring sessions:**
+
+Call `require("agentic").restore_session()` to:
+
+1. See a list of all saved sessions for the current project
+2. Sessions are displayed as: `YYYY-MM-DD HH:MM - <first user message>`
+3. Select a session to restore the full conversation history
+
+**Conflict handling:**
+
+If you try to restore a session when the current tab already has an active
+conversation, you'll be prompted to:
+
+- Cancel the restoration (keep current session)
+- Clear current session and restore the selected one
+
+**Customizing storage location:**
+
+You can change where sessions are stored:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    session_restore = {
+      -- Custom storage path (default: nil uses ~/.cache/nvim/agentic/sessions/)
+      storage_path = vim.fn.expand("~/OneDrive/agentic_sessions/"), -- for a cloud-synced folder for example
+    },
+  },
+}
+```
+
+**What gets saved:**
+
+- User prompts and agent responses
+- Tool calls with their arguments and results
+- Agent thinking/reasoning blocks
+- Session metadata (timestamp, title)
 
 ### System Information
 

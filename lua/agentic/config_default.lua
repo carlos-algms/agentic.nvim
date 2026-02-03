@@ -263,7 +263,7 @@ local ConfigDefault = {
     },
 
     --- @class agentic.UserConfig.SessionRestore
-    --- @field storage_path string|nil Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
+    --- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
     session_restore = {
         storage_path = nil,
     },
