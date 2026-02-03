@@ -152,7 +152,7 @@ describe("ChatHistory", function()
                 local history = ChatHistory:new()
 
                 history:append_agent_text({
-                    msg_type = "agent",
+                    type = "agent",
                     text = "Hello",
                     provider_name = "test-provider",
                 })
@@ -160,7 +160,7 @@ describe("ChatHistory", function()
                 assert.equal("Hello", history.messages[1].text)
 
                 history:append_agent_text({
-                    msg_type = "agent",
+                    type = "agent",
                     text = " World",
                     provider_name = "test-provider",
                 })
@@ -174,7 +174,7 @@ describe("ChatHistory", function()
                     provider_name = "test-provider",
                 })
                 history:append_agent_text({
-                    msg_type = "agent",
+                    type = "agent",
                     text = "Response",
                     provider_name = "test-provider",
                 })
@@ -186,12 +186,12 @@ describe("ChatHistory", function()
                 local history = ChatHistory:new()
 
                 history:append_agent_text({
-                    msg_type = "agent",
+                    type = "agent",
                     text = "Response",
                     provider_name = "test-provider",
                 })
                 history:append_agent_text({
-                    msg_type = "thought",
+                    type = "thought",
                     text = "Thinking...",
                     provider_name = "test-provider",
                 })

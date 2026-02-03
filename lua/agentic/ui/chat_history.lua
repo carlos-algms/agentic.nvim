@@ -92,13 +92,12 @@ function ChatHistory:add_message(msg)
 end
 
 --- Append text to the last agent or thought message, or create a new one
---- @param msg { msg_type: "agent"|"thought", text: string, provider_name: string  }
+--- @param msg { type: "agent"|"thought", text: string, provider_name: string  }
 function ChatHistory:append_agent_text(msg)
     local last = self.messages[#self.messages]
-    if last and last.type == msg.msg_type then
+    if last and last.type == msg.type then
         last.text = last.text .. msg.text
     else
-        --- @type agentic.ui.ChatHistory.AgentMessage | agentic.ui.ChatHistory.ThoughtMessage
         table.insert(self.messages, msg)
     end
 end

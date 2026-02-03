@@ -161,7 +161,7 @@ function SessionManager:_on_session_update(update)
 
         if update.content and update.content.text then
             self.chat_history:append_agent_text({
-                msg_type = "agent",
+                type = "agent",
                 text = update.content.text,
                 provider_name = self.agent.provider_config.name,
             })
@@ -172,7 +172,7 @@ function SessionManager:_on_session_update(update)
 
         if update.content and update.content.text then
             self.chat_history:append_agent_text({
-                msg_type = "thought",
+                type = "thought",
                 text = update.content.text,
                 provider_name = self.agent.provider_config.name,
             })
