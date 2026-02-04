@@ -294,12 +294,7 @@ function M.show_diff(opts)
             end
         end
 
-        if new_count > 0 then
-            -- Skip virtual lines if all lines were unchanged
-            if #filtered.new_lines == 0 then
-                goto continue
-            end
-
+        if new_count > 0 and #filtered.new_lines > 0 then
             -- Virtual lines appear below anchor (0-indexed)
             local anchor_line
             if old_count == 0 then
@@ -337,8 +332,6 @@ function M.show_diff(opts)
                 Logger.notify("Failed to set virtual lines: " .. tostring(err))
             end
         end
-
-        ::continue::
     end
 
     -- Scroll target window to first diff block without moving cursor

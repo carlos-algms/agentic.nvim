@@ -4,11 +4,6 @@ exclude = [
     "lazy_repro/**",
     "deps/**",
     ".local/**",
-    # Files with goto/label syntax not supported by selene parser
-    # FIXIT: Remove the goto/labe syntax from these files and then remove these exclusions
-    "lua/agentic/ui/diff_preview.lua",
-    "lua/agentic/ui/tool_call_diff.lua",
-    "lua/agentic/ui/message_writer.lua",
 ]
 
 [lints]

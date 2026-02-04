@@ -555,7 +555,7 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
     local option_mapping = {}
 
     local lines_to_append = {
-        string.format("### Waiting for your response:  "),
+        "### Waiting for your response: ",
         "",
     }
 

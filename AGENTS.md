@@ -520,6 +520,49 @@ end
   from the clipboard (drag-and-drop works without it, it's terminal feature, not
   plugin, neither neovim specific)
 
+#### Lua Language Restrictions
+
+**FORBIDDEN: goto/label syntax** - Selene parser does not support goto/label
+syntax
+
+- ❌ **NEVER use:** `goto label` or `::label::` syntax
+- **Alternative patterns:**
+  - Invert conditions: `if not skip_condition then ... end`
+  - Use elseif chains: `if case1 then ... elseif case2 then ... else ... end`
+  - Extract to functions for early returns
+  - Use continue-like patterns with conditional blocks
+
+**Example refactoring:**
+
+```lua
+-- ❌ Bad: Uses goto (Selene parse error)
+for _, item in ipairs(items) do
+    if should_skip(item) then
+        goto continue
+    end
+    -- ... process item ...
+    ::continue::
+end
+
+-- ✅ Good: Inverted condition
+for _, item in ipairs(items) do
+    if not should_skip(item) then
+        -- ... process item ...
+    end
+end
+
+-- ✅ Good: elseif chain for multiple early exits
+for _, item in ipairs(items) do
+    if condition1(item) then
+        -- handle case 1
+    elseif condition2(item) then
+        -- handle case 2
+    else
+        -- default processing
+    end
+end
+```
+
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
 **ALWAYS run all validations after making ANY Lua file changes:**
