@@ -13,10 +13,24 @@ local Logger = require("agentic.utils.logger")
 local WidgetLayout = {}
 
 local function get_layout_state(tab_page_id)
+    if
+        not tab_page_id
+        or not vim.api.nvim_tabpage_is_valid(tab_page_id)
+        or not vim.t[tab_page_id]
+    then
+        return nil
+    end
     return vim.t[tab_page_id].agentic_layout_state
 end
 
 local function set_layout_state(tab_page_id, position)
+    if
+        not tab_page_id
+        or not vim.api.nvim_tabpage_is_valid(tab_page_id)
+        or not vim.t[tab_page_id]
+    then
+        return
+    end
     vim.t[tab_page_id].agentic_layout_state = { position = position }
 end
 
@@ -198,10 +212,10 @@ local function open_or_resize_dynamic_window(
     local winid = win_nrs[window_name]
 
     if not should_display then
-        if winid and vim.api.nvim_win_is_valid(winid) then
-            vim.api.nvim_win_close(winid, true)
-            win_nrs[window_name] = nil
+        if winid then
+            pcall(vim.api.nvim_win_close, winid, true)
         end
+        win_nrs[window_name] = nil
         return
     end
 
@@ -372,23 +386,27 @@ function WidgetLayout.open(params)
         vim.api.nvim_set_current_tabpage(params.tab_page_id)
     end
 
+    local success
     if current_position == "right" then
-        show_right_layout(params)
+        success = pcall(show_right_layout, params)
     elseif current_position == "bottom" then
-        show_bottom_layout(params)
+        success = pcall(show_bottom_layout, params)
     else
         Logger.notify(
             "Invalid windows.position config: "
                 .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
+        success = false
     end
 
     if not is_same_tabpage then
         vim.api.nvim_set_current_tabpage(saved_tabpage)
     end
 
-    set_layout_state(params.tab_page_id, current_position)
+    if success then
+        set_layout_state(params.tab_page_id, current_position)
+    end
 end
 
 --- @param win_nrs table<string, integer|nil>
