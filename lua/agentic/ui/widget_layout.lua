@@ -20,7 +20,8 @@ local function get_layout_state(tab_page_id)
     then
         return nil
     end
-    return vim.t[tab_page_id].agentic_layout_state
+    local layout_state = vim.t[tab_page_id].agentic_layout_state
+    return layout_state
 end
 
 local function set_layout_state(tab_page_id, position)
@@ -436,8 +437,8 @@ function WidgetLayout.resize_dynamic_window(buf_nrs, win_nrs, window_name)
     if BufHelpers.is_buffer_empty(bufnr) then
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
-            win_nrs[window_name] = nil
         end
+        win_nrs[window_name] = nil
         return
     end
 
