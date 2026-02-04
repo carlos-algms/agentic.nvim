@@ -88,6 +88,7 @@ end
 --- @param max_height integer
 --- @return integer
 local function calculate_dynamic_height(bufnr, max_height)
+    max_height = math.max(1, max_height)
     local line_count = vim.api.nvim_buf_line_count(bufnr)
     return math.min(line_count + 1, max_height)
 end
@@ -95,6 +96,7 @@ end
 --- @param position "right"|"bottom"
 --- @return table<string, any>
 local function get_chat_window_opts(position)
+    --- @type table<string, any>
     local win_opts
 
     if position == "bottom" then
@@ -272,8 +274,12 @@ local function show_right_layout(params)
         local winid = params.win_nrs.input
         vim.schedule(function()
             if winid and vim.api.nvim_win_is_valid(winid) then
-                vim.api.nvim_set_current_win(winid)
-                BufHelpers.start_insert_on_last_char()
+                local target_tabpage = vim.api.nvim_win_get_tabpage(winid)
+                local current_tabpage = vim.api.nvim_get_current_tabpage()
+                if target_tabpage == current_tabpage then
+                    vim.api.nvim_set_current_win(winid)
+                    BufHelpers.start_insert_on_last_char()
+                end
             end
         end)
     end
@@ -333,8 +339,12 @@ local function show_bottom_layout(params)
         local winid = params.win_nrs.input
         vim.schedule(function()
             if winid and vim.api.nvim_win_is_valid(winid) then
-                vim.api.nvim_set_current_win(winid)
-                BufHelpers.start_insert_on_last_char()
+                local target_tabpage = vim.api.nvim_win_get_tabpage(winid)
+                local current_tabpage = vim.api.nvim_get_current_tabpage()
+                if target_tabpage == current_tabpage then
+                    vim.api.nvim_set_current_win(winid)
+                    BufHelpers.start_insert_on_last_char()
+                end
             end
         end)
     end
