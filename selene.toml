@@ -7,9 +7,8 @@ exclude = [
 ]
 
 [lints]
-# Luacheck compatibility (must keep as allow)
-unused_variable = "allow"
-shadowing = "allow"
+unused_variable = "deny"
+shadowing = "deny"
 mixed_table = "allow"
 
 # Strictness upgrades (warn → deny) for more type safety
@@ -23,6 +22,7 @@ empty_loop = "deny"
 bad_string_escape = "deny"
 manual_table_clone = "deny"
 parenthese_conditions = "deny"
+undefined_variable = "deny"
 
 [config]
 unused_variable.ignore_pattern = "^_"
