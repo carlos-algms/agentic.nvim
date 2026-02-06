@@ -357,7 +357,7 @@ function WidgetLayout.open(params)
     then
         Logger.notify(
             "Invalid tab_page_id in WidgetLayout.open: "
-                .. tostring(params.tab_page_id),
+            .. tostring(params.tab_page_id),
             vim.log.levels.ERROR
         )
         return
@@ -371,29 +371,21 @@ function WidgetLayout.open(params)
         vim.api.nvim_set_current_tabpage(params.tab_page_id)
     end
 
+    local layout_fns = {
+        right = show_right_layout,
+        bottom = show_bottom_layout,
+    }
+    local layout_fn = layout_fns[current_position]
+
     local success
-    if current_position == "right" then
-        local ok, err = pcall(show_right_layout, params)
+    if layout_fn then
+        local ok, err = pcall(layout_fn, params)
         if not ok then
             Logger.notify(
                 string.format(
-                    "Failed to show right layout (tab: %d, position: %s): %s",
-                    params.tab_page_id,
+                    "Failed to show %s layout (tab: %d): %s",
                     current_position,
-                    tostring(err)
-                ),
-                vim.log.levels.ERROR
-            )
-        end
-        success = ok
-    elseif current_position == "bottom" then
-        local ok, err = pcall(show_bottom_layout, params)
-        if not ok then
-            Logger.notify(
-                string.format(
-                    "Failed to show bottom layout (tab: %d, position: %s): %s",
                     params.tab_page_id,
-                    current_position,
                     tostring(err)
                 ),
                 vim.log.levels.ERROR
@@ -403,7 +395,7 @@ function WidgetLayout.open(params)
     else
         Logger.notify(
             "Invalid windows.position config: "
-                .. tostring(Config.windows.position),
+            .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
         success = false
