@@ -357,7 +357,7 @@ function WidgetLayout.open(params)
     then
         Logger.notify(
             "Invalid tab_page_id in WidgetLayout.open: "
-            .. tostring(params.tab_page_id),
+                .. tostring(params.tab_page_id),
             vim.log.levels.ERROR
         )
         return
@@ -395,7 +395,7 @@ function WidgetLayout.open(params)
     else
         Logger.notify(
             "Invalid windows.position config: "
-            .. tostring(Config.windows.position),
+                .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
         success = false
