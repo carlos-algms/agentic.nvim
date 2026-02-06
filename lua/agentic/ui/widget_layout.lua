@@ -5,8 +5,8 @@ local Logger = require("agentic.utils.logger")
 
 --- @class agentic.ui.WidgetLayout.Params
 --- @field tab_page_id integer
---- @field buf_nrs table<string, integer>
---- @field win_nrs table<string, integer|nil>
+--- @field buf_nrs agentic.ui.ChatWidget.BufNrs
+--- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field focus_prompt? boolean
 
 --- @class agentic.ui.WidgetLayout
