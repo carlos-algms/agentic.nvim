@@ -113,11 +113,18 @@ function SessionManager:new(tab_page_id)
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then
-            self.widget:close_files_window()
+            self.widget:close_optional_window("files")
             self.widget:move_cursor_to(self.widget.win_nrs.input)
         else
             self.widget:render_header("files", tostring(#file_list:get_files()))
-            self.widget:resize_dynamic_window("files")
+            if
+                not self.widget.win_nrs.files
+                or not vim.api.nvim_win_is_valid(self.widget.win_nrs.files)
+            then
+                self.widget:show({ focus_prompt = false })
+            else
+                self.widget:resize_dynamic_window("files")
+            end
         end
     end)
 
@@ -125,14 +132,21 @@ function SessionManager:new(tab_page_id)
         self.widget.buf_nrs.code,
         function(code_selection)
             if code_selection:is_empty() then
-                self.widget:close_code_window()
+                self.widget:close_optional_window("code")
                 self.widget:move_cursor_to(self.widget.win_nrs.input)
             else
                 self.widget:render_header(
                     "code",
                     tostring(#code_selection:get_selections())
                 )
-                self.widget:resize_dynamic_window("code")
+                if
+                    not self.widget.win_nrs.code
+                    or not vim.api.nvim_win_is_valid(self.widget.win_nrs.code)
+                then
+                    self.widget:show({ focus_prompt = false })
+                else
+                    self.widget:resize_dynamic_window("code")
+                end
             end
         end
     )

@@ -260,6 +260,27 @@ configure it per provider:
 The mode will only be set if it's available from the provider. Use `<S-Tab>` to
 see available modes for your provider.
 
+### Window Layout
+
+Configure the widget layout position and sizing:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    windows = {
+      position = "right",  -- "right" or "bottom"
+      width = "40%",       -- Sidebar width (position = "right")
+      height = "30%",      -- Panel height (position = "bottom")
+    },
+  },
+}
+```
+
+- `position` - Widget layout: `"right"` (vertical sidebar) or `"bottom"` (horizontal panel)
+- `width` - Sidebar width when `position = "right"` (percentage, decimal, or absolute)
+- `height` - Panel height when `position = "bottom"` (percentage, decimal, or absolute)
+
 ### Customizing Window Options
 
 You can customize the behavior of individual chat widget windows by configuring

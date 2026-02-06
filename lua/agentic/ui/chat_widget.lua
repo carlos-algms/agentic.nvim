@@ -3,6 +3,7 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
+local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"
 
@@ -56,69 +57,33 @@ function ChatWidget:is_open()
     return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
 end
 
---- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil Options for showing the widget
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:show(opts)
-    local options = opts or {}
-    local should_focus = options.focus_prompt == nil and true
-        or options.focus_prompt
+    opts = opts or {}
 
-    if
-        not self.win_nrs.chat
-        or not vim.api.nvim_win_is_valid(self.win_nrs.chat)
-    then
-        self.win_nrs.chat = self:_open_win(
-            self.buf_nrs.chat,
-            false,
-            {
-                -- Only the top most needs a fixed width, others adapt to available space
-                width = self._calculate_width(Config.windows.width),
-            },
-            "chat",
-            {
-                winfixheight = false,
-                winfixwidth = true,
-                scrolloff = 4, -- Keep 4 lines visible above/below cursor (keeps animation visible)
-            }
-        )
-
-        self:render_header("chat")
+    if WidgetLayout.needs_rebuild(self.tab_page_id) then
+        WidgetLayout.close(self.win_nrs)
     end
 
-    if
-        not self.win_nrs.input
-        or not vim.api.nvim_win_is_valid(self.win_nrs.input)
-    then
-        self.win_nrs.input = self:_open_win(self.buf_nrs.input, true, {
-            win = self.win_nrs.chat,
-            split = "below",
-            height = Config.windows.input.height,
-            fixed = true,
-        }, "input", {})
-
-        self:render_header("input")
+    if self:is_open() then
+        local should_focus = (
+            opts.focus_prompt == nil and true or opts.focus_prompt
+        ) == true
+        if should_focus then
+            self:move_cursor_to(
+                self.win_nrs.input,
+                BufHelpers.start_insert_on_last_char
+            )
+        end
+        return
     end
 
-    self:_open_or_resize_dynamic_window("code", {
-        win = self.win_nrs.chat,
-        split = "below",
-    }, Config.windows.code.max_height)
-
-    self:_open_or_resize_dynamic_window("files", {
-        win = self.win_nrs.input,
-        split = "above",
-    }, Config.windows.files.max_height)
-
-    self:_open_or_resize_dynamic_window("todos", {
-        win = self.win_nrs.chat,
-        split = "below",
-    }, Config.windows.todos.max_height, Config.windows.todos.display)
-
-    if should_focus then
-        self:move_cursor_to(
-            self.win_nrs.input,
-            BufHelpers.start_insert_on_last_char
-        )
-    end
+    WidgetLayout.open({
+        tab_page_id = self.tab_page_id,
+        buf_nrs = self.buf_nrs,
+        win_nrs = self.win_nrs,
+        focus_prompt = opts.focus_prompt,
+    })
 end
 
 --- Closes all windows but keeps buffers in memory
@@ -227,9 +192,9 @@ function ChatWidget:_submit_input()
 
     self.on_submit_input(prompt)
 
-    self:close_code_window()
-    self:close_files_window()
-    self:close_todos_window()
+    self:close_optional_window("code")
+    self:close_optional_window("files")
+    self:close_optional_window("todos")
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
@@ -455,44 +420,6 @@ function ChatWidget:_create_new_buf(opts)
     return bufnr
 end
 
---- @param bufnr integer
---- @param enter boolean
---- @param opts vim.api.keyset.win_config
---- @param window_name agentic.ui.ChatWidget.PanelNames
---- @param win_opts table<string, any>
---- @return integer winid
-function ChatWidget:_open_win(bufnr, enter, opts, window_name, win_opts)
-    --- @type vim.api.keyset.win_config
-    local default_opts = {
-        split = "right",
-        win = -1,
-        noautocmd = true,
-        style = "minimal",
-    }
-
-    local config = vim.tbl_deep_extend("force", default_opts, opts)
-
-    local winid = vim.api.nvim_open_win(bufnr, enter, config)
-
-    -- Get per-window config
-    local window_config = Config.windows[window_name] or {}
-    local config_win_opts = window_config.win_opts or {}
-
-    local merged_win_opts = vim.tbl_deep_extend("force", {
-        wrap = true,
-        linebreak = true,
-        winfixbuf = true,
-        winfixheight = true,
-        -- winhighlight = "Normal:NormalFloat,WinSeparator:FloatBorder",
-    }, win_opts or {}, config_win_opts)
-
-    for name, value in pairs(merged_win_opts) do
-        vim.api.nvim_set_option_value(name, value, { win = winid })
-    end
-
-    return winid
-end
-
 --- @param keymaps  agentic.UserConfig.KeymapValue
 --- @param mode string
 local function find_keymap(keymaps, mode)
@@ -572,97 +499,8 @@ function ChatWidget:_bind_events_to_change_headers()
     end
 end
 
---- Calculate width based on editor dimensions
---- Accepts percentage strings ("30%"), decimals (0.3), or absolute numbers (80)
---- @param size number|string
---- @return integer width
-function ChatWidget._calculate_width(size)
-    local editor_width = vim.o.columns
-
-    -- Parse percentage string (e.g., "40%")
-    local is_percentage = type(size) == "string" and string.sub(size, -1) == "%"
-    local value
-
-    if is_percentage then
-        value = tonumber(string.sub(size, 1, #size - 1)) / 100
-    else
-        value = tonumber(size)
-        is_percentage = (value and value > 0 and value < 1) or false
-    end
-
-    if not value then
-        is_percentage = true
-        value = 0.4
-    end
-
-    if is_percentage then
-        return math.floor(editor_width * value)
-    end
-
-    return value
-end
-
---- Calculate dynamic height based on buffer line count
---- Add 1 for visual padding to prevent last line cutoff because of the header
---- @param bufnr number
---- @param max_height number
---- @return integer height
-function ChatWidget._calculate_dynamic_height(bufnr, max_height)
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-    return math.min(line_count + 1, max_height)
-end
-
---- Open or resize a dynamic height window
---- Creates window if it doesn't exist, resizes if it does
---- @param window_name agentic.ui.ChatWidget.PanelNames Window identifier (code, files, todos)
---- @param open_win_opts table Options to pass to _open_win() for window creation
---- @param max_height number Maximum height for the window
---- @param should_display boolean|nil Optional condition for displaying (defaults to true)
-function ChatWidget:_open_or_resize_dynamic_window(
-    window_name,
-    open_win_opts,
-    max_height,
-    should_display
-)
-    if should_display == nil then
-        should_display = true
-    end
-
-    local bufnr = self.buf_nrs[window_name]
-    local winid = self.win_nrs[window_name]
-
-    -- Check if window should be created
-    if
-        should_display
-        and (not winid or not vim.api.nvim_win_is_valid(winid))
-        and not BufHelpers.is_buffer_empty(bufnr)
-    then
-        -- Create window with dynamic height
-        local height = self._calculate_dynamic_height(bufnr, max_height)
-        open_win_opts.height = height
-
-        self.win_nrs[window_name] =
-            self:_open_win(bufnr, false, open_win_opts, window_name, {})
-
-        self:render_header(window_name)
-    -- Check if window should be resized
-    elseif
-        should_display
-        and winid
-        and vim.api.nvim_win_is_valid(winid)
-        and not BufHelpers.is_buffer_empty(bufnr)
-    then
-        -- Resize existing window based on current buffer content
-        local new_height = self._calculate_dynamic_height(bufnr, max_height)
-
-        vim.api.nvim_win_set_config(winid, {
-            height = new_height,
-        })
-    end
-end
-
 --- @param window_name agentic.ui.ChatWidget.PanelNames
---- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
+--- @param context string|nil
 function ChatWidget:render_header(window_name, context)
     local bufnr = self.buf_nrs[window_name]
     if not bufnr then
@@ -672,54 +510,14 @@ function ChatWidget:render_header(window_name, context)
     WindowDecoration.render_header(bufnr, window_name, context)
 end
 
-function ChatWidget:close_code_window()
-    if self.win_nrs.code and vim.api.nvim_win_is_valid(self.win_nrs.code) then
-        vim.api.nvim_win_close(self.win_nrs.code, true)
-        self.win_nrs.code = nil
-    end
+--- @param panel_name agentic.ui.ChatWidget.PanelNames
+function ChatWidget:close_optional_window(panel_name)
+    WidgetLayout.close_optional_window(self.win_nrs, panel_name)
 end
 
-function ChatWidget:close_files_window()
-    if self.win_nrs.files and vim.api.nvim_win_is_valid(self.win_nrs.files) then
-        vim.api.nvim_win_close(self.win_nrs.files, true)
-        self.win_nrs.files = nil
-    end
-end
-
-function ChatWidget:close_todos_window()
-    if self.win_nrs.todos and vim.api.nvim_win_is_valid(self.win_nrs.todos) then
-        vim.api.nvim_win_close(self.win_nrs.todos, true)
-        self.win_nrs.todos = nil
-    end
-end
-
---- Resize a dynamic window based on its current buffer content
---- Closes the window if buffer is empty
---- @param window_name "code"|"files"|"todos" Window to resize
+--- @param window_name "code"|"files"|"todos"
 function ChatWidget:resize_dynamic_window(window_name)
-    local bufnr = self.buf_nrs[window_name]
-    local winid = self.win_nrs[window_name]
-
-    -- Close window if buffer is empty
-    if BufHelpers.is_buffer_empty(bufnr) then
-        if winid and vim.api.nvim_win_is_valid(winid) then
-            vim.api.nvim_win_close(winid, true)
-            self.win_nrs[window_name] = nil
-        end
-        return
-    end
-
-    -- Resize window if it exists and has content
-    if winid and vim.api.nvim_win_is_valid(winid) then
-        local window_config = Config.windows[window_name] or {}
-        local max_height = window_config.max_height or 10
-
-        local new_height = self._calculate_dynamic_height(bufnr, max_height)
-
-        vim.api.nvim_win_set_config(winid, {
-            height = new_height,
-        })
-    end
+    WidgetLayout.resize_dynamic_window(self.buf_nrs, self.win_nrs, window_name)
 end
 
 --- Filetypes that should be excluded when finding fallback windows
