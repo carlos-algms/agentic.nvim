@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
 
 local FilePicker = require("agentic.ui.file_picker")
 
@@ -36,7 +37,8 @@ local function table_diff(left, right)
 end
 
 describe("FilePicker:scan_files", function()
-    local original_system
+    --- @type TestStub|nil
+    local system_stub
     local original_cmd_rg
     local original_cmd_fd
     local original_cmd_git
@@ -45,7 +47,6 @@ describe("FilePicker:scan_files", function()
     local picker
 
     before_each(function()
-        original_system = vim.fn.system
         original_cmd_rg = FilePicker.CMD_RG[1]
         original_cmd_fd = FilePicker.CMD_FD[1]
         original_cmd_git = FilePicker.CMD_GIT[1]
@@ -53,7 +54,10 @@ describe("FilePicker:scan_files", function()
     end)
 
     after_each(function()
-        vim.fn.system = original_system -- luacheck: ignore
+        if system_stub then
+            system_stub:revert()
+            system_stub = nil
+        end
         FilePicker.CMD_RG[1] = original_cmd_rg
         FilePicker.CMD_FD[1] = original_cmd_fd
         FilePicker.CMD_GIT[1] = original_cmd_git
@@ -66,25 +70,22 @@ describe("FilePicker:scan_files", function()
             FilePicker.CMD_FD[1] = "echo"
             FilePicker.CMD_GIT[1] = "echo"
 
-            local call_count = 0
-
-            ---@diagnostic disable-next-line: duplicate-set-field -- we must mock it to force specific behavior
-            vim.fn.system = function(_cmd) -- luacheck: ignore 122 (setting read-only field for test mock)
-                call_count = call_count + 1
-
-                if call_count == 1 then
-                    return original_system("false")
+            system_stub = spy.stub(vim.fn, "system")
+            system_stub:invokes(function(_cmd)
+                -- First call returns empty (simulates failure)
+                -- Second call returns files (simulates success)
+                if system_stub.call_count == 1 then
+                    return ""
                 else
-                    original_system("true")
                     return "file1.lua\nfile2.lua\nfile3.lua\n"
                 end
-            end
+            end)
 
             local files = picker:scan_files()
 
             -- Should have called system exactly 2 times (first fails, second succeeds)
-            assert.are.equal(2, call_count)
-            assert.are.equal(3, #files)
+            assert.equal(2, system_stub.call_count)
+            assert.equal(3, #files)
         end)
     end)
 

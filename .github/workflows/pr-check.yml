@@ -9,6 +9,8 @@ on:
       - 'Makefile'
       - '.luarc.json'
       - 'stylua.toml'
+      - 'selene.toml'
+      - 'vim.toml'
       - '.github/workflows/pr-check.yml'
   push:
     branches: [main]
@@ -18,6 +20,8 @@ on:
       - 'Makefile'
       - '.luarc.json'
       - 'stylua.toml'
+      - 'selene.toml'
+      - 'vim.toml'
   workflow_dispatch:
 
 concurrency:
@@ -27,6 +31,7 @@ concurrency:
 env:
   LUALS_VERSION: 3.16.2
   STYLUA_VERSION: 2.3.1
+  SELENE_VERSION: 0.30.0
 
 jobs:
   format:
@@ -61,13 +66,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Luacheck
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y lua-check
+      - name: Setup directories
+        run: mkdir -p .local/bin
 
-      - name: Run luacheck
-        run: make luacheck
+      - name: Cache Selene
+        id: cache-selene
+        uses: actions/cache@v4
+        with:
+          path: .local/bin/selene
+          key: selene-${{ runner.os }}-${{ env.SELENE_VERSION }}
+
+      - name: Install Selene
+        if: steps.cache-selene.outputs.cache-hit != 'true'
+        run: |
+          curl -sL "https://github.com/Kampfkarren/selene/releases/download/${{ env.SELENE_VERSION }}/selene-${{ env.SELENE_VERSION }}-linux.zip" -o selene.zip
+          unzip -q selene.zip -d .local/bin/
+          chmod +x .local/bin/selene
+          rm selene.zip
+
+      - name: Run selene
+        run: |
+          export PATH="$PWD/.local/bin:$PATH"
+          make selene
 
   test:
     runs-on: ubuntu-latest

@@ -4,6 +4,13 @@
 providing AI-driven code assistance through a chat interface for interactive
 conversations, code generation, and permission approvals.
 
+## 🧠 Reasoning Preference
+
+**IMPORTANT:** Prefer retrieval-led reasoning (reading files, searching
+codebase) over pre-training-led reasoning (guessing from memory) for all
+project-specific decisions. Your training data may be outdated—always verify
+against actual code.
+
 ## 📋 Documentation Scope
 
 **When to add documentation:**
@@ -513,6 +520,49 @@ end
   from the clipboard (drag-and-drop works without it, it's terminal feature, not
   plugin, neither neovim specific)
 
+#### Lua Language Restrictions
+
+**FORBIDDEN: goto/label syntax** - Selene parser does not support goto/label
+syntax
+
+- ❌ **NEVER use:** `goto label` or `::label::` syntax
+- **Alternative patterns:**
+  - Invert conditions: `if not skip_condition then ... end`
+  - Use elseif chains: `if case1 then ... elseif case2 then ... else ... end`
+  - Extract to functions for early returns
+  - Use continue-like patterns with conditional blocks
+
+**Example refactoring:**
+
+```lua
+-- ❌ Bad: Uses goto (Selene parse error)
+for _, item in ipairs(items) do
+    if should_skip(item) then
+        goto continue
+    end
+    -- ... process item ...
+    ::continue::
+end
+
+-- ✅ Good: Inverted condition
+for _, item in ipairs(items) do
+    if not should_skip(item) then
+        -- ... process item ...
+    end
+end
+
+-- ✅ Good: elseif chain for multiple early exits
+for _, item in ipairs(items) do
+    if condition1(item) then
+        -- handle case 1
+    elseif condition2(item) then
+        -- handle case 2
+    else
+        -- default processing
+    end
+end
+```
+
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
 **ALWAYS run all validations after making ANY Lua file changes:**
@@ -525,7 +575,7 @@ This single command runs:
 
 - `make format` - Format all Lua files
 - `make luals` - Type checking
-- `make luacheck` - Linting
+- `make selene` - Linting
 - `make test` - All tests
 
 **Why use `make validate`:**
@@ -542,7 +592,7 @@ The `make validate` command outputs **only 5-6 short lines** to stdout. Example:
 ```bash
 format: 0 (took 1s) - log: .local/agentic_format_output.log
 luals: 0 (took 2s) - log: .local/agentic_luals_output.log
-luacheck: 0 (took 0s) - log: .local/agentic_luacheck_output.log
+selene: 0 (took 0s) - log: .local/agentic_selene_output.log
 test: 0 (took 1s) - log: .local/agentic_test_output.log
 Total: 4s
 ```
@@ -576,7 +626,7 @@ project root:
 
 - `.local/agentic_format_output.log` - StyLua formatting output
 - `.local/agentic_luals_output.log` - LuaLS type checking output
-- `.local/agentic_luacheck_output.log` - Luacheck linting output
+- `.local/agentic_selene_output.log` - Selene linting output
 - `.local/agentic_test_output.log` - Test runner output
 
 **Rules:**
@@ -594,7 +644,7 @@ project root:
     at end)
   - `rg "error|warning|fail" .local/agentic_test_output.log` - Search for
     specific patterns (smart-case by default)
-  - `grep -i "error" .local/agentic_luacheck_output.log` - Search with grep
+  - `grep -i "error" .local/agentic_selene_output.log` - Search with grep
     (case-insensitive)
 - Increase line count only if needed for context
 - Read only what's needed to diagnose the issue
@@ -603,6 +653,10 @@ project root:
   to find info)
 
 ### Testing
+
+When creating, editing, or reviewing tests, always load the tests instructions
+it will contain folder structure, files location, and test framework usage, and
+how to run them.
 
 **See `@tests/AGENTS.md` for complete testing guide.**
 
@@ -615,7 +669,7 @@ project and provides comprehensive type checking.
 
 - `make luals` - Run Lua Language Server headless diagnosis (type checking) -
   **Use this for full project type checks**
-- `make luacheck` - Run Luacheck linter (style and syntax checking)
+- `make selene` - Run Selene linter (Lua linting)
 - `make format` - Format all Lua files with StyLua
 - `make format-file FILE=path/to/file.lua` - Format a specific file
 
@@ -629,7 +683,7 @@ Override default tool paths if needed:
 ```bash
 make NVIM=/path/to/nvim luals
 make LUALS=/path/to/lua-language-server luals
-make LUACHECK=/path/to/luacheck luacheck
+make SELENE=/path/to/selene selene
 ```
 
 **Note:** The `lua/agentic/acp/acp_client.lua` file contains critical type

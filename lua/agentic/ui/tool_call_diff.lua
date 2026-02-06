@@ -148,32 +148,27 @@ function M.minimize_diff_blocks(diff_blocks)
         local new_string = table.concat(diff_block.new_lines, "\n")
 
         -- Skip unchanged blocks
-        if old_string == new_string then
-            goto continue_block
-        end
+        if old_string ~= new_string then
+            if #diff_block.old_lines == 1 and #diff_block.new_lines == 1 then
+                -- Fast path for single-line blocks
+                table.insert(minimized, diff_block)
+            else
+                local patch = diff_fn(old_string, new_string, {
+                    algorithm = "histogram",
+                    result_type = "indices",
+                    ctxlen = 0,
+                })
 
-        -- Fast path for single-line blocks
-        if #diff_block.old_lines == 1 and #diff_block.new_lines == 1 then
-            table.insert(minimized, diff_block)
-            goto continue_block
-        end
-
-        local patch = diff_fn(old_string, new_string, {
-            algorithm = "histogram",
-            result_type = "indices",
-            ctxlen = 0,
-        })
-
-        if #patch > 0 then
-            for _, hunk in ipairs(patch) do
-                table.insert(minimized, hunk_to_block(diff_block, hunk))
+                if #patch > 0 then
+                    for _, hunk in ipairs(patch) do
+                        table.insert(minimized, hunk_to_block(diff_block, hunk))
+                    end
+                else
+                    -- Edge case: vim.diff returns empty patch but strings differ
+                    table.insert(minimized, diff_block)
+                end
             end
-        else
-            -- Edge case: vim.diff returns empty patch but strings differ
-            table.insert(minimized, diff_block)
         end
-
-        ::continue_block::
     end
 
     table.sort(minimized, function(a, b)

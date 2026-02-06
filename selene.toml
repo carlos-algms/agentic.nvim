@@ -1,0 +1,31 @@
+std = "vim"
+
+exclude = [
+    "lazy_repro/**",
+    "deps/**",
+    ".local/**",
+]
+
+[lints]
+unused_variable = "deny"
+shadowing = "deny"
+mixed_table = "allow"
+
+# Strictness upgrades (warn → deny) for more type safety
+unbalanced_assignments = "deny"
+unscoped_variables = "deny"
+global_usage = "deny"
+must_use = "deny"
+multiple_statements = "deny"
+empty_if = "deny"
+empty_loop = "deny"
+bad_string_escape = "deny"
+manual_table_clone = "deny"
+parenthese_conditions = "deny"
+undefined_variable = "deny"
+
+[config]
+unused_variable.ignore_pattern = "^_"
+shadowing.ignore_pattern = "^_"
+empty_if.comments_count = true
+empty_loop.comments_count = true

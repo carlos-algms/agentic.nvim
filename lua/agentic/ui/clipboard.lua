@@ -1,4 +1,5 @@
 local Logger = require("agentic.utils.logger")
+local FileSystem = require("agentic.utils.file_system")
 
 --- @class agentic.Clipboard
 local M = {}
@@ -94,7 +95,7 @@ function M.paste_image()
         local cache_dir = vim.fn.stdpath("cache")
         local agentic_cache = vim.fs.joinpath(cache_dir, "agentic")
 
-        local ok = pcall(vim.fn.mkdir, agentic_cache, "p")
+        local ok = FileSystem.mkdirp(agentic_cache)
         if ok and is_dir_writable(agentic_cache) then
             tmp_dir = agentic_cache
         else
@@ -135,7 +136,6 @@ end
 --- Setup image paste/drag-and-drop support via vim.paste override
 --- @param opts agentic.Clipboard.SetupOpts
 function M.setup(opts)
-    -- luacheck: ignore 122 (setting read-only field paste of global vim)
     vim.paste = (function(original_paste)
         --- @param lines string[]
         --- @param phase -1|1|2|3
