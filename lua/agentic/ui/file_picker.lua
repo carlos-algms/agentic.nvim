@@ -1,7 +1,7 @@
 local FileSystem = require("agentic.utils.file_system")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
-local KeymapFallback = require("agentic.utils.keymap_fallback")
+local BufHelpers = require("agentic.utils.buf_helpers")
 
 --- @class agentic.ui.FilePicker
 --- @field _files table[]
@@ -60,42 +60,22 @@ function FilePicker:_setup_completion(bufnr)
     vim.bo[bufnr].iskeyword = vim.bo[bufnr].iskeyword .. ",@"
     instances_by_buffer[bufnr] = self
 
-    local prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
+    BufHelpers.multi_keymap_set(
+        Config.keymaps.prompt.accept_completion,
+        bufnr,
+        function()
+            if vim.fn.pumvisible() == 1 then
+                return COMPLETION_ACCEPT
+            end
 
-    vim.keymap.set("i", "<Tab>", function()
-        if vim.fn.pumvisible() == 1 then
-            return COMPLETION_ACCEPT
-        end
-
-        -- Always check for existing mapping to handle lazy-loaded plugins
-        -- the check is very fast and Tab isn't pressed frequently to cause noticeable lag
-        prev_tab_map = KeymapFallback.get_existing_mapping("i", "<Tab>")
-            or prev_tab_map
-        return KeymapFallback.execute_fallback(prev_tab_map, "<Tab>")
-    end, {
-        buffer = bufnr,
-        expr = true,
-        replace_keycodes = false, -- Needed to avoid double-escaping, as it's true by default when expr=true
-        desc = KeymapFallback.MARKER .. " Tab completion fallback",
-    })
-
-    local prev_cr_map = KeymapFallback.get_existing_mapping("i", "<CR>")
-
-    vim.keymap.set("i", "<CR>", function()
-        if vim.fn.pumvisible() == 1 then
-            return COMPLETION_ACCEPT
-        end
-
-        -- Always check for existing mapping to handle lazy-loaded plugins
-        prev_cr_map = KeymapFallback.get_existing_mapping("i", "<CR>")
-            or prev_cr_map
-        return KeymapFallback.execute_fallback(prev_cr_map, "<CR>")
-    end, {
-        buffer = bufnr,
-        expr = true,
-        replace_keycodes = false,
-        desc = KeymapFallback.MARKER .. " CR completion fallback",
-    })
+            return ""
+        end,
+        {
+            desc = "Agentic accept completion",
+            expr = true,
+            replace_keycodes = false,
+        }
+    )
 
     local last_at_pos = nil
 
