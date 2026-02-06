@@ -373,9 +373,33 @@ function WidgetLayout.open(params)
 
     local success
     if current_position == "right" then
-        success = pcall(show_right_layout, params)
+        local ok, err = pcall(show_right_layout, params)
+        if not ok then
+            Logger.notify(
+                string.format(
+                    "Failed to show right layout (tab: %d, position: %s): %s",
+                    params.tab_page_id,
+                    current_position,
+                    tostring(err)
+                ),
+                vim.log.levels.ERROR
+            )
+        end
+        success = ok
     elseif current_position == "bottom" then
-        success = pcall(show_bottom_layout, params)
+        local ok, err = pcall(show_bottom_layout, params)
+        if not ok then
+            Logger.notify(
+                string.format(
+                    "Failed to show bottom layout (tab: %d, position: %s): %s",
+                    params.tab_page_id,
+                    current_position,
+                    tostring(err)
+                ),
+                vim.log.levels.ERROR
+            )
+        end
+        success = ok
     else
         Logger.notify(
             "Invalid windows.position config: "
