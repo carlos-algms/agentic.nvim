@@ -200,12 +200,6 @@ describe("FilePicker keymap fallback", function()
         child.lua([[require("agentic.ui.file_picker"):new(0)]])
     end
 
-    --- Execute insert mode key via normal command
-    --- @param key string
-    local function execute_insert_key(key)
-        child.cmd(([[silent execute "normal i\%s"]]):format(key))
-    end
-
     before_each(function()
         child.setup()
     end)
@@ -214,31 +208,7 @@ describe("FilePicker keymap fallback", function()
         child.stop()
     end)
 
-    it(
-        "should call fallback Tab mapping when completion menu not visible",
-        function()
-            local prop_name = "tab_called"
-            setup_tracking_keymap("<Tab>", prop_name)
-            load_file_picker()
-            execute_insert_key("<Tab>")
-
-            assert.is_true(child.g[prop_name])
-        end
-    )
-
-    it(
-        "should call fallback CR mapping when completion menu not visible",
-        function()
-            local prop_name = "cr_called"
-            setup_tracking_keymap("<CR>", prop_name)
-            load_file_picker()
-            execute_insert_key("<CR>")
-
-            assert.is_true(child.g[prop_name])
-        end
-    )
-
-    it("should NOT call fallback when completion menu is visible", function()
+    it("should accept completion when completion menu is visible", function()
         local prop_name = "tab_called"
         setup_tracking_keymap("<Tab>", prop_name)
         load_file_picker()
@@ -264,36 +234,4 @@ describe("FilePicker keymap fallback", function()
 
         assert.is_false(child.g[prop_name])
     end)
-
-    it("should call fallback for lazy-loaded global mapping", function()
-        local prop_name = "tab_called"
-        child.g[prop_name] = false
-        -- Initialize FilePicker BEFORE setting up any global mapping
-        -- This simulates a plugin that loads after Agentic
-        load_file_picker()
-
-        -- Now register a global Tab mapping (simulates lazy-loaded plugin)
-        setup_tracking_keymap("<Tab>", prop_name)
-        execute_insert_key("<Tab>")
-
-        assert.is_true(child.g[prop_name])
-    end)
-
-    it(
-        "should handle vimscript expr mappings with proper keycode conversion",
-        function()
-            child.cmd([[
-                function! TestVimscriptExpr()
-                    return "\t\t\<C-R>\<C-R>=123\<CR>\<CR>\<CR>"
-                endfunction
-                inoremap <expr> <Tab> TestVimscriptExpr()
-            ]])
-
-            load_file_picker()
-            execute_insert_key("<Tab>")
-
-            local lines = child.api.nvim_buf_get_lines(0, 0, -1, false)
-            assert.equal("\t\t123\n\n", table.concat(lines, "\n"))
-        end
-    )
 end)

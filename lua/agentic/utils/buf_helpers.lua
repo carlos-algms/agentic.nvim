@@ -59,12 +59,41 @@ end
 --- @param bufnr integer
 --- @param mode string|string[]
 --- @param lhs string
---- @param rhs string|fun()
+--- @param rhs string|fun():any
 --- @param opts vim.keymap.set.Opts|nil
 function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     opts = opts or {}
     opts.buffer = bufnr
     vim.keymap.set(mode, lhs, rhs, opts)
+end
+
+--- Sets multiple keymaps from a KeymapValue config entry for a specific buffer.
+--- Normalizes the config value (string, string[], or array of string/KeymapEntry)
+--- and calls keymap_set for each binding.
+--- @param keymaps agentic.UserConfig.KeymapValue
+--- @param bufnr integer
+--- @param callback fun():any
+--- @param opts vim.keymap.set.Opts|nil
+function BufHelpers.multi_keymap_set(keymaps, bufnr, callback, opts)
+    if type(keymaps) == "string" then
+        keymaps = { keymaps }
+    end
+
+    for _, key in ipairs(keymaps) do
+        --- @type string|string[]
+        local modes = "n"
+        --- @type string
+        local keymap
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
+        end
+
+        BufHelpers.keymap_set(bufnr, modes, keymap, callback, opts)
+    end
 end
 
 --- @param bufnr integer
