@@ -542,8 +542,7 @@ function SessionManager:add_selection_or_file_to_session()
 end
 
 function SessionManager:add_selection_to_session()
-    local CodeSelection = require("agentic.ui.code_selection")
-    local selection = CodeSelection.get_selected_text()
+    local selection = self.code_selection.get_selected_text()
 
     if selection then
         self.code_selection:add(selection)
