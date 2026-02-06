@@ -113,7 +113,7 @@ end
 --- @param bufnr integer
 --- @param enter boolean
 --- @param opts vim.api.keyset.win_config
---- @param window_name string
+--- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param win_opts table<string, any>
 --- @return integer
 local function open_win(bufnr, enter, opts, window_name, win_opts)
@@ -146,7 +146,7 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
     return winid
 end
 
---- @param win_nrs table<string, integer|nil>
+--- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
 --- @param enter boolean
@@ -173,9 +173,9 @@ local function get_or_create_window(
     return new_winid
 end
 
---- @param buf_nrs table<string, integer>
---- @param win_nrs table<string, integer|nil>
---- @param window_name string
+--- @param buf_nrs agentic.ui.ChatWidget.BufNrs
+--- @param win_nrs agentic.ui.ChatWidget.WinNrs
+--- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param should_display boolean|nil
@@ -345,7 +345,7 @@ function WidgetLayout.open(params)
     then
         Logger.notify(
             "Invalid tab_page_id in WidgetLayout.open: "
-                .. tostring(params.tab_page_id),
+            .. tostring(params.tab_page_id),
             vim.log.levels.ERROR
         )
         return
@@ -367,7 +367,7 @@ function WidgetLayout.open(params)
     else
         Logger.notify(
             "Invalid windows.position config: "
-                .. tostring(Config.windows.position),
+            .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
         success = false
@@ -382,7 +382,7 @@ function WidgetLayout.open(params)
     end
 end
 
---- @param win_nrs table<string, integer|nil>
+--- @param win_nrs agentic.ui.ChatWidget.WinNrs
 function WidgetLayout.close(win_nrs)
     for name, winid in pairs(win_nrs) do
         win_nrs[name] = nil
@@ -399,9 +399,9 @@ function WidgetLayout.close(win_nrs)
     end
 end
 
---- @param buf_nrs table<string, integer>
---- @param win_nrs table<string, integer|nil>
---- @param window_name string
+--- @param buf_nrs agentic.ui.ChatWidget.BufNrs
+--- @param win_nrs agentic.ui.ChatWidget.WinNrs
+--- @param window_name agentic.ui.ChatWidget.PanelNames
 function WidgetLayout.resize_dynamic_window(buf_nrs, win_nrs, window_name)
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
@@ -426,8 +426,8 @@ function WidgetLayout.resize_dynamic_window(buf_nrs, win_nrs, window_name)
     end
 end
 
---- @param win_nrs table<string, integer|nil>
---- @param window_name string
+--- @param win_nrs agentic.ui.ChatWidget.WinNrs
+--- @param window_name agentic.ui.ChatWidget.PanelNames
 function WidgetLayout.close_optional_window(win_nrs, window_name)
     local winid = win_nrs[window_name]
     if winid and vim.api.nvim_win_is_valid(winid) then
