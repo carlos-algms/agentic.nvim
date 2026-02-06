@@ -202,29 +202,19 @@ local function open_or_resize_dynamic_window(
         return
     end
 
-    if
-        should_display
-        and (not winid or not vim.api.nvim_win_is_valid(winid))
-        and not BufHelpers.is_buffer_empty(bufnr)
-    then
-        local height = calculate_dynamic_height(bufnr, max_height)
-        open_win_opts.height = height
+    if BufHelpers.is_buffer_empty(bufnr) then
+        return
+    end
 
+    local height = calculate_dynamic_height(bufnr, max_height)
+
+    if not winid or not vim.api.nvim_win_is_valid(winid) then
+        open_win_opts.height = height
         win_nrs[window_name] =
             open_win(bufnr, false, open_win_opts, window_name, {})
-
         WindowDecoration.render_header(bufnr, window_name)
-    elseif
-        should_display
-        and winid
-        and vim.api.nvim_win_is_valid(winid)
-        and not BufHelpers.is_buffer_empty(bufnr)
-    then
-        local new_height = calculate_dynamic_height(bufnr, max_height)
-
-        vim.api.nvim_win_set_config(winid, {
-            height = new_height,
-        })
+    else
+        vim.api.nvim_win_set_config(winid, { height = height })
     end
 end
 
