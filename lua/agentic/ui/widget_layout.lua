@@ -1,4 +1,5 @@
 local Config = require("agentic.config")
+local DefaultConfig = require("agentic.config_default")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
@@ -12,84 +13,36 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.ui.WidgetLayout
 local WidgetLayout = {}
 
-local function get_layout_state(tab_page_id)
-    if
-        not tab_page_id
-        or not vim.api.nvim_tabpage_is_valid(tab_page_id)
-        or not vim.t[tab_page_id]
-    then
-        return nil
-    end
-    local layout_state = vim.t[tab_page_id].agentic_layout_state
-    return layout_state
-end
-
-local function set_layout_state(tab_page_id, position)
-    if
-        not tab_page_id
-        or not vim.api.nvim_tabpage_is_valid(tab_page_id)
-        or not vim.t[tab_page_id]
-    then
-        return
-    end
-    vim.t[tab_page_id].agentic_layout_state = { position = position }
-end
-
---- @param tab_page_id integer
---- @return boolean
-function WidgetLayout.needs_rebuild(tab_page_id)
-    local state = get_layout_state(tab_page_id)
-    if not state then
-        return false
-    end
-    return state.position ~= Config.windows.position
-end
-
 --- @param size number|string
 --- @param max_dimension integer
---- @param default_percentage number
+--- @param default_percentage number|string
 --- @return integer
 local function calculate_dimension(size, max_dimension, default_percentage)
-    local is_percentage_string = type(size) == "string"
-        and string.sub(size, -1) == "%"
-    local value
-    local is_percentage
+    size = size or default_percentage
 
-    if is_percentage_string then
-        local value_num = tonumber(string.sub(size, 1, #size - 1))
-        if value_num then
-            value = value_num / 100
-            is_percentage = true
-        end
-    else
-        value = tonumber(size)
-        if value then
-            is_percentage = value > 0 and value < 1
-        end
+    if type(size) == "string" then
+        local pct = string.sub(size, -1) == "%"
+            and tonumber(string.sub(size, 1, -2))
+        return math.max(1, pct and math.floor(max_dimension * pct / 100) or 0)
     end
 
-    if not value then
-        value = default_percentage
-        is_percentage = true
+    if size > 0 and size < 1 then
+        return math.max(1, math.floor(max_dimension * size))
     end
 
-    if is_percentage then
-        return math.max(1, math.floor(max_dimension * value))
-    end
-
-    return math.max(1, math.floor(value))
+    return math.max(1, size)
 end
 
 --- @param size number|string
 --- @return integer
 function WidgetLayout.calculate_width(size)
-    return calculate_dimension(size, vim.o.columns, 0.4)
+    return calculate_dimension(size, vim.o.columns, DefaultConfig.windows.width)
 end
 
 --- @param size number|string
 --- @return integer
 function WidgetLayout.calculate_height(size)
-    return calculate_dimension(size, vim.o.lines, 0.3)
+    return calculate_dimension(size, vim.o.lines, DefaultConfig.windows.height)
 end
 
 --- @param bufnr integer
@@ -107,13 +60,9 @@ local function get_chat_window_opts(position)
     --- @type table<string, any>
     local win_opts = {
         scrolloff = 4,
+        winfixheight = position == "bottom",
+        winfixwidth = true,
     }
-
-    if position == "bottom" then
-        win_opts.winfixheight = true
-    else
-        win_opts.winfixheight = false
-    end
 
     return win_opts
 end
@@ -186,29 +135,15 @@ end
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
---- @param should_display boolean|nil
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
     window_name,
     open_win_opts,
-    max_height,
-    should_display
+    max_height
 )
-    if should_display == nil then
-        should_display = true
-    end
-
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
-
-    if not should_display then
-        if winid then
-            pcall(vim.api.nvim_win_close, winid, true)
-        end
-        win_nrs[window_name] = nil
-        return
-    end
 
     if BufHelpers.is_buffer_empty(bufnr) then
         if winid and vim.api.nvim_win_is_valid(winid) then
@@ -224,10 +159,11 @@ local function open_or_resize_dynamic_window(
         open_win_opts.height = height
         win_nrs[window_name] =
             open_win(bufnr, false, open_win_opts, window_name, {})
-        WindowDecoration.render_header(bufnr, window_name)
     else
         vim.api.nvim_win_set_config(winid, { height = height })
     end
+
+    WindowDecoration.render_header(bufnr, window_name)
 end
 
 --- @param params agentic.ui.WidgetLayout.Params
@@ -264,21 +200,19 @@ local function show_right_layout(params)
         split = "above",
     }, Config.windows.files.max_height)
 
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
-        win = params.win_nrs.chat,
-        split = "below",
-    }, Config.windows.todos.max_height, Config.windows.todos.display)
+    if Config.windows.todos.display then
+        open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
+            win = params.win_nrs.chat,
+            split = "below",
+        }, Config.windows.todos.max_height)
+    end
 
     if should_focus then
-        local winid = params.win_nrs.input
         vim.schedule(function()
+            local winid = params.win_nrs.input
             if winid and vim.api.nvim_win_is_valid(winid) then
-                local target_tabpage = vim.api.nvim_win_get_tabpage(winid)
-                local current_tabpage = vim.api.nvim_get_current_tabpage()
-                if target_tabpage == current_tabpage then
-                    vim.api.nvim_set_current_win(winid)
-                    BufHelpers.start_insert_on_last_char()
-                end
+                vim.api.nvim_set_current_win(winid)
+                BufHelpers.start_insert_on_last_char()
             end
         end)
     end
@@ -329,21 +263,20 @@ local function show_bottom_layout(params)
     ref_win = params.win_nrs.files
         or params.win_nrs.code
         or params.win_nrs.input
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
-        win = ref_win,
-        split = "below",
-    }, Config.windows.todos.max_height, Config.windows.todos.display)
+
+    if Config.windows.todos.display then
+        open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
+            win = ref_win,
+            split = "below",
+        }, Config.windows.todos.max_height)
+    end
 
     if should_focus then
-        local winid = params.win_nrs.input
         vim.schedule(function()
+            local winid = params.win_nrs.input
             if winid and vim.api.nvim_win_is_valid(winid) then
-                local target_tabpage = vim.api.nvim_win_get_tabpage(winid)
-                local current_tabpage = vim.api.nvim_get_current_tabpage()
-                if target_tabpage == current_tabpage then
-                    vim.api.nvim_set_current_win(winid)
-                    BufHelpers.start_insert_on_last_char()
-                end
+                vim.api.nvim_set_current_win(winid)
+                BufHelpers.start_insert_on_last_char()
             end
         end)
     end
@@ -364,20 +297,14 @@ function WidgetLayout.open(params)
     end
 
     local current_position = Config.windows.position
-    local saved_tabpage = vim.api.nvim_get_current_tabpage()
-    local is_same_tabpage = saved_tabpage == params.tab_page_id
-
-    if not is_same_tabpage then
-        vim.api.nvim_set_current_tabpage(params.tab_page_id)
-    end
 
     local layout_fns = {
         right = show_right_layout,
         bottom = show_bottom_layout,
     }
+
     local layout_fn = layout_fns[current_position]
 
-    local success
     if layout_fn then
         local ok, err = pcall(layout_fn, params)
         if not ok then
@@ -391,22 +318,12 @@ function WidgetLayout.open(params)
                 vim.log.levels.ERROR
             )
         end
-        success = ok
     else
         Logger.notify(
             "Invalid windows.position config: "
                 .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
-        success = false
-    end
-
-    if not is_same_tabpage then
-        vim.api.nvim_set_current_tabpage(saved_tabpage)
-    end
-
-    if success then
-        set_layout_state(params.tab_page_id, current_position)
     end
 end
 

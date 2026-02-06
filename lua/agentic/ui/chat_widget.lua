@@ -61,23 +61,6 @@ end
 function ChatWidget:show(opts)
     opts = opts or {}
 
-    if WidgetLayout.needs_rebuild(self.tab_page_id) then
-        WidgetLayout.close(self.win_nrs)
-    end
-
-    if self:is_open() then
-        local should_focus = (
-            opts.focus_prompt == nil and true or opts.focus_prompt
-        ) == true
-        if should_focus then
-            self:move_cursor_to(
-                self.win_nrs.input,
-                BufHelpers.start_insert_on_last_char
-            )
-        end
-        return
-    end
-
     WidgetLayout.open({
         tab_page_id = self.tab_page_id,
         buf_nrs = self.buf_nrs,
