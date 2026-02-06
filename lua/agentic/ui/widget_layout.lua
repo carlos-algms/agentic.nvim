@@ -132,6 +132,7 @@ end
 --- @param win_opts table<string, any>
 --- @return integer
 local function open_win(bufnr, enter, opts, window_name, win_opts)
+    --- @type vim.api.keyset.win_config
     local default_opts = {
         split = "right",
         win = -1,
