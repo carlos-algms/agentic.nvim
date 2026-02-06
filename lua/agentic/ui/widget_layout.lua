@@ -50,19 +50,27 @@ end
 --- @param default_percentage number
 --- @return integer
 local function calculate_dimension(size, max_dimension, default_percentage)
-    local is_percentage = type(size) == "string" and string.sub(size, -1) == "%"
+    local is_percentage_string = type(size) == "string"
+        and string.sub(size, -1) == "%"
     local value
+    local is_percentage
 
-    if is_percentage then
-        value = tonumber(string.sub(size, 1, #size - 1)) / 100
+    if is_percentage_string then
+        local value_num = tonumber(string.sub(size, 1, #size - 1))
+        if value_num then
+            value = value_num / 100
+            is_percentage = true
+        end
     else
         value = tonumber(size)
-        is_percentage = (value and value > 0 and value < 1) or false
+        if value then
+            is_percentage = value > 0 and value < 1
+        end
     end
 
     if not value then
-        is_percentage = true
         value = default_percentage
+        is_percentage = true
     end
 
     if is_percentage then
@@ -345,7 +353,7 @@ function WidgetLayout.open(params)
     then
         Logger.notify(
             "Invalid tab_page_id in WidgetLayout.open: "
-            .. tostring(params.tab_page_id),
+                .. tostring(params.tab_page_id),
             vim.log.levels.ERROR
         )
         return
@@ -367,7 +375,7 @@ function WidgetLayout.open(params)
     else
         Logger.notify(
             "Invalid windows.position config: "
-            .. tostring(Config.windows.position),
+                .. tostring(Config.windows.position),
             vim.log.levels.ERROR
         )
         success = false
