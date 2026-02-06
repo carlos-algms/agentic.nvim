@@ -112,8 +112,8 @@ end
 --- @return table<string, any>
 local function get_chat_window_opts(position)
     --- @type table<string, any>
-    local win_opts {
-      scrolloff = 4,
+    local win_opts = {
+        scrolloff = 4,
     }
 
     if position == "bottom" then
