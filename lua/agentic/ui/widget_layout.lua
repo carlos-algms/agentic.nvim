@@ -211,6 +211,10 @@ local function open_or_resize_dynamic_window(
     end
 
     if BufHelpers.is_buffer_empty(bufnr) then
+        if winid and vim.api.nvim_win_is_valid(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
+            win_nrs[window_name] = nil
+        end
         return
     end
 
