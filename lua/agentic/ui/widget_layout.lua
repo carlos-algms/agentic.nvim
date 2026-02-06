@@ -46,10 +46,10 @@ function WidgetLayout.needs_rebuild(tab_page_id)
 end
 
 --- @param size number|string
+--- @param max_dimension integer
+--- @param default_percentage number
 --- @return integer
-function WidgetLayout.calculate_width(size)
-    local editor_width = vim.o.columns
-
+local function calculate_dimension(size, max_dimension, default_percentage)
     local is_percentage = type(size) == "string" and string.sub(size, -1) == "%"
     local value
 
@@ -62,11 +62,11 @@ function WidgetLayout.calculate_width(size)
 
     if not value then
         is_percentage = true
-        value = 0.4
+        value = default_percentage
     end
 
     if is_percentage then
-        return math.max(1, math.floor(editor_width * value))
+        return math.max(1, math.floor(max_dimension * value))
     end
 
     return math.max(1, math.floor(value))
@@ -74,29 +74,14 @@ end
 
 --- @param size number|string
 --- @return integer
+function WidgetLayout.calculate_width(size)
+    return calculate_dimension(size, vim.o.columns, 0.4)
+end
+
+--- @param size number|string
+--- @return integer
 function WidgetLayout.calculate_height(size)
-    local editor_height = vim.o.lines
-
-    local is_percentage = type(size) == "string" and string.sub(size, -1) == "%"
-    local value
-
-    if is_percentage then
-        value = tonumber(string.sub(size, 1, #size - 1)) / 100
-    else
-        value = tonumber(size)
-        is_percentage = (value and value > 0 and value < 1) or false
-    end
-
-    if not value then
-        is_percentage = true
-        value = 0.3
-    end
-
-    if is_percentage then
-        return math.max(1, math.floor(editor_height * value))
-    end
-
-    return math.max(1, math.floor(value))
+    return calculate_dimension(size, vim.o.lines, 0.3)
 end
 
 --- @param bufnr integer
