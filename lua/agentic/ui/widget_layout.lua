@@ -45,7 +45,7 @@ local function calculate_dimension(size, max_dimension, default_percentage)
         return math.max(1, math.floor(max_dimension * size))
     end
 
-    return math.max(1, size)
+    return math.max(1, math.floor(size))
 end
 
 --- @param size number|string
@@ -69,19 +69,6 @@ local function calculate_dynamic_height(bufnr, max_height)
     -- Use 2 in bottom layout to prevent the file list from touching the screen edge
     local padding = Config.windows.position == "bottom" and 2 or 1
     return math.min(line_count + padding, max_height)
-end
-
---- @param position agentic.UserConfig.Windows.Position
---- @return table<string, any>
-local function get_chat_window_opts(position)
-    --- @type table<string, any>
-    local win_opts = {
-        scrolloff = 4,
-        winfixheight = position == "bottom",
-        winfixwidth = true,
-    }
-
-    return win_opts
 end
 
 --- @param bufnr integer
@@ -191,19 +178,26 @@ local function show_layout(params, position)
         params.focus_prompt == nil and true or params.focus_prompt
     ) == true
 
-    -- Chat window: right uses width, bottom uses height + split below
+    local split_direction = is_bottom and "below"
+        or (position == "left" and "left" or "right")
+
+    --- @type vim.api.keyset.win_config
+    local chat_opts = {
+        win = -1,
+        split = split_direction,
+    }
+
     if is_bottom then
-        get_or_create_window(win_nrs, "chat", buf_nrs.chat, {
-            split = "below",
-            win = -1,
-            height = WidgetLayout.calculate_height(Config.windows.height),
-        }, get_chat_window_opts("bottom"))
+        chat_opts.height = WidgetLayout.calculate_height(Config.windows.height)
     else
-        get_or_create_window(win_nrs, "chat", buf_nrs.chat, {
-            split = position == "left" and "left" or "right",
-            width = WidgetLayout.calculate_width(Config.windows.width),
-        }, get_chat_window_opts("right"))
+        chat_opts.width = WidgetLayout.calculate_width(Config.windows.width)
     end
+
+    get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
+        scrolloff = 4,
+        winfixheight = is_bottom,
+        winfixwidth = not is_bottom,
+    })
 
     -- Input window: right splits below chat with height, bottom splits right
     -- of chat with computed stack width

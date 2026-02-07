@@ -270,7 +270,7 @@ Configure the widget layout position and sizing:
   opts = {
     windows = {
       position = "right",  -- "right", "left", or "bottom"
-      width = "40%",       -- Sidebar width (position = "right")
+      width = "40%",       -- Sidebar width (position = "right" or "left")
       height = "30%",      -- Panel height (position = "bottom")
     },
   },
