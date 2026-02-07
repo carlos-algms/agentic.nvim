@@ -1,18 +1,21 @@
 local assert = require("tests.helpers.assert")
+local spy = require("tests.helpers.spy")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local Config = require("agentic.config")
+local Logger = require("agentic.utils.logger")
 
 describe("WidgetLayout", function()
-    local original_config
+    local original_position
+    local notify_stub
 
     before_each(function()
-        original_config = vim.deepcopy(Config)
+        original_position = Config.windows.position
+        notify_stub = spy.stub(Logger, "notify")
     end)
 
     after_each(function()
-        for key, value in pairs(original_config) do
-            Config[key] = value
-        end
+        notify_stub:revert()
+        Config.windows.position = original_position
     end)
 
     describe("calculate_width", function()
@@ -38,6 +41,7 @@ describe("WidgetLayout", function()
             vim.o.columns = 100
             local width = WidgetLayout.calculate_width("invalid")
             assert.are.equal(40, width)
+            assert.equal(1, notify_stub.call_count)
         end)
 
         it("should return at least 1", function()
@@ -70,6 +74,7 @@ describe("WidgetLayout", function()
             vim.o.lines = 50
             local height = WidgetLayout.calculate_height("invalid")
             assert.are.equal(15, height)
+            assert.equal(1, notify_stub.call_count)
         end)
 
         it("should return at least 1", function()
@@ -138,7 +143,6 @@ describe("WidgetLayout", function()
         it("should handle invalid windows gracefully", function()
             local win_nrs = { code = 99999 }
             WidgetLayout.close_optional_window(win_nrs, "code")
-            -- Window ID is cleared even if invalid
             assert.is_nil(win_nrs.code)
         end)
 
@@ -146,6 +150,94 @@ describe("WidgetLayout", function()
             local win_nrs = { code = nil }
             WidgetLayout.close_optional_window(win_nrs, "code")
             assert.is_nil(win_nrs.code)
+        end)
+
+        it("should restore chat height in bottom layout", function()
+            Config.windows.position = "bottom"
+
+            local chat_buf = vim.api.nvim_create_buf(false, true)
+            local code_buf = vim.api.nvim_create_buf(false, true)
+
+            local chat_winid = vim.api.nvim_open_win(chat_buf, false, {
+                split = "below",
+                win = -1,
+                height = 20,
+            })
+            local code_winid = vim.api.nvim_open_win(code_buf, false, {
+                split = "below",
+                win = chat_winid,
+                height = 5,
+            })
+
+            local before_height = vim.api.nvim_win_get_height(chat_winid)
+
+            local win_nrs = { chat = chat_winid, code = code_winid }
+            WidgetLayout.close_optional_window(win_nrs, "code")
+
+            assert.equal(before_height, vim.api.nvim_win_get_height(chat_winid))
+
+            pcall(vim.api.nvim_win_close, chat_winid, true)
+        end)
+    end)
+
+    describe("open", function()
+        it("should not error with invalid tabpage", function()
+            assert.has_no_errors(function()
+                WidgetLayout.open({
+                    tab_page_id = 99999,
+                    buf_nrs = {},
+                    win_nrs = {},
+                })
+            end)
+            assert.equal(1, notify_stub.call_count)
+        end)
+
+        it("should not error with nil tabpage", function()
+            assert.has_no_errors(function()
+                WidgetLayout.open({
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    tab_page_id = nil,
+                    buf_nrs = {},
+                    win_nrs = {},
+                })
+            end)
+            assert.equal(1, notify_stub.call_count)
+        end)
+
+        it("should fall back to right for invalid position", function()
+            ---@diagnostic disable-next-line: assign-type-mismatch
+            Config.windows.position = "invalid"
+
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            assert.has_no_errors(function()
+                WidgetLayout.open({
+                    tab_page_id = tab_page_id,
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
+                })
+            end)
+
+            -- Should have created windows via "right" fallback
+            assert.is_not_nil(win_nrs.chat)
+            assert.is_not_nil(win_nrs.input)
+            -- Should have notified about invalid position
+            assert.equal(1, notify_stub.call_count)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
         end)
     end)
 end)
