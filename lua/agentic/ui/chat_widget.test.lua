@@ -1,6 +1,7 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
+local Logger = require("agentic.utils.logger")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
@@ -453,5 +454,100 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_true(math.abs(input_width - expected) <= 1)
             end
         )
+    end)
+
+    describe("rotate_layout", function()
+        local widget
+        local original_position
+        local show_stub
+        local notify_stub
+
+        before_each(function()
+            original_position = Config.windows.position
+            Config.windows.position = "right"
+
+            local on_submit_spy = spy.new(function() end)
+            widget = ChatWidget:new(
+                vim.api.nvim_get_current_tabpage(),
+                on_submit_spy --[[@as function]]
+            )
+
+            show_stub = spy.stub(widget, "show")
+            notify_stub = spy.stub(Logger, "notify")
+        end)
+
+        after_each(function()
+            show_stub:revert()
+            notify_stub:revert()
+
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+            end
+
+            Config.windows.position = original_position
+        end)
+
+        it("uses default layouts when none provided", function()
+            Config.windows.position = "right"
+
+            widget:rotate_layout()
+
+            assert.equal("bottom", Config.windows.position)
+        end)
+
+        it("uses default layouts when empty array provided", function()
+            Config.windows.position = "right"
+
+            widget:rotate_layout({})
+
+            assert.equal("bottom", Config.windows.position)
+        end)
+
+        it(
+            "stays on same layout and warns when only one is provided",
+            function()
+                Config.windows.position = "bottom"
+
+                widget:rotate_layout({ "bottom" })
+
+                assert.equal("bottom", Config.windows.position)
+                assert.spy(notify_stub).was.called(1)
+                local msg = notify_stub.calls[1][1]
+                assert.is_true(msg:find("Only one layout") ~= nil)
+            end
+        )
+
+        it("rotates through all layouts in order", function()
+            local layouts = { "right", "bottom", "left" }
+
+            Config.windows.position = "right"
+            widget:rotate_layout(layouts)
+            assert.equal("bottom", Config.windows.position)
+
+            widget:rotate_layout(layouts)
+            assert.equal("left", Config.windows.position)
+
+            widget:rotate_layout(layouts)
+            assert.equal("right", Config.windows.position)
+        end)
+
+        it("falls back to first layout when current is not in list", function()
+            Config.windows.position = "bottom"
+
+            widget:rotate_layout({ "right", "left" })
+
+            assert.equal("right", Config.windows.position)
+        end)
+
+        it("calls show with focus_prompt false", function()
+            widget:rotate_layout()
+
+            assert.spy(show_stub).was.called(1)
+            local call_args = show_stub.calls[1]
+            -- call_args[1] is self, call_args[2] is the opts table
+            assert.equal(false, call_args[2].focus_prompt)
+        end)
     end)
 end)

@@ -47,6 +47,14 @@ function Agentic.toggle(opts)
     end)
 end
 
+--- Rotates through predefined window layouts for the chat widget
+--- @param layouts agentic.UserConfig.Windows.Position[]|nil
+function Agentic.rotate_layout(layouts)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session.widget:rotate_layout(layouts)
+    end)
+end
+
 --- Add the current visual selection to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection(opts)

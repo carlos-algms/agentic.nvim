@@ -69,6 +69,55 @@ function ChatWidget:show(opts)
     })
 end
 
+--- @param layouts agentic.UserConfig.Windows.Position[]|nil
+function ChatWidget:rotate_layout(layouts)
+    if not layouts or #layouts == 0 then
+        layouts = { "right", "bottom", "left" }
+    end
+
+    if #layouts == 1 then
+        Logger.notify(
+            "Only one layout defined for rotation, it'll always show the same: "
+                .. layouts[1],
+            vim.log.levels.WARN,
+            { title = "Agentic: rotate layout" }
+        )
+    end
+
+    local current = Config.windows.position
+    local next_layout = layouts[1]
+
+    for i, layout in ipairs(layouts) do
+        if layout == current then
+            local next_index = i % #layouts + 1
+            if layouts[next_index] then
+                next_layout = layouts[next_index]
+            end
+            break
+        end
+    end
+
+    Config.windows.position = next_layout
+
+    local previous_mode = vim.fn.mode()
+    local previous_buf = vim.api.nvim_get_current_buf()
+
+    self:hide()
+    self:show({
+        focus_prompt = false,
+    })
+
+    vim.schedule(function()
+        local win = vim.fn.bufwinid(previous_buf)
+        if win ~= -1 then
+            vim.api.nvim_set_current_win(win)
+        end
+        if previous_mode == "i" then
+            vim.cmd("startinsert")
+        end
+    end)
+end
+
 --- Closes all windows but keeps buffers in memory
 function ChatWidget:hide()
     vim.cmd("stopinsert")
