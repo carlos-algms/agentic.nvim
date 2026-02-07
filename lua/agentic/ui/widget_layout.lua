@@ -71,7 +71,7 @@ local function calculate_dynamic_height(bufnr, max_height)
     return math.min(line_count + padding, max_height)
 end
 
---- @param position "right"|"bottom"
+--- @param position agentic.UserConfig.Windows.Position
 --- @return table<string, any>
 local function get_chat_window_opts(position)
     --- @type table<string, any>
@@ -182,7 +182,7 @@ local function open_or_resize_dynamic_window(
 end
 
 --- @param params agentic.ui.WidgetLayout.Params
---- @param position "right"|"left"|"bottom"
+--- @param position agentic.UserConfig.Windows.Position
 local function show_layout(params, position)
     local is_bottom = position == "bottom"
     local win_nrs = params.win_nrs

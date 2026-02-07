@@ -269,7 +269,7 @@ Configure the widget layout position and sizing:
   "carlos-algms/agentic.nvim",
   opts = {
     windows = {
-      position = "right",  -- "right" or "bottom"
+      position = "right",  -- "right", "left", or "bottom"
       width = "40%",       -- Sidebar width (position = "right")
       height = "30%",      -- Panel height (position = "bottom")
     },
@@ -277,9 +277,12 @@ Configure the widget layout position and sizing:
 }
 ```
 
-- `position` - Widget layout: `"right"` (vertical sidebar) or `"bottom"` (horizontal panel)
-- `width` - Sidebar width when `position = "right"` (percentage, decimal, or absolute)
-- `height` - Panel height when `position = "bottom"` (percentage, decimal, or absolute)
+- `position` - Widget layout: `"right"` or `"left"` (vertical sidebar) or
+  `"bottom"` (horizontal panel)
+- `width` - Sidebar width when `position` is right or left (percentage, decimal,
+  or absolute)
+- `height` - Panel height when `position = "bottom"` (percentage, decimal, or
+  absolute)
 
 ### Customizing Window Options
 

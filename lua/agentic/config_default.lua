@@ -122,8 +122,10 @@ local ConfigDefault = {
     --- @field max_height number
     --- @field win_opts? agentic.UserConfig.WinOpts
 
+    --- @alias agentic.UserConfig.Windows.Position "right"|"left"|"bottom"
+
     --- @class agentic.UserConfig.Windows
-    --- @field position "right"|"left"|"bottom"
+    --- @field position agentic.UserConfig.Windows.Position
     --- @field width string|number
     --- @field height string|number
     --- @field stack_width_ratio number
