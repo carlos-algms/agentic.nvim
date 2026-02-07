@@ -93,19 +93,7 @@ function ChatWidget:hide()
         end
     end
 
-    for name, winid in pairs(self.win_nrs) do
-        self.win_nrs[name] = nil
-        local ok = pcall(vim.api.nvim_win_close, winid, true)
-        if not ok then
-            Logger.debug(
-                string.format(
-                    "Failed to close window '%s' with id: %d",
-                    name,
-                    winid
-                )
-            )
-        end
-    end
+    WidgetLayout.close(self.win_nrs)
 end
 
 --- Cleans up all buffers content without destroying them
