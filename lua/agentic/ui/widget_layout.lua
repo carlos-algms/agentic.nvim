@@ -23,7 +23,22 @@ local function calculate_dimension(size, max_dimension, default_percentage)
     if type(size) == "string" then
         local pct = string.sub(size, -1) == "%"
             and tonumber(string.sub(size, 1, -2))
-        return math.max(1, pct and math.floor(max_dimension * pct / 100) or 0)
+        if not pct then
+            -- Invalid string without % sign, fallback to default percentage
+            Logger.notify(
+                "Invalid size string: "
+                    .. size
+                    .. ", expected format like '40%'",
+                vim.log.levels.WARN
+            )
+
+            return calculate_dimension(
+                default_percentage,
+                max_dimension,
+                default_percentage
+            )
+        end
+        return math.max(1, math.floor(max_dimension * pct / 100))
     end
 
     if size > 0 and size < 1 then
