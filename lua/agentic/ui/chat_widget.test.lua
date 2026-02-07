@@ -234,7 +234,7 @@ describe("agentic.ui.ChatWidget", function()
                     { "line4", "line5", "line6", "line7" }
                 )
 
-                widget:resize_dynamic_window("code")
+                widget:show({ focus_prompt = false })
 
                 local new_height =
                     vim.api.nvim_win_get_height(widget.win_nrs.code)
@@ -264,11 +264,11 @@ describe("agentic.ui.ChatWidget", function()
             end)
         end)
 
-        -- Note: These tests call resize_dynamic_window() directly to simulate
-        -- user actions that trigger buffer changes (e.g., pressing 'd' to delete
-        -- files/code snippets, or agent updating todos). The resize_dynamic_window()
-        -- method is called by SessionManager callbacks when content changes.
-        describe("resize_dynamic_window()", function()
+        -- Note: These tests call show() to simulate user actions that trigger
+        -- buffer changes (e.g., pressing 'd' to delete files/code snippets,
+        -- or agent updating todos). show() re-renders the full layout
+        -- including dynamic window sizing.
+        describe("show() re-renders dynamic windows", function()
             it("shrinks window when content is removed", function()
                 vim.bo[widget.buf_nrs.code].modifiable = true
                 vim.api.nvim_buf_set_lines(
@@ -294,7 +294,7 @@ describe("agentic.ui.ChatWidget", function()
                     { "line1", "line2" }
                 )
 
-                widget:resize_dynamic_window("code")
+                widget:show({ focus_prompt = false })
 
                 assert.equal(
                     3,
@@ -324,7 +324,7 @@ describe("agentic.ui.ChatWidget", function()
                     {}
                 )
 
-                widget:resize_dynamic_window("code")
+                widget:show({ focus_prompt = false })
 
                 assert.is_nil(widget.win_nrs.code)
             end)
@@ -341,7 +341,7 @@ describe("agentic.ui.ChatWidget", function()
 
                 -- Don't show widget, so window doesn't exist
                 assert.has_no_errors(function()
-                    widget:resize_dynamic_window("code")
+                    widget:show({ focus_prompt = false })
                 end)
             end)
         end)

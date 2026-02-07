@@ -498,11 +498,6 @@ function ChatWidget:close_optional_window(panel_name)
     WidgetLayout.close_optional_window(self.win_nrs, panel_name)
 end
 
---- @param window_name "code"|"files"|"todos"
-function ChatWidget:resize_dynamic_window(window_name)
-    WidgetLayout.resize_dynamic_window(self.buf_nrs, self.win_nrs, window_name)
-end
-
 --- Filetypes that should be excluded when finding fallback windows
 local EXCLUDED_FILETYPES = {
     -- File explorers

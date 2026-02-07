@@ -51,7 +51,9 @@ end
 local function calculate_dynamic_height(bufnr, max_height)
     max_height = math.max(1, max_height)
     local line_count = vim.api.nvim_buf_line_count(bufnr)
-    return math.min(line_count + 1, max_height)
+    -- Use 2 in bottom layout to prevent the file list from touching the screen edge
+    local padding = Config.windows.position == "bottom" and 2 or 1
+    return math.min(line_count + padding, max_height)
 end
 
 --- @param position "right"|"bottom"
@@ -298,41 +300,33 @@ function WidgetLayout.close(win_nrs)
     end
 end
 
---- @param buf_nrs agentic.ui.ChatWidget.BufNrs
---- @param win_nrs agentic.ui.ChatWidget.WinNrs
---- @param window_name agentic.ui.ChatWidget.PanelNames
-function WidgetLayout.resize_dynamic_window(buf_nrs, win_nrs, window_name)
-    local bufnr = buf_nrs[window_name]
-    local winid = win_nrs[window_name]
-
-    if BufHelpers.is_buffer_empty(bufnr) then
-        if winid and vim.api.nvim_win_is_valid(winid) then
-            vim.api.nvim_win_close(winid, true)
-        end
-        win_nrs[window_name] = nil
-        return
-    end
-
-    if winid and vim.api.nvim_win_is_valid(winid) then
-        local window_config = Config.windows[window_name] or {}
-        local max_height = window_config.max_height or 10
-
-        local new_height = calculate_dynamic_height(bufnr, max_height)
-
-        vim.api.nvim_win_set_config(winid, {
-            height = new_height,
-        })
-    end
-end
-
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 function WidgetLayout.close_optional_window(win_nrs, window_name)
     local winid = win_nrs[window_name]
+
+    -- Capture chat height before closing so we can restore it.
+    -- In bottom layout, Neovim redistributes freed height to siblings.
+    local chat_winid = win_nrs.chat
+    local chat_height = nil
+    if
+        Config.windows.position == "bottom"
+        and chat_winid
+        and vim.api.nvim_win_is_valid(chat_winid)
+    then
+        chat_height = vim.api.nvim_win_get_height(chat_winid)
+    end
+
     if winid and vim.api.nvim_win_is_valid(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
     end
     win_nrs[window_name] = nil
+
+    -- Restore chat height when in bottom layout, since closing a sibling window redistributes height.
+    if chat_height then
+        ---@cast chat_winid integer if we have height, then chat_winid must be valid integer
+        vim.api.nvim_win_set_config(chat_winid, { height = chat_height })
+    end
 end
 
 return WidgetLayout
