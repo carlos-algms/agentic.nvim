@@ -182,7 +182,7 @@ local function open_or_resize_dynamic_window(
 end
 
 --- @param params agentic.ui.WidgetLayout.Params
---- @param position "right"|"bottom"
+--- @param position "right"|"left"|"bottom"
 local function show_layout(params, position)
     local is_bottom = position == "bottom"
     local win_nrs = params.win_nrs
@@ -200,6 +200,7 @@ local function show_layout(params, position)
         }, get_chat_window_opts("bottom"))
     else
         get_or_create_window(win_nrs, "chat", buf_nrs.chat, {
+            split = position == "left" and "left" or "right",
             width = WidgetLayout.calculate_width(Config.windows.width),
         }, get_chat_window_opts("right"))
     end
@@ -273,7 +274,7 @@ function WidgetLayout.open(params)
 
     local position = Config.windows.position
 
-    if position ~= "right" and position ~= "bottom" then
+    if position ~= "right" and position ~= "left" and position ~= "bottom" then
         Logger.notify(
             "Invalid windows.position config: "
                 .. tostring(position)

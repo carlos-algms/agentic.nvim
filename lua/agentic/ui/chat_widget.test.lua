@@ -18,7 +18,7 @@ describe("agentic.ui.ChatWidget", function()
     end
 
     -- Tests that behave identically regardless of layout position
-    for _, position in ipairs({ "right", "bottom" }) do
+    for _, position in ipairs({ "right", "left", "bottom" }) do
         -- Bottom layout uses 2 to avoid touching the screen edge
         local padding = position == "bottom" and 2 or 1
 
@@ -337,57 +337,61 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end
 
-    describe("(right layout) specific", function()
-        local widget
-        local original_position
+    -- Right and left layouts behave identically, only split direction differs
+    for _, side in ipairs({ "right", "left" }) do
+        describe(string.format("(%s layout) specific", side), function()
+            local widget
+            local original_position
 
-        before_each(function()
-            original_position = Config.windows.position
-            Config.windows.position = "right"
+            before_each(function()
+                original_position = Config.windows.position
+                Config.windows.position = side
 
-            vim.cmd("tabnew")
+                vim.cmd("tabnew")
 
-            local on_submit_spy = spy.new(function() end)
-            widget = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy --[[@as function]]
-            )
-        end)
-
-        after_each(function()
-            if widget then
-                pcall(function()
-                    widget:destroy()
-                end)
-            end
-            pcall(function()
-                vim.cmd("tabclose")
+                local on_submit_spy = spy.new(function() end)
+                widget = ChatWidget:new(
+                    vim.api.nvim_get_current_tabpage(),
+                    on_submit_spy --[[@as function]]
+                )
             end)
 
-            Config.windows.position = original_position
+            after_each(function()
+                if widget then
+                    pcall(function()
+                        widget:destroy()
+                    end)
+                end
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+
+                Config.windows.position = original_position
+            end)
+
+            it("input splits below chat", function()
+                widget:show()
+
+                local chat_pos =
+                    vim.api.nvim_win_get_position(widget.win_nrs.chat)
+                local input_pos =
+                    vim.api.nvim_win_get_position(widget.win_nrs.input)
+
+                -- Input row should be greater than chat row (below)
+                assert.is_true(input_pos[1] > chat_pos[1])
+                -- Same column position
+                assert.equal(chat_pos[2], input_pos[2])
+            end)
+
+            it("input has fixed height", function()
+                widget:show()
+
+                local input_height =
+                    vim.api.nvim_win_get_height(widget.win_nrs.input)
+                assert.equal(Config.windows.input.height, input_height)
+            end)
         end)
-
-        it("input splits below chat", function()
-            widget:show()
-
-            local chat_pos = vim.api.nvim_win_get_position(widget.win_nrs.chat)
-            local input_pos =
-                vim.api.nvim_win_get_position(widget.win_nrs.input)
-
-            -- Input row should be greater than chat row (below)
-            assert.is_true(input_pos[1] > chat_pos[1])
-            -- Same column position
-            assert.equal(chat_pos[2], input_pos[2])
-        end)
-
-        it("input has fixed height", function()
-            widget:show()
-
-            local input_height =
-                vim.api.nvim_win_get_height(widget.win_nrs.input)
-            assert.equal(Config.windows.input.height, input_height)
-        end)
-    end)
+    end
 
     describe("(bottom layout) specific", function()
         local widget

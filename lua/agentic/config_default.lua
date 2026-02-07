@@ -123,7 +123,7 @@ local ConfigDefault = {
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows
-    --- @field position "right"|"bottom"
+    --- @field position "right"|"left"|"bottom"
     --- @field width string|number
     --- @field height string|number
     --- @field stack_width_ratio number
