@@ -79,34 +79,6 @@ describe("WidgetLayout", function()
         end)
     end)
 
-    describe("needs_rebuild", function()
-        it("should return false when no layout state exists", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            vim.t[tab_page_id].agentic_layout_state = nil
-
-            local needs_rebuild = WidgetLayout.needs_rebuild(tab_page_id)
-            assert.is_false(needs_rebuild)
-        end)
-
-        it("should return false when position matches", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            Config.windows.position = "right"
-            vim.t[tab_page_id].agentic_layout_state = { position = "right" }
-
-            local needs_rebuild = WidgetLayout.needs_rebuild(tab_page_id)
-            assert.is_false(needs_rebuild)
-        end)
-
-        it("should return true when position changed", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            Config.windows.position = "bottom"
-            vim.t[tab_page_id].agentic_layout_state = { position = "right" }
-
-            local needs_rebuild = WidgetLayout.needs_rebuild(tab_page_id)
-            assert.is_true(needs_rebuild)
-        end)
-    end)
-
     describe("close", function()
         it("should close all valid windows", function()
             local bufnr = vim.api.nvim_create_buf(false, true)

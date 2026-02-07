@@ -106,7 +106,6 @@ end
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
---- @param enter boolean
 --- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
 --- @return integer
@@ -114,7 +113,6 @@ local function get_or_create_window(
     win_nrs,
     panel_name,
     bufnr,
-    enter,
     open_opts,
     win_opts
 )
@@ -124,7 +122,7 @@ local function get_or_create_window(
     end
 
     local new_winid =
-        open_win(bufnr, enter, open_opts, panel_name, win_opts or {})
+        open_win(bufnr, false, open_opts, panel_name, win_opts or {})
     win_nrs[panel_name] = new_winid
     WindowDecoration.render_header(bufnr, panel_name)
     return new_winid
@@ -167,105 +165,65 @@ local function open_or_resize_dynamic_window(
 end
 
 --- @param params agentic.ui.WidgetLayout.Params
-local function show_right_layout(params)
+--- @param position "right"|"bottom"
+local function show_layout(params, position)
+    local is_bottom = position == "bottom"
+    local win_nrs = params.win_nrs
+    local buf_nrs = params.buf_nrs
     local should_focus = (
         params.focus_prompt == nil and true or params.focus_prompt
     ) == true
 
-    get_or_create_window(params.win_nrs, "chat", params.buf_nrs.chat, false, {
-        width = WidgetLayout.calculate_width(Config.windows.width),
-    }, get_chat_window_opts("right"))
-
-    get_or_create_window(
-        params.win_nrs,
-        "input",
-        params.buf_nrs.input,
-        should_focus,
-        {
-            win = params.win_nrs.chat,
+    -- Chat window: right uses width, bottom uses height + split below
+    if is_bottom then
+        get_or_create_window(win_nrs, "chat", buf_nrs.chat, {
             split = "below",
-            height = Config.windows.input.height,
-            fixed = true,
-        },
-        {}
-    )
+            win = -1,
+            height = WidgetLayout.calculate_height(Config.windows.height),
+        }, get_chat_window_opts("bottom"))
+    else
+        get_or_create_window(win_nrs, "chat", buf_nrs.chat, {
+            width = WidgetLayout.calculate_width(Config.windows.width),
+        }, get_chat_window_opts("right"))
+    end
 
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "code", {
-        win = params.win_nrs.chat,
+    -- Input window: right splits below chat with height, bottom splits right
+    -- of chat with computed stack width
+    --- @type vim.api.keyset.win_config
+    local input_opts = { win = win_nrs.chat, fixed = true }
+    if is_bottom then
+        local chat_width = vim.api.nvim_win_get_width(win_nrs.chat)
+        local ratio = tonumber(Config.windows.stack_width_ratio) or 0.4
+        local raw_width = math.floor(chat_width * ratio)
+        input_opts.split = "right"
+        input_opts.width = math.max(1, math.min(raw_width, chat_width - 1))
+    else
+        input_opts.split = "below"
+        input_opts.height = Config.windows.input.height
+    end
+
+    get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
+        winfixheight = not is_bottom,
+    })
+
+    open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
+        win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
     }, Config.windows.code.max_height)
 
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "files", {
-        win = params.win_nrs.input,
-        split = "above",
-    }, Config.windows.files.max_height)
+    local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
+        or win_nrs.input
 
-    if Config.windows.todos.display then
-        open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
-            win = params.win_nrs.chat,
-            split = "below",
-        }, Config.windows.todos.max_height)
-    end
-
-    if should_focus then
-        vim.schedule(function()
-            local winid = params.win_nrs.input
-            if winid and vim.api.nvim_win_is_valid(winid) then
-                vim.api.nvim_set_current_win(winid)
-                BufHelpers.start_insert_on_last_char()
-            end
-        end)
-    end
-end
-
---- @param params agentic.ui.WidgetLayout.Params
-local function show_bottom_layout(params)
-    local should_focus = (
-        params.focus_prompt == nil and true or params.focus_prompt
-    ) == true
-
-    get_or_create_window(params.win_nrs, "chat", params.buf_nrs.chat, false, {
-        split = "below",
-        win = -1,
-        height = WidgetLayout.calculate_height(Config.windows.height),
-    }, get_chat_window_opts("bottom"))
-
-    local chat_width = vim.api.nvim_win_get_width(params.win_nrs.chat)
-    local ratio = tonumber(Config.windows.stack_width_ratio) or 0.4
-    local raw_width = math.floor(chat_width * ratio)
-    local stack_width = math.max(1, math.min(raw_width, chat_width - 1))
-
-    get_or_create_window(
-        params.win_nrs,
-        "input",
-        params.buf_nrs.input,
-        should_focus,
-        {
-            win = params.win_nrs.chat,
-            split = "right",
-            width = stack_width,
-            fixed = true,
-        },
-        {}
-    )
-
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "code", {
-        win = params.win_nrs.input,
-        split = "below",
-    }, Config.windows.code.max_height)
-
-    local ref_win = params.win_nrs.code or params.win_nrs.input
-    open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "files", {
+    open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
-        split = "below",
+        split = is_bottom and "below" or "above",
     }, Config.windows.files.max_height)
 
-    ref_win = params.win_nrs.files
-        or params.win_nrs.code
-        or params.win_nrs.input
-
     if Config.windows.todos.display then
-        open_or_resize_dynamic_window(params.buf_nrs, params.win_nrs, "todos", {
+        ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
+            or win_nrs.chat
+
+        open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
             win = ref_win,
             split = "below",
         }, Config.windows.todos.max_height)
@@ -273,7 +231,7 @@ local function show_bottom_layout(params)
 
     if should_focus then
         vim.schedule(function()
-            local winid = params.win_nrs.input
+            local winid = win_nrs.input
             if winid and vim.api.nvim_win_is_valid(winid) then
                 vim.api.nvim_set_current_win(winid)
                 BufHelpers.start_insert_on_last_char()
@@ -296,32 +254,28 @@ function WidgetLayout.open(params)
         return
     end
 
-    local current_position = Config.windows.position
+    local position = Config.windows.position
 
-    local layout_fns = {
-        right = show_right_layout,
-        bottom = show_bottom_layout,
-    }
-
-    local layout_fn = layout_fns[current_position]
-
-    if layout_fn then
-        local ok, err = pcall(layout_fn, params)
-        if not ok then
-            Logger.notify(
-                string.format(
-                    "Failed to show %s layout (tab: %d): %s",
-                    current_position,
-                    params.tab_page_id,
-                    tostring(err)
-                ),
-                vim.log.levels.ERROR
-            )
-        end
-    else
+    if position ~= "right" and position ~= "bottom" then
         Logger.notify(
             "Invalid windows.position config: "
-                .. tostring(Config.windows.position),
+                .. tostring(position)
+                .. ', falling back to "right"',
+            vim.log.levels.ERROR
+        )
+
+        position = "right"
+    end
+
+    local ok, err = pcall(show_layout, params, position)
+    if not ok then
+        Logger.notify(
+            string.format(
+                "Failed to show %s layout (tab: %d): %s",
+                position,
+                params.tab_page_id,
+                tostring(err)
+            ),
             vim.log.levels.ERROR
         )
     end
