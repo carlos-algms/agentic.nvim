@@ -2,6 +2,7 @@
 --- Provides mode selection via vim.ui.select
 
 local BufHelpers = require("agentic.utils.buf_helpers")
+local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.AgentModes
 --- @field _modes agentic.acp.AgentMode[]
@@ -37,6 +38,7 @@ function AgentModes:set_modes(modes_info)
 end
 
 --- @param mode_id string
+--- @return agentic.acp.AgentMode|nil
 function AgentModes:get_mode(mode_id)
     for _, mode in ipairs(self._modes) do
         if mode.id == mode_id then
@@ -68,6 +70,33 @@ function AgentModes:show_mode_selector()
             self._set_mode_callback(selected_mode.id)
         end
     end)
+end
+
+--- @param mode_id string|nil
+--- @return boolean success true if mode was updated, false if invalid mode_id
+function AgentModes:update_mode(mode_id)
+    if not mode_id or not self:get_mode(mode_id) then
+        Logger.notify(
+            string.format(
+                "Agent sent invalid mode '%s', keeping current mode '%s'",
+                mode_id,
+                self.current_mode_id or "unknown"
+            ),
+            vim.log.levels.WARN,
+            { title = "Agentic: Invalid mode" }
+        )
+        return false
+    end
+
+    self.current_mode_id = mode_id
+
+    Logger.notify(
+        "Mode changed to: " .. mode_id,
+        vim.log.levels.INFO,
+        { title = "Agentic Mode changed" }
+    )
+
+    return true
 end
 
 return AgentModes

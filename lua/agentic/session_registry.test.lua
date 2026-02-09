@@ -24,30 +24,31 @@ describe("agentic.SessionRegistry", function()
         }
     end
 
-    -- Set up mocks once before any tests run
+    -- Define mock objects (injected into package.loaded in before_each)
     session_manager_mock = {
         new = function(_, tab_page_id)
             return create_mock_session(tab_page_id)
         end,
     }
-    package.loaded["agentic.session_manager"] = session_manager_mock
 
     acp_health_mock = {
         check_configured_provider = function()
             return true
         end,
     }
-    package.loaded["agentic.acp.acp_health"] = acp_health_mock
 
     logger_stub = {
         debug = function() end,
     }
-    package.loaded["agentic.utils.logger"] = logger_stub
 
     SessionRegistry = require("agentic.session_registry")
 
     before_each(function()
-        -- Reset mock behaviors that tests may override
+        -- Re-inject mocks (cleared in after_each) and reset behaviors
+        package.loaded["agentic.session_manager"] = session_manager_mock
+        package.loaded["agentic.acp.acp_health"] = acp_health_mock
+        package.loaded["agentic.utils.logger"] = logger_stub
+
         acp_health_mock.check_configured_provider = function()
             return true
         end
@@ -63,6 +64,11 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry.sessions[k] = nil
             end
         end
+
+        -- Clear mocks so other test files get real modules
+        package.loaded["agentic.session_manager"] = nil
+        package.loaded["agentic.acp.acp_health"] = nil
+        package.loaded["agentic.utils.logger"] = nil
     end)
 
     describe("get_session_for_tab_page", function()

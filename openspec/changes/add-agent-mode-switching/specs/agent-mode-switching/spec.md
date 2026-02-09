@@ -49,14 +49,6 @@ notification.
   `currentModeId` that exists in `AgentModes._modes`
 - **THEN** the chat header SHALL display the mode's `name` property
 
-#### Scenario: Agent switches to an unknown mode ID
-
-- **WHEN** the agent sends `current_mode_update` with a
-  `currentModeId` not present in `AgentModes._modes`
-- **THEN** the chat header SHALL display the raw `currentModeId`
-  string as fallback
-- **AND** `AgentModes.current_mode_id` SHALL still be updated
-
 ### Requirement: User Notification on Agent Mode Change
 
 The system SHALL notify the user via `Logger.notify` at `INFO` level

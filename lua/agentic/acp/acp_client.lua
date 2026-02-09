@@ -638,6 +638,7 @@ return ACPClient
 --- | "other"
 --- | "create"
 --- | "Skill"
+--- | "switch_mode"
 
 --- @alias agentic.acp.ToolCallStatus
 --- | "pending"
@@ -755,6 +756,10 @@ return ACPClient
 --- @field sessionUpdate "available_commands_update"
 --- @field availableCommands agentic.acp.AvailableCommand[]
 
+--- @class agentic.acp.CurrentModeUpdate
+--- @field sessionUpdate "current_mode_update"
+--- @field currentModeId string
+
 --- @alias agentic.acp.SessionUpdateMessage
 --- | agentic.acp.UserMessageChunk
 --- | agentic.acp.AgentMessageChunk
@@ -763,6 +768,7 @@ return ACPClient
 --- | agentic.acp.ToolCallUpdate
 --- | agentic.acp.PlanUpdate
 --- | agentic.acp.AvailableCommandsUpdate
+--- | agentic.acp.CurrentModeUpdate
 
 --- @class agentic.acp.PermissionOption
 --- @field optionId string

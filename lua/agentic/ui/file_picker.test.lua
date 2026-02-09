@@ -156,6 +156,11 @@ describe("FilePicker:scan_files", function()
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "lazy_repro/")
             -- .local is the folder where Neovim is installed during tests in CI
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.local/")
+            -- settings.local.json is gitignored but glob fallback doesn't respect .gitignore
+            table.insert(
+                FilePicker.GLOB_EXCLUDE_PATTERNS,
+                "settings%.local%.json"
+            )
 
             local files_glob = picker:scan_files()
 

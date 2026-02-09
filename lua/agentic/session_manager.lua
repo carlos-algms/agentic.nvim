@@ -181,6 +181,10 @@ function SessionManager:_on_session_update(update)
             self.widget.buf_nrs.input,
             update.availableCommands
         )
+    elseif update.sessionUpdate == "current_mode_update" then
+        if self.agent_modes:update_mode(update.currentModeId) then
+            self:_set_mode_to_chat_header(update.currentModeId)
+        end
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
         Logger.notify(
