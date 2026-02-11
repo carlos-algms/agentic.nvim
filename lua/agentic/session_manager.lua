@@ -786,6 +786,7 @@ end
 
 function SessionManager:destroy()
     self:_cancel_session()
+    self.message_writer:destroy()
     self.widget:destroy()
 end
 

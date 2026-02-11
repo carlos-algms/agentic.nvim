@@ -92,13 +92,16 @@ end
 
 ## Risks / Trade-offs
 
-- **Risk**: Timer stored on MessageWriter instance needs cleanup
-  - Mitigation: call `timer:stop()` and `timer:close()` if
-    MessageWriter is destroyed; the timer callback checks buffer
-    validity before acting
+- **Risk**: Luv timer handles are not GC-collected and leak if
+  not explicitly closed
+  - Resolved: `MessageWriter:destroy()` calls `timer:stop()`
+    and `timer:close()`; `SessionManager:destroy()` calls
+    `message_writer:destroy()` on tabpage teardown
+  - The timer callback also guards with
+    `nvim_buf_is_valid(bufnr)` before acting
 - **Risk**: Single timer means only the last `_auto_scroll` call
   within the debounce window actually scrolls
-  - This is the desired behavior - earlier scroll attempts are
+  - This is the desired behavior — earlier scroll attempts are
     superseded by the latest one
 
 ## Open questions

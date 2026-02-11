@@ -65,6 +65,11 @@ function MessageWriter:new(bufnr)
     return instance
 end
 
+function MessageWriter:destroy()
+    self._scroll_timer:stop()
+    self._scroll_timer:close()
+end
+
 --- Writes a full message to the chat buffer and append two blank lines after
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
@@ -162,7 +167,7 @@ end
 --- @param bufnr integer
 --- @return boolean
 function MessageWriter:_should_auto_scroll(bufnr)
-    local winid = vim.fn.bufwinid(self.bufnr)
+    local winid = vim.fn.bufwinid(bufnr)
     if winid == -1 then
         return true
     end

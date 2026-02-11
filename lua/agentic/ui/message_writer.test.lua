@@ -133,4 +133,25 @@ describe("agentic.ui.MessageWriter", function()
             should_scroll_spy:revert()
         end)
     end)
+
+    describe("destroy", function()
+        it("stops and closes the scroll timer", function()
+            local mock_timer = {
+                stop_count = 0,
+                close_count = 0,
+                stop = function(self)
+                    self.stop_count = self.stop_count + 1
+                end,
+                close = function(self)
+                    self.close_count = self.close_count + 1
+                end,
+            }
+            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
+
+            writer:destroy()
+
+            assert.equal(1, mock_timer.stop_count)
+            assert.equal(1, mock_timer.close_count)
+        end)
+    end)
 end)

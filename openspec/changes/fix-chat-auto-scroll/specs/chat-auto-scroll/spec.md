@@ -29,7 +29,9 @@ buffer's last line.
 - **WHEN** the agent streams a message chunk
 - **AND** the chat buffer has no visible window (e.g., tabpage is
   hidden)
-- **THEN** auto-scroll is skipped without error
+- **THEN** auto-scroll SHALL still be considered active
+- **AND** when the user returns to the chat tabpage, the viewport
+  shows the latest content
 
 ### Requirement: Auto-scroll decision SHALL be evaluated at scroll time, not at write time
 
@@ -89,3 +91,15 @@ entirely.
 
 - **WHEN** `auto_scroll.threshold` is set to `0`
 - **THEN** auto-scroll is disabled entirely
+
+### Requirement: Scroll timer SHALL be cleaned up on destroy
+
+The debounce timer created by MessageWriter SHALL be stopped and
+closed when the MessageWriter instance is destroyed, preventing
+orphaned libuv handles from leaking memory.
+
+#### Scenario: Session is destroyed
+
+- **WHEN** the SessionManager is destroyed (e.g., tabpage closes)
+- **THEN** the MessageWriter's scroll timer is stopped and closed
+- **AND** no orphaned timer handles remain
