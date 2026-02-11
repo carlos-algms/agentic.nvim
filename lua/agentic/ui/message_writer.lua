@@ -15,14 +15,6 @@ local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 
-local function set_should_auto_scroll(bufnr, value)
-    vim.b[bufnr]._agentic_should_scroll = value
-end
-
-local function get_should_auto_scroll(bufnr)
-    return vim.b[bufnr]._agentic_should_scroll
-end
-
 --- @class agentic.ui.MessageWriter.HighlightRange
 --- @field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
 --- @field line_index integer Line index relative to returned lines (0-based)
@@ -52,6 +44,7 @@ end
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
 --- @field _last_message_type? string
+--- @field _scroll_timer uv.uv_timer_t
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -66,6 +59,7 @@ function MessageWriter:new(bufnr)
         bufnr = bufnr,
         tool_call_blocks = {},
         _last_message_type = nil,
+        _scroll_timer = vim.uv.new_timer(),
     }, self)
 
     return instance
@@ -113,8 +107,6 @@ function MessageWriter:write_message_chunk(update)
 
     self._last_message_type = update.sessionUpdate
 
-    self:_store_auto_scroll_state(self.bufnr)
-
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
@@ -149,8 +141,6 @@ end
 --- @param lines string[]
 --- @return nil
 function MessageWriter:_append_lines(lines)
-    self:_store_auto_scroll_state(self.bufnr)
-
     local start_line = BufHelpers.is_buffer_empty(self.bufnr) and 0 or -1
 
     local success, err = pcall(
@@ -189,38 +179,28 @@ function MessageWriter:_should_auto_scroll(bufnr)
     return distance_from_bottom <= threshold
 end
 
---- Stores auto-scroll decision before content writes
---- Only stores if not already cached (allows batching multiple writes)
---- @param bufnr integer
-function MessageWriter:_store_auto_scroll_state(bufnr)
-    if get_should_auto_scroll(bufnr) == nil then
-        set_should_auto_scroll(bufnr, self:_should_auto_scroll(bufnr))
-    end
-end
-
 --- @param bufnr integer Buffer number to scroll
 function MessageWriter:_auto_scroll(bufnr)
-    vim.defer_fn(function()
-        local should_auto_scroll = get_should_auto_scroll(bufnr)
+    self._scroll_timer:stop()
+    self._scroll_timer:start(
+        150,
+        0,
+        vim.schedule_wrap(function()
+            if not vim.api.nvim_buf_is_valid(bufnr) then
+                return
+            end
 
-        if should_auto_scroll == nil then
-            should_auto_scroll = true
-        end
-
-        if should_auto_scroll then
-            BufHelpers.execute_on_buffer(bufnr, function()
-                vim.cmd("normal! G0zb")
-            end)
-        end
-
-        set_should_auto_scroll(bufnr, nil)
-    end, 150)
+            if self:_should_auto_scroll(bufnr) then
+                BufHelpers.execute_on_buffer(bufnr, function()
+                    vim.cmd("normal! G0zb")
+                end)
+            end
+        end)
+    )
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
-    self:_store_auto_scroll_state(self.bufnr)
-
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local kind = tool_call_block.kind
 
@@ -550,8 +530,6 @@ end
 --- @return integer button_end_row End row of button block
 --- @return table<integer, string> option_mapping Mapping from number (1-N) to option_id
 function MessageWriter:display_permission_buttons(tool_call_id, options)
-    self:_store_auto_scroll_state(self.bufnr)
-
     local option_mapping = {}
 
     local lines_to_append = {
