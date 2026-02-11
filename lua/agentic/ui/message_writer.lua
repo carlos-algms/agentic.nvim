@@ -66,8 +66,10 @@ function MessageWriter:new(bufnr)
 end
 
 function MessageWriter:destroy()
-    self._scroll_timer:stop()
-    self._scroll_timer:close()
+    if self._scroll_timer and not self._scroll_timer:is_closing() then
+        self._scroll_timer:stop()
+        self._scroll_timer:close()
+    end
 end
 
 --- Writes a full message to the chat buffer and append two blank lines after

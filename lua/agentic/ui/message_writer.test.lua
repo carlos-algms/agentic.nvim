@@ -135,19 +135,39 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("destroy", function()
-        it("stops and closes the scroll timer", function()
-            local mock_timer = {
+        local function create_closeable_timer()
+            return {
                 stop_count = 0,
                 close_count = 0,
+                _closing = false,
                 stop = function(self)
                     self.stop_count = self.stop_count + 1
                 end,
                 close = function(self)
                     self.close_count = self.close_count + 1
+                    self._closing = true
+                end,
+                is_closing = function(self)
+                    return self._closing
                 end,
             }
+        end
+
+        it("stops and closes the scroll timer", function()
+            local mock_timer = create_closeable_timer()
             writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
 
+            writer:destroy()
+
+            assert.equal(1, mock_timer.stop_count)
+            assert.equal(1, mock_timer.close_count)
+        end)
+
+        it("is idempotent (safe to call twice)", function()
+            local mock_timer = create_closeable_timer()
+            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
+
+            writer:destroy()
             writer:destroy()
 
             assert.equal(1, mock_timer.stop_count)
