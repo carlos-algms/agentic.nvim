@@ -85,9 +85,10 @@ function MessageWriter:write_message(update)
 
     local lines = vim.split(text, "\n", { plain = true })
 
-    BufHelpers.with_modifiable(self.bufnr, function()
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         self:_append_lines(lines)
         self:_append_lines({ "", "" })
+        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -162,13 +163,11 @@ function MessageWriter:_append_lines(lines)
     if not success then
         Logger.debug("Failed to append lines to buffer", err, lines)
     end
-
-    self:_auto_scroll(self.bufnr)
 end
 
 --- @param bufnr integer
 --- @return boolean
-function MessageWriter:_should_auto_scroll(bufnr)
+function MessageWriter:_check_auto_scroll(bufnr)
     local winid = vim.fn.bufwinid(bufnr)
     if winid == -1 then
         return true
@@ -188,20 +187,24 @@ end
 
 --- @param bufnr integer Buffer number to scroll
 function MessageWriter:_auto_scroll(bufnr)
+    if self._should_auto_scroll ~= true then
+        self._should_auto_scroll = self:_check_auto_scroll(bufnr)
+    end
+
     self._scroll_timer:stop()
     self._scroll_timer:start(
         150,
         0,
         vim.schedule_wrap(function()
-            if not vim.api.nvim_buf_is_valid(bufnr) then
-                return
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                if self._should_auto_scroll then
+                    BufHelpers.execute_on_buffer(bufnr, function()
+                        vim.cmd("normal! G0zb")
+                    end)
+                end
             end
 
-            if self:_should_auto_scroll(bufnr) then
-                BufHelpers.execute_on_buffer(bufnr, function()
-                    vim.cmd("normal! G0zb")
-                end)
-            end
+            self._should_auto_scroll = nil
         end)
     )
 end
@@ -251,6 +254,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
         self:_append_lines({ "", "" })
+        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -596,6 +600,7 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines(lines_to_append)
+        self:_auto_scroll(self.bufnr)
     end)
 
     local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
