@@ -263,7 +263,11 @@ function M.show_diff(opts)
     })
 
     if #diff_blocks == 0 then
-        Logger.debug("show_diff: no diff blocks matched for", opts.file_path)
+        Logger.notify(
+            "Diff preview: could not match diff in " .. opts.file_path,
+            vim.log.levels.WARN
+        )
+        return
     end
 
     for _, block in ipairs(diff_blocks) do

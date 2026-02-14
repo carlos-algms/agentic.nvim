@@ -66,7 +66,7 @@ function M.extract_diff_blocks(opts)
         table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
     else
         local blocks =
-            M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+            M.match_or_substring_fallback(file_lines, old_lines, new_lines)
 
         if blocks then
             if opts.replace_all then
@@ -309,7 +309,7 @@ end
 --- @param old_lines string[] Old text lines
 --- @param new_lines string[] New text lines
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+function M.match_or_substring_fallback(file_lines, old_lines, new_lines)
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then

@@ -1,19 +1,28 @@
 local assert = require("tests.helpers.assert")
+local spy_module = require("tests.helpers.spy")
 
 describe("DiffSplitView", function()
     local DiffSplitView = require("agentic.ui.diff_split_view")
+    local FileSystem = require("agentic.utils.file_system")
 
-    local test_file_path = "/tmp/test_diff_split_view.lua"
+    local test_file_path = "/tmp/test_diff_split_view_fake.lua"
     local test_tabpage
+    local read_stub
+
+    --- @param lines string[]
+    local function stub_file_content(lines)
+        read_stub:returns(lines, nil)
+    end
 
     before_each(function()
-        vim.fn.writefile({ "local x = 1", "print(x)" }, test_file_path)
+        read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
+        stub_file_content({ "local x = 1", "print(x)", "" })
         vim.cmd("tabnew")
         test_tabpage = vim.api.nvim_get_current_tabpage()
     end)
 
     after_each(function()
-        pcall(vim.fn.delete, test_file_path)
+        read_stub:revert()
         if test_tabpage and vim.api.nvim_tabpage_is_valid(test_tabpage) then
             pcall(DiffSplitView.clear_split_diff, test_tabpage)
             pcall(vim.api.nvim_tabpage_del, test_tabpage)
@@ -69,6 +78,177 @@ describe("DiffSplitView", function()
                     assert.is_false(vim.bo[state.original_bufnr].modifiable)
                     assert.is_true(vim.bo[state.original_bufnr].modified)
                     assert.is_false(vim.bo[state.new_bufnr].modifiable)
+                end
+            end
+        )
+
+        it("should reconstruct full file from partial diff", function()
+            stub_file_content({ "local x = 1", "local y = 2", "print(x)", "" })
+
+            local success = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = {
+                    old = { "local y = 2" },
+                    new = { "local y = 3" },
+                },
+                get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+            })
+
+            assert.is_true(success)
+
+            local state = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state)
+
+            if state then
+                local lines =
+                    vim.api.nvim_buf_get_lines(state.new_bufnr, 0, -1, false)
+                assert.same(
+                    { "local x = 1", "local y = 3", "print(x)", "" },
+                    lines
+                )
+            end
+        end)
+
+        it("should reconstruct file with multi-line replacement", function()
+            stub_file_content({
+                "local x = 1",
+                "local y = 2",
+                "local z = 3",
+                "print(x)",
+                "",
+            })
+
+            local success = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = {
+                    old = { "local y = 2", "local z = 3" },
+                    new = { "local a = 10", "local b = 20", "local c = 30" },
+                },
+                get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+            })
+
+            assert.is_true(success)
+
+            local state = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state)
+
+            if state then
+                local lines =
+                    vim.api.nvim_buf_get_lines(state.new_bufnr, 0, -1, false)
+                assert.same({
+                    "local x = 1",
+                    "local a = 10",
+                    "local b = 20",
+                    "local c = 30",
+                    "print(x)",
+                    "",
+                }, lines)
+            end
+        end)
+
+        it("should return false when diff cannot be matched", function()
+            local success = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = {
+                    old = { "nonexistent line content" },
+                    new = { "replacement" },
+                },
+                get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+            })
+
+            assert.is_false(success)
+            assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+        end)
+
+        it("should handle substring fallback for single-line diffs", function()
+            local success = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = {
+                    old = { "x = 1" },
+                    new = { "x = 2" },
+                },
+                get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+            })
+
+            assert.is_true(success)
+
+            local state = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state)
+
+            if state then
+                local lines =
+                    vim.api.nvim_buf_get_lines(state.new_bufnr, 0, -1, false)
+                assert.same({ "local x = 2", "print(x)", "" }, lines)
+            end
+        end)
+
+        it("should replace all matches when replace_all is true", function()
+            stub_file_content({ "print(a)", "print(b)", "print(a)", "" })
+
+            local success = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = {
+                    old = { "print(a)" },
+                    new = { "print(c)" },
+                    all = true,
+                },
+                get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+            })
+
+            assert.is_true(success)
+
+            local state = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state)
+
+            if state then
+                local lines =
+                    vim.api.nvim_buf_get_lines(state.new_bufnr, 0, -1, false)
+                assert.same({ "print(c)", "print(b)", "print(c)", "" }, lines)
+            end
+        end)
+
+        it(
+            "should replace only first match when replace_all is not set",
+            function()
+                stub_file_content({ "print(a)", "print(b)", "print(a)", "" })
+
+                local success = DiffSplitView.show_split_diff({
+                    file_path = test_file_path,
+                    diff = {
+                        old = { "print(a)" },
+                        new = { "print(c)" },
+                    },
+                    get_winid = function()
+                        return vim.api.nvim_get_current_win()
+                    end,
+                })
+
+                assert.is_true(success)
+
+                local state = DiffSplitView.get_split_state(test_tabpage)
+                assert.is_not_nil(state)
+
+                if state then
+                    local lines = vim.api.nvim_buf_get_lines(
+                        state.new_bufnr,
+                        0,
+                        -1,
+                        false
+                    )
+                    assert.same(
+                        { "print(c)", "print(b)", "print(a)", "" },
+                        lines
+                    )
                 end
             end
         )

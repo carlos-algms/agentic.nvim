@@ -1,7 +1,7 @@
 local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
-local TextMatcher = require("agentic.utils.text_matcher")
+local ToolCallDiff = require("agentic.ui.tool_call_diff")
 
 --- Handles side-by-side diff view using Neovim's native :diffthis command
 --- @class agentic.ui.DiffSplitView
@@ -30,6 +30,8 @@ local function set_state(tabpage, state)
 end
 
 --- Reconstruct full modified file from agent's partial diffs
+--- Uses ToolCallDiff.match_or_substring_fallback for matching, which includes
+--- fuzzy matching and single-line substring replacement fallback.
 --- @param original_lines string[] Original file content
 --- @param old_lines string[] Old text from agent diff
 --- @param new_lines string[] New text from agent diff
@@ -41,50 +43,39 @@ local function reconstruct_modified_file(
     new_lines,
     replace_all
 )
-    if #old_lines == 0 then
-        return new_lines
+    local blocks = ToolCallDiff.match_or_substring_fallback(
+        original_lines,
+        old_lines,
+        new_lines
+    )
+
+    if not blocks or #blocks == 0 then
+        return nil
+    end
+
+    if not replace_all then
+        blocks = { blocks[1] }
     end
 
     local modified_lines = vim.deepcopy(original_lines)
 
-    local matches = TextMatcher.find_all_matches(original_lines, old_lines)
+    -- Process blocks in reverse order to maintain line indices
+    for i = #blocks, 1, -1 do
+        local block = blocks[i]
 
-    if #matches > 0 then
-        if replace_all then
-            -- Process all matches in reverse order to maintain line indices
-            for i = #matches, 1, -1 do
-                local match = matches[i]
-
-                -- Remove old lines
-                for j = match.end_line, match.start_line, -1 do
-                    table.remove(modified_lines, j)
-                end
-
-                -- Insert new lines
-                for j = #new_lines, 1, -1 do
-                    table.insert(modified_lines, match.start_line, new_lines[j])
-                end
-            end
-        else
-            -- Only process first match (original behavior)
-            local match = matches[1]
-
-            for i = match.end_line, match.start_line, -1 do
-                table.remove(modified_lines, i)
-            end
-
-            for i = #new_lines, 1, -1 do
-                table.insert(modified_lines, match.start_line, new_lines[i])
-            end
+        -- Remove old lines
+        for j = block.end_line, block.start_line, -1 do
+            table.remove(modified_lines, j)
         end
 
-        return modified_lines
-    else
-        Logger.debug(
-            "reconstruct_modified_file: couldn't locate old_text, using new_text as-is"
-        )
-        return new_lines
+        -- Insert new lines (use block.new_lines, not raw new_lines —
+        -- substring fallback produces full modified lines)
+        for j = #block.new_lines, 1, -1 do
+            table.insert(modified_lines, block.start_line, block.new_lines[j])
+        end
     end
+
+    return modified_lines
 end
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
@@ -123,7 +114,9 @@ function M.show_split_diff(opts)
         opts.diff.all
     )
     if not modified_lines then
-        Logger.notify("Failed to reconstruct modified file")
+        Logger.notify(
+            "show_split_diff: could not match diff in file, the agent will most likely fail and retry"
+        )
         return false
     end
 
