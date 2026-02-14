@@ -44,7 +44,8 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
 --- @field _last_message_type? string
---- @field _scroll_timer uv.uv_timer_t
+--- @field _should_auto_scroll? boolean
+--- @field _scroll_scheduled? boolean
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -59,17 +60,11 @@ function MessageWriter:new(bufnr)
         bufnr = bufnr,
         tool_call_blocks = {},
         _last_message_type = nil,
-        _scroll_timer = vim.uv.new_timer(),
+        _should_auto_scroll = nil,
+        _scroll_scheduled = false,
     }, self)
 
     return instance
-end
-
-function MessageWriter:destroy()
-    if self._scroll_timer and not self._scroll_timer:is_closing() then
-        self._scroll_timer:stop()
-        self._scroll_timer:close()
-    end
 end
 
 --- Writes a full message to the chat buffer and append two blank lines after
@@ -169,10 +164,11 @@ end
 --- @param bufnr integer
 --- @return boolean
 function MessageWriter:_check_auto_scroll(bufnr)
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid == -1 then
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
         return true
     end
+    local winid = wins[1]
     local threshold = Config.auto_scroll and Config.auto_scroll.threshold
 
     if threshold == nil or threshold <= 0 then
@@ -192,22 +188,24 @@ function MessageWriter:_auto_scroll(bufnr)
         self._should_auto_scroll = self:_check_auto_scroll(bufnr)
     end
 
-    self._scroll_timer:stop()
-    self._scroll_timer:start(
-        150,
-        0,
-        vim.schedule_wrap(function()
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                if self._should_auto_scroll then
-                    BufHelpers.execute_on_buffer(bufnr, function()
-                        vim.cmd("normal! G0zb")
-                    end)
-                end
-            end
+    if self._scroll_scheduled then
+        return
+    end
+    self._scroll_scheduled = true
 
-            self._should_auto_scroll = nil
-        end)
-    )
+    vim.schedule(function()
+        self._scroll_scheduled = false
+
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            if self._should_auto_scroll then
+                BufHelpers.execute_on_buffer(bufnr, function()
+                    vim.cmd("normal! G0zb")
+                end)
+            end
+        end
+
+        self._should_auto_scroll = nil
+    end)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock

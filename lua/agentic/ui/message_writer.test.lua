@@ -13,7 +13,11 @@ describe("agentic.ui.MessageWriter", function()
     --- @type agentic.ui.MessageWriter
     local writer
 
+    --- @type agentic.UserConfig.AutoScroll|nil
+    local original_auto_scroll
+
     before_each(function()
+        original_auto_scroll = Config.auto_scroll
         MessageWriter = require("agentic.ui.message_writer")
 
         bufnr = vim.api.nvim_create_buf(false, true)
@@ -31,6 +35,7 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     after_each(function()
+        Config.auto_scroll = original_auto_scroll --- @diagnostic disable-line: assign-type-mismatch
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
         end
@@ -68,18 +73,13 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it("returns false when threshold is disabled", function()
-            local original = Config.auto_scroll
             setup_buffer(1, 1)
 
-            -- threshold = 0 disables
             Config.auto_scroll = { threshold = 0 }
             assert.is_false(writer:_check_auto_scroll(bufnr))
 
-            -- nil config disables
             Config.auto_scroll = nil
             assert.is_false(writer:_check_auto_scroll(bufnr))
-
-            Config.auto_scroll = original
         end)
 
         it("returns true when window is not visible", function()
@@ -88,56 +88,68 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_true(hidden_writer:_check_auto_scroll(hidden_buf))
             vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
+
+        it(
+            "returns true when buffer is on a different tabpage with cursor at bottom",
+            function()
+                -- Create a new tab with a window showing a separate buffer
+                vim.cmd("tabnew")
+                local tab2 = vim.api.nvim_get_current_tabpage()
+
+                -- The original bufnr+winid are on tab1 (from before_each).
+                -- bufwinid only searches the current tabpage, so from tab2
+                -- it returns -1 for bufnr, meaning _check_auto_scroll
+                -- treats it as not visible and returns true.
+                setup_buffer(20, 18)
+                assert.is_true(writer:_check_auto_scroll(bufnr))
+
+                -- Cleanup: close tab2 to return to tab1
+                vim.api.nvim_set_current_tabpage(tab2)
+                vim.cmd("tabclose")
+            end
+        )
+
+        it(
+            "returns false when buffer is on a different tabpage with cursor scrolled up",
+            function()
+                -- Put cursor far from bottom while on tab1
+                setup_buffer(50, 1)
+                assert.is_false(writer:_check_auto_scroll(bufnr))
+
+                -- Switch to tab2 — win_findbuf still finds the real window
+                -- on tab1, so cursor position is checked correctly and the
+                -- user's scroll-up intent is respected.
+                vim.cmd("tabnew")
+                local tab2 = vim.api.nvim_get_current_tabpage()
+                assert.is_false(writer:_check_auto_scroll(bufnr))
+
+                vim.api.nvim_set_current_tabpage(tab2)
+                vim.cmd("tabclose")
+            end
+        )
     end)
 
-    --- @return table mock_timer
-    local function create_mock_timer()
-        local captured_cb
-        return {
-            stop_count = 0,
-            start_count = 0,
-            stop = function(self)
-                self.stop_count = self.stop_count + 1
-            end,
-            start = function(self, _timeout, _repeat, callback)
-                self.start_count = self.start_count + 1
-                captured_cb = callback
-            end,
-            --- Execute the captured timer callback synchronously.
-            --- Requires vim.schedule_wrap to be stubbed as passthrough.
-            flush = function()
-                if captured_cb then
-                    captured_cb()
-                end
-            end,
-        }
-    end
-
     describe("_auto_scroll", function()
-        it("debounces by stopping and restarting timer on each call", function()
-            -- Constructor creates a real timer
-            assert.is_not_nil(writer._scroll_timer)
-
-            local mock_timer = create_mock_timer()
-            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
+        it("coalesces multiple calls into a single scheduled scroll", function()
+            setup_buffer(20, 20)
 
             writer:_auto_scroll(bufnr)
+            assert.is_true(writer._scroll_scheduled)
+
+            -- Subsequent calls are no-ops while scheduled
+            local check_spy = spy.on(writer, "_check_auto_scroll")
             writer:_auto_scroll(bufnr)
             writer:_auto_scroll(bufnr)
 
-            assert.equal(3, mock_timer.stop_count)
-            assert.equal(3, mock_timer.start_count)
-            -- Same object reused, not replaced
-            assert.equal(mock_timer, writer._scroll_timer)
+            -- _check_auto_scroll is not called again (sticky true)
+            assert.equal(0, check_spy.call_count)
+            check_spy:revert()
         end)
 
         it("evaluates _check_auto_scroll eagerly on first call", function()
-            writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
-
             local check_scroll_spy = spy.on(writer, "_check_auto_scroll")
             writer:_auto_scroll(bufnr)
 
-            -- Called eagerly to capture the decision before buffer changes
             assert.equal(1, check_scroll_spy.call_count)
             check_scroll_spy:revert()
         end)
@@ -145,10 +157,6 @@ describe("agentic.ui.MessageWriter", function()
 
     describe("_should_auto_scroll sticky field", function()
         it("stays true across multiple _auto_scroll calls", function()
-            local mock_timer = create_mock_timer()
-            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
-
-            -- Cursor at bottom — _check_auto_scroll returns true
             setup_buffer(20, 20)
 
             writer:_auto_scroll(bufnr)
@@ -165,10 +173,6 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "remains true after large buffer growth (simulates tool call block)",
             function()
-                local mock_timer = create_mock_timer()
-                writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
-
-                -- Cursor at bottom
                 setup_buffer(20, 20)
                 writer:_auto_scroll(bufnr)
                 assert.is_true(writer._should_auto_scroll)
@@ -188,23 +192,32 @@ describe("agentic.ui.MessageWriter", function()
             end
         )
 
-        it("timer callback resets field to nil after scrolling", function()
-            -- Stub vim.schedule_wrap as passthrough so flush() runs synchronously
-            local schedule_stub = spy.stub(vim, "schedule_wrap")
+        it("scheduled callback resets field to nil after scrolling", function()
+            local schedule_stub = spy.stub(vim, "schedule")
             schedule_stub:invokes(function(fn)
-                return fn
+                fn()
             end)
-
-            local mock_timer = create_mock_timer()
-            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
 
             setup_buffer(20, 20)
             writer:_auto_scroll(bufnr)
-            assert.is_true(writer._should_auto_scroll)
-
-            -- Fire the real callback synchronously
-            mock_timer.flush()
             assert.is_nil(writer._should_auto_scroll)
+
+            schedule_stub:revert()
+        end)
+
+        it("scheduled callback moves cursor to the last line", function()
+            local schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+
+            setup_buffer(50, 1)
+            -- Force auto-scroll on despite cursor being far from bottom
+            writer._should_auto_scroll = true
+            writer:_auto_scroll(bufnr)
+
+            local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
+            assert.equal(50, cursor_line)
 
             schedule_stub:revert()
         end)
@@ -212,22 +225,21 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "after reset, re-evaluates and returns false when user scrolled up",
             function()
-                local schedule_stub = spy.stub(vim, "schedule_wrap")
+                -- Run the first schedule synchronously to reset the field
+                local schedule_stub = spy.stub(vim, "schedule")
                 schedule_stub:invokes(function(fn)
-                    return fn
+                    fn()
                 end)
 
-                local mock_timer = create_mock_timer()
-                writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
-
-                -- Initially at bottom
                 setup_buffer(50, 50)
                 writer:_auto_scroll(bufnr)
-                assert.is_true(writer._should_auto_scroll)
-
-                -- Fire timer — resets field
-                mock_timer.flush()
                 assert.is_nil(writer._should_auto_scroll)
+                assert.is_false(writer._scroll_scheduled)
+
+                schedule_stub:revert()
+
+                -- Defer the second schedule to inspect the field before reset
+                schedule_stub = spy.stub(vim, "schedule")
 
                 -- User scrolls up (cursor far from bottom)
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
@@ -242,11 +254,22 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("auto-scroll with public write methods", function()
+        --- @type TestStub
+        local schedule_stub
+
+        before_each(function()
+            -- Prevent vim.schedule from firing so we can inspect
+            -- _should_auto_scroll before the callback resets it.
+            schedule_stub = spy.stub(vim, "schedule")
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+        end)
+
         it(
             "write_message captures scroll decision before buffer grows",
             function()
-                writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
-
                 -- Cursor at bottom of a small buffer
                 setup_buffer(10, 10)
 
@@ -275,8 +298,6 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "write_tool_call_block captures scroll decision before buffer grows",
             function()
-                writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
-
                 -- Cursor at bottom of a small buffer
                 setup_buffer(10, 10)
 
@@ -316,8 +337,6 @@ describe("agentic.ui.MessageWriter", function()
         )
 
         it("write_message does not scroll when user has scrolled up", function()
-            writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
-
             -- 50-line buffer, cursor at line 1 (scrolled up)
             setup_buffer(50, 1)
 
@@ -333,47 +352,6 @@ describe("agentic.ui.MessageWriter", function()
 
             -- Cursor was far from bottom, decision captured as false
             assert.is_false(writer._should_auto_scroll)
-        end)
-    end)
-
-    describe("destroy", function()
-        local function create_closeable_timer()
-            return {
-                stop_count = 0,
-                close_count = 0,
-                _closing = false,
-                stop = function(self)
-                    self.stop_count = self.stop_count + 1
-                end,
-                close = function(self)
-                    self.close_count = self.close_count + 1
-                    self._closing = true
-                end,
-                is_closing = function(self)
-                    return self._closing
-                end,
-            }
-        end
-
-        it("stops and closes the scroll timer", function()
-            local mock_timer = create_closeable_timer()
-            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
-
-            writer:destroy()
-
-            assert.equal(1, mock_timer.stop_count)
-            assert.equal(1, mock_timer.close_count)
-        end)
-
-        it("is idempotent (safe to call twice)", function()
-            local mock_timer = create_closeable_timer()
-            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
-
-            writer:destroy()
-            writer:destroy()
-
-            assert.equal(1, mock_timer.stop_count)
-            assert.equal(1, mock_timer.close_count)
         end)
     end)
 end)
