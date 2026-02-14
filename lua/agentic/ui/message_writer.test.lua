@@ -90,21 +90,30 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
-    describe("_auto_scroll", function()
-        --- @return table mock_timer
-        local function create_mock_timer()
-            return {
-                stop_count = 0,
-                start_count = 0,
-                stop = function(self)
-                    self.stop_count = self.stop_count + 1
-                end,
-                start = function(self, _timeout, _repeat, _callback)
-                    self.start_count = self.start_count + 1
-                end,
-            }
-        end
+    --- @return table mock_timer
+    local function create_mock_timer()
+        local captured_cb
+        return {
+            stop_count = 0,
+            start_count = 0,
+            stop = function(self)
+                self.stop_count = self.stop_count + 1
+            end,
+            start = function(self, _timeout, _repeat, callback)
+                self.start_count = self.start_count + 1
+                captured_cb = callback
+            end,
+            --- Execute the captured timer callback synchronously.
+            --- Requires vim.schedule_wrap to be stubbed as passthrough.
+            flush = function()
+                if captured_cb then
+                    captured_cb()
+                end
+            end,
+        }
+    end
 
+    describe("_auto_scroll", function()
         it("debounces by stopping and restarting timer on each call", function()
             -- Constructor creates a real timer
             assert.is_not_nil(writer._scroll_timer)
@@ -135,26 +144,8 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("_should_auto_scroll sticky field", function()
-        --- @return table mock_timer
-        --- @return function trigger_callback
-        local function create_capturing_timer()
-            local captured_cb
-            local timer = {
-                stop = function() end,
-                start = function(_self, _timeout, _repeat, callback)
-                    captured_cb = callback
-                end,
-            }
-            local function trigger()
-                if captured_cb then
-                    captured_cb()
-                end
-            end
-            return timer, trigger
-        end
-
         it("stays true across multiple _auto_scroll calls", function()
-            local mock_timer = create_capturing_timer()
+            local mock_timer = create_mock_timer()
             writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
 
             -- Cursor at bottom — _check_auto_scroll returns true
@@ -174,7 +165,7 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "remains true after large buffer growth (simulates tool call block)",
             function()
-                local mock_timer = create_capturing_timer()
+                local mock_timer = create_mock_timer()
                 writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
 
                 -- Cursor at bottom
@@ -198,20 +189,35 @@ describe("agentic.ui.MessageWriter", function()
         )
 
         it("timer callback resets field to nil after scrolling", function()
-            -- Directly test the reset semantics without involving the timer
-            -- The timer callback reads the field and resets it to nil
-            writer._should_auto_scroll = true
+            -- Stub vim.schedule_wrap as passthrough so flush() runs synchronously
+            local schedule_stub = spy.stub(vim, "schedule_wrap")
+            schedule_stub:invokes(function(fn)
+                return fn
+            end)
+
+            local mock_timer = create_mock_timer()
+            writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
+
+            setup_buffer(20, 20)
+            writer:_auto_scroll(bufnr)
             assert.is_true(writer._should_auto_scroll)
 
-            -- Simulate what the timer callback does: consume and reset
-            writer._should_auto_scroll = nil
+            -- Fire the real callback synchronously
+            mock_timer.flush()
             assert.is_nil(writer._should_auto_scroll)
+
+            schedule_stub:revert()
         end)
 
         it(
             "after reset, re-evaluates and returns false when user scrolled up",
             function()
-                local mock_timer = create_capturing_timer()
+                local schedule_stub = spy.stub(vim, "schedule_wrap")
+                schedule_stub:invokes(function(fn)
+                    return fn
+                end)
+
+                local mock_timer = create_mock_timer()
                 writer._scroll_timer = mock_timer --[[@as uv.uv_timer_t]]
 
                 -- Initially at bottom
@@ -219,8 +225,9 @@ describe("agentic.ui.MessageWriter", function()
                 writer:_auto_scroll(bufnr)
                 assert.is_true(writer._should_auto_scroll)
 
-                -- Simulate timer callback consuming the field
-                writer._should_auto_scroll = nil
+                -- Fire timer — resets field
+                mock_timer.flush()
+                assert.is_nil(writer._should_auto_scroll)
 
                 -- User scrolls up (cursor far from bottom)
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
@@ -228,8 +235,105 @@ describe("agentic.ui.MessageWriter", function()
                 -- Next _auto_scroll re-evaluates, should be false
                 writer:_auto_scroll(bufnr)
                 assert.is_false(writer._should_auto_scroll)
+
+                schedule_stub:revert()
             end
         )
+    end)
+
+    describe("auto-scroll with public write methods", function()
+        it(
+            "write_message captures scroll decision before buffer grows",
+            function()
+                writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
+
+                -- Cursor at bottom of a small buffer
+                setup_buffer(10, 10)
+
+                -- Write a large message (50 lines) via the real public method
+                local long_text = {}
+                for i = 1, 50 do
+                    long_text[i] = "message line " .. i
+                end
+
+                --- @type agentic.acp.SessionUpdateMessage
+                local update = {
+                    sessionUpdate = "agent_message_chunk",
+                    content = {
+                        type = "text",
+                        text = table.concat(long_text, "\n"),
+                    },
+                }
+                writer:write_message(update)
+
+                -- Decision was captured BEFORE the 50 lines were written
+                -- Cursor was at line 10 of 10 (distance=0, within threshold)
+                assert.is_true(writer._should_auto_scroll)
+            end
+        )
+
+        it(
+            "write_tool_call_block captures scroll decision before buffer grows",
+            function()
+                writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
+
+                -- Cursor at bottom of a small buffer
+                setup_buffer(10, 10)
+
+                --- @type agentic.ui.MessageWriter.ToolCallBlock
+                local block = {
+                    tool_call_id = "test-1",
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls -la",
+                    body = {
+                        "file1.lua",
+                        "file2.lua",
+                        "file3.lua",
+                        "file4.lua",
+                        "file5.lua",
+                        "file6.lua",
+                        "file7.lua",
+                        "file8.lua",
+                        "file9.lua",
+                        "file10.lua",
+                        "file11.lua",
+                        "file12.lua",
+                        "file13.lua",
+                        "file14.lua",
+                        "file15.lua",
+                    },
+                }
+                writer:write_tool_call_block(block)
+
+                -- Decision was captured BEFORE the block lines were written
+                assert.is_true(writer._should_auto_scroll)
+
+                -- Buffer grew significantly (header + 15 body + footer + spacing)
+                local total = vim.api.nvim_buf_line_count(bufnr)
+                assert.is_true(total > 20)
+            end
+        )
+
+        it("write_message does not scroll when user has scrolled up", function()
+            writer._scroll_timer = create_mock_timer() --[[@as uv.uv_timer_t]]
+
+            -- 50-line buffer, cursor at line 1 (scrolled up)
+            setup_buffer(50, 1)
+
+            --- @type agentic.acp.SessionUpdateMessage
+            local update = {
+                sessionUpdate = "agent_message_chunk",
+                content = {
+                    type = "text",
+                    text = "new content\nmore content",
+                },
+            }
+            writer:write_message(update)
+
+            -- Cursor was far from bottom, decision captured as false
+            assert.is_false(writer._should_auto_scroll)
+        end)
     end)
 
     describe("destroy", function()

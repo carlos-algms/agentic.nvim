@@ -85,10 +85,11 @@ function MessageWriter:write_message(update)
 
     local lines = vim.split(text, "\n", { plain = true })
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_auto_scroll(self.bufnr)
+
+    BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines(lines)
         self:_append_lines({ "", "" })
-        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -114,6 +115,8 @@ function MessageWriter:write_message_chunk(update)
     end
 
     self._last_message_type = update.sessionUpdate
+
+    self:_auto_scroll(self.bufnr)
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
@@ -141,8 +144,6 @@ function MessageWriter:write_message_chunk(update)
         if not success then
             Logger.debug("Failed to set text in buffer", err, lines_to_write)
         end
-
-        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -211,6 +212,8 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    self:_auto_scroll(self.bufnr)
+
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local kind = tool_call_block.kind
 
@@ -254,7 +257,6 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
         self:_append_lines({ "", "" })
-        self:_auto_scroll(bufnr)
     end)
 end
 
@@ -598,9 +600,10 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
 
+    self:_auto_scroll(self.bufnr)
+
     BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines(lines_to_append)
-        self:_auto_scroll(self.bufnr)
     end)
 
     local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
