@@ -97,9 +97,10 @@ describe("agentic.ui.MessageWriter", function()
                 local tab2 = vim.api.nvim_get_current_tabpage()
 
                 -- The original bufnr+winid are on tab1 (from before_each).
-                -- bufwinid only searches the current tabpage, so from tab2
-                -- it returns -1 for bufnr, meaning _check_auto_scroll
-                -- treats it as not visible and returns true.
+                -- writer:_check_auto_scroll uses vim.fn.win_findbuf(bufnr)
+                -- which searches ALL tabpages, so it finds the real window
+                -- on tab1 and checks the actual cursor position. The test
+                -- passes because cursor line 18 of 20 is within threshold.
                 setup_buffer(20, 18)
                 assert.is_true(writer:_check_auto_scroll(bufnr))
 
@@ -221,6 +222,44 @@ describe("agentic.ui.MessageWriter", function()
 
             schedule_stub:revert()
         end)
+
+        it(
+            "scheduled callback scrolls when user is on a different tabpage",
+            function()
+                local schedule_stub = spy.stub(vim, "schedule")
+                schedule_stub:invokes(function(fn)
+                    fn()
+                end)
+
+                -- Cursor at bottom, auto-scroll should engage
+                setup_buffer(20, 20)
+
+                -- Add 30 lines to simulate streaming content
+                local new_lines = {}
+                for i = 1, 30 do
+                    new_lines[i] = "streamed line " .. i
+                end
+                vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, new_lines)
+
+                -- Switch to a different tab (simulating user working elsewhere)
+                vim.cmd("tabnew")
+                local tab2 = vim.api.nvim_get_current_tabpage()
+
+                -- Force the scroll decision and trigger the callback
+                writer._should_auto_scroll = true
+                writer:_auto_scroll(bufnr)
+
+                -- Cursor on the chat window (tab1) should be at the last line
+                local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
+                assert.equal(50, cursor_line)
+
+                -- Cleanup
+                vim.api.nvim_set_current_tabpage(tab2)
+                vim.cmd("tabclose")
+
+                schedule_stub:revert()
+            end
+        )
 
         it(
             "after reset, re-evaluates and returns false when user scrolled up",

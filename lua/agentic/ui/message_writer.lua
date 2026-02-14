@@ -198,9 +198,12 @@ function MessageWriter:_auto_scroll(bufnr)
 
         if vim.api.nvim_buf_is_valid(bufnr) then
             if self._should_auto_scroll then
-                BufHelpers.execute_on_buffer(bufnr, function()
-                    vim.cmd("normal! G0zb")
-                end)
+                local wins = vim.fn.win_findbuf(bufnr)
+                if #wins > 0 then
+                    vim.api.nvim_win_call(wins[1], function()
+                        vim.cmd("normal! G0zb")
+                    end)
+                end
             end
         end
 
