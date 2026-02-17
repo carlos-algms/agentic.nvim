@@ -185,6 +185,10 @@ function SessionManager:_on_session_update(update)
         if self.agent_modes:update_mode(update.currentModeId) then
             self:_set_mode_to_chat_header(update.currentModeId)
         end
+    elseif update.sessionUpdate == "usage_update" then
+        -- Usage updates contain token/cost information - currently informational only
+        -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
+        -- Keeping silent for now to avoid "press any key" prompts on large JSON output
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
         Logger.notify(

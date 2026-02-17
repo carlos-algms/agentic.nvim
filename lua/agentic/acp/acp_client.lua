@@ -760,6 +760,12 @@ return ACPClient
 --- @field sessionUpdate "current_mode_update"
 --- @field currentModeId string
 
+--- @class agentic.acp.UsageUpdate
+--- @field sessionUpdate "usage_update"
+--- @field used number Tokens currently in context
+--- @field size number Total context window size in tokens
+--- @field cost? { amount: number, currency: string } Cumulative session cost
+
 --- @alias agentic.acp.SessionUpdateMessage
 --- | agentic.acp.UserMessageChunk
 --- | agentic.acp.AgentMessageChunk
@@ -769,6 +775,7 @@ return ACPClient
 --- | agentic.acp.PlanUpdate
 --- | agentic.acp.AvailableCommandsUpdate
 --- | agentic.acp.CurrentModeUpdate
+--- | agentic.acp.UsageUpdate
 
 --- @class agentic.acp.PermissionOption
 --- @field optionId string
