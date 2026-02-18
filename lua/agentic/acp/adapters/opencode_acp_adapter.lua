@@ -100,9 +100,11 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                 message.argument =
                     FileSystem.to_smart_path(update.rawInput.filePath or "")
 
+                local old_string = update.rawInput.oldString
+
                 message.diff = {
                     new = vim.split(update.rawInput.newString, "\n"),
-                    old = vim.split(update.rawInput.oldString or "", "\n"),
+                    old = old_string and vim.split(old_string, "\n") or {},
                     all = update.rawInput.replaceAll or false,
                 }
             elseif update.rawInput.url then -- fetch command

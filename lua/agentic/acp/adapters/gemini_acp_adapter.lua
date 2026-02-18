@@ -45,12 +45,12 @@ function GeminiACPAdapter:__handle_tool_call(session_id, update)
         local content = update.content and update.content[1]
 
         if content then
-            local new_string = content.newText or ""
-            local old_string = content.oldText or ""
+            local new_string = content.newText
+            local old_string = content.oldText
 
             message.diff = {
-                new = vim.split(new_string, "\n"),
-                old = vim.split(old_string, "\n"),
+                new = new_string and vim.split(new_string, "\n") or {},
+                old = old_string and vim.split(old_string, "\n") or {},
             }
         end
 

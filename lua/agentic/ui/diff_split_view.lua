@@ -78,48 +78,19 @@ local function reconstruct_modified_file(
     return modified_lines
 end
 
---- @param opts agentic.ui.DiffPreview.ShowOpts
-function M.show_split_diff(opts)
-    local old_lines = opts.diff.old or {}
-    local new_lines = opts.diff.new or {}
+--- @param lines string[]
+--- @return boolean
+local function is_empty_lines(lines)
+    return #lines == 0 or (#lines == 1 and lines[1] == "")
+end
 
-    if #old_lines == 0 then
-        Logger.debug("show_split_diff: new file, fallback to inline mode")
-        return false
-    end
-
-    local abs_path = FileSystem.to_absolute_path(opts.file_path)
-    local bufnr = vim.fn.bufnr(abs_path)
-    if bufnr == -1 then
-        bufnr = vim.fn.bufadd(abs_path)
-    end
-
-    local winid = vim.fn.bufwinid(bufnr)
-    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
-    if not target_winid then
-        Logger.debug("show_split_diff: no valid window found")
-        return false
-    end
-
-    local original_lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
-    if not original_lines then
-        Logger.notify("Failed to read file: " .. tostring(err))
-        return false
-    end
-
-    local modified_lines = reconstruct_modified_file(
-        original_lines,
-        old_lines,
-        new_lines,
-        opts.diff.all
-    )
-    if not modified_lines then
-        Logger.notify(
-            "show_split_diff: could not match diff in file, the agent will most likely fail and retry"
-        )
-        return false
-    end
-
+--- Open split diff view with original and modified content
+--- @param abs_path string
+--- @param bufnr number
+--- @param target_winid number
+--- @param modified_lines string[]
+--- @return boolean success
+local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
     local scratch_bufnr = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(scratch_bufnr, abs_path .. " (suggestion)")
     vim.api.nvim_buf_set_lines(scratch_bufnr, 0, -1, false, modified_lines)
@@ -173,6 +144,79 @@ function M.show_split_diff(opts)
     })
 
     return true
+end
+
+--- Resolve buffer and target window for a file path
+--- @param abs_path string
+--- @param get_winid fun(bufnr: number): number|nil
+--- @return number|nil bufnr
+--- @return number|nil target_winid
+local function resolve_buf_and_win(abs_path, get_winid)
+    local bufnr = vim.fn.bufnr(abs_path)
+    if bufnr == -1 then
+        bufnr = vim.fn.bufadd(abs_path)
+    end
+
+    local winid = vim.fn.bufwinid(bufnr)
+    local target_winid = winid ~= -1 and winid or get_winid(bufnr)
+    if not target_winid then
+        Logger.debug("show_split_diff: no valid window found")
+        return nil, nil
+    end
+
+    return bufnr, target_winid
+end
+
+--- @param opts agentic.ui.DiffPreview.ShowOpts
+function M.show_split_diff(opts)
+    local old_lines = opts.diff.old or {}
+    local new_lines = opts.diff.new or {}
+
+    local abs_path = FileSystem.to_absolute_path(opts.file_path)
+
+    -- Full file replacement (Write tool): old_lines is empty but file may exist on disk
+    if is_empty_lines(old_lines) then
+        local original_lines = FileSystem.read_from_buffer_or_disk(abs_path)
+        if not original_lines then
+            -- Truly new file, fallback to inline mode
+            Logger.debug("show_split_diff: new file, fallback to inline mode")
+            return false
+        end
+
+        local bufnr, target_winid =
+            resolve_buf_and_win(abs_path, opts.get_winid)
+        if not bufnr or not target_winid then
+            return false
+        end
+
+        return open_split_view(abs_path, bufnr, target_winid, new_lines)
+    end
+
+    local bufnr, target_winid = resolve_buf_and_win(abs_path, opts.get_winid)
+    if not bufnr or not target_winid then
+        return false
+    end
+
+    local original_lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
+    if not original_lines then
+        Logger.notify("Failed to read file: " .. tostring(err))
+        return false
+    end
+
+    local modified_lines = reconstruct_modified_file(
+        original_lines,
+        old_lines,
+        new_lines,
+        opts.diff.all
+    )
+    if not modified_lines then
+        Logger.notify(
+            "show_split_diff: could not match diff in file, the agent will most likely fail and retry"
+        )
+        return false
+    end
+
+    return open_split_view(abs_path, bufnr, target_winid, modified_lines)
 end
 
 --- @param tabpage number|nil Tabpage ID (defaults to current tabpage)

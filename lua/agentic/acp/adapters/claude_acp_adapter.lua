@@ -58,15 +58,14 @@ function ClaudeACPAdapter:__handle_tool_call(session_id, update)
         message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
 
         if kind == "edit" then
-            local new_string = update.rawInput.new_string or ""
-            local old_string = update.rawInput.old_string or ""
-
-            -- Claude might send content when creating new files
-            new_string = update.rawInput.content or new_string
+            -- Write tool sends full file content in rawInput.content (new or existing files)
+            local new_string = update.rawInput.content
+                or update.rawInput.new_string
+            local old_string = update.rawInput.old_string
 
             message.diff = {
-                new = vim.split(new_string, "\n"),
-                old = vim.split(old_string, "\n"),
+                new = new_string and vim.split(new_string, "\n") or {},
+                old = old_string and vim.split(old_string, "\n") or {},
                 all = update.rawInput.replace_all or false,
             }
         end

@@ -9,7 +9,7 @@ describe("DiffSplitView", function()
     local test_tabpage
     local read_stub
 
-    --- @param lines string[]
+    --- @param lines string[]|nil
     local function stub_file_content(lines)
         read_stub:returns(lines, nil)
     end
@@ -47,8 +47,10 @@ describe("DiffSplitView", function()
 
     describe("show_split_diff", function()
         it(
-            "should fallback to inline mode for new files (empty old)",
+            "should fallback to inline mode for new files (empty old, file does not exist)",
             function()
+                stub_file_content(nil)
+
                 local success = DiffSplitView.show_split_diff({
                     file_path = test_file_path,
                     diff = { old = {}, new = { "local y = 2" } },
@@ -58,6 +60,34 @@ describe("DiffSplitView", function()
                 })
 
                 assert.is_false(success)
+            end
+        )
+
+        it(
+            "should show split diff for full file replacement (empty old, file exists)",
+            function()
+                local success = DiffSplitView.show_split_diff({
+                    file_path = test_file_path,
+                    diff = { old = {}, new = { "local y = 2" } },
+                    get_winid = function()
+                        return vim.api.nvim_get_current_win()
+                    end,
+                })
+
+                assert.is_true(success)
+
+                local state = DiffSplitView.get_split_state(test_tabpage)
+                assert.is_not_nil(state)
+
+                if state then
+                    local new_lines = vim.api.nvim_buf_get_lines(
+                        state.new_bufnr,
+                        0,
+                        -1,
+                        false
+                    )
+                    assert.same({ "local y = 2" }, new_lines)
+                end
             end
         )
 
