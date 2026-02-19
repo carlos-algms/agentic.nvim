@@ -120,6 +120,33 @@ describe("tool_call_diff", function()
             assert.equal(1, blocks[1].start_line)
             assert.equal(3, blocks[2].start_line)
         end)
+
+        it("handles partial last line via prefix boundary matching", function()
+            local file_lines = {
+                "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));",
+                "",
+                "  const { executeWithPool } = await import('./pool.ts');",
+                "  const result = await executeWithPool(pool, { input: 'test' }, 'system');",
+            }
+            read_stub:returns(file_lines)
+
+            local blocks = ToolCallDiff.extract_diff_blocks({
+                path = "/test.ts",
+                old_text = "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));\n\n  const { executeWithPool } = await import('./pool.ts');\n  const result",
+                new_text = "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));\n\n  const result",
+            })
+
+            -- minimize_diff_blocks strips shared context, leaving only the deletion
+            assert.equal(1, #blocks)
+            local block = blocks[1]
+            assert.equal(3, block.start_line)
+            assert.equal(3, block.end_line)
+            assert.same(
+                { "  const { executeWithPool } = await import('./pool.ts');" },
+                block.old_lines
+            )
+            assert.same({}, block.new_lines)
+        end)
     end)
 
     describe("filter_unchanged_lines", function()

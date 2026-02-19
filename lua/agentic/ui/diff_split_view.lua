@@ -78,10 +78,20 @@ local function reconstruct_modified_file(
     return modified_lines
 end
 
---- @param lines string[]
---- @return boolean
-local function is_empty_lines(lines)
-    return #lines == 0 or (#lines == 1 and lines[1] == "")
+--- Clean up any existing suggestion buffer for the given path to avoid E95
+--- @param suggestion_name string
+local function cleanup_stale_suggestion_buf(suggestion_name)
+    local existing = vim.fn.bufnr(suggestion_name)
+    if existing == -1 then
+        return
+    end
+
+    -- Close any windows displaying the stale buffer
+    for _, winid in ipairs(vim.fn.win_findbuf(existing)) do
+        pcall(vim.api.nvim_win_close, winid, true)
+    end
+
+    pcall(vim.api.nvim_buf_delete, existing, { force = true })
 end
 
 --- Open split diff view with original and modified content
@@ -91,8 +101,11 @@ end
 --- @param modified_lines string[]
 --- @return boolean success
 local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
+    local suggestion_name = abs_path .. " (suggestion)"
+    cleanup_stale_suggestion_buf(suggestion_name)
+
     local scratch_bufnr = vim.api.nvim_create_buf(false, true)
-    vim.api.nvim_buf_set_name(scratch_bufnr, abs_path .. " (suggestion)")
+    vim.api.nvim_buf_set_name(scratch_bufnr, suggestion_name)
     vim.api.nvim_buf_set_lines(scratch_bufnr, 0, -1, false, modified_lines)
 
     local ft = vim.bo[bufnr].filetype
@@ -146,7 +159,11 @@ local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
     return true
 end
 
---- Resolve buffer and target window for a file path
+--- Resolve buffer and target window for a file path.
+--- get_winid is called when the buffer is not already visible in any window.
+--- It must return a window that is displaying bufnr (i.e. call
+--- nvim_win_set_buf before returning), as open_split_view runs :diffthis
+--- on the returned window. See session_manager.lua get_winid for reference.
 --- @param abs_path string
 --- @param get_winid fun(bufnr: number): number|nil
 --- @return number|nil bufnr
@@ -164,6 +181,16 @@ local function resolve_buf_and_win(abs_path, get_winid)
         return nil, nil
     end
 
+    -- Ensure the target window actually displays the buffer (get_winid
+    -- callbacks may return a window without loading the buffer into it)
+    if vim.api.nvim_win_get_buf(target_winid) ~= bufnr then
+        local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
+        if not ok then
+            Logger.debug("resolve_buf_and_win: failed to set buffer:", err)
+            return nil, nil
+        end
+    end
+
     return bufnr, target_winid
 end
 
@@ -175,9 +202,12 @@ function M.show_split_diff(opts)
     local abs_path = FileSystem.to_absolute_path(opts.file_path)
 
     -- Full file replacement (Write tool): old_lines is empty but file may exist on disk
-    if is_empty_lines(old_lines) then
-        local original_lines = FileSystem.read_from_buffer_or_disk(abs_path)
-        if not original_lines then
+    if ToolCallDiff.is_empty_lines(old_lines) then
+        local bufnr_check = vim.fn.bufnr(abs_path)
+        local file_exists = (
+            bufnr_check ~= -1 and vim.api.nvim_buf_is_loaded(bufnr_check)
+        ) or vim.uv.fs_stat(abs_path) ~= nil
+        if not file_exists then
             -- Truly new file, fallback to inline mode
             Logger.debug("show_split_diff: new file, fallback to inline mode")
             return false

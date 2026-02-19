@@ -66,6 +66,10 @@ describe("DiffSplitView", function()
         it(
             "should show split diff for full file replacement (empty old, file exists)",
             function()
+                -- Load the buffer so the lightweight existence check succeeds
+                local bufnr = vim.fn.bufadd(test_file_path)
+                vim.fn.bufload(bufnr)
+
                 local success = DiffSplitView.show_split_diff({
                     file_path = test_file_path,
                     diff = { old = {}, new = { "local y = 2" } },
@@ -282,6 +286,46 @@ describe("DiffSplitView", function()
                 end
             end
         )
+        it("should handle double-call without buffer/name collision", function()
+            local bufnr = vim.fn.bufadd(test_file_path)
+
+            local get_winid = function()
+                return vim.api.nvim_get_current_win()
+            end
+
+            local first = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = { old = { "local x = 1" }, new = { "local x = 2" } },
+                get_winid = get_winid,
+            })
+            assert.is_true(first)
+
+            local state1 = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state1)
+
+            local second = DiffSplitView.show_split_diff({
+                file_path = test_file_path,
+                diff = { old = { "local x = 1" }, new = { "local x = 3" } },
+                get_winid = get_winid,
+            })
+            assert.is_true(second)
+
+            local state2 = DiffSplitView.get_split_state(test_tabpage)
+            assert.is_not_nil(state2)
+
+            if state2 then
+                assert.equal(bufnr, state2.original_bufnr)
+                assert.is_true(vim.api.nvim_buf_is_valid(state2.new_bufnr))
+                assert.is_true(vim.api.nvim_win_is_valid(state2.new_winid))
+
+                local lines =
+                    vim.api.nvim_buf_get_lines(state2.new_bufnr, 0, -1, false)
+                assert.same({ "local x = 3", "print(x)", "" }, lines)
+            end
+
+            DiffSplitView.clear_split_diff(test_tabpage)
+            assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+        end)
     end)
 
     describe("clear_split_diff", function()
