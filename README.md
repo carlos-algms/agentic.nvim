@@ -190,6 +190,22 @@ tools like `nvm`, `fnm`, etc...
       silent = true,
       mode = { "n", "v", "i" },
     },
+    {
+      "<leader>ad", -- ai Diagnostics
+      function()
+          require("agentic").add_current_line_diagnostics()
+      end,
+      desc = "Add current line diagnostic to Agentic",
+      mode = { "n" },
+    },
+    {
+      "<leader>aD", -- ai all Diagnostics
+      function()
+          require("agentic").add_buffer_diagnostics()
+      end,
+      desc = "Add all buffer diagnostics to Agentic",
+      mode = { "n" },
+    },
   },
 }
 ```
@@ -372,6 +388,8 @@ header parts:
 | `:lua require("agentic").add_selection()`                    | Add visual selection to context                                   |
 | `:lua require("agentic").add_file()`                         | Add current file to context                                       |
 | `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                     |
+| `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
+| `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
 | `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue    |
@@ -397,7 +415,8 @@ focus the prompt input after opening the chat:
   input after opening the chat
 
 Available on: `add_selection(opts)`, `add_file(opts)`,
-`add_selection_or_file_to_context(opts)`
+`add_selection_or_file_to_context(opts)`, `add_current_line_diagnostics(opts)`,
+`add_buffer_diagnostics(opts)`
 
 ```lua
 -- Add selection without focusing the prompt
@@ -408,19 +427,19 @@ require("agentic").add_selection({ focus_prompt = false })
 
 These keybindings are automatically set in Agentic buffers:
 
-| Keybinding       | Mode  | Description                                                   |
-| ---------------- | ----- | ------------------------------------------------------------- |
-| `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes) |
-| `<CR>`           | n     | Submit prompt                                                 |
-| `<C-s>`          | n/v/i | Submit prompt                                                 |
-| `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer               |
-| `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)              |
-| `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                  |
-| `q`              | n     | Close chat widget                                             |
-| `d`              | n     | Remove file or code selection at cursor                       |
-| `d`              | v     | Remove multiple selected files or code selections             |
-| `]c`             | n     | Navigate to next diff hunk (when diff preview is active)      |
-| `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)  |
+| Keybinding       | Mode  | Description                                                     |
+| ---------------- | ----- | --------------------------------------------------------------- |
+| `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes)   |
+| `<CR>`           | n     | Submit prompt                                                   |
+| `<C-s>`          | n/v/i | Submit prompt                                                   |
+| `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer                 |
+| `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
+| `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
+| `q`              | n     | Close chat widget                                               |
+| `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
+| `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
+| `]c`             | n     | Navigate to next diff hunk (when diff preview is active)        |
+| `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)    |
 
 #### Customizing Keybindings
 
@@ -705,6 +724,24 @@ colorscheme.
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
 
+### Customizing Diagnostic Icons
+
+You can customize the icons used for diagnostics in the context panel:
+
+```lua
+require("agentic").setup({
+    diagnostic_icons = {
+        error = "❌",
+        warn = "⚠️",
+        info = "ℹ️",
+        hint = "✨",
+    },
+})
+```
+
+Default icons use emoji characters (❌, ⚠️, ℹ️, ✨) but you can use any string,
+including Nerd Font icons or plain text.
+
 ## Integration with other Plugins
 
 ### Prompt suggestions with Copilot
@@ -761,8 +798,8 @@ conflicts with custom window decorations:
 require('lualine').setup({
   options = {
     disabled_filetypes = {
-      statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
-      winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
+      statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
+      winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
     }
   }
 })

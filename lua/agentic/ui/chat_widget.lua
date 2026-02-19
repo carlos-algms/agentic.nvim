@@ -5,7 +5,7 @@ local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
 
---- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"
+--- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"|"diagnostics"
 
 --- Runtime header parts with dynamic context
 --- @class agentic.ui.ChatWidget.HeaderParts
@@ -216,11 +216,15 @@ function ChatWidget:_submit_input()
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
     end)
 
+    BufHelpers.with_modifiable(self.buf_nrs.diagnostics, function(bufnr)
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+    end)
+
     self.on_submit_input(prompt)
 
     self:close_optional_window("code")
     self:close_optional_window("files")
-
+    self:close_optional_window("diagnostics")
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
 end
@@ -360,6 +364,10 @@ function ChatWidget:_create_buf_nrs()
         filetype = "AgenticFiles",
     })
 
+    local diagnostics = self:_create_new_buf({
+        filetype = "AgenticDiagnostics",
+    })
+
     local input = self:_create_new_buf({
         filetype = "AgenticInput",
         modifiable = true,
@@ -369,6 +377,7 @@ function ChatWidget:_create_buf_nrs()
     pcall(vim.treesitter.start, todos, "markdown")
     pcall(vim.treesitter.start, code, "markdown")
     pcall(vim.treesitter.start, files, "markdown")
+    pcall(vim.treesitter.start, diagnostics, "markdown")
     pcall(vim.treesitter.start, input, "markdown")
 
     --- @type agentic.ui.ChatWidget.BufNrs
@@ -377,6 +386,7 @@ function ChatWidget:_create_buf_nrs()
         todos = todos,
         code = code,
         files = files,
+        diagnostics = diagnostics,
         input = input,
     }
 

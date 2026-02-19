@@ -231,6 +231,7 @@ describe("WidgetLayout", function()
                 input = vim.api.nvim_create_buf(false, true),
                 code = vim.api.nvim_create_buf(false, true),
                 files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
                 todos = vim.api.nvim_create_buf(false, true),
             }
 

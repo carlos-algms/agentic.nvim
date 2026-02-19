@@ -7,12 +7,15 @@
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
+local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 local DiffPreview = require("agentic.ui.diff_preview")
+local DiagnosticsList = require("agentic.ui.diagnostics_list")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local SessionRestore = require("agentic.session_restore")
 local SlashCommands = require("agentic.acp.slash_commands")
 local TodoList = require("agentic.ui.todo_list")
+local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -47,6 +50,7 @@ end
 --- @field status_animation agentic.ui.StatusAnimation
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
+--- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field agent_modes agentic.acp.AgentModes
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
@@ -142,6 +146,23 @@ function SessionManager:new(tab_page_id)
                 self.widget:render_header(
                     "code",
                     tostring(#code_selection:get_selections())
+                )
+                self.widget:show({ focus_prompt = false })
+            end
+        end
+    )
+
+    self.diagnostics_list = DiagnosticsList:new(
+        self.widget.buf_nrs.diagnostics,
+        function(diagnostics_list)
+            if diagnostics_list:is_empty() then
+                self.widget:close_optional_window("diagnostics")
+                self.widget:move_cursor_to(self.widget.win_nrs.input)
+            else
+                -- show() opens layouts but does not update the diagnostics header count
+                self.widget:render_header(
+                    "diagnostics",
+                    tostring(#diagnostics_list:get_diagnostics())
                 )
                 self.widget:show({ focus_prompt = false })
             end
@@ -374,6 +395,30 @@ function SessionManager:_handle_input_submit(input_text)
                 message_lines,
                 string.format("  - @%s", FileSystem.to_smart_path(file_path))
             )
+        end
+    end
+
+    if not self.diagnostics_list:is_empty() then
+        table.insert(message_lines, "\n- **Diagnostics**:")
+
+        local diagnostics = self.diagnostics_list:get_diagnostics()
+        self.diagnostics_list:clear()
+
+        local chat_width = WidgetLayout.calculate_width(Config.windows.width)
+        local chat_winid = self.widget.win_nrs.chat
+        if chat_winid and vim.api.nvim_win_is_valid(chat_winid) then
+            chat_width = vim.api.nvim_win_get_width(chat_winid)
+        end
+
+        local formatted_diagnostics =
+            DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
+
+        for _, prompt_entry in ipairs(formatted_diagnostics.prompt_entries) do
+            table.insert(prompt, prompt_entry)
+        end
+
+        for _, summary_line in ipairs(formatted_diagnostics.summary_lines) do
+            table.insert(message_lines, summary_line)
         end
     end
 
@@ -644,6 +689,7 @@ function SessionManager:_cancel_session()
         self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
+        self.diagnostics_list:clear()
     end
 
     self.session_id = nil
@@ -740,6 +786,24 @@ function SessionManager:add_file_to_session(buf)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
     return self.file_list:add(buf_path)
+end
+
+--- Add diagnostics at the current cursor line to context
+--- @param bufnr integer|nil Buffer number to get diagnostics from, defaults to current buffer
+--- @return integer count Number of diagnostics added
+function SessionManager:add_current_line_diagnostics_to_context(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    local diagnostics = DiagnosticsList.get_diagnostics_at_cursor(bufnr)
+    return self.diagnostics_list:add_many(diagnostics)
+end
+
+--- Add all diagnostics from the current buffer to context
+--- @param bufnr integer|nil Buffer number, defaults to current buffer
+--- @return integer count Number of diagnostics added
+function SessionManager:add_buffer_diagnostics_to_context(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    local diagnostics = DiagnosticsList.get_buffer_diagnostics(bufnr)
+    return self.diagnostics_list:add_many(diagnostics)
 end
 
 --- @param tool_call_id string

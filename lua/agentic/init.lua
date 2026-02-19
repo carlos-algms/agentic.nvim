@@ -85,6 +85,38 @@ end
 --- @class agentic.ui.NewSessionOpts : agentic.ui.ChatWidget.ShowOpts
 --- @field provider? agentic.UserConfig.ProviderName
 
+--- Add diagnostics at the current cursor line to the Chat context
+--- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
+function Agentic.add_current_line_diagnostics(opts)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        local count = session:add_current_line_diagnostics_to_context()
+        if count > 0 then
+            session.widget:show(opts)
+        else
+            Logger.notify(
+                "No diagnostics found on the current line",
+                vim.log.levels.INFO
+            )
+        end
+    end)
+end
+
+--- Add all diagnostics from the current buffer to the Chat context
+--- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
+function Agentic.add_buffer_diagnostics(opts)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        local count = session:add_buffer_diagnostics_to_context()
+        if count > 0 then
+            session.widget:show(opts)
+        else
+            Logger.notify(
+                "No diagnostics found in the current buffer",
+                vim.log.levels.INFO
+            )
+        end
+    end)
+end
+
 --- Destroys the current Chat session and starts a new one
 --- @param opts agentic.ui.NewSessionOpts|nil
 function Agentic.new_session(opts)

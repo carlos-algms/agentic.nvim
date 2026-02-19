@@ -231,8 +231,17 @@ local function show_layout(params, position)
         split = is_bottom and "below" or "above",
     }, Config.windows.files.max_height)
 
+    ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
+        or win_nrs.input
+
+    open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
+        win = ref_win,
+        split = is_bottom and "below" or "above",
+    }, Config.windows.diagnostics.max_height)
+
     if Config.windows.todos.display then
-        ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
+        ref_win = is_bottom
+                and (win_nrs.diagnostics or win_nrs.files or win_nrs.code or win_nrs.input)
             or win_nrs.chat
 
         open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {

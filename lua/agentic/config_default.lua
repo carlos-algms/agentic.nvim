@@ -125,6 +125,10 @@ local ConfigDefault = {
     --- @field max_height number
     --- @field win_opts? agentic.UserConfig.WinOpts
 
+    --- @class agentic.UserConfig.Windows.Diagnostics
+    --- @field max_height number
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
     --- @class agentic.UserConfig.Windows.Todos
     --- @field display boolean
     --- @field max_height number
@@ -141,6 +145,7 @@ local ConfigDefault = {
     --- @field input agentic.UserConfig.Windows.Input
     --- @field code agentic.UserConfig.Windows.Code
     --- @field files agentic.UserConfig.Windows.Files
+    --- @field diagnostics agentic.UserConfig.Windows.Diagnostics
     --- @field todos agentic.UserConfig.Windows.Todos
     windows = {
         position = "right",
@@ -151,6 +156,7 @@ local ConfigDefault = {
         input = { height = 10, win_opts = {} },
         code = { max_height = 15, win_opts = {} },
         files = { max_height = 10, win_opts = {} },
+        diagnostics = { max_height = 10, win_opts = {} },
         todos = { display = true, max_height = 10, win_opts = {} },
     },
 
@@ -224,6 +230,19 @@ local ConfigDefault = {
         pending = "󰔛",
         completed = "✔",
         failed = "",
+    },
+
+    --- Icons used for diagnostics in the context panel
+    --- @class agentic.UserConfig.DiagnosticIcons
+    --- @field error string Icon for error severity
+    --- @field warn string Icon for warning severity
+    --- @field info string Icon for info severity
+    --- @field hint string Icon for hint severity
+    diagnostic_icons = {
+        error = "❌",
+        warn = "⚠️",
+        info = "ℹ️",
+        hint = "✨",
     },
 
     --- @class agentic.UserConfig.PermissionIcons
