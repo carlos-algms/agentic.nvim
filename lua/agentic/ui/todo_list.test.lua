@@ -151,6 +151,132 @@ describe("agentic.ui.TodoList", function()
         end)
     end)
 
+    describe("_scroll_to_non_completed", function()
+        --- @type integer|nil
+        local winid
+
+        after_each(function()
+            if winid and vim.api.nvim_win_is_valid(winid) then
+                vim.api.nvim_win_close(winid, true)
+                winid = nil
+            end
+        end)
+
+        --- @param height integer
+        --- @return integer
+        local function open_todo_window(height)
+            winid = vim.api.nvim_open_win(bufnr, false, {
+                split = "below",
+                height = height,
+            })
+            return winid
+        end
+
+        --- @return integer
+        local function get_topline()
+            ---@cast winid integer
+            return vim.api.nvim_win_call(winid, function()
+                return vim.fn.winsaveview().topline
+            end)
+        end
+
+        it("does not scroll when non-completed items are visible", function()
+            open_todo_window(5)
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            todo_list:render({
+                entry("Done", "completed"),
+                entry("Task A", "pending"),
+                entry("Task B", "pending"),
+            })
+
+            assert.equal(1, get_topline())
+        end)
+
+        it("scrolls to show at least 2 non-completed items", function()
+            open_todo_window(4)
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            local entries = {}
+            for i = 1, 7 do
+                table.insert(entries, entry("Done " .. i, "completed"))
+            end
+            table.insert(entries, entry("Task A", "pending"))
+            table.insert(entries, entry("Task B", "in_progress"))
+            table.insert(entries, entry("Task C", "pending"))
+
+            todo_list:render(entries)
+
+            -- first_non_completed=8, target=8-(4-2)=6, max_top=10-4+1=7
+            assert.equal(6, get_topline())
+        end)
+
+        it("clamps topline so last todo is last visible line", function()
+            open_todo_window(4)
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            local entries = {}
+            for i = 1, 9 do
+                table.insert(entries, entry("Done " .. i, "completed"))
+            end
+            table.insert(entries, entry("Last task", "pending"))
+
+            todo_list:render(entries)
+
+            -- first_non_completed=10, target=10-(4-2)=8, max_top=10-4+1=7
+            assert.equal(7, get_topline())
+        end)
+
+        it("does not error when no window is open", function()
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            assert.has_no_errors(function()
+                todo_list:render({
+                    entry("Done", "completed"),
+                    entry("Done 2", "completed"),
+                    entry("Done 3", "completed"),
+                    entry("Done 4", "completed"),
+                    entry("Done 5", "completed"),
+                    entry("Task", "pending"),
+                })
+            end)
+        end)
+
+        it("does not scroll when all items are completed", function()
+            open_todo_window(3)
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            local entries = {}
+            for i = 1, 6 do
+                table.insert(entries, entry("Done " .. i, "completed"))
+            end
+
+            todo_list:render(entries)
+
+            assert.equal(1, get_topline())
+        end)
+    end)
+
     describe("clear", function()
         it("resets state and clears buffer", function()
             local todo_list = TodoList:new(

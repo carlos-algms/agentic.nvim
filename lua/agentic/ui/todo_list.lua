@@ -75,6 +75,41 @@ function TodoList:render(entries)
     end
 
     self._on_change(self)
+    self:_scroll_to_non_completed(entries)
+end
+
+--- Scroll window to show at least 2 non-completed items
+--- @param entries agentic.acp.PlanEntry[]
+function TodoList:_scroll_to_non_completed(entries)
+    local wins = vim.fn.win_findbuf(self._bufnr)
+    if #wins == 0 then
+        return
+    end
+
+    local winid = wins[1]
+    local win_height = vim.api.nvim_win_get_height(winid)
+    local total = #entries
+
+    local first_non_completed = nil
+    for i, e in ipairs(entries) do
+        if e.status ~= "completed" then
+            first_non_completed = i
+            break
+        end
+    end
+
+    if not first_non_completed or first_non_completed <= win_height then
+        return
+    end
+
+    local target = first_non_completed - (win_height - 2)
+    local max_top = total - win_height + 1
+    target = math.min(target, max_top)
+    target = math.max(1, target)
+
+    vim.api.nvim_win_call(winid, function()
+        vim.fn.winrestview({ topline = target })
+    end)
 end
 
 function TodoList:clear()
