@@ -35,7 +35,7 @@ end
 --- @param original_lines string[] Original file content
 --- @param old_lines string[] Old text from agent diff
 --- @param new_lines string[] New text from agent diff
---- @param replace_all boolean If true, replace all matches; if false, replace only first match
+--- @param replace_all boolean|nil If true, replace all matches; if false, replace only first match
 --- @return string[]|nil modified_lines Full modified file content, or nil if failed
 local function reconstruct_modified_file(
     original_lines,
@@ -125,8 +125,12 @@ local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
         vim.cmd("diffthis")
     end)
 
-    vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
-    vim.b[bufnr]._agentic_prev_modified = vim.bo[bufnr].modified
+    if vim.b[bufnr]._agentic_prev_modifiable == nil then
+        vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
+    end
+    if vim.b[bufnr]._agentic_prev_modified == nil then
+        vim.b[bufnr]._agentic_prev_modified = vim.bo[bufnr].modified
+    end
     vim.bo[bufnr].modifiable = false
     vim.bo[bufnr].modified = true
 

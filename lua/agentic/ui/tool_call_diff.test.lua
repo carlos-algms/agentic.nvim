@@ -121,6 +121,33 @@ describe("tool_call_diff", function()
             assert.equal(3, blocks[2].start_line)
         end)
 
+        it(
+            "handles prefix boundary pure deletion with empty new_lines",
+            function()
+                local file_lines = {
+                    "local x = 1",
+                    "local y = 2",
+                    "local z = 3",
+                }
+                read_stub:returns(file_lines)
+
+                -- old_text has partial last line ("local y" is prefix of "local y = 2")
+                -- new_text is empty → pure deletion through prefix boundary path
+                local blocks = ToolCallDiff.extract_diff_blocks({
+                    path = "/test.lua",
+                    old_text = "local x = 1\nlocal y",
+                    new_text = "",
+                })
+
+                assert.equal(1, #blocks)
+                local block = blocks[1]
+                assert.equal(1, block.start_line)
+                assert.equal(2, block.end_line)
+                assert.same({ "local x = 1", "local y = 2" }, block.old_lines)
+                assert.same({}, block.new_lines)
+            end
+        )
+
         it("handles partial last line via prefix boundary matching", function()
             local file_lines = {
                 "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));",

@@ -288,6 +288,7 @@ describe("DiffSplitView", function()
         )
         it("should handle double-call without buffer/name collision", function()
             local bufnr = vim.fn.bufadd(test_file_path)
+            local orig_modifiable = vim.bo[bufnr].modifiable
 
             local get_winid = function()
                 return vim.api.nvim_get_current_win()
@@ -325,6 +326,7 @@ describe("DiffSplitView", function()
 
             DiffSplitView.clear_split_diff(test_tabpage)
             assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+            assert.equal(orig_modifiable, vim.bo[bufnr].modifiable)
         end)
     end)
 

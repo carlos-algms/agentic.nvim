@@ -334,8 +334,10 @@ function M.match_or_substring_fallback(file_lines, old_lines, new_lines)
             local expanded_new = vim.list_extend({}, new_lines)
             expanded_old[#expanded_old] = expanded_old[#expanded_old]
                 .. match.suffix
-            expanded_new[#expanded_new] = expanded_new[#expanded_new]
-                .. match.suffix
+            if #expanded_new > 0 then
+                expanded_new[#expanded_new] = expanded_new[#expanded_new]
+                    .. match.suffix
+            end
 
             return {
                 start_line = match.start_line,
