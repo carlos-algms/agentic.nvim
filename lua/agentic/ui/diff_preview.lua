@@ -240,20 +240,6 @@ function M.show_diff(opts)
         Logger.debug("show_diff: split view failed, falling back to inline")
     end
 
-    local bufnr = vim.fn.bufnr(opts.file_path)
-    if bufnr == -1 then
-        bufnr = vim.fn.bufadd(opts.file_path)
-    end
-
-    -- Check if buffer is already visible, otherwise request a window
-    local winid = vim.fn.bufwinid(bufnr)
-    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
-    if not target_winid then
-        return
-    end
-
-    M.clear_diff(bufnr)
-
     local diff_blocks = ToolCallDiff.extract_diff_blocks({
         path = opts.file_path,
         old_text = opts.diff.old,
@@ -269,6 +255,20 @@ function M.show_diff(opts)
         )
         return
     end
+
+    local bufnr = vim.fn.bufnr(opts.file_path)
+    if bufnr == -1 then
+        bufnr = vim.fn.bufadd(opts.file_path)
+    end
+
+    -- Check if buffer is already visible, otherwise request a window
+    local winid = vim.fn.bufwinid(bufnr)
+    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
+    if not target_winid then
+        return
+    end
+
+    M.clear_diff(bufnr)
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines

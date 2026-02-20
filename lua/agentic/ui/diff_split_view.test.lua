@@ -185,19 +185,22 @@ describe("DiffSplitView", function()
         end)
 
         it("should return false when diff cannot be matched", function()
+            local get_winid_spy = spy_module.new(function()
+                return vim.api.nvim_get_current_win()
+            end)
+
             local success = DiffSplitView.show_split_diff({
                 file_path = test_file_path,
                 diff = {
                     old = { "nonexistent line content" },
                     new = { "replacement" },
                 },
-                get_winid = function()
-                    return vim.api.nvim_get_current_win()
-                end,
+                get_winid = get_winid_spy --[[@as function]],
             })
 
             assert.is_false(success)
             assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+            assert.spy(get_winid_spy).was.called(0)
         end)
 
         it("should handle substring fallback for single-line diffs", function()

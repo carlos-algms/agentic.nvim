@@ -226,11 +226,6 @@ function M.show_split_diff(opts)
         return open_split_view(abs_path, bufnr, target_winid, new_lines)
     end
 
-    local bufnr, target_winid = resolve_buf_and_win(abs_path, opts.get_winid)
-    if not bufnr or not target_winid then
-        return false
-    end
-
     local original_lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
     if not original_lines then
         Logger.notify("Failed to read file: " .. tostring(err))
@@ -247,6 +242,11 @@ function M.show_split_diff(opts)
         Logger.notify(
             "show_split_diff: could not match diff in file, the agent will most likely fail and retry"
         )
+        return false
+    end
+
+    local bufnr, target_winid = resolve_buf_and_win(abs_path, opts.get_winid)
+    if not bufnr or not target_winid then
         return false
     end
 
