@@ -235,20 +235,10 @@ local function show_layout(params, position)
         ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
             or win_nrs.chat
 
-        local todo_bufnr = buf_nrs.todos
-
-        if vim.b[todo_bufnr].agentic_todo_has_items then
-            open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
-                win = ref_win,
-                split = "below",
-            }, Config.windows.todos.max_height)
-        else
-            local todo_winid = win_nrs.todos
-            if todo_winid and vim.api.nvim_win_is_valid(todo_winid) then
-                pcall(vim.api.nvim_win_close, todo_winid, true)
-            end
-            win_nrs.todos = nil
-        end
+        open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
+            win = ref_win,
+            split = "below",
+        }, Config.windows.todos.max_height)
     end
 
     if should_focus then

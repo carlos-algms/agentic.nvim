@@ -69,7 +69,6 @@ describe("agentic.ui.TodoList", function()
 
                 assert.spy(on_change_spy).was.called(1)
                 assert.is_false(todo_list:is_empty())
-                assert.is_true(vim.b[bufnr].agentic_todo_has_items)
             end
         )
 
@@ -88,7 +87,6 @@ describe("agentic.ui.TodoList", function()
             assert.stub(render_header_stub).was.called(0)
             assert.spy(on_change_spy).was.called(1)
             assert.is_true(todo_list:is_empty())
-            assert.is_false(vim.b[bufnr].agentic_todo_has_items)
         end)
 
         it("replaces previous content on re-render", function()
@@ -147,7 +145,6 @@ describe("agentic.ui.TodoList", function()
 
             assert.spy(on_close_spy).was.called(1)
             assert.is_true(todo_list:is_empty())
-            assert.is_false(vim.b[bufnr].agentic_todo_has_items)
         end)
     end)
 
@@ -348,7 +345,6 @@ describe("agentic.ui.TodoList", function()
             local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
             assert.equal(1, #lines)
             assert.equal("", lines[1])
-            assert.is_false(vim.b[bufnr].agentic_todo_has_items)
         end)
     end)
 end)

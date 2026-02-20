@@ -17,10 +17,6 @@ describe("agentic.ui.ChatWidget", function()
         local bufnr = widget.buf_nrs[name]
         vim.bo[bufnr].modifiable = true
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
-
-        if name == "todos" then
-            vim.b[bufnr].agentic_todo_has_items = #content > 0
-        end
     end
 
     -- Tests that behave identically regardless of layout position

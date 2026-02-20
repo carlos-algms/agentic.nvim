@@ -67,8 +67,6 @@ function TodoList:render(entries)
         vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     end)
 
-    vim.b[self._bufnr].agentic_todo_has_items = self.total_count > 0
-
     if #entries > 0 then
         local context = string.format("%d of %d", completed, #entries)
         WindowDecoration.render_header(self._bufnr, "todos", context)
@@ -127,8 +125,6 @@ function TodoList:clear()
     BufHelpers.with_modifiable(self._bufnr, function(buf)
         vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
     end)
-
-    vim.b[self._bufnr].agentic_todo_has_items = false
 end
 
 return TodoList
