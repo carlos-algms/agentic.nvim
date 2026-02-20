@@ -51,7 +51,7 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
     local message = {
         tool_call_id = update.toolCallId,
         kind = kind,
-        status = update.status or "pending...",
+        status = update.status or "pending",
         argument = update.title or "unknown codex command",
     }
 
