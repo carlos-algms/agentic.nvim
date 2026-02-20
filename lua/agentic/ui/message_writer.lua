@@ -467,7 +467,18 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
             if is_new_file then
                 for _, new_line in ipairs(block.new_lines) do
+                    local line_index = #lines
                     table.insert(lines, new_line)
+
+                    --- @type agentic.ui.MessageWriter.HighlightRange
+                    local range = {
+                        line_index = line_index,
+                        type = "new",
+                        old_line = nil,
+                        new_line = new_line,
+                    }
+
+                    table.insert(highlight_ranges, range)
                 end
             else
                 local filtered = ToolCallDiff.filter_unchanged_lines(
