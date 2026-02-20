@@ -39,7 +39,7 @@ function OpenCodeACPAdapter:__handle_tool_call(session_id, update)
         -- hack to keep consistency with other Providers
         -- OpenCode uses `read`, and the message writer will omit it's output if we kept this as read.
         message.kind = "search"
-    elseif update.title == "websearch" then
+    elseif update.title == "websearch" or update.title == "google_search" then
         message.kind = "WebSearch"
     elseif update.title == "task" then
         -- rawInput is empty in tool_call, only populated in tool_call_update
@@ -123,6 +123,7 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
             elseif update.rawInput.url then -- fetch command
                 message.argument = update.rawInput.url
             elseif update.rawInput.query then -- WebSearch command
+                message.argument = update.rawInput.query
                 message.body = vim.split(update.rawInput.query, "\n")
             elseif update.rawInput.command then
                 message.argument = update.rawInput.command
