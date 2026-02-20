@@ -201,6 +201,7 @@ describe("DiffSplitView", function()
             assert.is_false(success)
             assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
             assert.spy(get_winid_spy).was.called(0)
+            get_winid_spy:revert()
         end)
 
         it("should handle substring fallback for single-line diffs", function()

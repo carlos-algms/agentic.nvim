@@ -7,6 +7,7 @@ local FileSystem = require("agentic.utils.file_system")
 describe("diff_preview", function()
     describe("show_diff", function()
         local read_stub
+        local get_winid_spy
         local orig_layout
 
         before_each(function()
@@ -14,20 +15,20 @@ describe("diff_preview", function()
             read_stub:invokes(function()
                 return { "local x = 1", "print(x)", "" }, nil
             end)
+            get_winid_spy = spy_module.new(function()
+                return vim.api.nvim_get_current_win()
+            end)
             orig_layout = Config.diff_preview.layout
             Config.diff_preview.layout = "inline"
         end)
 
         after_each(function()
             read_stub:revert()
+            get_winid_spy:revert()
             Config.diff_preview.layout = orig_layout
         end)
 
         it("should not open a window when diff matching fails", function()
-            local get_winid_spy = spy_module.new(function()
-                return vim.api.nvim_get_current_win()
-            end)
-
             DiffPreview.show_diff({
                 file_path = "/tmp/test_diff_preview_nomatch.lua",
                 diff = {
