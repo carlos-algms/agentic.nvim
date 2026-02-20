@@ -88,6 +88,13 @@ function TodoList:_scroll_to_non_completed(entries)
 
     local winid = wins[1]
     local win_height = vim.api.nvim_win_get_height(winid)
+
+    -- winbar takes 1 row from visible content area
+    local winbar = vim.wo[winid].winbar
+    if winbar and winbar ~= "" then
+        win_height = win_height - 1
+    end
+
     local total = #entries
 
     local first_non_completed = nil
@@ -98,12 +105,13 @@ function TodoList:_scroll_to_non_completed(entries)
         end
     end
 
-    if not first_non_completed or first_non_completed <= win_height then
+    if not first_non_completed or total <= win_height then
         return
     end
 
-    local target = first_non_completed - (win_height - 2)
-    local max_top = total - win_height + 1
+    local visible_lines = math.min(win_height, total)
+    local target = first_non_completed - (visible_lines - 2)
+    local max_top = total - visible_lines + 1
     target = math.min(target, max_top)
     target = math.max(1, target)
 

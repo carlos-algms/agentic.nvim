@@ -169,6 +169,7 @@ describe("agentic.ui.TodoList", function()
                 split = "below",
                 height = height,
             })
+            assert.equal(height, vim.api.nvim_win_get_height(winid))
             return winid
         end
 
@@ -256,6 +257,55 @@ describe("agentic.ui.TodoList", function()
                     entry("Task", "pending"),
                 })
             end)
+        end)
+
+        it("does not scroll when window is taller than content", function()
+            -- Simulates real-world scenario: window has padding (height > entries)
+            -- e.g., 8 entries in a window of height 10 (due to dynamic height + padding)
+            open_todo_window(10)
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            local entries = {}
+            for i = 1, 6 do
+                table.insert(entries, entry("Done " .. i, "completed"))
+            end
+            table.insert(entries, entry("Task A", "in_progress"))
+            table.insert(entries, entry("Task B", "pending"))
+
+            todo_list:render(entries)
+
+            -- total=8 <= win_height=10, all content fits, no scroll
+            assert.equal(1, get_topline())
+        end)
+
+        it("accounts for winbar reducing visible lines", function()
+            open_todo_window(5)
+            ---@cast winid integer
+            vim.wo[winid].winbar = "test winbar"
+
+            local todo_list = TodoList:new(
+                bufnr,
+                on_change_spy --[[@as function]],
+                on_close_spy --[[@as function]]
+            )
+
+            local entries = {}
+            for i = 1, 7 do
+                table.insert(entries, entry("Done " .. i, "completed"))
+            end
+            table.insert(entries, entry("Task A", "pending"))
+            table.insert(entries, entry("Task B", "in_progress"))
+            table.insert(entries, entry("Task C", "pending"))
+
+            todo_list:render(entries)
+
+            -- win_height=5, winbar=1, effective=4
+            -- first_non_completed=8, target=8-(4-2)=6, max_top=10-4+1=7
+            assert.equal(6, get_topline())
         end)
 
         it("does not scroll when all items are completed", function()
