@@ -55,8 +55,14 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
 
         if kind == "edit" and update.content and update.content[1] then
             local content = update.content[1]
-            local new_string = content.newText or ""
-            local old_string = content.oldText or ""
+            local new_string = content.newText
+            if new_string == nil or new_string == vim.NIL then
+                new_string = ''
+            end
+            local old_string = content.oldText
+            if old_string == nil or old_string == vim.NIL then
+                old_string = ''
+            end
 
             message.diff = {
                 new = vim.split(new_string, "\n"),
