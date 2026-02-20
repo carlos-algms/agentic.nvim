@@ -1,6 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
-local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.CodexParsedCommand
 --- @field cmd? string
@@ -84,40 +83,16 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
 end
 
 --- @protected
---- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function CodexACPAdapter:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
+--- @return agentic.ui.MessageWriter.ToolCallBase message
+function CodexACPAdapter:__build_tool_call_update(update)
+    local message = ACPClient.__build_tool_call_update(self, update)
 
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    if update.content and update.content[1] then
-        local content = update.content[1]
-
-        if content.type == "content" then
-            message.body = vim.split(content.content.text, "\n")
-        elseif content.type == "diff" then
-            -- ignore, already handled in tool call, we don't want to rerender diffs, as they don't change during updates
-        else
-            Logger.debug(
-                "Unknown tool call update content type: "
-                    ---@diagnostic disable-next-line: undefined-field -- it's expected this to be unknown
-                    .. tostring(content.type)
-            )
-        end
-    elseif update.rawOutput then
+    if not message.body and update.rawOutput then
         message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
     end
 
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
-    end)
+    return message
 end
 
 return CodexACPAdapter

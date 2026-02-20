@@ -88,12 +88,7 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
     end
 
     if update.status == "completed" or update.status == "failed" then
-        if update.content and update.content[1] then
-            local content = update.content[1].content
-            if content and content.text then
-                message.body = vim.split(content.text, "\n")
-            end
-        end
+        message.body = self:extract_content_body(update)
     else
         if update.rawInput then
             if update.rawInput.newString then

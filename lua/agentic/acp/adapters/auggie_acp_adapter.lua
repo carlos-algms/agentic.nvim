@@ -1,6 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
-local Logger = require("agentic.utils.logger")
 
 --- Auggie-specific adapter that extends ACPClient with Auggie-specific behaviors
 --- @class agentic.acp.AuggieACPAdapter : agentic.acp.ACPClient
@@ -80,44 +79,6 @@ function AuggieACPAdapter:__handle_tool_call(session_id, update)
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call(message)
-    end)
-end
-
---- @protected
---- @param session_id string
---- @param update agentic.acp.ToolCallUpdate
-function AuggieACPAdapter:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
-
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    if update.content and update.content[1] then
-        local content = update.content[1]
-
-        if
-            content.type == "content"
-            and content.content
-            and content.content.text
-        then
-            message.body = vim.split(content.content.text, "\n")
-        else
-            Logger.debug("Unknown tool call update content type", {
-                content_type = content.type,
-                content = content.content,
-                session_id = session_id,
-                tool_call_id = update.toolCallId,
-            })
-        end
-    end
-
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
     end)
 end
 

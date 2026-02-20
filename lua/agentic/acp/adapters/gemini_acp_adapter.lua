@@ -74,30 +74,6 @@ function GeminiACPAdapter:__handle_tool_call(session_id, update)
     end)
 end
 
---- @protected
---- @param session_id string
---- @param update agentic.acp.ToolCallUpdate
-function GeminiACPAdapter:__handle_tool_call_update(session_id, update)
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    if update.content and update.content[1] then
-        local content = update.content[1]
-
-        if content.type == "content" then
-            message.body = content.content
-                and vim.split(content.content.text, "\n")
-        end
-    end
-
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
-    end)
-end
-
 --- Specific Gemini ToolCall structure - created to avoid confusion with the standard ACP types, as only Gemini sends these fields
 --- @class agentic.acp.GeminiToolCall : agentic.acp.ToolCall
 --- @field kind? agentic.acp.ToolKind

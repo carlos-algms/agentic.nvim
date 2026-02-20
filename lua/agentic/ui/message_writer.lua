@@ -432,17 +432,6 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
             table.insert(highlight_ranges, range)
         end
-    elseif
-        kind == "fetch"
-        or kind == "WebSearch"
-        or kind == "execute"
-        or kind == "search"
-        or kind == "SubAgent"
-        or kind == "Skill"
-    then
-        if tool_call_block.body then
-            vim.list_extend(lines, tool_call_block.body)
-        end
     elseif tool_call_block.diff then
         local diff_blocks = ToolCallDiff.extract_diff_blocks({
             path = argument,
@@ -541,7 +530,9 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             table.insert(lines, "```")
         end
     else
-        Logger.debug("Unknown tool call kind or missing diff: " .. kind)
+        if tool_call_block.body then
+            vim.list_extend(lines, tool_call_block.body)
+        end
     end
 
     table.insert(lines, "")

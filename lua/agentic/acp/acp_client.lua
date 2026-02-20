@@ -7,7 +7,26 @@ CRITICAL: Type annotations in this file are essential for Lua Language Server su
 DO NOT REMOVE them. Only update them if the underlying types change.
 --]]
 
---- @class agentic.acp.ACPClient
+--- Known ACP protocol tool call kinds.
+--- Used to detect unknown kinds from providers we don't use daily.
+local KNOWN_ACP_KINDS = {
+    read = true,
+    edit = true,
+    delete = true,
+    move = true,
+    search = true,
+    execute = true,
+    think = true,
+    fetch = true,
+    other = true,
+    create = true,
+    switch_mode = true,
+}
+
+--- Data fields set in the constructor. Separated from the full class
+--- so LuaLS validates instance fields without requiring methods that
+--- live on the prototype via __index.
+--- @class agentic.acp.ACPClientData
 --- @field provider_config agentic.acp.ACPProviderConfig
 --- @field id_counter number
 --- @field state agentic.acp.ClientConnectionState
@@ -18,9 +37,9 @@ DO NOT REMOVE them. Only update them if the underlying types change.
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
+
+--- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
---- @field __handle_tool_call? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallMessage) Protected method to allow for overriding in adapters
---- @field __handle_tool_call_update? fun(self: agentic.acp.ACPClient, session_id: string, update: agentic.acp.ToolCallUpdate) Protected method to allow for overriding in adapters
 local ACPClient = {}
 ACPClient.__index = ACPClient
 
@@ -39,7 +58,7 @@ ACPClient.ERROR_CODES = {
 --- @param on_ready fun(client: agentic.acp.ACPClient)
 --- @return agentic.acp.ACPClient
 function ACPClient:new(config, on_ready)
-    --- @type agentic.acp.ACPClient
+    --- @type agentic.acp.ACPClientData
     local instance = {
         provider_config = config,
         subscribers = {},
@@ -60,10 +79,10 @@ function ACPClient:new(config, on_ready)
         transport = nil,
         state = "disconnected",
         reconnect_count = 0,
-        _on_ready = on_ready,
     }
 
-    local client = setmetatable(instance, self)
+    local client = setmetatable(instance, self) --[[@as agentic.acp.ACPClient]]
+    client._on_ready = on_ready
 
     client:_setup_transport()
     client:_connect()
@@ -296,18 +315,99 @@ function ACPClient:__handle_session_update(params)
 
     local session_update_type = update.sessionUpdate
 
-    if session_update_type == "tool_call" and self.__handle_tool_call then
+    if session_update_type == "tool_call" then
+        if not KNOWN_ACP_KINDS[update.kind] then
+            -- Using notify intentionally so users of providers
+            -- we don't use daily report unknown kinds as issues
+            Logger.notify(
+                "Unknown ACP tool call kind: "
+                    .. tostring(update.kind)
+                    .. "\n\n"
+                    .. "Please report this so we can add support for it!\n\n"
+                    .. "https://github.com/carlos-algms/agentic.nvim/issues/new",
+                vim.log.levels.WARN
+            )
+        end
+
         self:__handle_tool_call(session_id, update)
-    elseif
-        session_update_type == "tool_call_update"
-        and self.__handle_tool_call_update
-    then
+    elseif session_update_type == "tool_call_update" then
         self:__handle_tool_call_update(session_id, update)
     else
         self:__with_subscriber(session_id, function(subscriber)
             subscriber.on_session_update(update)
         end)
     end
+end
+
+--- Extract body text from standard ACP content field.
+--- Adapters should use this to avoid duplicating content extraction logic.
+--- @param update agentic.acp.ToolCallMessage|agentic.acp.ToolCallUpdate
+--- @return string[]|nil body
+function ACPClient:extract_content_body(update)
+    local content = update.content and update.content[1]
+
+    if
+        content
+        and content.type == "content"
+        and content.content
+        and content.content.text
+    then
+        return vim.split(content.content.text, "\n")
+    end
+
+    return nil
+end
+
+--- Default handler for tool_call session updates.
+--- Builds a generic ToolCallBlock from standard ACP fields.
+--- Adapters override this for provider-specific transformations.
+--- @protected
+--- @param session_id string
+--- @param update agentic.acp.ToolCallMessage
+function ACPClient:__handle_tool_call(session_id, update)
+    --- @type agentic.ui.MessageWriter.ToolCallBlock
+    local message = {
+        tool_call_id = update.toolCallId,
+        kind = update.kind,
+        status = update.status,
+        argument = update.title,
+        body = self:extract_content_body(update),
+    }
+
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call(message)
+    end)
+end
+
+--- Build the message for a tool_call_update.
+--- Adapters override this to add provider-specific fields.
+--- @protected
+--- @param update agentic.acp.ToolCallUpdate
+--- @return agentic.ui.MessageWriter.ToolCallBase message
+function ACPClient:__build_tool_call_update(update)
+    --- @type agentic.ui.MessageWriter.ToolCallBase
+    local message = {
+        tool_call_id = update.toolCallId,
+        status = update.status,
+        body = self:extract_content_body(update),
+    }
+    return message
+end
+
+--- Default handler for tool_call_update session updates.
+--- @protected
+--- @param session_id string
+--- @param update agentic.acp.ToolCallUpdate
+function ACPClient:__handle_tool_call_update(session_id, update)
+    if not update.status then
+        return
+    end
+
+    local message = self:__build_tool_call_update(update)
+
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call_update(message)
+    end)
 end
 
 --- @protected
