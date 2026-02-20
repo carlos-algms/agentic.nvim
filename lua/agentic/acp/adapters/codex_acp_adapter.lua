@@ -9,8 +9,19 @@ local FileSystem = require("agentic.utils.file_system")
 
 --- @class agentic.acp.CodexRawInput : agentic.acp.RawInput
 --- @field parsed_cmd? agentic.acp.CodexParsedCommand[]
+--- @field action? agentic.acp.CodexRawInputAction
+
+--- @class agentic.acp.CodexRawInputAction
+--- @field type string
+--- @field query? string
+--- @field queries? string[]
+--- @field url? string
 
 --- @class agentic.acp.CodexToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.CodexRawInput
+
+--- @class agentic.acp.CodexToolCallUpdate : agentic.acp.ToolCallUpdate
+--- @field title? string
 --- @field rawInput? agentic.acp.CodexRawInput
 
 --- Codex-specific adapter that extends ACPClient with Codex-specific behaviors
@@ -40,7 +51,7 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
     local message = {
         tool_call_id = update.toolCallId,
         kind = kind,
-        status = update.status,
+        status = update.status or "pending...",
         argument = update.title or "unknown codex command",
     }
 
@@ -86,10 +97,27 @@ end
 --- @param update agentic.acp.ToolCallUpdate
 --- @return agentic.ui.MessageWriter.ToolCallBase message
 function CodexACPAdapter:__build_tool_call_update(update)
+    ---@cast update agentic.acp.CodexToolCallUpdate
     local message = ACPClient.__build_tool_call_update(self, update)
 
     if not message.body and update.rawOutput then
         message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
+    end
+
+    local raw_input = update.rawInput
+    local action = raw_input and raw_input.action
+
+    if action and raw_input then
+        local action_type = action.type
+
+        if action_type == "search" then
+            message.kind = "WebSearch"
+            message.argument = action.query or raw_input.query
+        elseif action_type == "open_page" then
+            message.argument = action.url or raw_input.query
+        end
+    elseif update.title then
+        message.argument = update.title
     end
 
     return message
