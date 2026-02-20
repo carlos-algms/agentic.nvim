@@ -675,7 +675,7 @@ function MessageWriter:_apply_block_highlights(
 )
     if #highlight_ranges > 0 then
         self:_apply_diff_highlights(start_row, highlight_ranges)
-    elseif kind ~= "edit" then
+    elseif kind ~= "edit" and kind ~= "switch_mode" then
         -- Apply Comment highlight for non-edit blocks without diffs
         for line_idx = start_row + 1, end_row - 1 do
             local line = vim.api.nvim_buf_get_lines(
