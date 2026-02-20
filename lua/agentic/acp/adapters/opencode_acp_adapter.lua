@@ -32,7 +32,7 @@ function OpenCodeACPAdapter:__handle_tool_call(session_id, update)
         tool_call_id = update.toolCallId,
         kind = update.kind,
         status = update.status,
-        argument = update.title or "pending...",
+        argument = update.title ~= update.kind and update.title or "pending...",
     }
 
     if update.title == "list" then
@@ -103,7 +103,6 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
             and update.rawInput
             and update.rawInput.name
         then
-            message.argument = update.rawInput.name
             message.body = { update.title or "" }
         else
             message.body = self:extract_content_body(update)
@@ -140,6 +139,9 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                 if update.rawInput.prompt then
                     message.body = vim.split(update.rawInput.prompt, "\n")
                 end
+            elseif update.rawInput.filePath then
+                message.argument =
+                    FileSystem.to_smart_path(update.rawInput.filePath)
             elseif update.rawInput.name then
                 message.argument = update.rawInput.name
             elseif update.rawInput.error then
