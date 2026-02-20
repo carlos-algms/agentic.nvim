@@ -49,6 +49,7 @@ end
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
+--- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
 --- @field _needs_history_send boolean Flag to send history on first submit after restore
@@ -137,6 +138,14 @@ function SessionManager:new(tab_page_id)
         end
     )
 
+    self.todo_list = TodoList:new(self.widget.buf_nrs.todos, function(todo_list)
+        if not todo_list:is_empty() then
+            self.widget:show({ focus_prompt = false })
+        end
+    end, function()
+        self.widget:close_optional_window("todos")
+    end)
+
     return self
 end
 
@@ -146,13 +155,7 @@ function SessionManager:_on_session_update(update)
 
     if update.sessionUpdate == "plan" then
         if Config.windows.todos.display then
-            TodoList.render(self.widget.buf_nrs.todos, update.entries)
-
-            if #update.entries > 0 and self.widget:is_open() then
-                self.widget:show({
-                    focus_prompt = false,
-                })
-            end
+            self.todo_list:render(update.entries)
         end
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
@@ -238,6 +241,8 @@ end
 
 --- @param input_text string
 function SessionManager:_handle_input_submit(input_text)
+    self.todo_list:close_if_all_completed()
+
     -- Intercept /new command to start new session locally, cancelling existing one
     -- Its necessary to avoid race conditions and make sure everything is cleaned properly,
     -- the Agent might not send an identifiable response that could be acted upon

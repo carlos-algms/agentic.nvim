@@ -206,15 +206,10 @@ function ChatWidget:_submit_input()
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
     end)
 
-    BufHelpers.with_modifiable(self.buf_nrs.todos, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-    end)
-
     self.on_submit_input(prompt)
 
     self:close_optional_window("code")
     self:close_optional_window("files")
-    self:close_optional_window("todos")
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
