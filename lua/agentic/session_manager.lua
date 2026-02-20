@@ -637,6 +637,7 @@ function SessionManager:_cancel_session()
         -- Otherwise, it clears selections and files when opening for the first time
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
+        self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
     end
