@@ -200,10 +200,18 @@ end
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_split_diff(opts)
-    local old_lines = opts.diff.old or {}
-    local new_lines = opts.diff.new or {}
+    local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old)
+    local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new)
 
     local abs_path = FileSystem.to_absolute_path(opts.file_path)
+
+    -- Nothing to diff (e.g. Write tool initial call with empty content)
+    if
+        ToolCallDiff.is_empty_lines(old_lines)
+        and ToolCallDiff.is_empty_lines(new_lines)
+    then
+        return false
+    end
 
     -- Full file replacement (Write tool): old_lines is empty but file may exist on disk
     if ToolCallDiff.is_empty_lines(old_lines) then

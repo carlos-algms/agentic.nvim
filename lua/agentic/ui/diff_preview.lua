@@ -249,10 +249,17 @@ function M.show_diff(opts)
     })
 
     if #diff_blocks == 0 then
-        Logger.notify(
-            "Diff preview: could not match diff in " .. opts.file_path,
-            vim.log.levels.WARN
-        )
+        -- Empty diff is valid (e.g. new file Write tool where content arrives in updates)
+        local has_content = not ToolCallDiff.is_empty_lines(
+                opts.diff.new or {}
+            )
+            or not ToolCallDiff.is_empty_lines(opts.diff.old or {})
+        if has_content then
+            Logger.notify(
+                "Diff preview: could not match diff in " .. opts.file_path,
+                vim.log.levels.WARN
+            )
+        end
         return
     end
 

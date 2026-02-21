@@ -17,8 +17,8 @@
 
 --- @class agentic.ui.ToolCallDiff.ExtractOpts
 --- @field path string
---- @field new_text string|string[]
---- @field old_text? string|string[]
+--- @field new_text string[]
+--- @field old_text? string[]
 --- @field replace_all? boolean
 --- @field strict? boolean When true, don't return fallback blocks if match fails
 
@@ -51,8 +51,8 @@ function M.extract_diff_blocks(opts)
         return diff_blocks
     end
 
-    local old_lines = M._normalize_text_to_lines(opts.old_text)
-    local new_lines = M._normalize_text_to_lines(opts.new_text)
+    local old_lines = M.normalize_to_lines(opts.old_text)
+    local new_lines = M.normalize_to_lines(opts.new_text)
 
     local abs_path = FileSystem.to_absolute_path(opts.path)
     local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
@@ -63,7 +63,10 @@ function M.extract_diff_blocks(opts)
     end
 
     if M.is_empty_lines(old_lines) then
-        table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
+        -- Both empty: nothing to diff (e.g. Write tool initial call with empty content)
+        if not M.is_empty_lines(new_lines) then
+            table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
+        end
     else
         local blocks =
             M.match_or_substring_fallback(file_lines, old_lines, new_lines)
@@ -289,19 +292,23 @@ function M.filter_unchanged_lines(old_lines, new_lines)
     return result
 end
 
---- Normalize text to lines array, handling nil and vim.NIL
---- @param text string|string[]|nil
+--- Normalize lines array, handling nil and vim.NIL.
+--- Adapters pre-split ACP text with vim.split, which produces a trailing ""
+--- from \n-terminated content. Strip it to match Neovim buffer representation
+--- (nvim_buf_get_lines doesn't include a trailing empty line for the final \n).
+--- @param lines string[]|nil
 --- @return string[]
-function M._normalize_text_to_lines(text)
-    if not text or text == "" or text == vim.NIL then
+function M.normalize_to_lines(lines)
+    if not lines or lines == vim.NIL then
         return {}
     end
 
-    if type(text) == "string" then
-        return vim.split(text, "\n")
+    -- Strip trailing "" from \n-terminated content split by adapters
+    if #lines > 0 and lines[#lines] == "" then
+        lines = vim.list_slice(lines, 1, #lines - 1)
     end
 
-    return text
+    return lines
 end
 
 --- Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases

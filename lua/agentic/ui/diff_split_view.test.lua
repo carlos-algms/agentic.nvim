@@ -64,6 +64,23 @@ describe("DiffSplitView", function()
         )
 
         it(
+            "should fallback for empty old and new (Write tool initial call)",
+            function()
+                stub_file_content(nil)
+
+                local success = DiffSplitView.show_split_diff({
+                    file_path = test_file_path,
+                    diff = { old = {}, new = { "" } },
+                    get_winid = function()
+                        return vim.api.nvim_get_current_win()
+                    end,
+                })
+
+                assert.is_false(success)
+            end
+        )
+
+        it(
             "should show split diff for full file replacement (empty old, file exists)",
             function()
                 -- Load the buffer so the lightweight existence check succeeds

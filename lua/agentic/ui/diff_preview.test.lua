@@ -3,11 +3,13 @@ local spy_module = require("tests.helpers.spy")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
+local Logger = require("agentic.utils.logger")
 
 describe("diff_preview", function()
     describe("show_diff", function()
         local read_stub
         local get_winid_spy
+        local notify_spy
         local orig_layout
 
         before_each(function()
@@ -18,6 +20,7 @@ describe("diff_preview", function()
             get_winid_spy = spy_module.new(function()
                 return vim.api.nvim_get_current_win()
             end)
+            notify_spy = spy_module.on(Logger, "notify")
             orig_layout = Config.diff_preview.layout
             Config.diff_preview.layout = "inline"
         end)
@@ -25,6 +28,7 @@ describe("diff_preview", function()
         after_each(function()
             read_stub:revert()
             get_winid_spy:revert()
+            notify_spy:revert()
             Config.diff_preview.layout = orig_layout
         end)
 
@@ -40,6 +44,30 @@ describe("diff_preview", function()
 
             assert.spy(get_winid_spy).was.called(0)
         end)
+
+        it(
+            "silently skips diff when both old and new are empty (new file Write tool)",
+            function()
+                -- Simulate new file: file doesn't exist
+                read_stub:invokes(function()
+                    return nil
+                end)
+
+                DiffPreview.show_diff({
+                    file_path = "/tmp/test_new_file.md",
+                    diff = {
+                        old = {},
+                        new = { "" },
+                    },
+                    get_winid = get_winid_spy --[[@as function]],
+                })
+
+                -- Should not open a window
+                assert.spy(get_winid_spy).was.called(0)
+                -- Should not show a warning notification
+                assert.spy(notify_spy).was.called(0)
+            end
+        )
     end)
 
     describe("clear_diff", function()

@@ -27,30 +27,35 @@ describe("tool_call_diff", function()
     end)
 
     describe("extract_diff_blocks", function()
-        it("creates new file block when old_text is nil-like", function()
+        it("creates new file block when old_text is nil", function()
             read_stub:returns(nil)
 
-            local blocks_nil = ToolCallDiff.extract_diff_blocks({
+            local blocks = ToolCallDiff.extract_diff_blocks({
                 path = "/new_file.lua",
                 old_text = nil,
-                new_text = "line1\nline2\nline3",
+                new_text = { "line1", "line2", "line3" },
             })
 
-            assert.equal(1, #blocks_nil)
-            assert.equal(1, blocks_nil[1].start_line)
-            assert.equal(0, blocks_nil[1].end_line) -- Pure insertion
-            assert.equal(0, #blocks_nil[1].old_lines)
-            assert.equal(3, #blocks_nil[1].new_lines)
-
-            local blocks_vim_nil = ToolCallDiff.extract_diff_blocks({
-                path = "/new_file.lua",
-                old_text = vim.NIL,
-                new_text = "new content",
-            })
-
-            assert.equal(1, #blocks_vim_nil)
-            assert.equal(0, #blocks_vim_nil[1].old_lines)
+            assert.equal(1, #blocks)
+            assert.equal(1, blocks[1].start_line)
+            assert.equal(0, blocks[1].end_line)
+            assert.equal(0, #blocks[1].old_lines)
+            assert.equal(3, #blocks[1].new_lines)
         end)
+
+        it(
+            "returns empty blocks when both old and new are empty (Write tool initial call)",
+            function()
+                read_stub:returns(nil)
+
+                local blocks = ToolCallDiff.extract_diff_blocks({
+                    path = "/new_file.md",
+                    old_text = vim.NIL,
+                    new_text = {},
+                })
+                assert.equal(0, #blocks)
+            end
+        )
 
         it(
             "treats nil old_text as full file replacement when file exists",
@@ -62,12 +67,12 @@ describe("tool_call_diff", function()
                 }
                 read_stub:returns(file_content)
 
-                local new_content = table.concat({
+                local new_content = {
                     "import type { QueryClient } from '@tanstack/react-query';",
                     "import { useQueryClient } from '@tanstack/react-query';",
                     "",
                     "import { useAuthState } from '@org/auth/react';",
-                }, "\n")
+                }
 
                 local blocks = ToolCallDiff.extract_diff_blocks({
                     path = "/test.tsx",
@@ -77,6 +82,24 @@ describe("tool_call_diff", function()
 
                 assert.is_true(#blocks > 0)
                 assert.equal(1, blocks[1].start_line)
+            end
+        )
+
+        it(
+            "strips trailing empty string from adapter vim.split of \\n-terminated ACP text",
+            function()
+                local file_lines = { "line 1." }
+                read_stub:returns(file_lines)
+
+                local blocks = ToolCallDiff.extract_diff_blocks({
+                    path = "/test.md",
+                    old_text = { "line 1.", "" },
+                    new_text = { "line 1.", "line 2.", "" },
+                })
+
+                assert.equal(1, #blocks)
+                assert.same({ "line 1." }, blocks[1].old_lines)
+                assert.same({ "line 1.", "line 2." }, blocks[1].new_lines)
             end
         )
 
@@ -90,8 +113,8 @@ describe("tool_call_diff", function()
 
             local blocks = ToolCallDiff.extract_diff_blocks({
                 path = "/test.js",
-                old_text = "const y = 2;",
-                new_text = "const y = 42;",
+                old_text = { "const y = 2;" },
+                new_text = { "const y = 42;" },
             })
 
             assert.equal(1, #blocks)
@@ -111,8 +134,8 @@ describe("tool_call_diff", function()
 
             local blocks = ToolCallDiff.extract_diff_blocks({
                 path = "/test.js",
-                old_text = "console.log('hello');",
-                new_text = "console.log('goodbye');",
+                old_text = { "console.log('hello');" },
+                new_text = { "console.log('goodbye');" },
                 replace_all = true,
             })
 
@@ -131,12 +154,10 @@ describe("tool_call_diff", function()
                 }
                 read_stub:returns(file_lines)
 
-                -- old_text has partial last line ("local y" is prefix of "local y = 2")
-                -- new_text is empty → pure deletion through prefix boundary path
                 local blocks = ToolCallDiff.extract_diff_blocks({
                     path = "/test.lua",
-                    old_text = "local x = 1\nlocal y",
-                    new_text = "",
+                    old_text = { "local x = 1", "local y" },
+                    new_text = {},
                 })
 
                 assert.equal(1, #blocks)
@@ -159,11 +180,19 @@ describe("tool_call_diff", function()
 
             local blocks = ToolCallDiff.extract_diff_blocks({
                 path = "/test.ts",
-                old_text = "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));\n\n  const { executeWithPool } = await import('./pool.ts');\n  const result",
-                new_text = "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));\n\n  const result",
+                old_text = {
+                    "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));",
+                    "",
+                    "  const { executeWithPool } = await import('./pool.ts');",
+                    "  const result",
+                },
+                new_text = {
+                    "  vi.mocked(generateText).mockResolvedValue(mockResult('corporate text'));",
+                    "",
+                    "  const result",
+                },
             })
 
-            -- minimize_diff_blocks strips shared context, leaving only the deletion
             assert.equal(1, #blocks)
             local block = blocks[1]
             assert.equal(3, block.start_line)
@@ -179,11 +208,11 @@ describe("tool_call_diff", function()
     describe("filter_unchanged_lines", function()
         it("filters unchanged lines and preserves indices", function()
             local old_lines = {
-                "line1", -- unchanged
-                "old2", -- changed (idx 2)
-                "line3", -- unchanged
-                "line4", -- unchanged
-                "old5", -- changed (idx 5)
+                "line1",
+                "old2",
+                "line3",
+                "line4",
+                "old5",
             }
             local new_lines = {
                 "line1",
@@ -199,8 +228,6 @@ describe("tool_call_diff", function()
             assert.same({ "old2", "old5" }, filtered.old_lines)
             assert.same({ "new2", "new5" }, filtered.new_lines)
             assert.equal(2, #filtered.pairs)
-
-            -- Verify original indices preserved for position calculation
             assert.equal(2, filtered.pairs[1].old_idx)
             assert.equal(5, filtered.pairs[2].old_idx)
         end)
@@ -255,8 +282,8 @@ describe("tool_call_diff", function()
     end)
 
     describe("minimize_diff_blocks", function()
-        it("handles single-line blocks (unchanged vs changed)", function()
-            local unchanged_block = {
+        it("filters unchanged blocks (single and multi-line)", function()
+            local single = {
                 {
                     start_line = 1,
                     end_line = 1,
@@ -264,25 +291,7 @@ describe("tool_call_diff", function()
                     new_lines = { "same" },
                 },
             }
-            local changed_block = {
-                {
-                    start_line = 1,
-                    end_line = 1,
-                    old_lines = { "old" },
-                    new_lines = { "new" },
-                },
-            }
-
-            assert.equal(0, #ToolCallDiff.minimize_diff_blocks(unchanged_block))
-
-            local minimized = ToolCallDiff.minimize_diff_blocks(changed_block)
-            assert.equal(1, #minimized)
-            assert.same({ "old" }, minimized[1].old_lines)
-            assert.same({ "new" }, minimized[1].new_lines)
-        end)
-
-        it("filters entirely unchanged multi-line blocks", function()
-            local diff_blocks = {
+            local multi = {
                 {
                     start_line = 1,
                     end_line = 3,
@@ -291,7 +300,24 @@ describe("tool_call_diff", function()
                 },
             }
 
-            assert.equal(0, #ToolCallDiff.minimize_diff_blocks(diff_blocks))
+            assert.equal(0, #ToolCallDiff.minimize_diff_blocks(single))
+            assert.equal(0, #ToolCallDiff.minimize_diff_blocks(multi))
+        end)
+
+        it("keeps changed single-line block as-is", function()
+            local diff_blocks = {
+                {
+                    start_line = 1,
+                    end_line = 1,
+                    old_lines = { "old" },
+                    new_lines = { "new" },
+                },
+            }
+
+            local minimized = ToolCallDiff.minimize_diff_blocks(diff_blocks)
+            assert.equal(1, #minimized)
+            assert.same({ "old" }, minimized[1].old_lines)
+            assert.same({ "new" }, minimized[1].new_lines)
         end)
 
         it("keeps insertion with unchanged context", function()
@@ -306,7 +332,6 @@ describe("tool_call_diff", function()
 
             local minimized = ToolCallDiff.minimize_diff_blocks(diff_blocks)
 
-            -- vim.diff creates one hunk with old_line and both new_lines
             assert.equal(1, #minimized)
             assert.same({ "ignore-scripts=false" }, minimized[1].old_lines)
             assert.same(
@@ -327,7 +352,6 @@ describe("tool_call_diff", function()
 
             local minimized = ToolCallDiff.minimize_diff_blocks(diff_blocks)
 
-            -- Should create separate hunks for each change
             assert.equal(2, #minimized)
             assert.same({ "old2" }, minimized[1].old_lines)
             assert.same({ "new2" }, minimized[1].new_lines)
@@ -335,8 +359,8 @@ describe("tool_call_diff", function()
             assert.same({ "new4" }, minimized[2].new_lines)
         end)
 
-        it("handles pure insertion", function()
-            local diff_blocks = {
+        it("handles pure insertion and pure deletion", function()
+            local insertion = {
                 {
                     start_line = 2,
                     end_line = 2,
@@ -344,16 +368,7 @@ describe("tool_call_diff", function()
                     new_lines = { "new line" },
                 },
             }
-
-            local minimized = ToolCallDiff.minimize_diff_blocks(diff_blocks)
-
-            assert.equal(1, #minimized)
-            assert.equal(0, #minimized[1].old_lines)
-            assert.same({ "new line" }, minimized[1].new_lines)
-        end)
-
-        it("handles pure deletion", function()
-            local diff_blocks = {
+            local deletion = {
                 {
                     start_line = 1,
                     end_line = 1,
@@ -362,11 +377,15 @@ describe("tool_call_diff", function()
                 },
             }
 
-            local minimized = ToolCallDiff.minimize_diff_blocks(diff_blocks)
+            local min_ins = ToolCallDiff.minimize_diff_blocks(insertion)
+            assert.equal(1, #min_ins)
+            assert.equal(0, #min_ins[1].old_lines)
+            assert.same({ "new line" }, min_ins[1].new_lines)
 
-            assert.equal(1, #minimized)
-            assert.same({ "deleted" }, minimized[1].old_lines)
-            assert.equal(0, #minimized[1].new_lines)
+            local min_del = ToolCallDiff.minimize_diff_blocks(deletion)
+            assert.equal(1, #min_del)
+            assert.same({ "deleted" }, min_del[1].old_lines)
+            assert.equal(0, #min_del[1].new_lines)
         end)
     end)
 end)
