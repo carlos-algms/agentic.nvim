@@ -113,7 +113,8 @@ function CodexACPAdapter:__handle_tool_call_update(session_id, update)
         local content = update.content[1]
 
         if content.type == "content" then
-            message.body = vim.split(normalize_msgpack_string(content.content.text), "\n")
+            local content_inner = type(content.content) == "table" and content.content or nil
+            message.body = vim.split(normalize_msgpack_string(content_inner and content_inner.text), "\n")
         elseif content.type == "diff" then
             -- ignore, already handled in tool call, we don't want to rerender diffs, as they don't change during updates
         else
