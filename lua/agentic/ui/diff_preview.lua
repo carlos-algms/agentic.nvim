@@ -250,10 +250,10 @@ function M.show_diff(opts)
 
     if #diff_blocks == 0 then
         -- Empty diff is valid (e.g. new file Write tool where content arrives in updates)
-        local has_content = not ToolCallDiff.is_empty_lines(
-                opts.diff.new or {}
-            )
-            or not ToolCallDiff.is_empty_lines(opts.diff.old or {})
+        local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new or {})
+        local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old or {})
+        local has_content = not ToolCallDiff.is_empty_lines(new_lines)
+            or not ToolCallDiff.is_empty_lines(old_lines)
         if has_content then
             Logger.notify(
                 "Diff preview: could not match diff in " .. opts.file_path,
