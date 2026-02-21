@@ -32,6 +32,15 @@ function CodexACPAdapter:new(config, on_ready)
     return self
 end
 
+
+local function normalize_msgpack_string(value)
+    if value == vim.NIL then
+        return ""
+    else
+        return value or ""
+    end
+end
+
 --- @protected
 --- @param session_id string
 --- @param update agentic.acp.CodexToolCallMessage
@@ -55,14 +64,8 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
 
         if kind == "edit" and update.content and update.content[1] then
             local content = update.content[1]
-            local new_string = content.newText
-            if new_string == nil or new_string == vim.NIL then
-                new_string = ''
-            end
-            local old_string = content.oldText
-            if old_string == nil or old_string == vim.NIL then
-                old_string = ''
-            end
+            local new_string = normalize_msgpack_string(content.newText)
+            local old_string = normalize_msgpack_string(content.oldText)
 
             message.diff = {
                 new = vim.split(new_string, "\n"),
@@ -118,7 +121,7 @@ function CodexACPAdapter:__handle_tool_call_update(session_id, update)
             )
         end
     elseif update.rawOutput then
-        message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
+        message.body = vim.split(normalize_msgpack_string(update.rawOutput.formatted_output), "\n")
     end
 
     self:__with_subscriber(session_id, function(subscriber)
