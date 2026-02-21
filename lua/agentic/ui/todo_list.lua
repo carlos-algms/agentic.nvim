@@ -108,7 +108,8 @@ function TodoList:_scroll_to_non_completed(entries)
     end
 
     local visible_lines = math.min(win_height, total)
-    local target = first_non_completed - (visible_lines - 2)
+    -- clamp to 0 to avoid ultra short windows, either by the user resize or window size.
+    local target = first_non_completed - math.max(0, visible_lines - 2)
     local max_top = total - visible_lines + 1
     target = math.min(target, max_top)
     target = math.max(1, target)

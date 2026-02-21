@@ -305,6 +305,37 @@ describe("agentic.ui.TodoList", function()
             assert.equal(6, get_topline())
         end)
 
+        it(
+            "scrolls first non-completed into view with effective height 1",
+            function()
+                open_todo_window(2)
+                ---@cast winid integer
+                vim.wo[winid].winbar = "test winbar"
+
+                local todo_list = TodoList:new(
+                    bufnr,
+                    on_change_spy --[[@as function]],
+                    on_close_spy --[[@as function]]
+                )
+
+                local entries = {}
+                for i = 1, 5 do
+                    table.insert(entries, entry("Done " .. i, "completed"))
+                end
+                table.insert(entries, entry("Task A", "pending"))
+                table.insert(entries, entry("Task B", "in_progress"))
+
+                todo_list:render(entries)
+
+                -- win_height=2, winbar=1, effective=1
+                -- first_non_completed=6, visible_lines=min(1,7)=1
+                -- target=6-max(0,1-2)=6-0=6, max_top=7-1+1=7
+                -- topline=6, first non-completed is visible
+                -- topline=6 means first non-completed item is visible
+                assert.equal(6, get_topline())
+            end
+        )
+
         it("does not scroll when all items are completed", function()
             open_todo_window(3)
             local todo_list = TodoList:new(
