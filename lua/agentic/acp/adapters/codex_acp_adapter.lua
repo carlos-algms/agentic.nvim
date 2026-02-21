@@ -33,6 +33,9 @@ function CodexACPAdapter:new(config, on_ready)
 end
 
 
+--- Normalises a msgpack value that may be vim.NIL or nil into an empty string.
+--- @param value string|nil|vim.NIL
+--- @return string
 local function normalize_msgpack_string(value)
     if value == vim.NIL then
         return ""
