@@ -890,6 +890,8 @@ function SessionManager:restore_from_history(history, opts)
             self.message_writer,
             self._history_to_send
         )
+        -- ACP session already knows these messages; clear to prevent duplicate prepend
+        self._history_to_send = nil
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({
