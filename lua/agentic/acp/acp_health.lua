@@ -69,8 +69,8 @@ function ACPHealth.get_available_package_manager()
     return false, nil
 end
 
+--- @return string[] provider_names
 function ACPHealth.get_default_provider_names()
-    -- Build list of all available providers with installation status
     local available_providers = {}
 
     -- Using default config to avoid using potentially broken user config when checking providers

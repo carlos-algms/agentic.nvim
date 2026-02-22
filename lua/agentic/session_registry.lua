@@ -76,7 +76,6 @@ end
 
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
 function SessionRegistry.select_provider(on_selected)
-    --- @type string[]
     local available_providers = ACPHealth.get_default_provider_names()
 
     --- @class _ProviderStatus
@@ -84,7 +83,7 @@ function SessionRegistry.select_provider(on_selected)
     --- @field installed boolean
 
     --- @type _ProviderStatus[]
-    local installed = {}
+    local sorted_providers = {}
 
     --- @type _ProviderStatus[]
     local not_installed = {}
@@ -95,7 +94,7 @@ function SessionRegistry.select_provider(on_selected)
             provider_config
             and ACPHealth.is_command_available(provider_config.command)
         then
-            installed[#installed + 1] = {
+            sorted_providers[#sorted_providers + 1] = {
                 name = provider_name,
                 installed = true,
             }
@@ -107,7 +106,7 @@ function SessionRegistry.select_provider(on_selected)
         end
     end
 
-    local sorted_providers = vim.list_extend(installed, not_installed)
+    vim.list_extend(sorted_providers, not_installed)
 
     vim.ui.select(sorted_providers, {
         prompt = "Select an ACP provider for the new session:",
@@ -126,8 +125,8 @@ function SessionRegistry.select_provider(on_selected)
 
             return label
         end,
-    }, function(selected_mode)
-        on_selected(selected_mode and selected_mode.name)
+    }, function(selected_provider)
+        on_selected(selected_provider and selected_provider.name)
     end)
 end
 

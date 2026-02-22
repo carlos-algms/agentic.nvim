@@ -121,6 +121,13 @@ describe("agentic.SessionRegistry", function()
 
         package.loaded["agentic.session_manager"] =
             original_loaded["agentic.session_manager"]
+        package.loaded["agentic.config"] = original_loaded["agentic.config"]
+        package.loaded["agentic.config_default"] =
+            original_loaded["agentic.config_default"]
+        package.loaded["agentic.acp.acp_health"] =
+            original_loaded["agentic.acp.acp_health"]
+        package.loaded["agentic.utils.logger"] =
+            original_loaded["agentic.utils.logger"]
 
         if ui_select_stub then
             ui_select_stub:revert()

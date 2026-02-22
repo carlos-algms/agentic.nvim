@@ -16,7 +16,7 @@ local AgentInstance = {}
 
 --- A Keyed list of agent instances by name
 --- @private
---- @type table<string, agentic.acp.ACPClient|nil>
+--- @type table<agentic.UserConfig.ProviderName, agentic.acp.ACPClient|nil>
 AgentInstance._instances = {}
 
 --- @param provider_name agentic.UserConfig.ProviderName
