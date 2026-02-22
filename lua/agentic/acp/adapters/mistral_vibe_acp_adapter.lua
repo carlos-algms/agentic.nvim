@@ -1,0 +1,168 @@
+local ACPClient = require("agentic.acp.acp_client")
+local FileSystem = require("agentic.utils.file_system")
+local Logger = require("agentic.utils.logger")
+
+--- @class agentic.acp.MistralVibeRawInput : agentic.acp.RawInput
+--- @field content? string For creating new files instead of new_string
+--- @field subagent_type? string For sub-agent tasks (Task tool)
+--- @field model? string Model used for sub-agent tasks
+--- @field skill? string Skill name
+--- @field args? string Arguments for the skill
+
+--- @class agentic.acp.MistralVibeToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.MistralVibeRawInput
+
+--- Mistral Vibe-specific adapter that extends ACPClient with Mistral Vibe-specific behaviors
+--- @class agentic.acp.MistralVibeACPAdapter : agentic.acp.ACPClient
+local MistralVibeACPAdapter = setmetatable({}, { __index = ACPClient })
+MistralVibeACPAdapter.__index = MistralVibeACPAdapter
+
+--- @param config agentic.acp.ACPProviderConfig
+--- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @return agentic.acp.MistralVibeACPAdapter
+function MistralVibeACPAdapter:new(config, on_ready)
+    -- Call parent constructor with parent class
+    self = ACPClient.new(ACPClient, config, on_ready)
+
+    -- Re-metatable to child class for proper inheritance chain
+    self = setmetatable(self, MistralVibeACPAdapter) --[[@as agentic.acp.MistralVibeACPAdapter]]
+
+    return self
+end
+
+--- @protected
+--- @param session_id string
+--- @param update agentic.acp.MistralVibeToolCallMessage
+function MistralVibeACPAdapter:__handle_tool_call(session_id, update)
+    -- expected state, mistral vibe is sending an empty content first, followed by the actual content
+    if not update.rawInput or vim.tbl_isempty(update.rawInput) then
+        return
+    end
+
+    local kind = update.kind
+
+    -- Detect sub-agent tasks: Mistral Vibe sends these as "think" with subagent_type in rawInput
+    if kind == "think" and update.rawInput.subagent_type then
+        kind = "SubAgent"
+    end
+
+    --- @type agentic.ui.MessageWriter.ToolCallBlock
+    local message = {
+        tool_call_id = update.toolCallId,
+        kind = kind,
+        status = update.status,
+        argument = update.title,
+    }
+
+    if kind == "read" or kind == "edit" then
+        message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
+
+        if kind == "edit" then
+            local new_string = update.rawInput.new_string or ""
+            local old_string = update.rawInput.old_string or ""
+
+            -- Mistral Vibe might send content when creating new files
+            new_string = update.rawInput.content or new_string
+
+            message.diff = {
+                new = vim.split(new_string, "\n"),
+                old = vim.split(old_string, "\n"),
+                all = update.rawInput.replace_all or false,
+            }
+        end
+    elseif kind == "fetch" then
+        if update.rawInput.query then
+            -- To keep consistency with all other ACP providers
+            message.kind = "WebSearch"
+            message.argument = update.rawInput.query
+        elseif update.rawInput.url then
+            message.argument = update.rawInput.url
+
+            if update.rawInput.prompt then
+                message.argument = string.format(
+                    "%s %s",
+                    message.argument,
+                    update.rawInput.prompt
+                )
+            end
+        else
+            message.argument = "unknown fetch"
+        end
+    elseif kind == "SubAgent" then
+        message.argument = string.format(
+            "%s, %s: %s",
+            update.rawInput.model or "default",
+            update.rawInput.subagent_type or "",
+            update.rawInput.description or ""
+        )
+
+        if update.rawInput.prompt then
+            message.body = vim.split(update.rawInput.prompt, "\n")
+        end
+    elseif kind == "other" then
+        if update.title == "SlashCommand" then
+            -- Override kind to increase UX, `other` doesn't say much
+            message.kind = "SlashCommand"
+        elseif update.title == "Skill" then
+            message.kind = "Skill"
+            message.argument = update.rawInput.skill or "unknown skill"
+
+            if update.rawInput.args then
+                message.body = vim.split(update.rawInput.args, "\n")
+            end
+        end
+    else
+        local command = update.rawInput.command
+        if type(command) == "table" then
+            command = table.concat(command, " ")
+        end
+
+        message.argument = command or update.title or ""
+    end
+
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call(message)
+    end)
+end
+
+--- @protected
+--- @param session_id string
+--- @param update agentic.acp.ToolCallUpdate
+function MistralVibeACPAdapter:__handle_tool_call_update(session_id, update)
+    if not update.status then
+        return
+    end
+
+    --- @type agentic.ui.MessageWriter.ToolCallBase
+    local message = {
+        tool_call_id = update.toolCallId,
+        status = update.status,
+    }
+
+    if update.content and update.content[1] then
+        local content = update.content[1]
+
+        if
+            content.type == "content"
+            and content.content
+            and content.content.text
+        then
+            message.body = vim.split(content.content.text, "\n")
+        elseif content.type == "diff" then
+            -- ignore on purpose, diffs come only on tool call, not updates
+        else
+            Logger.debug("Unknown tool call update content type", {
+                content_type = content.type,
+                content = content.content,
+                session_id = session_id,
+                tool_call_id = update.toolCallId,
+            })
+        end
+    end
+
+    self:__with_subscriber(session_id, function(subscriber)
+        subscriber.on_tool_call_update(message)
+    end)
+end
+
+return MistralVibeACPAdapter
