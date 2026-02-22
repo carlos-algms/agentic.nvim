@@ -1,3 +1,6 @@
+local DefaultConfig = require("agentic.config_default")
+local Config = require("agentic.config")
+
 --- Health check utilities for ACP providers and dependencies
 --- @class agentic.acp.ACPHealth
 local ACPHealth = {}
@@ -66,12 +69,24 @@ function ACPHealth.get_available_package_manager()
     return false, nil
 end
 
+function ACPHealth.get_default_provider_names()
+    -- Build list of all available providers with installation status
+    local available_providers = {}
+
+    -- Using default config to avoid using potentially broken user config when checking providers
+    for key, _ in pairs(DefaultConfig.acp_providers) do
+        table.insert(available_providers, key)
+    end
+
+    table.sort(available_providers)
+
+    return available_providers
+end
+
 --- Check if the configured ACP provider is available
 --- Shows a warning window if not available
 --- @return boolean available
 function ACPHealth.check_configured_provider()
-    local Config = require("agentic.config")
-    local DefaultConfig = require("agentic.config_default")
     local provider_name = Config.provider
     local provider_config = Config.acp_providers[provider_name]
 
@@ -106,19 +121,12 @@ function ACPHealth.check_configured_provider()
         return true
     end
 
-    -- Build list of all available providers with installation status
-    local available_providers = {}
-
-    -- Using default config to avoid using potentially broken user config when checking providers
-    for key, _ in pairs(DefaultConfig.acp_providers) do
-        table.insert(available_providers, key)
-    end
-    table.sort(available_providers)
-
     table.insert(
         lines,
         "Supported providers: (You must have the one you want to use installed!)"
     )
+
+    local available_providers = ACPHealth.get_default_provider_names()
 
     for _, provider in ipairs(available_providers) do
         local provider_cfg = Config.acp_providers[provider]
