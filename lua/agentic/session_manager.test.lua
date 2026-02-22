@@ -3,6 +3,7 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 local AgentModes = require("agentic.acp.agent_modes")
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
 
@@ -121,8 +122,10 @@ describe("agentic.SessionManager", function()
         local get_instance_stub
         --- @type TestStub
         local schedule_stub
+        local original_provider
 
         before_each(function()
+            original_provider = Config.provider
             notify_stub = spy.stub(Logger, "notify")
             -- Make vim.schedule synchronous so on_ready callbacks fire immediately
             schedule_stub = spy.stub(vim, "schedule")
@@ -132,6 +135,7 @@ describe("agentic.SessionManager", function()
         end)
 
         after_each(function()
+            Config.provider = original_provider
             schedule_stub:revert()
             notify_stub:revert()
             if get_instance_stub then
@@ -182,7 +186,6 @@ describe("agentic.SessionManager", function()
                     session_id = "old-session",
                 }
 
-                local Config = require("agentic.config")
                 Config.provider = "new-provider"
 
                 local session = {
@@ -254,7 +257,6 @@ describe("agentic.SessionManager", function()
                     session_id = "old",
                 }
 
-                local Config = require("agentic.config")
                 Config.provider = "new-provider"
 
                 local session = {
@@ -281,12 +283,18 @@ describe("agentic.SessionManager", function()
 
                 -- Simulate new_session calling on_created
                 -- new_session creates a fresh ChatHistory, so simulate that
-                session.chat_history = { messages = {}, session_id = "new" }
+                local new_timestamp = os.time()
+                session.chat_history = {
+                    messages = {},
+                    session_id = "new",
+                    timestamp = new_timestamp,
+                }
                 captured_on_created()
 
-                -- After on_created: history restored, resend scheduled
+                -- After on_created: messages restored, but session metadata is from new session
                 assert.same(original_messages, session.chat_history.messages)
-                assert.equal("old", session.chat_history.session_id)
+                assert.equal("new", session.chat_history.session_id)
+                assert.equal(new_timestamp, session.chat_history.timestamp)
                 assert.same(original_messages, session._history_to_send)
                 assert.is_true(session._is_first_message)
             end
@@ -305,7 +313,6 @@ describe("agentic.SessionManager", function()
                 return mock_agent
             end)
 
-            local Config = require("agentic.config")
             Config.provider = "some-provider"
 
             local session = {

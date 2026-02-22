@@ -688,8 +688,14 @@ function SessionManager:switch_provider()
                 self:new_session({
                     restore_mode = true,
                     on_created = function()
-                        -- Restore saved history (new_session created a fresh one)
+                        -- Capture new session metadata before overwriting
+                        local new_session_id = self.chat_history.session_id
+                        local new_timestamp = self.chat_history.timestamp
+
+                        -- Restore saved messages (new_session created a fresh one)
                         self.chat_history = saved_history
+                        self.chat_history.session_id = new_session_id
+                        self.chat_history.timestamp = new_timestamp
                         self._history_to_send = saved_history.messages
                         self._is_first_message = true
                     end,
