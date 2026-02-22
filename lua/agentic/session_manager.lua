@@ -79,14 +79,17 @@ function SessionManager:new(tab_page_id)
         _restoring = false,
     }, self)
 
-    local agent = AgentInstance.get_instance(Config.provider, function(_client)
-        vim.schedule(function()
-            -- Skip auto-new_session if restore_from_history was called
-            if not self._restoring then
-                self:new_session()
-            end
-        end)
-    end)
+    local agent = AgentInstance.get_instance(
+        self.current_provider,
+        function(_client)
+            vim.schedule(function()
+                -- Skip auto-new_session if restore_from_history was called
+                if not self._restoring then
+                    self:new_session()
+                end
+            end)
+        end
+    )
 
     if not agent then
         -- no log, it was already logged in AgentInstance

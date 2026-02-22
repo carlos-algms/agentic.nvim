@@ -82,9 +82,16 @@ function Agentic.add_selection_or_file_to_context(opts)
     end)
 end
 
+--- @class agentic.ui.NewSessionOpts : agentic.ui.ChatWidget.ShowOpts
+--- @field provider? agentic.UserConfig.ProviderName
+
 --- Destroys the current Chat session and starts a new one
---- @param opts agentic.ui.ChatWidget.ShowOpts|nil
+--- @param opts agentic.ui.NewSessionOpts|nil
 function Agentic.new_session(opts)
+    if opts and opts.provider then
+        Config.provider = opts.provider
+    end
+
     local session = SessionRegistry.new_session()
     if session then
         if not opts or opts.auto_add_to_context ~= false then
@@ -92,6 +99,19 @@ function Agentic.new_session(opts)
         end
         session.widget:show(opts)
     end
+end
+
+--- @param opts agentic.ui.ChatWidget.ShowOpts|nil
+function Agentic.new_session_with_provider(opts)
+    SessionRegistry.select_provider(function(provider_name)
+        if provider_name then
+            local merged_opts = vim.tbl_deep_extend("force", opts or {}, {
+                provider = provider_name,
+            }) --[[@as agentic.ui.NewSessionOpts]]
+
+            Agentic.new_session(merged_opts)
+        end
+    end)
 end
 
 --- Stops the agent's current generation or tool execution

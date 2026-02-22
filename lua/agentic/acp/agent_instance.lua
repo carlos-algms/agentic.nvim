@@ -19,7 +19,7 @@ local AgentInstance = {}
 --- @type table<string, agentic.acp.ACPClient|nil>
 AgentInstance._instances = {}
 
---- @param provider_name string
+--- @param provider_name agentic.UserConfig.ProviderName
 --- @param on_ready fun(client: agentic.acp.ACPClient)
 function AgentInstance.get_instance(provider_name, on_ready)
     local client = AgentInstance._instances[provider_name]

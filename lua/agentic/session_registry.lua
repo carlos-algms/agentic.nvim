@@ -1,4 +1,5 @@
 local Logger = require("agentic.utils.logger")
+local Config = require("agentic.config")
 
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
@@ -70,6 +71,27 @@ function SessionRegistry.destroy_session(tab_page_id)
             Logger.debug("Session destroy error:", err)
         end
     end
+end
+
+--- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
+function SessionRegistry.select_provider(on_selected)
+    --- @type string[]
+    local available_providers = {}
+
+    for key, _ in pairs(Config.acp_providers) do
+        table.insert(available_providers, key)
+    end
+
+    vim.ui.select(available_providers, {
+        prompt = "Select an ACP provider:",
+        --- @param item agentic.UserConfig.ProviderName
+        format_item = function(item)
+            local prefix = item == Config.provider and "● " or "  "
+            return string.format("%s%s", prefix, item)
+        end,
+    }, function(selected_mode)
+        on_selected(selected_mode)
+    end)
 end
 
 return SessionRegistry
