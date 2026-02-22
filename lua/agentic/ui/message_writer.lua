@@ -367,7 +367,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 tracker.status
             )
 
-            return
+            return false
         end
 
         self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
