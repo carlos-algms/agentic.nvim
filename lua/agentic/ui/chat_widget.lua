@@ -258,52 +258,19 @@ function ChatWidget:_initialize()
 end
 
 function ChatWidget:_bind_keymaps()
-    local submit = Config.keymaps.prompt.submit
-
-    if type(submit) == "string" then
-        submit = { submit }
-    end
-
-    for _, key in ipairs(submit) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
+    BufHelpers.multi_keymap_set(
+        Config.keymaps.prompt.submit,
+        self.buf_nrs.input,
+        function()
             self:_submit_input()
-        end, {
-            desc = "Agentic: Submit prompt",
-        })
-    end
+        end,
+        { desc = "Agentic: Submit prompt" }
+    )
 
-    local paste_image = Config.keymaps.prompt.paste_image
-
-    if type(paste_image) == "string" then
-        paste_image = { paste_image }
-    end
-
-    for _, key in ipairs(paste_image) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
+    BufHelpers.multi_keymap_set(
+        Config.keymaps.prompt.paste_image,
+        self.buf_nrs.input,
+        function()
             vim.schedule(function()
                 local Clipboard = require("agentic.ui.clipboard")
                 local res = Clipboard.paste_image()
@@ -313,65 +280,28 @@ function ChatWidget:_bind_keymaps()
                     vim.paste({ res }, -1)
                 end
             end)
-        end, {
-            desc = "Agentic: Paste image from clipboard",
-        })
-    end
+        end,
+        { desc = "Agentic: Paste image from clipboard" }
+    )
 
-    local close = Config.keymaps.widget.close
-
-    if type(close) == "string" then
-        close = { close }
-    end
-
-    for _, key in ipairs(close) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        for _, bufnr in pairs(self.buf_nrs) do
-            BufHelpers.keymap_set(bufnr, modes, keymap, function()
+    for _, bufnr in pairs(self.buf_nrs) do
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.close,
+            bufnr,
+            function()
                 self:hide()
-            end, {
-                desc = "Agentic: Close Chat widget",
-            })
-        end
-    end
+            end,
+            { desc = "Agentic: Close Chat widget" }
+        )
 
-    local switch_provider = Config.keymaps.widget.switch_provider
-
-    if type(switch_provider) == "string" then
-        switch_provider = { switch_provider }
-    end
-
-    for _, key in ipairs(switch_provider) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        for _, bufnr in pairs(self.buf_nrs) do
-            BufHelpers.keymap_set(bufnr, modes, keymap, function()
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.switch_provider,
+            bufnr,
+            function()
                 require("agentic").switch_provider()
-            end, {
-                desc = "Agentic: Switch provider",
-            })
-        end
+            end,
+            { desc = "Agentic: Switch provider" }
+        )
     end
 
     -- Add keybindings to chat, todos, code, and files buffers to jump back to input and start insert mode
