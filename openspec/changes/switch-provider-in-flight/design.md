@@ -130,6 +130,14 @@ If `self.is_generating` is true, reject with a notification.
 
 Same pattern as `Agentic.new_session(opts)`.
 
+### Widget keymap
+
+Default `<localLeader>s` in normal mode, bound to all chat widget
+buffers (chat, input, files, code, todos). Calls
+`Agentic.switch_provider()` (no args → picker). Configurable via
+`keymaps.widget.switch_provider`, same format as other widget
+keymaps. Binding follows the same pattern as `close`.
+
 ## Sequence diagram
 
 ```text

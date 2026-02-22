@@ -114,6 +114,31 @@ function Agentic.new_session_with_provider(opts)
     end)
 end
 
+--- @class agentic.ui.SwitchProviderOpts
+--- @field provider? agentic.UserConfig.ProviderName
+
+--- Switch to a different provider while preserving chat UI and history.
+--- If opts.provider is set, switches directly. Otherwise shows a picker.
+--- @param opts agentic.ui.SwitchProviderOpts|nil
+function Agentic.switch_provider(opts)
+    if opts and opts.provider then
+        Config.provider = opts.provider
+        SessionRegistry.get_session_for_tab_page(nil, function(session)
+            session:switch_provider()
+        end)
+        return
+    end
+
+    SessionRegistry.select_provider(function(provider_name)
+        if provider_name then
+            Config.provider = provider_name
+            SessionRegistry.get_session_for_tab_page(nil, function(session)
+                session:switch_provider()
+            end)
+        end
+    end)
+end
+
 --- Stops the agent's current generation or tool execution
 --- The session remains active and ready for the next prompt
 --- Safe to call multiple times or when no generation is active

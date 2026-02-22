@@ -45,17 +45,29 @@ end
 --- @field message_writer agentic.ui.MessageWriter
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
---- @field current_provider string
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
---- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
---- @field _needs_history_send boolean Flag to send history on first submit after restore
+--- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
+
+--- Generate the welcome header for a new session
+--- @param provider_name string
+--- @param session_id string|nil
+--- @return string header
+function SessionManager._generate_welcome_header(provider_name, session_id)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    return string.format(
+        "# Agentic - %s - %s\n- %s\n--- --",
+        provider_name,
+        session_id or "unknown",
+        timestamp
+    )
+end
 
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
@@ -74,22 +86,17 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
-        current_provider = Config.provider,
-        _needs_history_send = false,
         _restoring = false,
     }, self)
 
-    local agent = AgentInstance.get_instance(
-        self.current_provider,
-        function(_client)
-            vim.schedule(function()
-                -- Skip auto-new_session if restore_from_history was called
-                if not self._restoring then
-                    self:new_session()
-                end
-            end)
-        end
-    )
+    local agent = AgentInstance.get_instance(Config.provider, function(_client)
+        vim.schedule(function()
+            -- Skip auto-new_session if restore_from_history was called
+            if not self._restoring then
+                self:new_session()
+            end
+        end)
+    end)
 
     if not agent then
         -- no log, it was already logged in AgentInstance
@@ -257,9 +264,8 @@ function SessionManager:_handle_input_submit(input_text)
     --- @type agentic.acp.Content[]
     local prompt = {}
 
-    -- If restored session, prepend history on first submit
-    if self._needs_history_send and self._history_to_send then
-        self._needs_history_send = false
+    -- If restored/switched session, prepend history on first submit
+    if self._history_to_send then
         self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self._history_to_send, prompt)
         self._history_to_send = nil
@@ -612,14 +618,9 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
-            local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = self.agent.provider_config.name
-            local session_id = self.session_id or "unknown"
-            local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n--- --",
-                provider_name,
-                session_id,
-                timestamp
+            local welcome_message = SessionManager._generate_welcome_header(
+                self.agent.provider_config.name,
+                self.session_id
             )
 
             self.message_writer:write_message(
@@ -650,7 +651,60 @@ function SessionManager:_cancel_session()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
     self.chat_history = ChatHistory:new()
-    self._needs_history_send = false
+    self._history_to_send = nil
+end
+
+--- Switch to a different ACP provider while preserving chat UI and history.
+--- Reads Config.provider (already set by caller) for the target provider.
+function SessionManager:switch_provider()
+    if self.is_generating then
+        Logger.notify(
+            "Cannot switch provider while generating. Stop generation first.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
+    local AgentInstance = require("agentic.acp.agent_instance")
+
+    -- Soft cancel: tear down ACP session without clearing UI/history
+    if self.session_id then
+        self.agent:cancel_session(self.session_id)
+    end
+    self.session_id = nil
+    self.permission_manager:clear()
+    self.todo_list:clear()
+
+    -- Save current history before new_session creates a fresh ChatHistory
+    local saved_history = self.chat_history
+
+    -- Get new agent instance for the target provider
+    local new_agent = AgentInstance.get_instance(
+        Config.provider,
+        function(client)
+            vim.schedule(function()
+                self.agent = client
+
+                self:new_session({
+                    restore_mode = true,
+                    on_created = function()
+                        -- Restore saved history (new_session created a fresh one)
+                        self.chat_history = saved_history
+                        self._history_to_send = saved_history.messages
+                        self._is_first_message = true
+                    end,
+                })
+            end)
+        end
+    )
+
+    if not new_agent then
+        return
+    end
+
+    -- If agent was already cached, on_ready fired synchronously above.
+    -- If not, it will fire when the process is ready.
+    self.agent = new_agent
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -812,11 +866,8 @@ function SessionManager:restore_from_history(history, opts)
 
     -- Prevent constructor's auto-new_session from running
     self._restoring = true
-    self._needs_history_send = true
-    self._is_first_message = false
-
-    -- Store messages for history send and replay
     self._history_to_send = history.messages
+    self._is_first_message = false
 
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then

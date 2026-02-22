@@ -346,6 +346,34 @@ function ChatWidget:_bind_keymaps()
         end
     end
 
+    local switch_provider = Config.keymaps.widget.switch_provider
+
+    if type(switch_provider) == "string" then
+        switch_provider = { switch_provider }
+    end
+
+    for _, key in ipairs(switch_provider) do
+        --- @type string|string[]
+        local modes = "n"
+        --- @type string
+        local keymap
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
+        end
+
+        for _, bufnr in pairs(self.buf_nrs) do
+            BufHelpers.keymap_set(bufnr, modes, keymap, function()
+                require("agentic").switch_provider()
+            end, {
+                desc = "Agentic: Switch provider",
+            })
+        end
+    end
+
     -- Add keybindings to chat, todos, code, and files buffers to jump back to input and start insert mode
     for panel_name, bufnr in pairs(self.buf_nrs) do
         if panel_name ~= "input" then

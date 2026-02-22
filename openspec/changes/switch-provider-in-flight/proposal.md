@@ -26,6 +26,10 @@ provider and session.
   `{ provider?: ProviderName }`. Sets `Config.provider` if provided,
   shows picker if nil. Same pattern as `Agentic.new_session`.
 
+- Default `<localLeader>s` keymap in normal mode on all chat
+  widget buffers to trigger provider switch via picker.
+  Configurable under `keymaps.widget.switch_provider`.
+
 ## Impact
 
 - Affected specs: `session-persistence`
@@ -33,3 +37,7 @@ provider and session.
   - `lua/agentic/session_manager.lua` — `switch_provider` +
     `_schedule_history_resend` + header extraction
   - `lua/agentic/init.lua` — new `switch_provider` public API
+  - `lua/agentic/config_default.lua` — new
+    `keymaps.widget.switch_provider` default
+  - `lua/agentic/ui/chat_widget.lua` — bind switch_provider
+    keymap to all widget buffers
