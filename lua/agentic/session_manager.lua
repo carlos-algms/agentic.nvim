@@ -667,18 +667,12 @@ function SessionManager:switch_provider()
 
     local AgentInstance = require("agentic.acp.agent_instance")
 
-    -- Soft cancel: tear down ACP session without clearing UI/history
-    if self.session_id then
-        self.agent:cancel_session(self.session_id)
-    end
-    self.session_id = nil
-    self.permission_manager:clear()
-    self.todo_list:clear()
-
-    -- Save current history before new_session creates a fresh ChatHistory
+    -- Save references before get_instance (on_ready may fire synchronously)
     local saved_history = self.chat_history
+    local old_agent = self.agent
+    local old_session_id = self.session_id
 
-    -- Get new agent instance for the target provider
+    -- Get new agent instance BEFORE tearing down the current session
     local new_agent = AgentInstance.get_instance(
         Config.provider,
         function(client)
@@ -707,6 +701,14 @@ function SessionManager:switch_provider()
     if not new_agent then
         return
     end
+
+    -- Soft cancel: tear down old ACP session now that we have a new agent
+    if old_session_id then
+        old_agent:cancel_session(old_session_id)
+    end
+    self.session_id = nil
+    self.permission_manager:clear()
+    self.todo_list:clear()
 
     -- If agent was already cached, on_ready fired synchronously above.
     -- If not, it will fire when the process is ready.

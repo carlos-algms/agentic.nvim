@@ -66,6 +66,6 @@ both completing first. Task 4 depends on 3. Task 5 depends on 4.
 ## 7. Final verification
 
 - [x] 7.1 Run `make validate` — all checks pass
-- [ ] 7.2 Manual smoke test: open session, chat, switch provider
+- [x] 7.2 Manual smoke test: open session, chat, switch provider
   via `<localLeader>s`, verify header appears, submit prompt,
   verify history is sent
