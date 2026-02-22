@@ -100,28 +100,38 @@ function PermissionManager:_reanchor_permission_prompt()
 
     --- @type agentic.ui.PermissionManager.PermissionRequest
     local current = self.current_request
-    self.message_writer:remove_permission_buttons(
-        current.button_start_row,
-        current.button_end_row
-    )
-    self:_remove_keymaps()
 
-    local sorted_options =
-        self._sort_permission_options(current.request.options)
-
-    local button_start_row, button_end_row, option_mapping =
-        self.message_writer:display_permission_buttons(
-            current.request.toolCall.toolCallId,
-            sorted_options
+    local ok, err = pcall(function()
+        self.message_writer:remove_permission_buttons(
+            current.button_start_row,
+            current.button_end_row
         )
+        self:_remove_keymaps()
 
-    current.button_start_row = button_start_row
-    current.button_end_row = button_end_row
-    current.option_mapping = option_mapping
+        local sorted_options =
+            self._sort_permission_options(current.request.options)
 
-    self:_setup_keymaps(option_mapping)
+        local button_start_row, button_end_row, option_mapping =
+            self.message_writer:display_permission_buttons(
+                current.request.toolCall.toolCallId,
+                sorted_options
+            )
+
+        current.button_start_row = button_start_row
+        current.button_end_row = button_end_row
+        current.option_mapping = option_mapping
+
+        self:_setup_keymaps(option_mapping)
+    end)
 
     self._reanchoring = false
+
+    if not ok then
+        Logger.notify(
+            "Error during permission prompt reanchor: " .. vim.inspect(err),
+            vim.log.levels.ERROR
+        )
+    end
 end
 
 --- @param options agentic.acp.PermissionOption[]

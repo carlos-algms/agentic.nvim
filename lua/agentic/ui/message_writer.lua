@@ -79,11 +79,15 @@ function MessageWriter:_notify_content_changed()
     end
 end
 
---- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after
---- @param fn fun(bufnr: integer)
+--- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after.
+--- The callback may return false to suppress the notification (e.g. on early-return without edits).
+--- Any other return value (nil, true, etc.) triggers the notification.
+--- @param fn fun(bufnr: integer): boolean|nil
 function MessageWriter:_with_modifiable_and_notify_change(fn)
-    BufHelpers.with_modifiable(self.bufnr, fn)
-    self:_notify_content_changed()
+    local result = BufHelpers.with_modifiable(self.bufnr, fn)
+    if result ~= false then
+        self:_notify_content_changed()
+    end
 end
 
 --- Writes a full message to the chat buffer and append two blank lines after
@@ -349,7 +353,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                     old_end_row = old_end_row,
                     line_count = vim.api.nvim_buf_line_count(bufnr),
                 })
-                return
+                return false
             end
 
             self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
