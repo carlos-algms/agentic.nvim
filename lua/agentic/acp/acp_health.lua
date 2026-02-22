@@ -69,7 +69,7 @@ function ACPHealth.get_available_package_manager()
     return false, nil
 end
 
---- @return string[] provider_names
+--- @return agentic.UserConfig.ProviderName[] provider_names
 function ACPHealth.get_default_provider_names()
     local available_providers = {}
 
