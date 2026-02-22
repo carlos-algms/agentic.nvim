@@ -46,6 +46,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled? boolean
+--- @field _on_content_changed? fun()
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -67,6 +68,24 @@ function MessageWriter:new(bufnr)
     return instance
 end
 
+--- @param callback fun()|nil
+function MessageWriter:set_on_content_changed(callback)
+    self._on_content_changed = callback
+end
+
+function MessageWriter:_notify_content_changed()
+    if self._on_content_changed then
+        self._on_content_changed()
+    end
+end
+
+--- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after
+--- @param fn fun(bufnr: integer)
+function MessageWriter:_with_modifiable_and_notify_change(fn)
+    BufHelpers.with_modifiable(self.bufnr, fn)
+    self:_notify_content_changed()
+end
+
 --- Writes a full message to the chat buffer and append two blank lines after
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
@@ -82,7 +101,7 @@ function MessageWriter:write_message(update)
 
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function()
+    self:_with_modifiable_and_notify_change(function()
         self:_append_lines(lines)
         self:_append_lines({ "", "" })
     end)
@@ -113,7 +132,7 @@ function MessageWriter:write_message_chunk(update)
 
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
         local current_line = vim.api.nvim_buf_get_lines(
@@ -215,7 +234,7 @@ end
 function MessageWriter:write_tool_call_block(tool_call_block)
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind
 
         -- Always add a leading blank line for spacing the previous message chunk
@@ -321,7 +340,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
         if already_has_diff then

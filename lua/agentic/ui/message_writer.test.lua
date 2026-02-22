@@ -44,7 +44,6 @@ describe("agentic.ui.MessageWriter", function()
         end
     end)
 
-    --- Fill buffer with numbered lines and set cursor position
     --- @param line_count integer
     --- @param cursor_line integer
     local function setup_buffer(line_count, cursor_line)
@@ -56,23 +55,44 @@ describe("agentic.ui.MessageWriter", function()
         vim.api.nvim_win_set_cursor(winid, { cursor_line, 0 })
     end
 
+    --- @param text string
+    --- @return agentic.acp.SessionUpdateMessage
+    local function make_message_update(text)
+        return {
+            sessionUpdate = "agent_message_chunk",
+            content = { type = "text", text = text },
+        }
+    end
+
+    --- @param id string
+    --- @param status agentic.acp.ToolCallStatus
+    --- @param body? string[]
+    --- @return agentic.ui.MessageWriter.ToolCallBlock
+    local function make_tool_call_block(id, status, body)
+        return {
+            tool_call_id = id,
+            status = status,
+            kind = "execute",
+            argument = "ls",
+            body = body or { "output" },
+        }
+    end
+
     describe("_check_auto_scroll", function()
         it(
             "returns true when cursor is within threshold of buffer end",
             function()
-                -- 5 lines from end, within default threshold of 10
                 setup_buffer(20, 15)
                 assert.is_true(writer:_check_auto_scroll(bufnr))
             end
         )
 
         it("returns false when cursor is far from buffer end", function()
-            -- 49 lines from end, well beyond threshold
             setup_buffer(50, 1)
             assert.is_false(writer:_check_auto_scroll(bufnr))
         end)
 
-        it("returns false when threshold is disabled", function()
+        it("returns false when threshold is disabled (zero or nil)", function()
             setup_buffer(1, 1)
 
             Config.auto_scroll = { threshold = 0 }
@@ -89,64 +109,20 @@ describe("agentic.ui.MessageWriter", function()
             vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
 
-        it(
-            "returns true when buffer is on a different tabpage with cursor at bottom",
-            function()
-                -- Create a new tab with a window showing a separate buffer
-                vim.cmd("tabnew")
-                local tab2 = vim.api.nvim_get_current_tabpage()
+        it("uses win_findbuf to check cursor across tabpages", function()
+            setup_buffer(50, 1)
 
-                -- The original bufnr+winid are on tab1 (from before_each).
-                -- writer:_check_auto_scroll uses vim.fn.win_findbuf(bufnr)
-                -- which searches ALL tabpages, so it finds the real window
-                -- on tab1 and checks the actual cursor position. The test
-                -- passes because cursor line 18 of 20 is within threshold.
-                setup_buffer(20, 18)
-                assert.is_true(writer:_check_auto_scroll(bufnr))
+            vim.cmd("tabnew")
+            local tab2 = vim.api.nvim_get_current_tabpage()
 
-                -- Cleanup: close tab2 to return to tab1
-                vim.api.nvim_set_current_tabpage(tab2)
-                vim.cmd("tabclose")
-            end
-        )
+            assert.is_false(writer:_check_auto_scroll(bufnr))
 
-        it(
-            "returns false when buffer is on a different tabpage with cursor scrolled up",
-            function()
-                -- Put cursor far from bottom while on tab1
-                setup_buffer(50, 1)
-                assert.is_false(writer:_check_auto_scroll(bufnr))
-
-                -- Switch to tab2 — win_findbuf still finds the real window
-                -- on tab1, so cursor position is checked correctly and the
-                -- user's scroll-up intent is respected.
-                vim.cmd("tabnew")
-                local tab2 = vim.api.nvim_get_current_tabpage()
-                assert.is_false(writer:_check_auto_scroll(bufnr))
-
-                vim.api.nvim_set_current_tabpage(tab2)
-                vim.cmd("tabclose")
-            end
-        )
+            vim.api.nvim_set_current_tabpage(tab2)
+            vim.cmd("tabclose")
+        end)
     end)
 
     describe("_auto_scroll", function()
-        it("coalesces multiple calls into a single scheduled scroll", function()
-            setup_buffer(20, 20)
-
-            writer:_auto_scroll(bufnr)
-            assert.is_true(writer._scroll_scheduled)
-
-            -- Subsequent calls are no-ops while scheduled
-            local check_spy = spy.on(writer, "_check_auto_scroll")
-            writer:_auto_scroll(bufnr)
-            writer:_auto_scroll(bufnr)
-
-            -- _check_auto_scroll is not called again (sticky true)
-            assert.equal(0, check_spy.call_count)
-            check_spy:revert()
-        end)
-
         it("evaluates _check_auto_scroll eagerly on first call", function()
             local check_scroll_spy = spy.on(writer, "_check_auto_scroll")
             writer:_auto_scroll(bufnr)
@@ -154,74 +130,62 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal(1, check_scroll_spy.call_count)
             check_scroll_spy:revert()
         end)
-    end)
 
-    describe("_should_auto_scroll sticky field", function()
-        it("stays true across multiple _auto_scroll calls", function()
+        it("coalesces multiple calls into a single scheduled scroll", function()
             setup_buffer(20, 20)
 
             writer:_auto_scroll(bufnr)
-            assert.is_true(writer._should_auto_scroll)
+            assert.is_true(writer._scroll_scheduled)
 
-            -- Second call should skip re-evaluation, field stays true
             local check_spy = spy.on(writer, "_check_auto_scroll")
             writer:_auto_scroll(bufnr)
-            assert.is_true(writer._should_auto_scroll)
+            writer:_auto_scroll(bufnr)
+
             assert.equal(0, check_spy.call_count)
             check_spy:revert()
         end)
+    end)
 
+    describe("_should_auto_scroll sticky field", function()
         it(
-            "remains true after large buffer growth (simulates tool call block)",
+            "remains true after buffer growth despite cursor exceeding threshold",
             function()
                 setup_buffer(20, 20)
                 writer:_auto_scroll(bufnr)
                 assert.is_true(writer._should_auto_scroll)
 
-                -- Simulate large buffer growth (30 lines added)
                 local lines = {}
                 for i = 1, 30 do
                     lines[i] = "tool output " .. i
                 end
                 vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, lines)
 
-                -- Cursor is still at line 20, buffer is now 50 lines
-                -- distance_from_bottom = 30, exceeds threshold
-                -- But sticky field should prevent re-evaluation
+                local check_spy = spy.on(writer, "_check_auto_scroll")
                 writer:_auto_scroll(bufnr)
                 assert.is_true(writer._should_auto_scroll)
+                assert.equal(0, check_spy.call_count)
+                check_spy:revert()
             end
         )
 
-        it("scheduled callback resets field to nil after scrolling", function()
-            local schedule_stub = spy.stub(vim, "schedule")
-            schedule_stub:invokes(function(fn)
-                fn()
-            end)
+        it(
+            "scheduled callback resets field and moves cursor to last line",
+            function()
+                local schedule_stub = spy.stub(vim, "schedule")
+                schedule_stub:invokes(function(fn)
+                    fn()
+                end)
 
-            setup_buffer(20, 20)
-            writer:_auto_scroll(bufnr)
-            assert.is_nil(writer._should_auto_scroll)
+                setup_buffer(50, 1)
+                writer._should_auto_scroll = true
+                writer:_auto_scroll(bufnr)
 
-            schedule_stub:revert()
-        end)
+                assert.is_nil(writer._should_auto_scroll)
+                assert.equal(50, vim.api.nvim_win_get_cursor(winid)[1])
 
-        it("scheduled callback moves cursor to the last line", function()
-            local schedule_stub = spy.stub(vim, "schedule")
-            schedule_stub:invokes(function(fn)
-                fn()
-            end)
-
-            setup_buffer(50, 1)
-            -- Force auto-scroll on despite cursor being far from bottom
-            writer._should_auto_scroll = true
-            writer:_auto_scroll(bufnr)
-
-            local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
-            assert.equal(50, cursor_line)
-
-            schedule_stub:revert()
-        end)
+                schedule_stub:revert()
+            end
+        )
 
         it(
             "scheduled callback scrolls when user is on a different tabpage",
@@ -231,29 +195,22 @@ describe("agentic.ui.MessageWriter", function()
                     fn()
                 end)
 
-                -- Cursor at bottom, auto-scroll should engage
                 setup_buffer(20, 20)
 
-                -- Add 30 lines to simulate streaming content
                 local new_lines = {}
                 for i = 1, 30 do
                     new_lines[i] = "streamed line " .. i
                 end
                 vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, new_lines)
 
-                -- Switch to a different tab (simulating user working elsewhere)
                 vim.cmd("tabnew")
                 local tab2 = vim.api.nvim_get_current_tabpage()
 
-                -- Force the scroll decision and trigger the callback
                 writer._should_auto_scroll = true
                 writer:_auto_scroll(bufnr)
 
-                -- Cursor on the chat window (tab1) should be at the last line
-                local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
-                assert.equal(50, cursor_line)
+                assert.equal(50, vim.api.nvim_win_get_cursor(winid)[1])
 
-                -- Cleanup
                 vim.api.nvim_set_current_tabpage(tab2)
                 vim.cmd("tabclose")
 
@@ -264,7 +221,6 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "after reset, re-evaluates and returns false when user scrolled up",
             function()
-                -- Run the first schedule synchronously to reset the field
                 local schedule_stub = spy.stub(vim, "schedule")
                 schedule_stub:invokes(function(fn)
                     fn()
@@ -277,13 +233,10 @@ describe("agentic.ui.MessageWriter", function()
 
                 schedule_stub:revert()
 
-                -- Defer the second schedule to inspect the field before reset
                 schedule_stub = spy.stub(vim, "schedule")
 
-                -- User scrolls up (cursor far from bottom)
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
-                -- Next _auto_scroll re-evaluates, should be false
                 writer:_auto_scroll(bufnr)
                 assert.is_false(writer._should_auto_scroll)
 
@@ -297,8 +250,6 @@ describe("agentic.ui.MessageWriter", function()
         local schedule_stub
 
         before_each(function()
-            -- Prevent vim.schedule from firing so we can inspect
-            -- _should_auto_scroll before the callback resets it.
             schedule_stub = spy.stub(vim, "schedule")
         end)
 
@@ -309,27 +260,17 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "write_message captures scroll decision before buffer grows",
             function()
-                -- Cursor at bottom of a small buffer
                 setup_buffer(10, 10)
 
-                -- Write a large message (50 lines) via the real public method
                 local long_text = {}
                 for i = 1, 50 do
                     long_text[i] = "message line " .. i
                 end
 
-                --- @type agentic.acp.SessionUpdateMessage
-                local update = {
-                    sessionUpdate = "agent_message_chunk",
-                    content = {
-                        type = "text",
-                        text = table.concat(long_text, "\n"),
-                    },
-                }
-                writer:write_message(update)
+                writer:write_message(
+                    make_message_update(table.concat(long_text, "\n"))
+                )
 
-                -- Decision was captured BEFORE the 50 lines were written
-                -- Cursor was at line 10 of 10 (distance=0, within threshold)
                 assert.is_true(writer._should_auto_scroll)
             end
         )
@@ -337,8 +278,12 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "write_tool_call_block captures scroll decision before buffer grows",
             function()
-                -- Cursor at bottom of a small buffer
                 setup_buffer(10, 10)
+
+                local body = {}
+                for i = 1, 15 do
+                    body[i] = "file" .. i .. ".lua"
+                end
 
                 --- @type agentic.ui.MessageWriter.ToolCallBlock
                 local block = {
@@ -346,51 +291,89 @@ describe("agentic.ui.MessageWriter", function()
                     status = "pending",
                     kind = "execute",
                     argument = "ls -la",
-                    body = {
-                        "file1.lua",
-                        "file2.lua",
-                        "file3.lua",
-                        "file4.lua",
-                        "file5.lua",
-                        "file6.lua",
-                        "file7.lua",
-                        "file8.lua",
-                        "file9.lua",
-                        "file10.lua",
-                        "file11.lua",
-                        "file12.lua",
-                        "file13.lua",
-                        "file14.lua",
-                        "file15.lua",
-                    },
+                    body = body,
                 }
                 writer:write_tool_call_block(block)
 
-                -- Decision was captured BEFORE the block lines were written
                 assert.is_true(writer._should_auto_scroll)
-
-                -- Buffer grew significantly (header + 15 body + footer + spacing)
-                local total = vim.api.nvim_buf_line_count(bufnr)
-                assert.is_true(total > 20)
+                assert.is_true(vim.api.nvim_buf_line_count(bufnr) > 20)
             end
         )
 
         it("write_message does not scroll when user has scrolled up", function()
-            -- 50-line buffer, cursor at line 1 (scrolled up)
             setup_buffer(50, 1)
 
-            --- @type agentic.acp.SessionUpdateMessage
-            local update = {
-                sessionUpdate = "agent_message_chunk",
-                content = {
-                    type = "text",
-                    text = "new content\nmore content",
-                },
-            }
-            writer:write_message(update)
+            writer:write_message(
+                make_message_update("new content\nmore content")
+            )
 
-            -- Cursor was far from bottom, decision captured as false
             assert.is_false(writer._should_auto_scroll)
+        end)
+    end)
+
+    describe("on_content_changed callback", function()
+        --- @type TestStub
+        local schedule_stub
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+        end)
+
+        it("stores and fires callback via set_on_content_changed", function()
+            local callback_spy = spy.new(function() end)
+            writer:set_on_content_changed(callback_spy --[[@as function]])
+
+            writer:_notify_content_changed()
+
+            assert.spy(callback_spy).was.called(1)
+        end)
+
+        it("clears callback when set to nil", function()
+            local callback_spy = spy.new(function() end)
+            writer:set_on_content_changed(callback_spy --[[@as function]])
+            writer:set_on_content_changed(nil)
+
+            writer:_notify_content_changed()
+
+            assert.spy(callback_spy).was.called(0)
+        end)
+
+        it(
+            "fires callback for each write method that produces content",
+            function()
+                local block = make_tool_call_block("cb-setup", "pending")
+                writer:write_tool_call_block(block)
+
+                local callback_spy = spy.new(function() end)
+                writer:set_on_content_changed(callback_spy --[[@as function]])
+
+                writer:write_message(make_message_update("hello"))
+                writer:write_message_chunk(make_message_update("chunk"))
+                writer:write_tool_call_block(
+                    make_tool_call_block("cb-1", "pending")
+                )
+                writer:update_tool_call_block({
+                    tool_call_id = "cb-setup",
+                    status = "completed",
+                    body = { "done" },
+                })
+
+                assert.spy(callback_spy).was.called(4)
+            end
+        )
+
+        it("does not fire callback when content is empty", function()
+            local callback_spy = spy.new(function() end)
+            writer:set_on_content_changed(callback_spy --[[@as function]])
+
+            writer:write_message(make_message_update(""))
+            writer:write_message_chunk(make_message_update(""))
+
+            assert.spy(callback_spy).was.called(0)
         end)
     end)
 
@@ -414,9 +397,6 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it("creates highlight ranges for pure insertion hunks", function()
-            -- File has 3 lines, new_text inserts a line between 1 and 2.
-            -- After minimize_diff_blocks, this produces a hunk with
-            -- old_lines = {} and new_lines = {"inserted"}.
             read_stub:returns({ "line1", "line2", "line3" })
 
             --- @type agentic.ui.MessageWriter.ToolCallBlock
@@ -433,7 +413,6 @@ describe("agentic.ui.MessageWriter", function()
 
             local lines, highlight_ranges = writer:_prepare_block_lines(block)
 
-            -- The inserted line must appear in the output
             local found_inserted = false
             for _, line in ipairs(lines) do
                 if line == "inserted" then
@@ -443,7 +422,6 @@ describe("agentic.ui.MessageWriter", function()
             end
             assert.is_true(found_inserted)
 
-            -- There must be a "new" highlight range for the insertion
             local new_ranges = vim.tbl_filter(function(r)
                 return r.type == "new"
             end, highlight_ranges)
