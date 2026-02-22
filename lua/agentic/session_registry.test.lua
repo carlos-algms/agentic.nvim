@@ -17,7 +17,8 @@ describe("agentic.SessionRegistry", function()
     --- @type table Mock for DefaultConfig module
     local default_config_mock
 
-    local original_ui_select = vim.ui.select
+    --- @type TestStub|nil
+    local ui_select_stub
 
     --- @param tab_page_id integer
     --- @return table mock_session
@@ -109,8 +110,6 @@ describe("agentic.SessionRegistry", function()
         session_manager_mock.new = function(_, tab_page_id)
             return create_mock_session(tab_page_id)
         end
-
-        vim.ui.select = original_ui_select
     end)
 
     after_each(function()
@@ -123,7 +122,10 @@ describe("agentic.SessionRegistry", function()
         package.loaded["agentic.session_manager"] =
             original_loaded["agentic.session_manager"]
 
-        vim.ui.select = original_ui_select
+        if ui_select_stub then
+            ui_select_stub:revert()
+            ui_select_stub = nil
+        end
     end)
 
     describe("get_session_for_tab_page", function()
@@ -407,11 +409,12 @@ describe("agentic.SessionRegistry", function()
             captured_opts = nil
             captured_on_choice = nil
 
-            vim.ui.select = function(items, opts, on_choice)
+            ui_select_stub = spy.stub(vim.ui, "select")
+            ui_select_stub:invokes(function(items, opts, on_choice)
                 captured_items = items
                 captured_opts = opts
                 captured_on_choice = on_choice
-            end
+            end)
         end)
 
         it("sorts installed providers before not-installed", function()
