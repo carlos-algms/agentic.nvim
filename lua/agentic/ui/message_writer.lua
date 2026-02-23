@@ -624,7 +624,35 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     table.insert(lines_to_append, "")
 
-    local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
+    -- Ensure exactly one empty separator line before the permission block.
+    -- During reanchor, remove_permission_buttons leaves a trailing empty
+    -- line — reuse it instead of adding another one.
+    local line_count = vim.api.nvim_buf_line_count(self.bufnr)
+    local last_line = vim.api.nvim_buf_get_lines(
+        self.bufnr,
+        line_count - 1,
+        line_count,
+        false
+    )[1]
+
+    if last_line == "" then
+        -- Buffer already ends with an empty line (left by
+        -- remove_permission_buttons during reanchor). Reuse it as
+        -- separator — include it in the block range so it gets
+        -- cleaned up, but don't add another one.
+        line_count = line_count - 1
+    else
+        -- No trailing empty line — prepend one as separator
+        table.insert(lines_to_append, 1, "")
+    end
+
+    -- The separator line shifts hint position by 1 in both cases:
+    -- existing empty line included in block range, or prepended empty line.
+    if hint_line_index then
+        hint_line_index = hint_line_index + 1
+    end
+
+    local button_start_row = line_count
 
     self:_auto_scroll(self.bufnr)
 

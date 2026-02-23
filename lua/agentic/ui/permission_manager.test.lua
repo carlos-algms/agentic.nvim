@@ -175,4 +175,136 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_nil(writer._on_content_changed)
         end)
     end)
+
+    describe("empty line accumulation during reanchor", function()
+        --- @return string[]
+        local function get_lines()
+            return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        end
+
+        --- @return integer
+        local function count_trailing_empty_lines()
+            local lines = get_lines()
+            local count = 0
+            for i = #lines, 1, -1 do
+                if lines[i] == "" then
+                    count = count + 1
+                else
+                    break
+                end
+            end
+            return count
+        end
+
+        it(
+            "single display+remove leaves exactly one trailing separator",
+            function()
+                vim.bo[bufnr].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "line 1", "line 2", "line 3" }
+                )
+                vim.bo[bufnr].modifiable = false
+
+                local lines_before = vim.api.nvim_buf_line_count(bufnr)
+
+                pm:add_request(
+                    make_request("tc-sep-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                assert.is_true(
+                    vim.api.nvim_buf_line_count(bufnr) > lines_before
+                )
+
+                pm:_complete_request("allow-once")
+
+                -- remove_permission_buttons replaces the block with {""},
+                -- so buffer should be original lines + 1 separator
+                assert.equal(
+                    lines_before + 1,
+                    vim.api.nvim_buf_line_count(bufnr)
+                )
+                assert.equal(1, count_trailing_empty_lines())
+            end
+        )
+
+        it(
+            "does not accumulate empty lines across multiple reanchors",
+            function()
+                vim.bo[bufnr].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "line 1", "line 2", "line 3" }
+                )
+                vim.bo[bufnr].modifiable = false
+
+                pm:add_request(
+                    make_request("tc-accum-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                -- Simulate 5 reanchor cycles (new content triggers reanchor)
+                for _ = 1, 5 do
+                    inject_content_and_reanchor()
+                end
+
+                pm:_complete_request("allow-once")
+
+                -- Should have exactly 1 trailing empty line, not 1 per cycle
+                assert.equal(1, count_trailing_empty_lines())
+            end
+        )
+
+        it(
+            "reanchor preserves single separator between content and buttons",
+            function()
+                vim.bo[bufnr].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "line 1", "line 2", "line 3" }
+                )
+                vim.bo[bufnr].modifiable = false
+
+                pm:add_request(
+                    make_request("tc-sep-2"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                -- Reanchor once
+                inject_content_and_reanchor()
+
+                -- Find last injected content line, then count empty lines after it
+                local lines = get_lines()
+                local last_content_idx = 0
+                for i = 1, #lines do
+                    if lines[i]:find("new tool call output") then
+                        last_content_idx = i
+                    end
+                end
+                assert.is_true(last_content_idx > 0)
+
+                local empty_count = 0
+                for i = last_content_idx + 1, #lines do
+                    if lines[i] == "" then
+                        empty_count = empty_count + 1
+                    else
+                        break
+                    end
+                end
+                assert.equal(1, empty_count)
+
+                pm:_complete_request("allow-once")
+            end
+        )
+    end)
 end)
