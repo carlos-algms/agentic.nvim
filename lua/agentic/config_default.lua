@@ -165,6 +165,7 @@ local ConfigDefault = {
                     mode = { "i", "n", "v" },
                 },
             },
+            switch_provider = "<localLeader>s",
         },
 
         --- Keys bindings for the prompt buffer

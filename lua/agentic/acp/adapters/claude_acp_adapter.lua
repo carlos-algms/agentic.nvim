@@ -1,6 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
-local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.ClaudeRawInput : agentic.acp.RawInput
 --- @field content? string For creating new files instead of new_string
@@ -58,15 +57,14 @@ function ClaudeACPAdapter:__handle_tool_call(session_id, update)
         message.argument = FileSystem.to_smart_path(update.rawInput.file_path)
 
         if kind == "edit" then
-            local new_string = update.rawInput.new_string or ""
-            local old_string = update.rawInput.old_string or ""
-
-            -- Claude might send content when creating new files
-            new_string = update.rawInput.content or new_string
+            -- Write tool sends full file content in rawInput.content (new or existing files)
+            local new_string = update.rawInput.content
+                or update.rawInput.new_string
+            local old_string = update.rawInput.old_string
 
             message.diff = {
-                new = vim.split(new_string, "\n"),
-                old = vim.split(old_string, "\n"),
+                new = new_string and vim.split(new_string, "\n") or {},
+                old = old_string and vim.split(old_string, "\n") or {},
                 all = update.rawInput.replace_all or false,
             }
         end
@@ -118,50 +116,11 @@ function ClaudeACPAdapter:__handle_tool_call(session_id, update)
         end
 
         message.argument = command or update.title or ""
+        message.body = self:extract_content_body(update)
     end
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call(message)
-    end)
-end
-
---- @protected
---- @param session_id string
---- @param update agentic.acp.ToolCallUpdate
-function ClaudeACPAdapter:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
-
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    if update.content and update.content[1] then
-        local content = update.content[1]
-
-        if
-            content.type == "content"
-            and content.content
-            and content.content.text
-        then
-            message.body = vim.split(content.content.text, "\n")
-        elseif content.type == "diff" then
-            -- ignore on purpose, diffs come only on tool call, not updates
-        else
-            Logger.debug("Unknown tool call update content type", {
-                content_type = content.type,
-                content = content.content,
-                session_id = session_id,
-                tool_call_id = update.toolCallId,
-            })
-        end
-    end
-
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
     end)
 end
 

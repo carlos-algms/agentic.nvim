@@ -81,8 +81,8 @@ function Logger.debug_to_file(...)
     end
 
     local log_message = table.concat(log_parts, " ")
-        .. "\n"
-        .. string.rep("=", 100)
+        .. "\n\n"
+        .. string.rep("=", 5)
         .. "\n\n"
 
     local cache_dir = vim.fn.stdpath("cache")

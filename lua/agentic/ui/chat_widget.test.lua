@@ -14,8 +14,9 @@ describe("agentic.ui.ChatWidget", function()
     --- @param name string
     --- @param content string[]
     local function fill_buffer(widget, name, content)
-        vim.bo[widget.buf_nrs[name]].modifiable = true
-        vim.api.nvim_buf_set_lines(widget.buf_nrs[name], 0, -1, false, content)
+        local bufnr = widget.buf_nrs[name]
+        vim.bo[bufnr].modifiable = true
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
     end
 
     -- Tests that behave identically regardless of layout position

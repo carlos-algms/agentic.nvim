@@ -46,7 +46,7 @@ local WINDOW_HEADERS = {
         suffix = "d: remove file",
     },
     todos = {
-        title = " TODO Items",
+        title = " Tasks list",
     },
 }
 

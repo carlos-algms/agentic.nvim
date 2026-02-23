@@ -58,12 +58,15 @@ function AgentModes:show_mode_selector()
         format_item = function(item)
             --- @cast item agentic.acp.AgentMode -- need to cast because `select` has a Generic, but not for `format_item`
             local prefix = item.id == self.current_mode_id and "● " or "  "
-            return string.format(
-                "%s%s: %s",
-                prefix,
-                item.name,
-                item.description
-            )
+            if item.description and item.description ~= "" then
+                return string.format(
+                    "%s%s: %s",
+                    prefix,
+                    item.name,
+                    item.description
+                )
+            end
+            return prefix .. item.name
         end,
     }, function(selected_mode)
         if selected_mode and selected_mode.id ~= self.current_mode_id then

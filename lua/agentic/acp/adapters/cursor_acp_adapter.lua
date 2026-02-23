@@ -93,25 +93,4 @@ function CursorACPAdapter:__handle_tool_call(session_id, update)
     end)
 end
 
---- @protected
---- @param session_id string
---- @param update agentic.acp.ToolCallUpdate
-function CursorACPAdapter:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
-
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    -- TODO: implement Cursor-agent tool call updates
-
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
-    end)
-end
-
 return CursorACPAdapter

@@ -57,6 +57,16 @@ function ChatWidget:is_open()
     return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
 end
 
+--- Check if the cursor is currently in one of the widget's buffers
+--- @return boolean
+function ChatWidget:is_cursor_in_widget()
+    if not self:is_open() then
+        return false
+    end
+
+    return self:_is_widget_buffer(vim.api.nvim_get_current_buf())
+end
+
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:show(opts)
     opts = opts or {}
@@ -206,15 +216,10 @@ function ChatWidget:_submit_input()
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
     end)
 
-    BufHelpers.with_modifiable(self.buf_nrs.todos, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-    end)
-
     self.on_submit_input(prompt)
 
     self:close_optional_window("code")
     self:close_optional_window("files")
-    self:close_optional_window("todos")
 
     -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
@@ -263,52 +268,19 @@ function ChatWidget:_initialize()
 end
 
 function ChatWidget:_bind_keymaps()
-    local submit = Config.keymaps.prompt.submit
-
-    if type(submit) == "string" then
-        submit = { submit }
-    end
-
-    for _, key in ipairs(submit) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
+    BufHelpers.multi_keymap_set(
+        Config.keymaps.prompt.submit,
+        self.buf_nrs.input,
+        function()
             self:_submit_input()
-        end, {
-            desc = "Agentic: Submit prompt",
-        })
-    end
+        end,
+        { desc = "Agentic: Submit prompt" }
+    )
 
-    local paste_image = Config.keymaps.prompt.paste_image
-
-    if type(paste_image) == "string" then
-        paste_image = { paste_image }
-    end
-
-    for _, key in ipairs(paste_image) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_set(self.buf_nrs.input, modes, keymap, function()
+    BufHelpers.multi_keymap_set(
+        Config.keymaps.prompt.paste_image,
+        self.buf_nrs.input,
+        function()
             vim.schedule(function()
                 local Clipboard = require("agentic.ui.clipboard")
                 local res = Clipboard.paste_image()
@@ -318,37 +290,28 @@ function ChatWidget:_bind_keymaps()
                     vim.paste({ res }, -1)
                 end
             end)
-        end, {
-            desc = "Agentic: Paste image from clipboard",
-        })
-    end
+        end,
+        { desc = "Agentic: Paste image from clipboard" }
+    )
 
-    local close = Config.keymaps.widget.close
-
-    if type(close) == "string" then
-        close = { close }
-    end
-
-    for _, key in ipairs(close) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        for _, bufnr in pairs(self.buf_nrs) do
-            BufHelpers.keymap_set(bufnr, modes, keymap, function()
+    for _, bufnr in pairs(self.buf_nrs) do
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.close,
+            bufnr,
+            function()
                 self:hide()
-            end, {
-                desc = "Agentic: Close Chat widget",
-            })
-        end
+            end,
+            { desc = "Agentic: Close Chat widget" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.switch_provider,
+            bufnr,
+            function()
+                require("agentic").switch_provider()
+            end,
+            { desc = "Agentic: Switch provider" }
+        )
     end
 
     -- Add keybindings to chat, todos, code, and files buffers to jump back to input and start insert mode

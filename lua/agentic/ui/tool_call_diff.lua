@@ -17,8 +17,8 @@
 
 --- @class agentic.ui.ToolCallDiff.ExtractOpts
 --- @field path string
---- @field new_text string|string[]
---- @field old_text? string|string[]
+--- @field new_text string[]
+--- @field old_text? string[]
 --- @field replace_all? boolean
 --- @field strict? boolean When true, don't return fallback blocks if match fails
 
@@ -36,8 +36,8 @@ local Logger = require("agentic.utils.logger")
 local diff_fn = vim.text and vim.text.diff or vim.diff
 
 --- @param lines string[]
---- @return boolean
-local function is_empty_lines(lines)
+--- @return boolean is_empty
+function M.is_empty_lines(lines)
     return #lines == 0 or (#lines == 1 and lines[1] == "")
 end
 
@@ -51,22 +51,25 @@ function M.extract_diff_blocks(opts)
         return diff_blocks
     end
 
-    local old_lines = M._normalize_text_to_lines(opts.old_text)
-    local new_lines = M._normalize_text_to_lines(opts.new_text)
+    local old_lines = M.normalize_to_lines(opts.old_text)
+    local new_lines = M.normalize_to_lines(opts.new_text)
 
     local abs_path = FileSystem.to_absolute_path(opts.path)
     local file_lines = FileSystem.read_from_buffer_or_disk(abs_path) or {}
 
     -- When old_text is nil/empty but file exists, treat as full file replacement
-    if is_empty_lines(old_lines) and #file_lines > 0 then
+    if M.is_empty_lines(old_lines) and #file_lines > 0 then
         old_lines = file_lines
     end
 
-    if is_empty_lines(old_lines) then
-        table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
+    if M.is_empty_lines(old_lines) then
+        -- Both empty: nothing to diff (e.g. Write tool initial call with empty content)
+        if not M.is_empty_lines(new_lines) then
+            table.insert(diff_blocks, M._create_new_file_diff_block(new_lines))
+        end
     else
         local blocks =
-            M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+            M.match_or_substring_fallback(file_lines, old_lines, new_lines)
 
         if blocks then
             if opts.replace_all then
@@ -289,19 +292,31 @@ function M.filter_unchanged_lines(old_lines, new_lines)
     return result
 end
 
---- Normalize text to lines array, handling nil and vim.NIL
---- @param text string|string[]|nil
+--- Normalize lines array, handling nil and vim.NIL.
+--- Adapters pre-split ACP text with vim.split, which produces a trailing ""
+--- from \n-terminated content. Strip it to match Neovim buffer representation
+--- (nvim_buf_get_lines doesn't include a trailing empty line for the final \n).
+---
+--- Single-strip contract: only removes one trailing "" (e.g. {"a", ""} → {"a"}).
+--- Does NOT collapse multiple trailing empties ({"a", "", ""} → {"a", ""}).
+--- Callers (is_empty_lines, extract_diff_blocks, diff_split_view) are expected
+--- to provide adapter-split input with at most one trailing "".
+---
+--- When no modification is needed the original table reference is returned.
+--- Callers must not mutate the result; clone it first if mutation is required.
+--- @param lines string[]|nil
 --- @return string[]
-function M._normalize_text_to_lines(text)
-    if not text or text == "" or text == vim.NIL then
+function M.normalize_to_lines(lines)
+    if not lines or lines == vim.NIL then
         return {}
     end
 
-    if type(text) == "string" then
-        return vim.split(text, "\n")
+    -- Strip trailing "" from \n-terminated content split by adapters
+    if #lines > 0 and lines[#lines] == "" then
+        lines = vim.list_slice(lines, 1, #lines - 1)
     end
 
-    return text
+    return lines
 end
 
 --- Try fuzzy match for all occurrences, fallback to substring replacement for single-line cases
@@ -309,7 +324,7 @@ end
 --- @param old_lines string[] Old text lines
 --- @param new_lines string[] New text lines
 --- @return agentic.ui.ToolCallDiff.DiffBlock[]|nil blocks Array of diff blocks or nil if no match
-function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
+function M.match_or_substring_fallback(file_lines, old_lines, new_lines)
     local matches = TextMatcher.find_all_matches(file_lines, old_lines)
 
     if #matches > 0 then
@@ -321,6 +336,31 @@ function M._match_or_substring_fallback(file_lines, old_lines, new_lines)
                 new_lines = new_lines,
             }
         end, matches)
+    end
+
+    -- Fallback: prefix boundary matching (ACP may send partial last line)
+    local prefix_matches =
+        TextMatcher.find_all_prefix_boundary_matches(file_lines, old_lines)
+
+    if #prefix_matches > 0 then
+        return vim.tbl_map(function(match)
+            -- Expand partial last line to full file line
+            local expanded_old = vim.list_extend({}, old_lines)
+            local expanded_new = vim.list_extend({}, new_lines)
+            expanded_old[#expanded_old] = expanded_old[#expanded_old]
+                .. match.suffix
+            if #expanded_new > 0 then
+                expanded_new[#expanded_new] = expanded_new[#expanded_new]
+                    .. match.suffix
+            end
+
+            return {
+                start_line = match.start_line,
+                end_line = match.end_line,
+                old_lines = expanded_old,
+                new_lines = expanded_new,
+            }
+        end, prefix_matches)
     end
 
     -- Fallback to substring replacement for single-line cases

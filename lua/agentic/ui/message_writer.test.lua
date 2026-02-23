@@ -393,4 +393,62 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_false(writer._should_auto_scroll)
         end)
     end)
+
+    describe("_prepare_block_lines", function()
+        local FileSystem
+        local read_stub
+        local path_stub
+
+        before_each(function()
+            FileSystem = require("agentic.utils.file_system")
+            read_stub = spy.stub(FileSystem, "read_from_buffer_or_disk")
+            path_stub = spy.stub(FileSystem, "to_absolute_path")
+            path_stub:invokes(function(path)
+                return path
+            end)
+        end)
+
+        after_each(function()
+            read_stub:revert()
+            path_stub:revert()
+        end)
+
+        it("creates highlight ranges for pure insertion hunks", function()
+            -- File has 3 lines, new_text inserts a line between 1 and 2.
+            -- After minimize_diff_blocks, this produces a hunk with
+            -- old_lines = {} and new_lines = {"inserted"}.
+            read_stub:returns({ "line1", "line2", "line3" })
+
+            --- @type agentic.ui.MessageWriter.ToolCallBlock
+            local block = {
+                tool_call_id = "test-hl",
+                status = "pending",
+                kind = "edit",
+                argument = "/test.lua",
+                diff = {
+                    old = { "line1", "line2", "line3" },
+                    new = { "line1", "inserted", "line2", "line3" },
+                },
+            }
+
+            local lines, highlight_ranges = writer:_prepare_block_lines(block)
+
+            -- The inserted line must appear in the output
+            local found_inserted = false
+            for _, line in ipairs(lines) do
+                if line == "inserted" then
+                    found_inserted = true
+                    break
+                end
+            end
+            assert.is_true(found_inserted)
+
+            -- There must be a "new" highlight range for the insertion
+            local new_ranges = vim.tbl_filter(function(r)
+                return r.type == "new"
+            end, highlight_ranges)
+            assert.is_true(#new_ranges > 0)
+            assert.equal("inserted", new_ranges[1].new_line)
+        end)
+    end)
 end)

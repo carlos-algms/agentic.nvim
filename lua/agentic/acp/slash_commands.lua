@@ -5,6 +5,7 @@ local States = require("agentic.states")
 --- @class agentic.acp.CompletionItem
 --- @field word string The text to insert (mandatory)
 --- @field menu string Description shown in completion menu
+--- @field info string Full description shown in popup window
 --- @field kind string Type/category of completion item
 --- @field icase number 1 for case-insensitive, 0 for case-sensitive
 
@@ -38,6 +39,7 @@ function SlashCommands.setCommands(bufnr, available_commands)
             local completion_item = {
                 word = cmd.name,
                 menu = cmd.description,
+                info = cmd.description,
                 kind = "/",
                 icase = 1,
             }
@@ -51,6 +53,7 @@ function SlashCommands.setCommands(bufnr, available_commands)
         local new_command = {
             word = "new",
             menu = "Start a new session",
+            info = "Start a new session",
             kind = "/",
             icase = 1,
         }

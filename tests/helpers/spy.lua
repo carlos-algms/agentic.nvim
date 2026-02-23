@@ -13,6 +13,7 @@ local M = {}
 --- @field _method string|nil Method name (for method spies)
 --- @field called_with fun(self: TestSpy, ...: any): boolean Check if called with args
 --- @field revert fun(self: TestSpy) Revert to original function
+--- @field reset fun(self: TestSpy) Reset calls and call_count
 
 --- Create a new spy function
 --- @param fn function|nil Optional function to wrap
@@ -41,6 +42,12 @@ function M.new(fn)
             end
         end
         return false
+    end
+
+    --- Reset tracking state (calls and call_count)
+    function spy:reset()
+        self.calls = {}
+        self.call_count = 0
     end
 
     --- Revert a spy to the original function
@@ -85,7 +92,6 @@ end
 --- @class TestStub
 --- @field calls table[] List of call arguments
 --- @field call_count number Number of times called
---- @field _return_value any Value to return
 --- @field _invokes_fn function|nil Function to invoke
 --- @field _original_fn function|nil Original function (for reverting)
 --- @field _target table|nil Target object
@@ -93,6 +99,7 @@ end
 --- @field returns fun(self: TestStub, value: any) Set return value
 --- @field invokes fun(self: TestStub, fn: function) Set invoke function
 --- @field revert fun(self: TestStub) Revert to original function
+--- @field reset fun(self: TestStub) Reset calls and call_count
 --- @field called_with fun(self: TestStub, ...: any): boolean Check if called with args
 
 --- Create a stub that replaces a method
@@ -107,20 +114,27 @@ function M.stub(target, method)
         _original_fn = original,
         _target = target,
         _method = method,
-        _return_value = nil,
         _invokes_fn = nil,
     }
 
     --- Set the return value for the stub
     --- @param value any Value to return when stub is called
     function stub:returns(value)
-        self._return_value = value
+        self._invokes_fn = function()
+            return value
+        end
     end
 
     --- Set a function to invoke when stub is called
     --- @param fn function Function to invoke
     function stub:invokes(fn)
         self._invokes_fn = fn
+    end
+
+    --- Reset tracking state (calls and call_count)
+    function stub:reset()
+        self.calls = {}
+        self.call_count = 0
     end
 
     --- Revert the stub to original function
@@ -156,7 +170,6 @@ function M.stub(target, method)
             if self._invokes_fn then
                 return self._invokes_fn(...)
             end
-            return self._return_value
         end,
     })
 

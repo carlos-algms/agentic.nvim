@@ -41,12 +41,15 @@ describe("agentic.acp.SlashCommands", function()
                 -- Verify provided commands are set correctly
                 assert.equal("plan", commands[1].word)
                 assert.equal("Create a plan", commands[1].menu)
+                assert.equal("Create a plan", commands[1].info)
                 assert.equal("review", commands[2].word)
                 assert.equal("Review code", commands[2].menu)
+                assert.equal("Review code", commands[2].info)
 
                 -- Verify /new was automatically added at the end
                 assert.equal("new", commands[3].word)
                 assert.equal("Start a new session", commands[3].menu)
+                assert.equal("Start a new session", commands[3].info)
             end
         )
 
@@ -68,6 +71,7 @@ describe("agentic.acp.SlashCommands", function()
                 if cmd.word == "new" then
                     new_count = new_count + 1
                     assert.equal("Custom new description", cmd.menu)
+                    assert.equal("Custom new description", cmd.info)
                 end
             end
             assert.equal(1, new_count)

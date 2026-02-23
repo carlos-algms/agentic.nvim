@@ -45,16 +45,29 @@ end
 --- @field message_writer agentic.ui.MessageWriter
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
---- @field current_provider string
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
 --- @field agent_modes agentic.acp.AgentModes
+--- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
---- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
---- @field _needs_history_send boolean Flag to send history on first submit after restore
+--- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
+
+--- Generate the welcome header for a new session
+--- @param provider_name string
+--- @param session_id string|nil
+--- @return string header
+function SessionManager._generate_welcome_header(provider_name, session_id)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    return string.format(
+        "# Agentic - %s - %s\n- %s\n--- --",
+        provider_name,
+        session_id or "unknown",
+        timestamp
+    )
+end
 
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
@@ -73,8 +86,6 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
-        current_provider = Config.provider,
-        _needs_history_send = false,
         _restoring = false,
     }, self)
 
@@ -137,6 +148,14 @@ function SessionManager:new(tab_page_id)
         end
     )
 
+    self.todo_list = TodoList:new(self.widget.buf_nrs.todos, function(todo_list)
+        if not todo_list:is_empty() then
+            self.widget:show({ focus_prompt = false })
+        end
+    end, function()
+        self.widget:close_optional_window("todos")
+    end)
+
     return self
 end
 
@@ -146,13 +165,7 @@ function SessionManager:_on_session_update(update)
 
     if update.sessionUpdate == "plan" then
         if Config.windows.todos.display then
-            TodoList.render(self.widget.buf_nrs.todos, update.entries)
-
-            if #update.entries > 0 and self.widget:is_open() then
-                self.widget:show({
-                    focus_prompt = false,
-                })
-            end
+            self.todo_list:render(update.entries)
         end
     elseif update.sessionUpdate == "agent_message_chunk" then
         self.status_animation:start("generating")
@@ -185,6 +198,10 @@ function SessionManager:_on_session_update(update)
         if self.agent_modes:update_mode(update.currentModeId) then
             self:_set_mode_to_chat_header(update.currentModeId)
         end
+    elseif update.sessionUpdate == "usage_update" then
+        -- Usage updates contain token/cost information - currently informational only
+        -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
+        -- Keeping silent for now to avoid "press any key" prompts on large JSON output
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
         Logger.notify(
@@ -234,6 +251,8 @@ end
 
 --- @param input_text string
 function SessionManager:_handle_input_submit(input_text)
+    self.todo_list:close_if_all_completed()
+
     -- Intercept /new command to start new session locally, cancelling existing one
     -- Its necessary to avoid race conditions and make sure everything is cleaned properly,
     -- the Agent might not send an identifiable response that could be acted upon
@@ -245,9 +264,8 @@ function SessionManager:_handle_input_submit(input_text)
     --- @type agentic.acp.Content[]
     local prompt = {}
 
-    -- If restored session, prepend history on first submit
-    if self._needs_history_send and self._history_to_send then
-        self._needs_history_send = false
+    -- If restored/switched session, prepend history on first submit
+    if self._history_to_send then
         self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self._history_to_send, prompt)
         self._history_to_send = nil
@@ -600,14 +618,9 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
-            local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = self.agent.provider_config.name
-            local session_id = self.session_id or "unknown"
-            local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n--- --",
-                provider_name,
-                session_id,
-                timestamp
+            local welcome_message = SessionManager._generate_welcome_header(
+                self.agent.provider_config.name,
+                self.session_id
             )
 
             self.message_writer:write_message(
@@ -628,6 +641,7 @@ function SessionManager:_cancel_session()
         -- Otherwise, it clears selections and files when opening for the first time
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
+        self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
     end
@@ -637,7 +651,68 @@ function SessionManager:_cancel_session()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
     self.chat_history = ChatHistory:new()
-    self._needs_history_send = false
+    self._history_to_send = nil
+end
+
+--- Switch to a different ACP provider while preserving chat UI and history.
+--- Reads Config.provider (already set by caller) for the target provider.
+function SessionManager:switch_provider()
+    if self.is_generating then
+        Logger.notify(
+            "Cannot switch provider while generating. Stop generation first.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
+    local AgentInstance = require("agentic.acp.agent_instance")
+
+    -- Save references before get_instance (on_ready may fire synchronously)
+    local saved_history = self.chat_history
+    local old_agent = self.agent
+    local old_session_id = self.session_id
+
+    -- Get new agent instance BEFORE tearing down the current session
+    local new_agent = AgentInstance.get_instance(
+        Config.provider,
+        function(client)
+            vim.schedule(function()
+                self.agent = client
+
+                self:new_session({
+                    restore_mode = true,
+                    on_created = function()
+                        -- Capture new session metadata before overwriting
+                        local new_session_id = self.chat_history.session_id
+                        local new_timestamp = self.chat_history.timestamp
+
+                        -- Restore saved messages (new_session created a fresh one)
+                        self.chat_history = saved_history
+                        self.chat_history.session_id = new_session_id
+                        self.chat_history.timestamp = new_timestamp
+                        self._history_to_send = saved_history.messages
+                        self._is_first_message = true
+                    end,
+                })
+            end)
+        end
+    )
+
+    if not new_agent then
+        return
+    end
+
+    -- Soft cancel: tear down old ACP session now that we have a new agent
+    if old_session_id then
+        old_agent:cancel_session(old_session_id)
+    end
+    self.session_id = nil
+    self.permission_manager:clear()
+    self.todo_list:clear()
+
+    -- If agent was already cached, on_ready fired synchronously above.
+    -- If not, it will fire when the process is ready.
+    self.agent = new_agent
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -799,11 +874,8 @@ function SessionManager:restore_from_history(history, opts)
 
     -- Prevent constructor's auto-new_session from running
     self._restoring = true
-    self._needs_history_send = true
-    self._is_first_message = false
-
-    -- Store messages for history send and replay
     self._history_to_send = history.messages
+    self._is_first_message = false
 
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then
@@ -820,6 +892,8 @@ function SessionManager:restore_from_history(history, opts)
             self.message_writer,
             self._history_to_send
         )
+        -- ACP session already knows these messages; clear to prevent duplicate prepend
+        self._history_to_send = nil
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({

@@ -240,6 +240,29 @@ function M.show_diff(opts)
         Logger.debug("show_diff: split view failed, falling back to inline")
     end
 
+    local diff_blocks = ToolCallDiff.extract_diff_blocks({
+        path = opts.file_path,
+        old_text = opts.diff.old,
+        new_text = opts.diff.new,
+        replace_all = opts.diff.all,
+        strict = true, -- don't show fallback if match fails
+    })
+
+    if #diff_blocks == 0 then
+        -- Empty diff is valid (e.g. new file Write tool where content arrives in updates)
+        local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new or {})
+        local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old or {})
+        local has_content = not ToolCallDiff.is_empty_lines(new_lines)
+            or not ToolCallDiff.is_empty_lines(old_lines)
+        if has_content then
+            Logger.notify(
+                "Diff preview: could not match diff in " .. opts.file_path,
+                vim.log.levels.WARN
+            )
+        end
+        return
+    end
+
     local bufnr = vim.fn.bufnr(opts.file_path)
     if bufnr == -1 then
         bufnr = vim.fn.bufadd(opts.file_path)
@@ -253,18 +276,6 @@ function M.show_diff(opts)
     end
 
     M.clear_diff(bufnr)
-
-    local diff_blocks = ToolCallDiff.extract_diff_blocks({
-        path = opts.file_path,
-        old_text = opts.diff.old,
-        new_text = opts.diff.new,
-        replace_all = opts.diff.all,
-        strict = true, -- don't show fallback if match fails
-    })
-
-    if #diff_blocks == 0 then
-        Logger.debug("show_diff: no diff blocks matched for", opts.file_path)
-    end
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines

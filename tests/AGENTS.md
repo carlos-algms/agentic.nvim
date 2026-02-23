@@ -186,6 +186,10 @@ API:
   first argument is `self`
 - **`called_with()` limitations** - Cannot compare functions (callbacks), check
   manually instead
+- **`returns()` and `invokes()` are mutually exclusive** - Last call wins
+  (calling `returns()` clears any prior `invokes()` and vice versa)
+- **`reset()` clears tracking only** - Resets `calls` and `call_count`, does NOT
+  clear behavior (`returns`/`invokes`)
 - **Type annotations** - `assert.spy()` accepts both `TestSpy` and `TestStub`
 
 ### Creating Spies
@@ -256,13 +260,16 @@ local fs_stat_stub = spy.stub(vim.uv, 'fs_stat')
 -- Set return value
 fs_stat_stub:returns({ type = 'file' })
 
--- Or set a function to invoke
+-- Or set a function to invoke (clears prior returns(), and vice versa)
 fs_stat_stub:invokes(function(path)
   if path == '/exists' then
     return { type = 'file' }
   end
   return nil
 end)
+
+-- Reset tracking state (calls, call_count) without clearing behavior
+fs_stat_stub:reset()
 
 -- Check calls using custom assert
 assert.equal(1, fs_stat_stub.call_count)

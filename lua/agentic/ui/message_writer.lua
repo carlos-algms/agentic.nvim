@@ -432,17 +432,6 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
             table.insert(highlight_ranges, range)
         end
-    elseif
-        kind == "fetch"
-        or kind == "WebSearch"
-        or kind == "execute"
-        or kind == "search"
-        or kind == "SubAgent"
-        or kind == "Skill"
-    then
-        if tool_call_block.body then
-            vim.list_extend(lines, tool_call_block.body)
-        end
     elseif tool_call_block.diff then
         local diff_blocks = ToolCallDiff.extract_diff_blocks({
             path = argument,
@@ -467,7 +456,18 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
             if is_new_file then
                 for _, new_line in ipairs(block.new_lines) do
+                    local line_index = #lines
                     table.insert(lines, new_line)
+
+                    --- @type agentic.ui.MessageWriter.HighlightRange
+                    local range = {
+                        line_index = line_index,
+                        type = "new",
+                        old_line = nil,
+                        new_line = new_line,
+                    }
+
+                    table.insert(highlight_ranges, range)
                 end
             else
                 local filtered = ToolCallDiff.filter_unchanged_lines(
@@ -530,7 +530,9 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             table.insert(lines, "```")
         end
     else
-        Logger.debug("Unknown tool call kind or missing diff: " .. kind)
+        if tool_call_block.body then
+            vim.list_extend(lines, tool_call_block.body)
+        end
     end
 
     table.insert(lines, "")
@@ -673,7 +675,7 @@ function MessageWriter:_apply_block_highlights(
 )
     if #highlight_ranges > 0 then
         self:_apply_diff_highlights(start_row, highlight_ranges)
-    elseif kind ~= "edit" then
+    elseif kind ~= "edit" and kind ~= "switch_mode" then
         -- Apply Comment highlight for non-edit blocks without diffs
         for line_idx = start_row + 1, end_row - 1 do
             local line = vim.api.nvim_buf_get_lines(

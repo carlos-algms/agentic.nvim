@@ -21,7 +21,7 @@ end
 
 --- @protected
 --- @param session_id string
---- @param update agentic.acp.ToolCallMessage
+--- @param update agentic.acp.OpenCodeToolCallMessage
 function OpenCodeACPAdapter:__handle_tool_call(session_id, update)
     -- generating an empty tool call block on purpose,
     -- all OpenCode's useful data comes in tool_call_update
@@ -32,18 +32,22 @@ function OpenCodeACPAdapter:__handle_tool_call(session_id, update)
         tool_call_id = update.toolCallId,
         kind = update.kind,
         status = update.status,
-        argument = update.title or "pending...",
+        argument = update.title ~= update.kind and update.title or "pending...",
     }
 
     if update.title == "list" then
         -- hack to keep consistency with other Providers
         -- OpenCode uses `read`, and the message writer will omit it's output if we kept this as read.
         message.kind = "search"
-    elseif update.title == "websearch" then
+    elseif update.title == "websearch" or update.title == "google_search" then
         message.kind = "WebSearch"
     elseif update.title == "task" then
         -- rawInput is empty in tool_call, only populated in tool_call_update
         message.kind = "SubAgent"
+    elseif update.title == "skill" then
+        message.kind = "Skill"
+        message.argument = update.rawInput and update.rawInput.name
+            or "unknown skill"
     end
 
     self:__with_subscriber(session_id, function(subscriber)
@@ -53,17 +57,23 @@ end
 
 --- Specific OpenCode structure - created to avoid confusion with the standard ACP types,
 --- as only OpenCode sends these fields
+--- @class agentic.acp.OpenCodeToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.OpenCodeToolCallRawInput
+
 --- @class agentic.acp.OpenCodeToolCallRawInput : agentic.acp.RawInput
 --- @field filePath? string
 --- @field newString? string
 --- @field oldString? string
 --- @field replaceAll? boolean
 --- @field error? string
+--- @field name? string Skill name
 --- @field subagent_type? string For sub-agent tasks
 --- @field description? string For sub-agent tasks
 --- @field prompt? string For sub-agent tasks
 
 --- @class agentic.acp.OpenCodeToolCallUpdate : agentic.acp.ToolCallUpdate
+--- @field kind? agentic.acp.ToolKind
+--- @field title? string
 --- @field rawInput? agentic.acp.OpenCodeToolCallRawInput
 
 --- @protected
@@ -88,11 +98,14 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
     end
 
     if update.status == "completed" or update.status == "failed" then
-        if update.content and update.content[1] then
-            local content = update.content[1].content
-            if content and content.text then
-                message.body = vim.split(content.text, "\n")
-            end
+        if
+            update.kind == "other"
+            and update.rawInput
+            and update.rawInput.name
+        then
+            message.body = { update.title or "" }
+        else
+            message.body = self:extract_content_body(update)
         end
     else
         if update.rawInput then
@@ -100,14 +113,17 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                 message.argument =
                     FileSystem.to_smart_path(update.rawInput.filePath or "")
 
+                local old_string = update.rawInput.oldString
+
                 message.diff = {
                     new = vim.split(update.rawInput.newString, "\n"),
-                    old = vim.split(update.rawInput.oldString or "", "\n"),
+                    old = old_string and vim.split(old_string, "\n") or {},
                     all = update.rawInput.replaceAll or false,
                 }
             elseif update.rawInput.url then -- fetch command
                 message.argument = update.rawInput.url
             elseif update.rawInput.query then -- WebSearch command
+                message.argument = update.rawInput.query
                 message.body = vim.split(update.rawInput.query, "\n")
             elseif update.rawInput.command then
                 message.argument = update.rawInput.command
@@ -124,6 +140,11 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                 if update.rawInput.prompt then
                     message.body = vim.split(update.rawInput.prompt, "\n")
                 end
+            elseif update.rawInput.filePath then
+                message.argument =
+                    FileSystem.to_smart_path(update.rawInput.filePath)
+            elseif update.rawInput.name then
+                message.argument = update.rawInput.name
             elseif update.rawInput.error then
                 message.body = vim.split(update.rawInput.error, "\n")
             end

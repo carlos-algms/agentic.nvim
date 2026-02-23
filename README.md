@@ -62,6 +62,8 @@ interface, your colors, and your keymaps.
 - **ℹ️ Smart Context** - Automatically includes system and project information
   in the first message of each session, so the Agent don't spend time and tokens
   gathering basic info
+- **🔀 Switch Providers** - Switch between ACP providers mid-conversation
+  without losing chat history (`<localLeader>s` in the chat widget)
 - **♻️ Session Restore** - Restore your session and chat history at any time,
   for all providers
 
@@ -79,7 +81,6 @@ preview side-by-side or inline, set your preference in your options:
 | Side-by-side                                          | Inline                                    |
 | ----------------------------------------------------- | ----------------------------------------- |
 | ![Side-by-side diff][preview-diff-side-by-side-image] | ![Inline diff][preview-diff-inline-image] |
-
 
 ### Dynamic layout rotation: right - bottom - left
 
@@ -362,18 +363,19 @@ header parts:
 
 ### Commands
 
-| Function                                                     | Description                                                      |
-| ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                              |
-| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                 |
-| `:lua require("agentic").close()`                            | Close chat sidebar                                               |
-| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                  |
-| `:lua require("agentic").add_file()`                         | Add current file to context                                      |
-| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                    |
-| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one  |
-| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active) |
-| `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue   |
-| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)   |
+| Function                                                     | Description                                                       |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                               |
+| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                  |
+| `:lua require("agentic").close()`                            | Close chat sidebar                                                |
+| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                   |
+| `:lua require("agentic").add_file()`                         | Add current file to context                                       |
+| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                     |
+| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
+| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
+| `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue    |
+| `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
+| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
 
 ### Optional Parameters
 
@@ -412,6 +414,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<C-s>`          | n/v/i | Submit prompt                                                 |
 | `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer               |
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)              |
+| `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                  |
 | `q`              | n     | Close chat widget                                             |
 | `d`              | n     | Remove file or code selection at cursor                       |
 | `d`              | v     | Remove multiple selected files or code selections             |
@@ -437,6 +440,7 @@ your setup:
             mode = { "i", "n", "v" },  -- Specify modes for this keybinding
           },
         },
+        switch_provider = "<localLeader>s",  -- Switch ACP provider
       },
 
       -- Keybindings for the prompt buffer only

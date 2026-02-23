@@ -1,6 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
 local FileSystem = require("agentic.utils.file_system")
-local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.CodexParsedCommand
 --- @field cmd? string
@@ -10,8 +9,19 @@ local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.CodexRawInput : agentic.acp.RawInput
 --- @field parsed_cmd? agentic.acp.CodexParsedCommand[]
+--- @field action? agentic.acp.CodexRawInputAction
+
+--- @class agentic.acp.CodexRawInputAction
+--- @field type string
+--- @field query? string
+--- @field queries? string[]
+--- @field url? string
 
 --- @class agentic.acp.CodexToolCallMessage : agentic.acp.ToolCallMessage
+--- @field rawInput? agentic.acp.CodexRawInput
+
+--- @class agentic.acp.CodexToolCallUpdate : agentic.acp.ToolCallUpdate
+--- @field title? string
 --- @field rawInput? agentic.acp.CodexRawInput
 
 --- Codex-specific adapter that extends ACPClient with Codex-specific behaviors
@@ -41,7 +51,7 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
     local message = {
         tool_call_id = update.toolCallId,
         kind = kind,
-        status = update.status,
+        status = update.status or "pending",
         argument = update.title or "unknown codex command",
     }
 
@@ -55,12 +65,12 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
 
         if kind == "edit" and update.content and update.content[1] then
             local content = update.content[1]
-            local new_string = content.newText or ""
-            local old_string = content.oldText or ""
+            local new_string = content.newText
+            local old_string = content.oldText
 
             message.diff = {
-                new = vim.split(new_string, "\n"),
-                old = vim.split(old_string, "\n"),
+                new = new_string and vim.split(new_string, "\n") or {},
+                old = old_string and vim.split(old_string, "\n") or {},
             }
         end
     elseif update.rawInput then
@@ -84,40 +94,33 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
 end
 
 --- @protected
---- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
-function CodexACPAdapter:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
+--- @return agentic.ui.MessageWriter.ToolCallBase message
+function CodexACPAdapter:__build_tool_call_update(update)
+    ---@cast update agentic.acp.CodexToolCallUpdate
+    local message = ACPClient.__build_tool_call_update(self, update)
 
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-    }
-
-    if update.content and update.content[1] then
-        local content = update.content[1]
-
-        if content.type == "content" then
-            message.body = vim.split(content.content.text, "\n")
-        elseif content.type == "diff" then
-            -- ignore, already handled in tool call, we don't want to rerender diffs, as they don't change during updates
-        else
-            Logger.debug(
-                "Unknown tool call update content type: "
-                    ---@diagnostic disable-next-line: undefined-field -- it's expected this to be unknown
-                    .. tostring(content.type)
-            )
-        end
-    elseif update.rawOutput then
+    if not message.body and update.rawOutput then
         message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
     end
 
-    self:__with_subscriber(session_id, function(subscriber)
-        subscriber.on_tool_call_update(message)
-    end)
+    local raw_input = update.rawInput
+    local action = raw_input and raw_input.action
+
+    if action and raw_input then
+        local action_type = action.type
+
+        if action_type == "search" then
+            message.kind = "WebSearch"
+            message.argument = action.query or raw_input.query
+        elseif action_type == "open_page" then
+            message.argument = action.url or raw_input.query
+        end
+    elseif update.title then
+        message.argument = update.title
+    end
+
+    return message
 end
 
 return CodexACPAdapter

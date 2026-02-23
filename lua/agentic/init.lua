@@ -82,9 +82,16 @@ function Agentic.add_selection_or_file_to_context(opts)
     end)
 end
 
+--- @class agentic.ui.NewSessionOpts : agentic.ui.ChatWidget.ShowOpts
+--- @field provider? agentic.UserConfig.ProviderName
+
 --- Destroys the current Chat session and starts a new one
---- @param opts agentic.ui.ChatWidget.ShowOpts|nil
+--- @param opts agentic.ui.NewSessionOpts|nil
 function Agentic.new_session(opts)
+    if opts and opts.provider then
+        Config.provider = opts.provider
+    end
+
     local session = SessionRegistry.new_session()
     if session then
         if not opts or opts.auto_add_to_context ~= false then
@@ -92,6 +99,46 @@ function Agentic.new_session(opts)
         end
         session.widget:show(opts)
     end
+end
+
+--- @param opts agentic.ui.ChatWidget.ShowOpts|nil
+function Agentic.new_session_with_provider(opts)
+    SessionRegistry.select_provider(function(provider_name)
+        if provider_name then
+            local merged_opts = vim.tbl_deep_extend("force", opts or {}, {
+                provider = provider_name,
+            }) --[[@as agentic.ui.NewSessionOpts]]
+
+            Agentic.new_session(merged_opts)
+        end
+    end)
+end
+
+--- @class agentic.ui.SwitchProviderOpts
+--- @field provider? agentic.UserConfig.ProviderName
+
+--- @param provider_name agentic.UserConfig.ProviderName
+local function apply_provider_switch(provider_name)
+    Config.provider = provider_name
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:switch_provider()
+    end)
+end
+
+--- Switch to a different provider while preserving chat UI and history.
+--- If opts.provider is set, switches directly. Otherwise shows a picker.
+--- @param opts agentic.ui.SwitchProviderOpts|nil
+function Agentic.switch_provider(opts)
+    if opts and opts.provider then
+        apply_provider_switch(opts.provider)
+        return
+    end
+
+    SessionRegistry.select_provider(function(provider_name)
+        if provider_name then
+            apply_provider_switch(provider_name)
+        end
+    end)
 end
 
 --- Stops the agent's current generation or tool execution
@@ -165,18 +212,20 @@ function Agentic.setup(opts)
     })
 
     if Config.image_paste.enabled then
-        require("agentic.ui.clipboard").setup({
-            is_widget_open = function()
-                local tab_page_id = vim.api.nvim_get_current_tabpage()
-                local session = SessionRegistry.sessions[tab_page_id]
-                if session then
-                    return session.widget:is_open()
-                end
-                return false
+        local function get_current_session()
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+            return SessionRegistry.sessions[tab_page_id]
+        end
+
+        local Clipboard = require("agentic.ui.clipboard")
+
+        Clipboard.setup({
+            is_cursor_in_widget = function()
+                local session = get_current_session()
+                return session and session.widget:is_cursor_in_widget() or false
             end,
             on_paste = function(file_path)
-                local tab_page_id = vim.api.nvim_get_current_tabpage()
-                local session = SessionRegistry.sessions[tab_page_id]
+                local session = get_current_session()
 
                 if not session then
                     return false

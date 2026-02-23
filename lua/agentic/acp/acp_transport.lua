@@ -75,41 +75,28 @@ function M.create_stdio_transport(config, callbacks)
         local args = vim.deepcopy(config.args or {})
         local env = config.env
 
-        local final_env = {
-            NODE_NO_WARNINGS = "1",
-            IS_AI_TERMINAL = "1",
-        }
+        -- Inherit full parent environment to support Nix, AWS Bedrock, proxies, custom CA bundles, etc.
+        -- uv.spawn replaces the entire environment, so we must explicitly include everything
+        local env_map = {}
+        for k, v in pairs(vim.fn.environ()) do
+            env_map[k] = v
+        end
 
-        -- Essential environment variables for subprocess
-        -- PATH: Required for finding executables
-        -- HOME: Required for finding ~/.claude.json, or other auth credentials (ACP clients might not find `~` otherwise)
-        -- USER/LOGNAME: User identification
-        -- SHELL: Expected by some CLI tools
-        -- TMPDIR: Temporary file location
-        local essential_vars = {
-            "HOME",
-            "LANG",
-            "LOGNAME",
-            "PATH",
-            "SHELL",
-            "TMPDIR",
-            "USER",
-            "XDG_CACHE_HOME",
-            "XDG_CONFIG_HOME",
-            "XDG_DATA_HOME",
-            "XDG_STATE_HOME",
-        }
-        for _, var in ipairs(essential_vars) do
-            local value = vim.fn.getenv(var)
-            if value and value ~= vim.NIL then
-                final_env[#final_env + 1] = var .. "=" .. value
+        -- Add default variables for ACP providers (overwrites parent if present)
+        env_map["NODE_NO_WARNINGS"] = "1"
+        env_map["IS_AI_TERMINAL"] = "1"
+
+        -- Apply user-provided env overrides/additions (overwrites defaults)
+        if env then
+            for k, v in pairs(env) do
+                env_map[k] = v
             end
         end
 
-        if env then
-            for k, v in pairs(env) do
-                final_env[#final_env + 1] = k .. "=" .. v
-            end
+        -- Serialize map to array format expected by libuv
+        local final_env = {}
+        for k, v in pairs(env_map) do
+            table.insert(final_env, k .. "=" .. v)
         end
 
         --- @diagnostic disable-next-line: missing-fields

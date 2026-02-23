@@ -1,4 +1,7 @@
 local Logger = require("agentic.utils.logger")
+local Config = require("agentic.config")
+local DefaultConfig = require("agentic.config_default")
+local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
@@ -15,7 +18,6 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
     local instance = SessionRegistry.sessions[tab_page_id]
 
     if not instance then
-        local ACPHealth = require("agentic.acp.acp_health")
         if not ACPHealth.check_configured_provider() then
             Logger.debug("Session creation aborted: No configured ACP provider")
             return nil
@@ -70,6 +72,62 @@ function SessionRegistry.destroy_session(tab_page_id)
             Logger.debug("Session destroy error:", err)
         end
     end
+end
+
+--- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
+function SessionRegistry.select_provider(on_selected)
+    local available_providers = ACPHealth.get_default_provider_names()
+
+    --- @class _ProviderStatus
+    --- @field name string
+    --- @field installed boolean
+
+    --- @type _ProviderStatus[]
+    local sorted_providers = {}
+
+    --- @type _ProviderStatus[]
+    local not_installed = {}
+
+    for _, provider_name in ipairs(available_providers) do
+        local provider_config = Config.acp_providers[provider_name]
+        if
+            provider_config
+            and ACPHealth.is_command_available(provider_config.command)
+        then
+            sorted_providers[#sorted_providers + 1] = {
+                name = provider_name,
+                installed = true,
+            }
+        else
+            not_installed[#not_installed + 1] = {
+                name = provider_name,
+                installed = false,
+            }
+        end
+    end
+
+    vim.list_extend(sorted_providers, not_installed)
+
+    vim.ui.select(sorted_providers, {
+        prompt = "Select an ACP provider for the new session:",
+        --- @param item _ProviderStatus
+        format_item = function(item)
+            local label = item.name
+
+            if label == Config.provider then
+                label = label .. " (current)"
+            elseif label == DefaultConfig.provider then
+                label = label .. " (default)"
+            end
+
+            label = label
+                .. (item.installed and " ✓ available" or " ✗ not installed")
+
+            return label
+        end,
+    }, function(selected_provider)
+        on_selected(selected_provider and selected_provider.name)
+    end)
 end
 
 return SessionRegistry
