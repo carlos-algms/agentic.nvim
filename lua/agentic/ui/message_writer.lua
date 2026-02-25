@@ -81,7 +81,7 @@ end
 
 --- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after.
 --- The callback may return false to suppress the notification (e.g. on early-return without edits).
---- Any other return value (nil, true, etc.) triggers the notification.
+--- with_modifiable returns false for invalid buffers, which also suppresses notification.
 --- @param fn fun(bufnr: integer): boolean|nil
 function MessageWriter:_with_modifiable_and_notify_change(fn)
     local result = BufHelpers.with_modifiable(self.bufnr, fn)

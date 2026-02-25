@@ -3,14 +3,16 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.utils.BufHelpers
 local BufHelpers = {}
 
---- Executes a callback function with the specified buffer set to modifiable.
+--- Executes a callback with the buffer set to modifiable.
+--- Returns false when the buffer is invalid or the callback errors.
+--- Otherwise returns the callback's own return value.
 --- @generic T
 --- @param bufnr integer
 --- @param callback fun(bufnr: integer): T|nil
---- @return T|nil
+--- @return T|false result
 function BufHelpers.with_modifiable(bufnr, callback)
     if not vim.api.nvim_buf_is_valid(bufnr) then
-        return nil
+        return false
     end
 
     local original_modifiable =
@@ -30,7 +32,7 @@ function BufHelpers.with_modifiable(bufnr, callback)
             vim.log.levels.ERROR,
             { title = "🐞 Error with modifiable callback" }
         )
-        return nil
+        return false
     end
 
     return response
