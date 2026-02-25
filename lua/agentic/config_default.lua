@@ -5,6 +5,7 @@
 --- | "opencode-acp"
 --- | "cursor-acp"
 --- | "auggie-acp"
+--- | "mistral-vibe-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
@@ -98,6 +99,13 @@ local ConfigDefault = {
             args = {
                 "--acp",
             },
+            env = {},
+        },
+
+        ["mistral-vibe-acp"] = {
+            name = "Mistral Vibe ACP",
+            command = "vibe-acp",
+            args = {},
             env = {},
         },
     },

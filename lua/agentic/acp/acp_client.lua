@@ -370,13 +370,12 @@ function ACPClient:safe_split(possible_string)
     return {}
 end
 
---- Default handler for tool_call session updates.
---- Builds a generic ToolCallBlock from standard ACP fields.
---- Adapters override this for provider-specific transformations.
+--- Build the message for a tool_call. it's usually the first update received for a tool call
+--- Adapters override this to add provider-specific fields or transformations.
 --- @protected
---- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
-function ACPClient:__handle_tool_call(session_id, update)
+--- @return agentic.ui.MessageWriter.ToolCallBlock message
+function ACPClient:__build_tool_call_message(update)
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
         tool_call_id = update.toolCallId,
@@ -385,6 +384,18 @@ function ACPClient:__handle_tool_call(session_id, update)
         argument = update.title,
         body = self:extract_content_body(update),
     }
+
+    return message
+end
+
+--- Default handler for tool_call session updates.
+--- Builds a generic ToolCallBlock from standard ACP fields.
+--- Adapters override this for provider-specific transformations.
+--- @protected
+--- @param session_id string
+--- @param update agentic.acp.ToolCallMessage
+function ACPClient:__handle_tool_call(session_id, update)
+    local message = self:__build_tool_call_message(update)
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call(message)
