@@ -361,6 +361,7 @@ end
 --- Safely split a string into an array of lines
 --- Some agents send `nil` other send `vim.NIL` for empty content
 --- @param possible_string string|nil|vim.NIL
+--- @return string[] lines
 function ACPClient:safe_split(possible_string)
     if type(possible_string) == "string" then
         return vim.split(possible_string, "\n")
