@@ -49,8 +49,8 @@ function GeminiACPAdapter:__handle_tool_call(session_id, update)
             local old_string = content.oldText
 
             message.diff = {
-                new = new_string and vim.split(new_string, "\n") or {},
-                old = old_string and vim.split(old_string, "\n") or {},
+                new = self:safe_split(new_string),
+                old = self:safe_split(old_string),
             }
         end
 
@@ -61,11 +61,14 @@ function GeminiACPAdapter:__handle_tool_call(session_id, update)
     elseif kind == "execute" then
         --- Gemini "execute" title format:
         --- "command [context maybe path] (optional description)"
-        message.argument = vim.trim(vim.split(update.title, " %[")[1] or "")
+        message.argument = type(update.title) == "string"
+                and vim.trim(vim.split(update.title, " %[")[1] or "")
+            or ""
 
-        local desc = update.title:match("%((.-)%)")
+        local desc = type(update.title) == "string"
+            and update.title:match("%((.-)%)")
         if desc then
-            message.body = vim.split(desc, "\n")
+            message.body = self:safe_split(desc)
         end
     end
 

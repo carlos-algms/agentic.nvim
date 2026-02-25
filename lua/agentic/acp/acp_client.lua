@@ -358,6 +358,17 @@ function ACPClient:extract_content_body(update)
     return nil
 end
 
+--- Safely split a string into an array of lines
+--- Some agents send `nil` other send `vim.NIL` for empty content
+--- @param possible_string string|nil|vim.NIL
+function ACPClient:safe_split(possible_string)
+    if type(possible_string) == "string" then
+        return vim.split(possible_string, "\n")
+    end
+
+    return {}
+end
+
 --- Default handler for tool_call session updates.
 --- Builds a generic ToolCallBlock from standard ACP fields.
 --- Adapters override this for provider-specific transformations.

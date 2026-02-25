@@ -116,20 +116,20 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                 local old_string = update.rawInput.oldString
 
                 message.diff = {
-                    new = vim.split(update.rawInput.newString, "\n"),
-                    old = old_string and vim.split(old_string, "\n") or {},
+                    new = self:safe_split(update.rawInput.newString),
+                    old = self:safe_split(old_string),
                     all = update.rawInput.replaceAll or false,
                 }
             elseif update.rawInput.url then -- fetch command
                 message.argument = update.rawInput.url
             elseif update.rawInput.query then -- WebSearch command
                 message.argument = update.rawInput.query
-                message.body = vim.split(update.rawInput.query, "\n")
+                message.body = self:safe_split(update.rawInput.query)
             elseif update.rawInput.command then
                 message.argument = update.rawInput.command
 
                 if update.rawInput.description then
-                    message.body = vim.split(update.rawInput.description, "\n")
+                    message.body = self:safe_split(update.rawInput.description)
                 end
             elseif update.rawInput.subagent_type then
                 message.argument = string.format(
@@ -138,7 +138,7 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
                     update.rawInput.description or ""
                 )
                 if update.rawInput.prompt then
-                    message.body = vim.split(update.rawInput.prompt, "\n")
+                    message.body = self:safe_split(update.rawInput.prompt)
                 end
             elseif update.rawInput.filePath then
                 message.argument =
@@ -146,13 +146,13 @@ function OpenCodeACPAdapter:__handle_tool_call_update(session_id, update)
             elseif update.rawInput.name then
                 message.argument = update.rawInput.name
             elseif update.rawInput.error then
-                message.body = vim.split(update.rawInput.error, "\n")
+                message.body = self:safe_split(update.rawInput.error)
             end
         elseif update.rawOutput then -- rawOutput doesn't seem standard, also we don't have types
             if update.rawOutput.output then
-                message.body = vim.split(update.rawOutput.output, "\n")
+                message.body = self:safe_split(update.rawOutput.output)
             elseif update.rawOutput.error then
-                message.body = vim.split(update.rawOutput.error, "\n")
+                message.body = self:safe_split(update.rawOutput.error)
             end
         end
     end

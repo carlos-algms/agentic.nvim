@@ -51,8 +51,8 @@ function AuggieACPAdapter:__handle_tool_call(session_id, update)
             local old_string = update.rawInput.old_string
 
             message.diff = {
-                new = new_string and vim.split(new_string, "\n") or {},
-                old = old_string and vim.split(old_string, "\n") or {},
+                new = self:safe_split(new_string),
+                old = self:safe_split(old_string),
                 all = update.rawInput.replace_all or false,
             }
         end
