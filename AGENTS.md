@@ -724,6 +724,7 @@ Agent Client Protocol:
   - `opencode` for OpenCode
   - `cursor-agent-acp` for Cursor Agent
   - `auggie` for Augment Code
+  - `vibe-acp` for Mistral Vibe
 
 NOTE: Install instructs are in the README.md
 
@@ -737,6 +738,7 @@ Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
 - `opencode_acp_adapter.lua` - OpenCode ACP adapter
 - `cursor_acp_adapter.lua` - Cursor Agent ACP adapter
 - `auggie_acp_adapter.lua` - Auggie ACP adapter
+- `mistral_vibe_acp_adapter.lua` - Mistral Vibe ACP adapter
 
 These adapters implement provider-specific message formatting, tool call
 handling, and protocol quirks.
@@ -796,8 +798,8 @@ The ACP documentation can be found at:
 
 #### Message flow and tool call lifecycle
 
-Required reading for working on adapters, `MessageWriter`,
-`SessionManager`, or `PermissionManager`.
+Required reading for working on adapters, `MessageWriter`, `SessionManager`, or
+`PermissionManager`.
 
 ##### Event pipeline (top to bottom)
 
@@ -889,8 +891,8 @@ Same as Phase 2, but status = "completed" | "failed"
 - **Body accumulates:** Multiple updates with different body content get
   concatenated with `---` dividers, not replaced.
 - **Extmarks as position anchors:** Range extmark in `NS_TOOL_BLOCKS`
-  auto-adjusts when buffer content shifts. Single source of truth for
-  block position.
+  auto-adjusts when buffer content shifts. Single source of truth for block
+  position.
 
 ##### Permission flow (interleaved with tool calls)
 

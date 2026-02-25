@@ -9,9 +9,12 @@
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
-Without reinventing the wheel, Agentic.nvim is the interface, your agent is the
-Brain. This plugin will use all the same configurations and authentication
-methods you already have set up on your terminal.
+You'll get the same results and performance as you would when using the ACP
+provider's official CLI directly from the terminal.
+
+Agentic.nvim is the interface, your agent is the Brain. This plugin will use all
+the same configurations and authentication methods you already have set up on
+your terminal.
 
 Including your MCP servers, commands, SKILLs, and sub-agents, you don't have to
 recreate your configuration to use Agentic.nvim.
@@ -22,9 +25,6 @@ using Agentic's built-in session persistence feature. Note: Sessions started in
 the terminal cannot be restored in Neovim (Agentic.nvim has its own session
 management separate from providers to maintain compatibility across all
 providers).
-
-You'll get the same results and performance as you would when using the ACP
-provider's official CLI directly from the terminal.
 
 There're no hidden prompts or magic happening behind the scenes. Just a Chat
 interface, your colors, and your keymaps.
@@ -127,14 +127,15 @@ tools like `nvm`, `fnm`, etc...
 
 **You are free to chose** any installation method you prefer!
 
-| Provider                           | Install                                                                                                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [claude-code-acp][claude-code-acp] | `pnpm add -g @zed-industries/claude-code-acp`<br/> **OR** `npm i -g @zed-industries/claude-code-acp`<br/> **OR** [Download binary][claude-code-acp-releases]  |
-| [gemini-cli][gemini-cli]           | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                           |
-| [codex-acp][codex-acp]             | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                    |
-| [opencode][opencode]               | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash` |
-| [cursor-agent][cursor-agent]       | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                    |
-| [auggie][auggie]                   | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                       |
+| Provider                           | Install                                                                                                                                                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [claude-code-acp][claude-code-acp] | `pnpm add -g @zed-industries/claude-code-acp`<br/> **OR** `npm i -g @zed-industries/claude-code-acp`<br/> **OR** [Download binary][claude-code-acp-releases]                                   |
+| [gemini-cli][gemini-cli]           | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
+| [codex-acp][codex-acp]             | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
+| [opencode][opencode]               | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
+| [cursor-agent][cursor-agent]       | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                                                     |
+| [auggie][auggie]                   | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
+| [mistral-vibe][mistral-vibe]       | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -156,7 +157,7 @@ tools like `nvm`, `fnm`, etc...
   "carlos-algms/agentic.nvim",
 
   opts = {
-    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp"
+    -- Available by default: "claude-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp" | "mistral-vibe-acp"
     provider = "claude-acp", -- setting the name here is all you need to get started
   },
 
@@ -890,6 +891,8 @@ the the acknowledgments 😊.
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 [auggie]: https://www.npmjs.com/package/@augmentcode/auggie
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
+[mistral-vibe]: https://github.com/mistralai/mistral-vibe
+[mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
 [preview-diff-side-by-side-image]:
   https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
 [preview-diff-inline-image]:
