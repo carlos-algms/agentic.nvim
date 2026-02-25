@@ -30,8 +30,25 @@ function MistralVibeACPAdapter:__handle_session_update(params)
     ACPClient.__handle_session_update(self, params)
 end
 
+--- @param json_str string|nil
+--- @return any decoded_json
+function MistralVibeACPAdapter:_decode_json(json_str)
+    local decode_ok, json = pcall(vim.json.decode, json_str or "{}")
+
+    if not decode_ok then
+        Logger.notify("Mistral JSON decoding failed: " .. vim.inspect(json))
+        return {}
+    end
+
+    return json
+end
+
 --- @class agentic.acp.MistralVibeToolCallMessage : agentic.acp.ToolCallMessage
 --- @field rawInput? string
+
+--- @alias agentic.acp.MistralVibeRawInputJson
+--- | { file_path: string }
+--- | { task: string, agent: string }
 
 --- @param update agentic.acp.MistralVibeToolCallMessage
 --- @return agentic.ui.MessageWriter.ToolCallBlock message
@@ -45,34 +62,49 @@ function MistralVibeACPAdapter:__build_tool_call_message(update)
         body = self:extract_content_body(update),
     }
 
+    local json = self:_decode_json(update.rawInput) --[[@as agentic.acp.MistralVibeRawInputJson]]
+
+    if json.agent then
+        message.kind = "SubAgent"
+        message.argument =
+            string.format("Agent %s: %s", json.agent or "", json.task or "")
+        message.body = {
+            update.title or "",
+        }
+    end
+
     return message
 end
 
 --- @class agentic.acp.MistralVibeToolCallUpdate : agentic.acp.ToolCallUpdate
 --- @field rawOutput? string a JSON string
 
+--- @alias agentic.acp.MistralVibeRawOutputJson
+--- | { stdout: string, stderr: string }
+--- | { response: string, turns_used: number, completed: boolean }
+
 --- @protected
---- @param update agentic.acp.ToolCallUpdate
+--- @param update agentic.acp.MistralVibeToolCallUpdate
 --- @return agentic.ui.MessageWriter.ToolCallBase message
 function MistralVibeACPAdapter:__build_tool_call_update(update)
     local message = ACPClient.__build_tool_call_update(self, update)
 
-    local decode_ok, json = pcall(vim.json.decode, update.rawOutput or "{}")
+    local json = self:_decode_json(update.rawOutput)
 
-    if not decode_ok then
-        Logger.notify("Mistral JSON decoding failed: " .. vim.inspect(json))
-    else
-        if json.stdout then
-            local stdout = self:safe_split(json.stdout)
+    --- @type string[]|nil
+    local new_body
 
-            if #stdout > 0 then
-                vim.list_extend(stdout, { "", "---", "" })
-                vim.list_extend(stdout, message.body or {})
-                message.body = stdout
-            end
-        end
+    if json.stdout then
+        new_body = self:safe_split(json.stdout)
+    elseif json.turns_used then
+        new_body = self:safe_split(json.response)
     end
 
+    if new_body and #new_body > 0 then
+        vim.list_extend(new_body, { "", "---", "" })
+        vim.list_extend(new_body, message.body or {})
+        message.body = new_body
+    end
     return message
 end
 
