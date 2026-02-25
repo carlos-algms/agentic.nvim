@@ -352,7 +352,7 @@ function ACPClient:extract_content_body(update)
         and content.content
         and content.content.text
     then
-        return vim.split(content.content.text, "\n")
+        return self:safe_split(content.content.text)
     end
 
     return nil
