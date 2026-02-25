@@ -56,7 +56,7 @@ function MistralVibeACPAdapter:__build_tool_call_message(update)
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
         tool_call_id = update.toolCallId,
-        kind = "execute",
+        kind = update.kind == "other" and "execute" or update.kind,
         status = update.status or "pending",
         argument = update.title,
         body = self:extract_content_body(update),
@@ -82,6 +82,7 @@ end
 --- @alias agentic.acp.MistralVibeRawOutputJson
 --- | { stdout: string, stderr: string }
 --- | { response: string, turns_used: number, completed: boolean }
+--- | { matches: string, match_count: number,was_truncated: boolean }
 
 --- @protected
 --- @param update agentic.acp.MistralVibeToolCallUpdate
@@ -98,6 +99,8 @@ function MistralVibeACPAdapter:__build_tool_call_update(update)
         new_body = self:safe_split(json.stdout)
     elseif json.turns_used then
         new_body = self:safe_split(json.response)
+    elseif json.matches then
+        new_body = self:safe_split(json.matches)
     end
 
     if new_body and #new_body > 0 then
