@@ -98,7 +98,7 @@ end
 --- @alias agentic.acp.MistralVibeRawOutputJson
 --- | { stdout: string, stderr: string }
 --- | { response: string, turns_used: number, completed: boolean }
---- | { matches: string, match_count: number,was_truncated: boolean }
+--- | { matches: string, match_count: number, was_truncated: boolean }
 
 --- @protected
 --- @param update agentic.acp.MistralVibeToolCallUpdate
