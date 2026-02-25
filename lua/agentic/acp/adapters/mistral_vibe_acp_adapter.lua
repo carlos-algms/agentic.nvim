@@ -1,5 +1,6 @@
 local ACPClient = require("agentic.acp.acp_client")
 local Logger = require("agentic.utils.logger")
+local FileSystem = require("agentic.utils.file_system")
 
 --- @class agentic.acp.MistralVibeACPAdapter : agentic.acp.ACPClient
 local MistralVibeACPAdapter = setmetatable({}, { __index = ACPClient })
@@ -62,15 +63,29 @@ function MistralVibeACPAdapter:__build_tool_call_message(update)
         body = self:extract_content_body(update),
     }
 
-    local json = self:_decode_json(update.rawInput) --[[@as agentic.acp.MistralVibeRawInputJson]]
+    if update.kind == "edit" then
+        local content = update.content and update.content[1]
+        if content then
+            if content.type == "diff" then
+                message.diff = {
+                    new = self:safe_split(content.newText),
+                    old = self:safe_split(content.oldText),
+                    all = false,
+                }
+                message.argument = FileSystem.to_smart_path(content.path)
+            end
+        end
+    else
+        local json = self:_decode_json(update.rawInput) --[[@as agentic.acp.MistralVibeRawInputJson]]
 
-    if json.agent then
-        message.kind = "SubAgent"
-        message.argument =
-            string.format("Agent %s: %s", json.agent or "", json.task or "")
-        message.body = {
-            update.title or "",
-        }
+        if json.agent then
+            message.kind = "SubAgent"
+            message.argument =
+                string.format("Agent %s: %s", json.agent or "", json.task or "")
+            message.body = {
+                update.title or "",
+            }
+        end
     end
 
     return message
@@ -78,6 +93,7 @@ end
 
 --- @class agentic.acp.MistralVibeToolCallUpdate : agentic.acp.ToolCallUpdate
 --- @field rawOutput? string a JSON string
+--- @field kind? agentic.acp.ToolKind
 
 --- @alias agentic.acp.MistralVibeRawOutputJson
 --- | { stdout: string, stderr: string }
@@ -108,6 +124,7 @@ function MistralVibeACPAdapter:__build_tool_call_update(update)
         vim.list_extend(new_body, message.body or {})
         message.body = new_body
     end
+
     return message
 end
 
