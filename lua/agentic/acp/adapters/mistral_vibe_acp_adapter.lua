@@ -1,4 +1,5 @@
 local ACPClient = require("agentic.acp.acp_client")
+local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.MistralVibeACPAdapter : agentic.acp.ACPClient
 local MistralVibeACPAdapter = setmetatable({}, { __index = ACPClient })
@@ -43,6 +44,34 @@ function MistralVibeACPAdapter:__build_tool_call_message(update)
         argument = update.title,
         body = self:extract_content_body(update),
     }
+
+    return message
+end
+
+--- @class agentic.acp.MistralVibeToolCallUpdate : agentic.acp.ToolCallUpdate
+--- @field rawOutput? string a JSON string
+
+--- @protected
+--- @param update agentic.acp.ToolCallUpdate
+--- @return agentic.ui.MessageWriter.ToolCallBase message
+function MistralVibeACPAdapter:__build_tool_call_update(update)
+    local message = ACPClient.__build_tool_call_update(self, update)
+
+    local decode_ok, json = pcall(vim.json.decode, update.rawOutput or "{}")
+
+    if not decode_ok then
+        Logger.notify("Mistral JSON decoding failed: " .. vim.inspect(json))
+    else
+        if json.stdout then
+            local stdout = self:safe_split(json.stdout)
+
+            if #stdout > 0 then
+                vim.list_extend(stdout, { "", "---", "" })
+                vim.list_extend(stdout, message.body or {})
+                message.body = stdout
+            end
+        end
+    end
 
     return message
 end
