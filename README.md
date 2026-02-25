@@ -3,8 +3,8 @@
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
 > ⚡ A Chat interface for Ai agents in Neovim that supports Claude, Gemini,
-> Codex, OpenCode, Cursor Agent, and Auggie through the Agent Client Protocol
-> (ACP).
+> Codex, OpenCode, Cursor Agent, Auggie, and Mistral Vibe through the Agent
+> Client Protocol (ACP).
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
