@@ -729,14 +729,17 @@ ones.
 You can customize the icons used for diagnostics in the context panel:
 
 ```lua
-require("agentic").setup({
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
     diagnostic_icons = {
-        error = "❌",
-        warn = "⚠️",
-        info = "ℹ️",
-        hint = "✨",
+      error = "❌",
+      warn = "⚠️",
+      info = "ℹ️",
+      hint = "✨",
     },
-})
+  },
+}
 ```
 
 Default icons use emoji characters (❌, ⚠️, ℹ️, ✨) but you can use any string,

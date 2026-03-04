@@ -1,5 +1,6 @@
 local FileSystem = require("agentic.utils.file_system")
 
+--- @class agentic.ui.DiagnosticsContext
 local DiagnosticsContext = {}
 
 --- @class agentic.ui.DiagnosticsContext.FormatResult
@@ -20,11 +21,30 @@ end
 --- @param max_width integer
 --- @return string truncated_text
 local function truncate_for_display(text, max_width)
-    if max_width < 4 or #text <= max_width then
+    local display_width = vim.fn.strdisplaywidth(text)
+    if max_width < 4 or display_width <= max_width then
         return text
     end
 
-    return text:sub(1, max_width - 3) .. "..."
+    local target = max_width - 3
+    local current_width = 0
+    local byte_offset = 1
+    local len = #text
+
+    while byte_offset <= len do
+        local char_end = vim.str_utf_end(text, byte_offset) + byte_offset
+        local char = text:sub(byte_offset, char_end)
+        local char_width = vim.fn.strdisplaywidth(char)
+
+        if current_width + char_width > target then
+            break
+        end
+
+        current_width = current_width + char_width
+        byte_offset = char_end + 1
+    end
+
+    return text:sub(1, byte_offset - 1) .. "..."
 end
 
 --- @param text string
@@ -72,32 +92,48 @@ function DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
         local line = diagnostic.lnum + 1
         local column = diagnostic.col + 1
 
-        table.insert(prompt_entries, {
-            type = "text",
-            text = string.format(
-                table.concat({
-                    "<diagnostic>",
-                    "<severity>%s</severity>",
-                    "<file>%s</file>",
-                    "<line>%d</line>",
-                    "<column>%d</column>",
-                    "<message>%s</message>",
-                    "</diagnostic>",
-                }, "\n"),
-                severity_label,
-                escape_xml(absolute_file_path),
-                line,
-                column,
+        local xml_lines = {
+            "<diagnostic>",
+            string.format("<severity>%s</severity>", severity_label),
+        }
+
+        if diagnostic.source then
+            xml_lines[#xml_lines + 1] = string.format(
+                "<source>%s</source>",
+                escape_xml(diagnostic.source)
+            )
+        end
+
+        if diagnostic.code then
+            xml_lines[#xml_lines + 1] = string.format(
+                "<code>%s</code>",
+                escape_xml(tostring(diagnostic.code))
+            )
+        end
+
+        vim.list_extend(xml_lines, {
+            string.format("<file>%s</file>", escape_xml(absolute_file_path)),
+            string.format("<line>%d</line>", line),
+            string.format("<column>%d</column>", column),
+            string.format(
+                "<message>%s</message>",
                 escape_xml(diagnostic.message)
             ),
+            "</diagnostic>",
+        })
+
+        table.insert(prompt_entries, {
+            type = "text",
+            text = table.concat(xml_lines, "\n"),
         })
 
         local location = string.format("%s:%d:%d", file_path, line, column)
+        local single_line_message = diagnostic.message:gsub("\n", " ")
         local summary = string.format(
             "  - [%s] %s - %s",
             severity_label,
             location,
-            diagnostic.message
+            single_line_message
         )
 
         table.insert(summary_lines, truncate_for_display(summary, chat_width))

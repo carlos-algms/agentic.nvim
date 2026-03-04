@@ -42,7 +42,6 @@ end
 --- Add a diagnostic to the list if not already present
 --- @param diagnostic agentic.ui.DiagnosticsList.Diagnostic|nil
 --- @return boolean success
---- @private
 function DiagnosticsList:_add_no_render(diagnostic)
     if not diagnostic or not diagnostic.bufnr then
         return false
@@ -188,7 +187,8 @@ function DiagnosticsList.get_diagnostics_at_cursor(bufnr, opts)
     local diagnostics = {}
 
     for _, d in ipairs(vim_diagnostics) do
-        if d.lnum == cursor_line then
+        local end_lnum = d.end_lnum or d.lnum
+        if cursor_line >= d.lnum and cursor_line <= end_lnum then
             --- @type agentic.ui.DiagnosticsList.Diagnostic
             local diagnostic =
                 vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]

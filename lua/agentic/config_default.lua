@@ -234,10 +234,10 @@ local ConfigDefault = {
 
     --- Icons used for diagnostics in the context panel
     --- @class agentic.UserConfig.DiagnosticIcons
-    --- @field error string Icon for error severity
-    --- @field warn string Icon for warning severity
-    --- @field info string Icon for info severity
-    --- @field hint string Icon for hint severity
+    --- @field error string
+    --- @field warn string
+    --- @field info string
+    --- @field hint string
     diagnostic_icons = {
         error = "❌",
         warn = "⚠️",
