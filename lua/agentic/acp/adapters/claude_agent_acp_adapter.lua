@@ -55,8 +55,8 @@ function ClaudeAgentACPAdapter:__build_tool_call_update(update)
             local old_string = rawInput.old_string
 
             message.diff = {
-                new = new_string and vim.split(new_string, "\n") or {},
-                old = old_string and vim.split(old_string, "\n") or {},
+                new = self:safe_split(new_string),
+                old = self:safe_split(old_string),
                 all = rawInput.replace_all or false,
             }
         end
@@ -85,7 +85,7 @@ function ClaudeAgentACPAdapter:__build_tool_call_update(update)
         )
 
         if rawInput.prompt then
-            message.body = vim.split(rawInput.prompt, "\n")
+            message.body = self:safe_split(rawInput.prompt)
         end
     elseif kind == "other" then
         if update.title == "SlashCommand" then
@@ -95,7 +95,7 @@ function ClaudeAgentACPAdapter:__build_tool_call_update(update)
             message.argument = rawInput.skill or "unknown skill"
 
             if rawInput.args then
-                message.body = vim.split(rawInput.args, "\n")
+                message.body = self:safe_split(rawInput.args)
             end
         end
     else
