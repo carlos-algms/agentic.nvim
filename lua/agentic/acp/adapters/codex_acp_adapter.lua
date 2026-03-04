@@ -69,8 +69,8 @@ function CodexACPAdapter:__handle_tool_call(session_id, update)
             local old_string = content.oldText
 
             message.diff = {
-                new = new_string and vim.split(new_string, "\n") or {},
-                old = old_string and vim.split(old_string, "\n") or {},
+                new = self:safe_split(new_string),
+                old = self:safe_split(old_string),
             }
         end
     elseif update.rawInput then
@@ -101,7 +101,7 @@ function CodexACPAdapter:__build_tool_call_update(update)
     local message = ACPClient.__build_tool_call_update(self, update)
 
     if not message.body and update.rawOutput then
-        message.body = vim.split(update.rawOutput.formatted_output or "", "\n")
+        message.body = self:safe_split(update.rawOutput.formatted_output)
     end
 
     local raw_input = update.rawInput

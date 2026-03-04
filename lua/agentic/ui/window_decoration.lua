@@ -16,8 +16,8 @@
 --- require('lualine').setup({
 ---   options = {
 ---     disabled_filetypes = {
----       statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
----       winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
+---       statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
+---       winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
 ---     }
 ---   }
 --- })
@@ -44,6 +44,10 @@ local WINDOW_HEADERS = {
     files = {
         title = " Referenced Files",
         suffix = "d: remove file",
+    },
+    diagnostics = {
+        title = " Diagnostics",
+        suffix = "d: remove diagnostic",
     },
     todos = {
         title = " Tasks list",

@@ -46,6 +46,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled? boolean
+--- @field _on_content_changed? fun()
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -67,6 +68,28 @@ function MessageWriter:new(bufnr)
     return instance
 end
 
+--- @param callback fun()|nil
+function MessageWriter:set_on_content_changed(callback)
+    self._on_content_changed = callback
+end
+
+function MessageWriter:_notify_content_changed()
+    if self._on_content_changed then
+        self._on_content_changed()
+    end
+end
+
+--- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after.
+--- The callback may return false to suppress the notification (e.g. on early-return without edits).
+--- with_modifiable returns false for invalid buffers, which also suppresses notification.
+--- @param fn fun(bufnr: integer): boolean|nil
+function MessageWriter:_with_modifiable_and_notify_change(fn)
+    local result = BufHelpers.with_modifiable(self.bufnr, fn)
+    if result ~= false then
+        self:_notify_content_changed()
+    end
+end
+
 --- Writes a full message to the chat buffer and append two blank lines after
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
@@ -82,7 +105,7 @@ function MessageWriter:write_message(update)
 
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function()
+    self:_with_modifiable_and_notify_change(function()
         self:_append_lines(lines)
         self:_append_lines({ "", "" })
     end)
@@ -113,7 +136,7 @@ function MessageWriter:write_message_chunk(update)
 
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
         local current_line = vim.api.nvim_buf_get_lines(
@@ -215,7 +238,7 @@ end
 function MessageWriter:write_tool_call_block(tool_call_block)
     self:_auto_scroll(self.bufnr)
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind
 
         -- Always add a leading blank line for spacing the previous message chunk
@@ -321,7 +344,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+    self:_with_modifiable_and_notify_change(function(bufnr)
         -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
         if already_has_diff then
@@ -330,7 +353,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                     old_end_row = old_end_row,
                     line_count = vim.api.nvim_buf_line_count(bufnr),
                 })
-                return
+                return false
             end
 
             self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
@@ -344,7 +367,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 tracker.status
             )
 
-            return
+            return false
         end
 
         self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
@@ -601,7 +624,35 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     table.insert(lines_to_append, "")
 
-    local button_start_row = vim.api.nvim_buf_line_count(self.bufnr)
+    -- Ensure exactly one empty separator line before the permission block.
+    -- During reanchor, remove_permission_buttons leaves a trailing empty
+    -- line — reuse it instead of adding another one.
+    local line_count = vim.api.nvim_buf_line_count(self.bufnr)
+    local last_line = vim.api.nvim_buf_get_lines(
+        self.bufnr,
+        line_count - 1,
+        line_count,
+        false
+    )[1]
+
+    if last_line == "" then
+        -- Buffer already ends with an empty line (left by
+        -- remove_permission_buttons during reanchor). Reuse it as
+        -- separator — include it in the block range so it gets
+        -- cleaned up, but don't add another one.
+        line_count = line_count - 1
+    else
+        -- No trailing empty line — prepend one as separator
+        table.insert(lines_to_append, 1, "")
+    end
+
+    -- The separator line shifts hint position by 1 in both cases:
+    -- existing empty line included in block range, or prepended empty line.
+    if hint_line_index then
+        hint_line_index = hint_line_index + 1
+    end
+
+    local button_start_row = line_count
 
     self:_auto_scroll(self.bufnr)
 

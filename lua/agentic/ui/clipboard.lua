@@ -5,7 +5,7 @@ local FileSystem = require("agentic.utils.file_system")
 local M = {}
 
 --- @class agentic.Clipboard.SetupOpts
---- @field is_widget_open fun(): boolean Callback to check if the Chat widget is visible
+--- @field is_cursor_in_widget fun(): boolean Callback to check if cursor is in a Chat widget buffer
 --- @field on_paste fun(file_path: string): boolean Callback when file is pasted, returns success
 
 --- Check if img-clip plugin is installed
@@ -140,7 +140,7 @@ function M.setup(opts)
         --- @param lines string[]
         --- @param phase -1|1|2|3
         return function(lines, phase)
-            if not opts.is_widget_open() then
+            if not opts.is_cursor_in_widget() then
                 return original_paste(lines, phase)
             end
 

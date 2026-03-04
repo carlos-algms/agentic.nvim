@@ -7,15 +7,28 @@
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
+local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 local DiffPreview = require("agentic.ui.diff_preview")
+local DiagnosticsList = require("agentic.ui.diagnostics_list")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local SessionRestore = require("agentic.session_restore")
 local SlashCommands = require("agentic.acp.slash_commands")
 local TodoList = require("agentic.ui.todo_list")
+local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
+
+--- Tool call kinds that mutate files on disk.
+--- When these complete, buffers must be reloaded via checktime.
+local FILE_MUTATING_KINDS = {
+    edit = true,
+    create = true,
+    write = true,
+    delete = true,
+    move = true,
+}
 
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_prompt_submit" | "on_response_complete"
@@ -45,17 +58,30 @@ end
 --- @field message_writer agentic.ui.MessageWriter
 --- @field permission_manager agentic.ui.PermissionManager
 --- @field status_animation agentic.ui.StatusAnimation
---- @field current_provider string
 --- @field file_list agentic.ui.FileList
 --- @field code_selection agentic.ui.CodeSelection
+--- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field agent_modes agentic.acp.AgentModes
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
---- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to send on first submit
---- @field _needs_history_send boolean Flag to send history on first submit after restore
+--- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
+
+--- Generate the welcome header for a new session
+--- @param provider_name string
+--- @param session_id string|nil
+--- @return string header
+function SessionManager._generate_welcome_header(provider_name, session_id)
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    return string.format(
+        "# Agentic - %s - %s\n- %s\n--- --",
+        provider_name,
+        session_id or "unknown",
+        timestamp
+    )
+end
 
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
@@ -74,8 +100,6 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
-        current_provider = Config.provider,
-        _needs_history_send = false,
         _restoring = false,
     }, self)
 
@@ -132,6 +156,23 @@ function SessionManager:new(tab_page_id)
                 self.widget:render_header(
                     "code",
                     tostring(#code_selection:get_selections())
+                )
+                self.widget:show({ focus_prompt = false })
+            end
+        end
+    )
+
+    self.diagnostics_list = DiagnosticsList:new(
+        self.widget.buf_nrs.diagnostics,
+        function(diagnostics_list)
+            if diagnostics_list:is_empty() then
+                self.widget:close_optional_window("diagnostics")
+                self.widget:move_cursor_to(self.widget.win_nrs.input)
+            else
+                -- show() opens layouts but does not update the diagnostics header count
+                self.widget:render_header(
+                    "diagnostics",
+                    tostring(#diagnostics_list:get_diagnostics())
                 )
                 self.widget:show({ focus_prompt = false })
             end
@@ -206,6 +247,51 @@ function SessionManager:_on_session_update(update)
     end
 end
 
+--- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers
+--- @param tool_call_update agentic.ui.MessageWriter.ToolCallBase
+function SessionManager:_on_tool_call_update(tool_call_update)
+    self.message_writer:update_tool_call_block(tool_call_update)
+
+    --- @type agentic.ui.ChatHistory.ToolCall
+    local tool_call = {
+        type = "tool_call",
+        tool_call_id = tool_call_update.tool_call_id,
+        status = tool_call_update.status,
+        body = tool_call_update.body,
+        diff = tool_call_update.diff,
+    }
+
+    self.chat_history:update_tool_call(tool_call_update.tool_call_id, tool_call)
+
+    -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
+    local is_rejection = tool_call_update.status == "failed"
+    self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
+
+    -- Remove the permission request if the tool call failed before user granted it
+    if tool_call_update.status == "failed" then
+        self.permission_manager:remove_request_by_tool_call_id(
+            tool_call_update.tool_call_id
+        )
+    end
+
+    -- Reload buffers when file-mutating tool calls complete
+    if tool_call_update.status == "completed" then
+        local tracker =
+            self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
+
+        if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
+            vim.cmd.checktime()
+        end
+    end
+
+    if
+        not self.permission_manager.current_request
+        and #self.permission_manager.queue == 0
+    then
+        self.status_animation:start("generating")
+    end
+end
+
 --- Send the newly selected mode to the agent and handle the response
 --- @param mode_id string
 function SessionManager:_handle_mode_change(mode_id)
@@ -254,9 +340,8 @@ function SessionManager:_handle_input_submit(input_text)
     --- @type agentic.acp.Content[]
     local prompt = {}
 
-    -- If restored session, prepend history on first submit
-    if self._needs_history_send and self._history_to_send then
-        self._needs_history_send = false
+    -- If restored/switched session, prepend history on first submit
+    if self._history_to_send then
         self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self._history_to_send, prompt)
         self._history_to_send = nil
@@ -264,7 +349,12 @@ function SessionManager:_handle_input_submit(input_text)
         self.chat_history.title = input_text -- Set title for new session
     end
 
-    -- Add system info on first message only
+    table.insert(prompt, {
+        type = "text",
+        text = input_text,
+    })
+
+    -- Add system info on first message only (after user text so resume picker shows the prompt)
     if self._is_first_message then
         self._is_first_message = false
 
@@ -273,11 +363,6 @@ function SessionManager:_handle_input_submit(input_text)
             text = self:_get_system_info(),
         })
     end
-
-    table.insert(prompt, {
-        type = "text",
-        text = input_text,
-    })
 
     --- The message to be written to the chat widget
     local message_lines = {
@@ -365,6 +450,30 @@ function SessionManager:_handle_input_submit(input_text)
                 message_lines,
                 string.format("  - @%s", FileSystem.to_smart_path(file_path))
             )
+        end
+    end
+
+    if not self.diagnostics_list:is_empty() then
+        table.insert(message_lines, "\n- **Diagnostics**:")
+
+        local diagnostics = self.diagnostics_list:get_diagnostics()
+        self.diagnostics_list:clear()
+
+        local chat_width = WidgetLayout.calculate_width(Config.windows.width)
+        local chat_winid = self.widget.win_nrs.chat
+        if chat_winid and vim.api.nvim_win_is_valid(chat_winid) then
+            chat_width = vim.api.nvim_win_get_width(chat_winid)
+        end
+
+        local formatted_diagnostics =
+            DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
+
+        for _, prompt_entry in ipairs(formatted_diagnostics.prompt_entries) do
+            table.insert(prompt, prompt_entry)
+        end
+
+        for _, summary_line in ipairs(formatted_diagnostics.summary_lines) do
+            table.insert(message_lines, summary_line)
         end
     end
 
@@ -495,43 +604,7 @@ function SessionManager:new_session(opts)
         end,
 
         on_tool_call_update = function(tool_call_update)
-            self.message_writer:update_tool_call_block(tool_call_update)
-            --- @type agentic.ui.ChatHistory.ToolCall
-            local tool_call = {
-                type = "tool_call",
-                tool_call_id = tool_call_update.tool_call_id,
-                status = tool_call_update.status,
-                body = tool_call_update.body,
-                diff = tool_call_update.diff,
-            }
-
-            self.chat_history:update_tool_call(
-                tool_call_update.tool_call_id,
-                tool_call
-            )
-
-            -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
-            local is_rejection = tool_call_update.status == "failed"
-            self:_clear_diff_in_buffer(
-                tool_call_update.tool_call_id,
-                is_rejection
-            )
-
-            -- I need to remove the permission request if the tool call failed before user granted it
-            -- It could happen for many reasons, like invalid parameters, tool not found, etc.
-            -- Mostly comes from the Agent.
-            if tool_call_update.status == "failed" then
-                self.permission_manager:remove_request_by_tool_call_id(
-                    tool_call_update.tool_call_id
-                )
-            end
-
-            if
-                not self.permission_manager.current_request
-                and #self.permission_manager.queue == 0
-            then
-                self.status_animation:start("generating")
-            end
+            self:_on_tool_call_update(tool_call_update)
         end,
 
         on_request_permission = function(request, callback)
@@ -609,14 +682,9 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
-            local timestamp = os.date("%Y-%m-%d %H:%M:%S")
-            local provider_name = self.agent.provider_config.name
-            local session_id = self.session_id or "unknown"
-            local welcome_message = string.format(
-                "# Agentic - %s - %s\n- %s\n--- --",
-                provider_name,
-                session_id,
-                timestamp
+            local welcome_message = SessionManager._generate_welcome_header(
+                self.agent.provider_config.name,
+                self.session_id
             )
 
             self.message_writer:write_message(
@@ -640,6 +708,7 @@ function SessionManager:_cancel_session()
         self.todo_list:clear()
         self.file_list:clear()
         self.code_selection:clear()
+        self.diagnostics_list:clear()
     end
 
     self.session_id = nil
@@ -647,7 +716,68 @@ function SessionManager:_cancel_session()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
     self.chat_history = ChatHistory:new()
-    self._needs_history_send = false
+    self._history_to_send = nil
+end
+
+--- Switch to a different ACP provider while preserving chat UI and history.
+--- Reads Config.provider (already set by caller) for the target provider.
+function SessionManager:switch_provider()
+    if self.is_generating then
+        Logger.notify(
+            "Cannot switch provider while generating. Stop generation first.",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
+    local AgentInstance = require("agentic.acp.agent_instance")
+
+    -- Save references before get_instance (on_ready may fire synchronously)
+    local saved_history = self.chat_history
+    local old_agent = self.agent
+    local old_session_id = self.session_id
+
+    -- Get new agent instance BEFORE tearing down the current session
+    local new_agent = AgentInstance.get_instance(
+        Config.provider,
+        function(client)
+            vim.schedule(function()
+                self.agent = client
+
+                self:new_session({
+                    restore_mode = true,
+                    on_created = function()
+                        -- Capture new session metadata before overwriting
+                        local new_session_id = self.chat_history.session_id
+                        local new_timestamp = self.chat_history.timestamp
+
+                        -- Restore saved messages (new_session created a fresh one)
+                        self.chat_history = saved_history
+                        self.chat_history.session_id = new_session_id
+                        self.chat_history.timestamp = new_timestamp
+                        self._history_to_send = saved_history.messages
+                        self._is_first_message = true
+                    end,
+                })
+            end)
+        end
+    )
+
+    if not new_agent then
+        return
+    end
+
+    -- Soft cancel: tear down old ACP session now that we have a new agent
+    if old_session_id then
+        old_agent:cancel_session(old_session_id)
+    end
+    self.session_id = nil
+    self.permission_manager:clear()
+    self.todo_list:clear()
+
+    -- If agent was already cached, on_ready fired synchronously above.
+    -- If not, it will fire when the process is ready.
+    self.agent = new_agent
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -675,6 +805,24 @@ function SessionManager:add_file_to_session(buf)
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
 
     return self.file_list:add(buf_path)
+end
+
+--- Add diagnostics at the current cursor line to context
+--- @param bufnr integer|nil Buffer number to get diagnostics from, defaults to current buffer
+--- @return integer count Number of diagnostics added
+function SessionManager:add_current_line_diagnostics_to_context(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    local diagnostics = DiagnosticsList.get_diagnostics_at_cursor(bufnr)
+    return self.diagnostics_list:add_many(diagnostics)
+end
+
+--- Add all diagnostics from the current buffer to context
+--- @param bufnr integer|nil Buffer number, defaults to current buffer
+--- @return integer count Number of diagnostics added
+function SessionManager:add_buffer_diagnostics_to_context(bufnr)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+    local diagnostics = DiagnosticsList.get_buffer_diagnostics(bufnr)
+    return self.diagnostics_list:add_many(diagnostics)
 end
 
 --- @param tool_call_id string
@@ -809,11 +957,8 @@ function SessionManager:restore_from_history(history, opts)
 
     -- Prevent constructor's auto-new_session from running
     self._restoring = true
-    self._needs_history_send = true
-    self._is_first_message = false
-
-    -- Store messages for history send and replay
     self._history_to_send = history.messages
+    self._is_first_message = false
 
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then
@@ -830,6 +975,8 @@ function SessionManager:restore_from_history(history, opts)
             self.message_writer,
             self._history_to_send
         )
+        -- ACP session already knows these messages; clear to prevent duplicate prepend
+        self._history_to_send = nil
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({

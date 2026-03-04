@@ -724,6 +724,7 @@ Agent Client Protocol:
   - `opencode` for OpenCode
   - `cursor-agent-acp` for Cursor Agent
   - `auggie` for Augment Code
+  - `vibe-acp` for Mistral Vibe
 
 NOTE: Install instructs are in the README.md
 
@@ -737,6 +738,7 @@ Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
 - `opencode_acp_adapter.lua` - OpenCode ACP adapter
 - `cursor_acp_adapter.lua` - Cursor Agent ACP adapter
 - `auggie_acp_adapter.lua` - Auggie ACP adapter
+- `mistral_vibe_acp_adapter.lua` - Mistral Vibe ACP adapter
 
 These adapters implement provider-specific message formatting, tool call
 handling, and protocol quirks.

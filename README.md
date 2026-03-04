@@ -3,15 +3,18 @@
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
 > ⚡ A Chat interface for Ai agents in Neovim that supports Claude, Gemini,
-> Codex, OpenCode, Cursor Agent, and Auggie through the Agent Client Protocol
-> (ACP).
+> Codex, OpenCode, Cursor Agent, Auggie, and Mistral Vibe through the Agent
+> Client Protocol (ACP).
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
 
-Without reinventing the wheel, Agentic.nvim is the interface, your agent is the
-Brain. This plugin will use all the same configurations and authentication
-methods you already have set up on your terminal.
+You'll get the same results and performance as you would when using the ACP
+provider's official CLI directly from the terminal.
+
+Agentic.nvim is the interface, your agent is the Brain. This plugin will use all
+the same configurations and authentication methods you already have set up on
+your terminal.
 
 Including your MCP servers, commands, SKILLs, and sub-agents, you don't have to
 recreate your configuration to use Agentic.nvim.
@@ -22,9 +25,6 @@ using Agentic's built-in session persistence feature. Note: Sessions started in
 the terminal cannot be restored in Neovim (Agentic.nvim has its own session
 management separate from providers to maintain compatibility across all
 providers).
-
-You'll get the same results and performance as you would when using the ACP
-provider's official CLI directly from the terminal.
 
 There're no hidden prompts or magic happening behind the scenes. Just a Chat
 interface, your colors, and your keymaps.
@@ -62,6 +62,8 @@ interface, your colors, and your keymaps.
 - **ℹ️ Smart Context** - Automatically includes system and project information
   in the first message of each session, so the Agent don't spend time and tokens
   gathering basic info
+- **🔀 Switch Providers** - Switch between ACP providers mid-conversation
+  without losing chat history (`<localLeader>s` in the chat widget)
 - **♻️ Session Restore** - Restore your session and chat history at any time,
   for all providers
 
@@ -125,14 +127,15 @@ tools like `nvm`, `fnm`, etc...
 
 **You are free to chose** any installation method you prefer!
 
-| Provider                             | Install                                                                                                                                                         |
-| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @zed-industries/claude-agent-acp`<br/> **OR** `npm i -g @zed-industries/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases] |
-| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                             |
-| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                      |
-| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`   |
-| [cursor-agent][cursor-agent]         | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                      |
-| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                         |
+| Provider                             | Install                                                                                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @zed-industries/claude-agent-acp`<br/> **OR** `npm i -g @zed-industries/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                                |
+| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
+| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
+| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
+| [cursor-agent][cursor-agent]         | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                                                     |
+| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
+| [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -154,7 +157,7 @@ tools like `nvm`, `fnm`, etc...
   "carlos-algms/agentic.nvim",
 
   opts = {
-    -- Available by default: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp"
+    -- Available by default: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp" | "mistral-vibe-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -186,6 +189,22 @@ tools like `nvm`, `fnm`, etc...
       desc = "Agentic Restore session",
       silent = true,
       mode = { "n", "v", "i" },
+    },
+    {
+      "<leader>ad", -- ai Diagnostics
+      function()
+          require("agentic").add_current_line_diagnostics()
+      end,
+      desc = "Add current line diagnostic to Agentic",
+      mode = { "n" },
+    },
+    {
+      "<leader>aD", -- ai all Diagnostics
+      function()
+          require("agentic").add_buffer_diagnostics()
+      end,
+      desc = "Add all buffer diagnostics to Agentic",
+      mode = { "n" },
     },
   },
 }
@@ -361,18 +380,21 @@ header parts:
 
 ### Commands
 
-| Function                                                     | Description                                                      |
-| ------------------------------------------------------------ | ---------------------------------------------------------------- |
-| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                              |
-| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                 |
-| `:lua require("agentic").close()`                            | Close chat sidebar                                               |
-| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                  |
-| `:lua require("agentic").add_file()`                         | Add current file to context                                      |
-| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                    |
-| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one  |
-| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active) |
-| `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue   |
-| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)   |
+| Function                                                     | Description                                                       |
+| ------------------------------------------------------------ | ----------------------------------------------------------------- |
+| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                               |
+| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                  |
+| `:lua require("agentic").close()`                            | Close chat sidebar                                                |
+| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                   |
+| `:lua require("agentic").add_file()`                         | Add current file to context                                       |
+| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                     |
+| `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
+| `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
+| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
+| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
+| `:lua require("agentic").restore_session()`                  | Show session picker to restore a previous session and continue    |
+| `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
+| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
 
 ### Optional Parameters
 
@@ -393,7 +415,8 @@ focus the prompt input after opening the chat:
   input after opening the chat
 
 Available on: `add_selection(opts)`, `add_file(opts)`,
-`add_selection_or_file_to_context(opts)`
+`add_selection_or_file_to_context(opts)`, `add_current_line_diagnostics(opts)`,
+`add_buffer_diagnostics(opts)`
 
 ```lua
 -- Add selection without focusing the prompt
@@ -404,18 +427,19 @@ require("agentic").add_selection({ focus_prompt = false })
 
 These keybindings are automatically set in Agentic buffers:
 
-| Keybinding       | Mode  | Description                                                   |
-| ---------------- | ----- | ------------------------------------------------------------- |
-| `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes) |
-| `<CR>`           | n     | Submit prompt                                                 |
-| `<C-s>`          | n/v/i | Submit prompt                                                 |
-| `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer               |
-| `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)              |
-| `q`              | n     | Close chat widget                                             |
-| `d`              | n     | Remove file or code selection at cursor                       |
-| `d`              | v     | Remove multiple selected files or code selections             |
-| `]c`             | n     | Navigate to next diff hunk (when diff preview is active)      |
-| `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)  |
+| Keybinding       | Mode  | Description                                                     |
+| ---------------- | ----- | --------------------------------------------------------------- |
+| `<S-Tab>`        | n/v/i | Switch agent mode (only available if provider supports modes)   |
+| `<CR>`           | n     | Submit prompt                                                   |
+| `<C-s>`          | n/v/i | Submit prompt                                                   |
+| `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer                 |
+| `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
+| `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
+| `q`              | n     | Close chat widget                                               |
+| `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
+| `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
+| `]c`             | n     | Navigate to next diff hunk (when diff preview is active)        |
+| `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)    |
 
 #### Customizing Keybindings
 
@@ -436,6 +460,7 @@ your setup:
             mode = { "i", "n", "v" },  -- Specify modes for this keybinding
           },
         },
+        switch_provider = "<localLeader>s",  -- Switch ACP provider
       },
 
       -- Keybindings for the prompt buffer only
@@ -699,6 +724,27 @@ colorscheme.
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
 
+### Customizing Diagnostic Icons
+
+You can customize the icons used for diagnostics in the context panel:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    diagnostic_icons = {
+      error = "❌",
+      warn = "⚠️",
+      info = "ℹ️",
+      hint = "✨",
+    },
+  },
+}
+```
+
+Default icons use emoji characters (❌, ⚠️, ℹ️, ✨) but you can use any string,
+including Nerd Font icons or plain text.
+
 ## Integration with other Plugins
 
 ### Prompt suggestions with Copilot
@@ -755,8 +801,8 @@ conflicts with custom window decorations:
 require('lualine').setup({
   options = {
     disabled_filetypes = {
-      statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
-      winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles' },
+      statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
+      winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
     }
   }
 })
@@ -885,6 +931,8 @@ the the acknowledgments 😊.
 [cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
 [auggie]: https://www.npmjs.com/package/@augmentcode/auggie
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
+[mistral-vibe]: https://github.com/mistralai/mistral-vibe
+[mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
 [preview-diff-side-by-side-image]:
   https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
 [preview-diff-inline-image]:

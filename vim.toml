@@ -36,6 +36,11 @@ type = "function"
 [[after_each.args]]
 type = "function"
 
+[[setup.args]]
+type = "function"
+[[teardown.args]]
+type = "function"
+
 [assert.is_not]
 any = true
 

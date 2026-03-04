@@ -20,6 +20,7 @@ local PERMISSION_KIND_PRIORITY = {
 --- @field queue table[] Queue of pending requests {toolCallId, request, callback}
 --- @field current_request? agentic.ui.PermissionManager.PermissionRequest Currently displayed request with button positions
 --- @field keymap_info table[] Keymap info for cleanup {mode, lhs}
+--- @field _reanchoring boolean Guard flag to prevent recursive on_content_changed during reanchor
 local PermissionManager = {}
 PermissionManager.__index = PermissionManager
 
@@ -31,6 +32,7 @@ function PermissionManager:new(message_writer)
         queue = {},
         current_request = nil,
         keymap_info = {},
+        _reanchoring = false,
     }, self)
 
     return instance
@@ -83,6 +85,53 @@ function PermissionManager:_process_next()
     }
 
     self:_setup_keymaps(option_mapping)
+
+    self.message_writer:set_on_content_changed(function()
+        self:_reanchor_permission_prompt()
+    end)
+end
+
+function PermissionManager:_reanchor_permission_prompt()
+    if self._reanchoring or not self.current_request then
+        return
+    end
+
+    self._reanchoring = true
+
+    --- @type agentic.ui.PermissionManager.PermissionRequest
+    local current = self.current_request
+
+    local ok, err = pcall(function()
+        self.message_writer:remove_permission_buttons(
+            current.button_start_row,
+            current.button_end_row
+        )
+        self:_remove_keymaps()
+
+        local sorted_options =
+            self._sort_permission_options(current.request.options)
+
+        local button_start_row, button_end_row, option_mapping =
+            self.message_writer:display_permission_buttons(
+                current.request.toolCall.toolCallId,
+                sorted_options
+            )
+
+        current.button_start_row = button_start_row
+        current.button_end_row = button_end_row
+        current.option_mapping = option_mapping
+
+        self:_setup_keymaps(option_mapping)
+    end)
+
+    self._reanchoring = false
+
+    if not ok then
+        Logger.notify(
+            "Error during permission prompt reanchor: " .. vim.inspect(err),
+            vim.log.levels.ERROR
+        )
+    end
 end
 
 --- @param options agentic.acp.PermissionOption[]
@@ -116,6 +165,7 @@ function PermissionManager:_complete_request(option_id)
     )
 
     self:_remove_keymaps()
+    self.message_writer:set_on_content_changed(nil)
     current.callback(option_id)
 
     self.current_request = nil
@@ -130,6 +180,7 @@ function PermissionManager:clear()
             self.current_request.button_end_row
         )
         self:_remove_keymaps()
+        self.message_writer:set_on_content_changed(nil)
 
         pcall(self.current_request.callback, nil)
         self.current_request = nil

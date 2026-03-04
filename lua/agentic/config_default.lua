@@ -6,6 +6,7 @@
 --- | "opencode-acp"
 --- | "cursor-acp"
 --- | "auggie-acp"
+--- | "mistral-vibe-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
@@ -107,6 +108,13 @@ local ConfigDefault = {
             },
             env = {},
         },
+
+        ["mistral-vibe-acp"] = {
+            name = "Mistral Vibe ACP",
+            command = "vibe-acp",
+            args = {},
+            env = {},
+        },
     },
 
     --- @class agentic.UserConfig.Windows.Chat
@@ -121,6 +129,10 @@ local ConfigDefault = {
     --- @field win_opts? agentic.UserConfig.WinOpts
 
     --- @class agentic.UserConfig.Windows.Files
+    --- @field max_height number
+    --- @field win_opts? agentic.UserConfig.WinOpts
+
+    --- @class agentic.UserConfig.Windows.Diagnostics
     --- @field max_height number
     --- @field win_opts? agentic.UserConfig.WinOpts
 
@@ -140,6 +152,7 @@ local ConfigDefault = {
     --- @field input agentic.UserConfig.Windows.Input
     --- @field code agentic.UserConfig.Windows.Code
     --- @field files agentic.UserConfig.Windows.Files
+    --- @field diagnostics agentic.UserConfig.Windows.Diagnostics
     --- @field todos agentic.UserConfig.Windows.Todos
     windows = {
         position = "right",
@@ -150,6 +163,7 @@ local ConfigDefault = {
         input = { height = 10, win_opts = {} },
         code = { max_height = 15, win_opts = {} },
         files = { max_height = 10, win_opts = {} },
+        diagnostics = { max_height = 10, win_opts = {} },
         todos = { display = true, max_height = 10, win_opts = {} },
     },
 
@@ -164,6 +178,7 @@ local ConfigDefault = {
                     mode = { "i", "n", "v" },
                 },
             },
+            switch_provider = "<localLeader>s",
         },
 
         --- Keys bindings for the prompt buffer
@@ -222,6 +237,19 @@ local ConfigDefault = {
         pending = "󰔛",
         completed = "✔",
         failed = "",
+    },
+
+    --- Icons used for diagnostics in the context panel
+    --- @class agentic.UserConfig.DiagnosticIcons
+    --- @field error string
+    --- @field warn string
+    --- @field info string
+    --- @field hint string
+    diagnostic_icons = {
+        error = "❌",
+        warn = "⚠️",
+        info = "ℹ️",
+        hint = "✨",
     },
 
     --- @class agentic.UserConfig.PermissionIcons
