@@ -20,6 +20,16 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @class agentic._SessionManagerPrivate
 local P = {}
 
+--- Tool call kinds that mutate files on disk.
+--- When these complete, buffers must be reloaded via checktime.
+local FILE_MUTATING_KINDS = {
+    edit = true,
+    create = true,
+    write = true,
+    delete = true,
+    move = true,
+}
+
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_prompt_submit" | "on_response_complete"
 --- @param data table
@@ -234,6 +244,51 @@ function SessionManager:_on_session_update(update)
             vim.log.levels.WARN,
             { title = "⚠️ Unknown session update" }
         )
+    end
+end
+
+--- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers
+--- @param tool_call_update agentic.ui.MessageWriter.ToolCallBase
+function SessionManager:_on_tool_call_update(tool_call_update)
+    self.message_writer:update_tool_call_block(tool_call_update)
+
+    --- @type agentic.ui.ChatHistory.ToolCall
+    local tool_call = {
+        type = "tool_call",
+        tool_call_id = tool_call_update.tool_call_id,
+        status = tool_call_update.status,
+        body = tool_call_update.body,
+        diff = tool_call_update.diff,
+    }
+
+    self.chat_history:update_tool_call(tool_call_update.tool_call_id, tool_call)
+
+    -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
+    local is_rejection = tool_call_update.status == "failed"
+    self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
+
+    -- Remove the permission request if the tool call failed before user granted it
+    if tool_call_update.status == "failed" then
+        self.permission_manager:remove_request_by_tool_call_id(
+            tool_call_update.tool_call_id
+        )
+    end
+
+    -- Reload buffers when file-mutating tool calls complete
+    if tool_call_update.status == "completed" then
+        local tracker =
+            self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
+
+        if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
+            vim.cmd.checktime()
+        end
+    end
+
+    if
+        not self.permission_manager.current_request
+        and #self.permission_manager.queue == 0
+    then
+        self.status_animation:start("generating")
     end
 end
 
@@ -549,43 +604,7 @@ function SessionManager:new_session(opts)
         end,
 
         on_tool_call_update = function(tool_call_update)
-            self.message_writer:update_tool_call_block(tool_call_update)
-            --- @type agentic.ui.ChatHistory.ToolCall
-            local tool_call = {
-                type = "tool_call",
-                tool_call_id = tool_call_update.tool_call_id,
-                status = tool_call_update.status,
-                body = tool_call_update.body,
-                diff = tool_call_update.diff,
-            }
-
-            self.chat_history:update_tool_call(
-                tool_call_update.tool_call_id,
-                tool_call
-            )
-
-            -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
-            local is_rejection = tool_call_update.status == "failed"
-            self:_clear_diff_in_buffer(
-                tool_call_update.tool_call_id,
-                is_rejection
-            )
-
-            -- I need to remove the permission request if the tool call failed before user granted it
-            -- It could happen for many reasons, like invalid parameters, tool not found, etc.
-            -- Mostly comes from the Agent.
-            if tool_call_update.status == "failed" then
-                self.permission_manager:remove_request_by_tool_call_id(
-                    tool_call_update.tool_call_id
-                )
-            end
-
-            if
-                not self.permission_manager.current_request
-                and #self.permission_manager.queue == 0
-            then
-                self.status_animation:start("generating")
-            end
+            self:_on_tool_call_update(tool_call_update)
         end,
 
         on_request_permission = function(request, callback)

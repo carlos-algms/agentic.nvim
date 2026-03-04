@@ -340,4 +340,128 @@ describe("agentic.SessionManager", function()
             assert.spy(session.new_session).was.called(1)
         end)
     end)
+
+    describe("FileChangedShell autocommand", function()
+        local Child = require("tests.helpers.child")
+        local child = Child:new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        it("sets fcs_choice to reload when FileChangedShell fires", function()
+            child.v.fcs_choice = ""
+            child.api.nvim_exec_autocmds("FileChangedShell", {
+                group = "AgenticCleanup",
+                pattern = "*",
+            })
+
+            assert.equal("reload", child.v.fcs_choice)
+        end)
+    end)
+
+    describe("on_tool_call_update: buffer reload", function()
+        --- @type TestStub
+        local checktime_stub
+        --- @type TestStub
+        local schedule_stub
+
+        --- @param tool_call_blocks table<string, table>
+        --- @return agentic.SessionManager
+        local function make_session(tool_call_blocks)
+            return {
+                message_writer = {
+                    update_tool_call_block = function() end,
+                    tool_call_blocks = tool_call_blocks,
+                },
+                permission_manager = {
+                    current_request = nil,
+                    queue = {},
+                    remove_request_by_tool_call_id = function() end,
+                },
+                status_animation = { start = function() end },
+                _clear_diff_in_buffer = function() end,
+                chat_history = { update_tool_call = function() end },
+            } --[[@as agentic.SessionManager]]
+        end
+
+        before_each(function()
+            checktime_stub = spy.stub(vim.cmd, "checktime")
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+        end)
+
+        after_each(function()
+            checktime_stub:revert()
+            schedule_stub:revert()
+        end)
+
+        it("calls checktime for each file-mutating kind", function()
+            for _, kind in ipairs({
+                "edit",
+                "create",
+                "write",
+                "delete",
+                "move",
+            }) do
+                checktime_stub:reset()
+                local tc_id = "tc-" .. kind
+                local session = make_session({
+                    [tc_id] = { kind = kind, status = "in_progress" },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = tc_id, status = "completed" }
+                )
+
+                assert.spy(checktime_stub).was.called(1)
+            end
+        end)
+
+        it("does not call checktime for failed tool calls", function()
+            local session = make_session({
+                ["tc-1"] = { kind = "edit", status = "in_progress" },
+            })
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-1", status = "failed" }
+            )
+
+            assert.spy(checktime_stub).was.called(0)
+        end)
+
+        it("does not call checktime for non-mutating kinds", function()
+            local session = make_session({
+                ["tc-1"] = { kind = "read", status = "in_progress" },
+            })
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-1", status = "completed" }
+            )
+
+            assert.spy(checktime_stub).was.called(0)
+        end)
+
+        it("does not call checktime when tracker is missing", function()
+            local debug_stub = spy.stub(Logger, "debug")
+            local session = make_session({})
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-missing", status = "completed" }
+            )
+
+            assert.spy(checktime_stub).was.called(0)
+            debug_stub:revert()
+        end)
+    end)
 end)

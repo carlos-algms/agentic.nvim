@@ -225,6 +225,17 @@ function Agentic.setup(opts)
 
     Theme.setup()
 
+    -- Force-reload buffers when files change on disk (e.g., agent edits files directly).
+    -- Suppresses the "file changed" prompt so modified buffers reload silently,
+    -- matching Cursor/Zed behavior where agent changes always win.
+    vim.api.nvim_create_autocmd("FileChangedShell", {
+        group = cleanup_group,
+        pattern = "*",
+        callback = function()
+            vim.v.fcs_choice = "reload"
+        end,
+    })
+
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = cleanup_group,
         callback = function()
