@@ -288,13 +288,9 @@ function ACPClient:_handle_notification(message_id, method, params)
     elseif method == "session/request_permission" then
         --- @diagnostic disable-next-line: param-type-mismatch
         self:__handle_request_permission(message_id, params)
-    elseif method == "fs/read_text_file" then
+    elseif method == "fs/read_text_file" or method == "fs/write_text_file" then
         Logger.debug(
-            "Received fs/read_text_file notification, handling it with FileSystem utility"
-        )
-    elseif method == "fs/write_text_file" then
-        Logger.debug(
-            "Received fs/write_text_file notification, handling it with FileSystem utility"
+            string.format("Received '%s' notification, ignoring it", method)
         )
     else
         Logger.notify("Unknown notification method: " .. method)
