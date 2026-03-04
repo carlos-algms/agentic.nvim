@@ -70,8 +70,8 @@ function ACPClient:new(config, on_ready)
         },
         capabilities = {
             fs = {
-                readTextFile = true,
-                writeTextFile = true,
+                readTextFile = false,
+                writeTextFile = false,
             },
             terminal = false,
         },
@@ -289,8 +289,14 @@ function ACPClient:_handle_notification(message_id, method, params)
         --- @diagnostic disable-next-line: param-type-mismatch
         self:__handle_request_permission(message_id, params)
     elseif method == "fs/read_text_file" then
+        Logger.debug(
+            "Received fs/read_text_file notification, handling it with FileSystem utility"
+        )
         self:_handle_read_text_file(message_id, params)
     elseif method == "fs/write_text_file" then
+        Logger.debug(
+            "Received fs/write_text_file notification, handling it with FileSystem utility"
+        )
         self:_handle_write_text_file(message_id, params)
     else
         Logger.notify("Unknown notification method: " .. method)
