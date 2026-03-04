@@ -70,6 +70,10 @@ function AgentInstance.get_instance(provider_name, on_ready)
         local MistralVibeACPAdapter =
             require("agentic.acp.adapters.mistral_vibe_acp_adapter")
         client = MistralVibeACPAdapter:new(config, on_ready)
+    elseif provider_name == "cline-acp" then
+        local ClineACPAdapter =
+            require("agentic.acp.adapters.cline_acp_adapter")
+        client = ClineACPAdapter:new(config, on_ready)
     else
         error("Unsupported ACP provider: " .. provider_name)
     end
