@@ -7,6 +7,8 @@ describe("agentic.ui.DiagnosticsList", function()
 
     --- @type integer
     local bufnr
+    --- @type integer
+    local winid
     --- @type agentic.ui.DiagnosticsList
     local diagnostics_list
     --- @type TestSpy
@@ -29,6 +31,13 @@ describe("agentic.ui.DiagnosticsList", function()
 
     before_each(function()
         bufnr = vim.api.nvim_create_buf(false, true)
+        winid = vim.api.nvim_open_win(bufnr, false, {
+            relative = "editor",
+            width = 120,
+            height = 10,
+            row = 0,
+            col = 0,
+        })
         on_change_spy = spy.new(function() end)
 
         diagnostics_list =
@@ -38,6 +47,10 @@ describe("agentic.ui.DiagnosticsList", function()
     after_each(function()
         if on_change_spy and on_change_spy.revert then
             on_change_spy:revert()
+        end
+
+        if winid and vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
         end
 
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
@@ -314,6 +327,32 @@ describe("agentic.ui.DiagnosticsList", function()
 
             local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
             assert.truthy(lines[1]:find(":11:6", 1, true)) -- lnum+1, col+1
+        end)
+
+        it("truncates long lines with ellipsis to fit window width", function()
+            vim.api.nvim_win_set_width(winid, 40)
+
+            diagnostics_list:add(create_diagnostic({
+                message = "A very long diagnostic message that should definitely be truncated to fit",
+                file_path = "/short.lua",
+            }))
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            assert.equal(1, #lines)
+            assert.equal("...", lines[1]:sub(-3))
+            assert.truthy(vim.fn.strdisplaywidth(lines[1]) <= 40)
+        end)
+
+        it("does not truncate when line fits within window width", function()
+            diagnostics_list:add(create_diagnostic({
+                message = "Short msg",
+                file_path = "/short.lua",
+            }))
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            assert.equal(1, #lines)
+            assert.truthy(lines[1]:find("Short msg", 1, true))
+            assert.is_nil(lines[1]:find("...", 1, true))
         end)
 
         it("updates buffer after removal", function()

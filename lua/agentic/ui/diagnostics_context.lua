@@ -20,7 +20,7 @@ end
 --- @param text string
 --- @param max_width integer
 --- @return string truncated_text
-local function truncate_for_display(text, max_width)
+function DiagnosticsContext.truncate_for_display(text, max_width)
     local display_width = vim.fn.strdisplaywidth(text)
     if max_width < 4 or display_width <= max_width then
         return text
@@ -136,7 +136,10 @@ function DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
             single_line_message
         )
 
-        table.insert(summary_lines, truncate_for_display(summary, chat_width))
+        table.insert(
+            summary_lines,
+            DiagnosticsContext.truncate_for_display(summary, chat_width)
+        )
     end
 
     --- @type agentic.ui.DiagnosticsContext.FormatResult
