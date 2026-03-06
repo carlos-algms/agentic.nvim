@@ -732,7 +732,7 @@ NOTE: Install instructs are in the README.md
 
 Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`:
 
-- `claude_acp_adapter.lua` - Claude Agent ACP adapter
+- `claude_agent_acp_adapter.lua` - Claude Agent ACP adapter
 - `gemini_acp_adapter.lua` - Gemini ACP adapter
 - `codex_acp_adapter.lua` - Codex ACP adapter
 - `opencode_acp_adapter.lua` - OpenCode ACP adapter
@@ -750,8 +750,8 @@ handling, and protocol quirks.
 ```lua
 acp_providers = {
   ["claude-agent-acp"] = {
-    name = "Claude ACP",                   -- Display name
-    command = "claude-agent-acp",           -- CLI command to spawn
+    name = "Claude Agent ACP",             -- Display name
+    command = "claude-agent-acp",          -- CLI command to spawn
     env = {                                -- Environment variables
       NODE_NO_WARNINGS = "1",
       IS_AI_TERMINAL = "1",

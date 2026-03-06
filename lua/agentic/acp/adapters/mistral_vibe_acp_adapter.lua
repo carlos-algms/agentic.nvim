@@ -19,18 +19,6 @@ function MistralVibeACPAdapter:new(config, on_ready)
     return self
 end
 
---- @param params table
-function MistralVibeACPAdapter:__handle_session_update(params)
-    local update_type = params.update.sessionUpdate
-
-    if update_type == "user_message_chunk" then
-        -- Ignore user message chunks, Agentic writes its own user messages and these can cause duplication
-        return
-    end
-
-    ACPClient.__handle_session_update(self, params)
-end
-
 --- @param json_str string|nil
 --- @return any decoded_json
 function MistralVibeACPAdapter:_decode_json(json_str)
