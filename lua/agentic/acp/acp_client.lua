@@ -624,6 +624,25 @@ function ACPClient:set_mode(session_id, mode_id, callback)
     return self:_send_request("session/set_mode", params, callback)
 end
 
+--- @param session_id string
+--- @param config_id agentic.acp.ConfigOption.Category
+--- @param config_value string
+--- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
+function ACPClient:set_config_option(
+    session_id,
+    config_id,
+    config_value,
+    callback
+)
+    local params = {
+        sessionId = session_id,
+        configId = config_id,
+        value = config_value,
+    }
+
+    return self:_send_request("session/set_config_option", params, callback)
+end
+
 --- Stops current generation/tool execution, keeps session active for the next prompt
 --- @param session_id string
 function ACPClient:stop_generation(session_id)
@@ -803,10 +822,29 @@ return ACPClient
 --- @field availableModels agentic.acp.Model[]
 --- @field currentModelId string
 
+--- @class agentic.acp.ConfigOption.Option
+--- @field description string
+--- @field name string
+--- @field value string
+
+--- @alias agentic.acp.ConfigOption.Category
+--- | "mode"
+--- | "model"
+--- | "thought_level"
+
+--- @class agentic.acp.ConfigOption
+--- @field id string
+--- @field category agentic.acp.ConfigOption.Category
+--- @field currentValue string
+--- @field description string
+--- @field name string
+--- @field options agentic.acp.ConfigOption.Option[]
+
 --- @class agentic.acp.SessionCreationResponse
 --- @field sessionId string
 --- @field modes? agentic.acp.ModesInfo
 --- @field models? agentic.acp.ModelsInfo
+--- @field configOptions? agentic.acp.ConfigOption[]
 
 --- @class agentic.acp.ResponseRaw
 --- @field id? number
@@ -851,6 +889,10 @@ return ACPClient
 --- @field size number Total context window size in tokens
 --- @field cost? { amount: number, currency: string } Cumulative session cost
 
+--- @class agentic.acp.ConfigOptionsUpdate
+--- @field sessionUpdate "config_options_update"
+--- @field configOptions agentic.acp.ConfigOption[]
+
 --- @alias agentic.acp.SessionUpdateMessage
 --- | agentic.acp.UserMessageChunk
 --- | agentic.acp.AgentMessageChunk
@@ -861,6 +903,7 @@ return ACPClient
 --- | agentic.acp.AvailableCommandsUpdate
 --- | agentic.acp.CurrentModeUpdate
 --- | agentic.acp.UsageUpdate
+--- | agentic.acp.ConfigOptionsUpdate
 
 --- @class agentic.acp.PermissionOption
 --- @field optionId string
