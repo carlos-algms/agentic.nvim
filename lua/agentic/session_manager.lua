@@ -7,15 +7,11 @@
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
 local Config = require("agentic.config")
-local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
-local SessionRestore = require("agentic.session_restore")
 local SlashCommands = require("agentic.acp.slash_commands")
-local TodoList = require("agentic.ui.todo_list")
-local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @class agentic._SessionManagerPrivate
 local P = {}
@@ -87,14 +83,15 @@ end
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
+    local AgentModes = require("agentic.acp.agent_modes")
     local ChatWidget = require("agentic.ui.chat_widget")
+    local CodeSelection = require("agentic.ui.code_selection")
+    local FileList = require("agentic.ui.file_list")
+    local FilePicker = require("agentic.ui.file_picker")
     local MessageWriter = require("agentic.ui.message_writer")
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
-    local AgentModes = require("agentic.acp.agent_modes")
-    local FileList = require("agentic.ui.file_list")
-    local CodeSelection = require("agentic.ui.code_selection")
-    local FilePicker = require("agentic.ui.file_picker")
+    local TodoList = require("agentic.ui.todo_list")
 
     self = setmetatable({
         session_id = nil,
@@ -518,11 +515,15 @@ function SessionManager:_handle_input_submit(input_text)
         local diagnostics = self.diagnostics_list:get_diagnostics()
         self.diagnostics_list:clear()
 
+        local WidgetLayout = require("agentic.ui.widget_layout")
+
         local chat_width = WidgetLayout.calculate_width(Config.windows.width)
         local chat_winid = self.widget.win_nrs.chat
         if chat_winid and vim.api.nvim_win_is_valid(chat_winid) then
             chat_width = vim.api.nvim_win_get_width(chat_winid)
         end
+
+        local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 
         local formatted_diagnostics =
             DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
@@ -1053,6 +1054,8 @@ function SessionManager:restore_from_history(history, opts)
     else
         self.chat_history = history
     end
+
+    local SessionRestore = require("agentic.session_restore")
 
     if opts.reuse_session and self.session_id then
         -- Reuse existing ACP session, just replay messages
