@@ -179,6 +179,7 @@ local ConfigDefault = {
                 },
             },
             switch_provider = "<localLeader>s",
+            switch_model = "<localLeader>m",
         },
 
         --- Keys bindings for the prompt buffer

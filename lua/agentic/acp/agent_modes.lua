@@ -1,40 +1,20 @@
 --- Manages agent modes for ACP sessions
 --- Provides mode selection via vim.ui.select
 
-local BufHelpers = require("agentic.utils.buf_helpers")
-local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.AgentModes
 --- @field _modes agentic.acp.AgentMode[]
---- @field _set_mode_callback fun(mode_id: string, is_config_option: boolean) called when the user selects a new mode from the selector
 --- @field current_mode_id? string
---- @field agent_config_options? agentic.acp.AgentConfigOptions
 local AgentModes = {}
 AgentModes.__index = AgentModes
 
 --- @return agentic.acp.AgentModes
---- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
---- @param set_mode_callback fun(mode_id: string, is_config_option: boolean) Callback to change mode via SessionManager
---- @param agent_config_options agentic.acp.AgentConfigOptions|nil
-function AgentModes:new(buffers, set_mode_callback, agent_config_options)
+function AgentModes:new()
     local instance = setmetatable({
         _modes = {},
-        _set_mode_callback = set_mode_callback,
         current_mode_id = nil,
-        agent_config_options = agent_config_options,
     }, self)
-
-    for _, bufnr in pairs(buffers) do
-        BufHelpers.multi_keymap_set(
-            Config.keymaps.widget.change_mode,
-            bufnr,
-            function()
-                instance:show_mode_selector()
-            end,
-            { desc = "Agentic: Select Agent Mode" }
-        )
-    end
 
     return instance
 end
@@ -57,18 +37,11 @@ function AgentModes:get_mode(mode_id)
     return nil
 end
 
-function AgentModes:show_mode_selector()
-    if
-        self.agent_config_options
-        and self.agent_config_options:show_mode_selector(
-            self._set_mode_callback
-        )
-    then
-        return
-    end
-
+--- @param set_mode_callback fun(mode_id: string)
+--- @return boolean shown
+function AgentModes:show_mode_selector(set_mode_callback)
     if #self._modes == 0 then
-        return
+        return false
     end
 
     vim.ui.select(self._modes, {
@@ -88,9 +61,11 @@ function AgentModes:show_mode_selector()
         end,
     }, function(selected_mode)
         if selected_mode and selected_mode.id ~= self.current_mode_id then
-            self._set_mode_callback(selected_mode.id, false)
+            set_mode_callback(selected_mode.id)
         end
     end)
+
+    return true
 end
 
 --- @param mode_id string|nil
@@ -98,7 +73,7 @@ end
 function AgentModes:handle_agent_update_mode(mode_id)
     if #self._modes == 0 then
         -- Providers that support both, legacy modes and configOptions modes will send an update
-        -- ignoring it to avoid double calling header renders
+        -- ignoring it to avoid double handling the event
         return false
     end
 
@@ -127,7 +102,6 @@ function AgentModes:handle_agent_update_mode(mode_id)
 end
 
 function AgentModes:clear()
-    self.agent_config_options = nil
     self.modes = {}
 end
 

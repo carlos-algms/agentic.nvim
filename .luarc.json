@@ -14,7 +14,9 @@
       "deprecated": "Warning",
       "redundant-parameter": "Warning",
       "redundant-value": "Warning",
-      "need-check-nil": "Error"
+      "need-check-nil": "Error",
+      "undefined-field": "Error",
+      "missing-parameter": "Error"
     },
     "neededFileStatus": {
       "codestyle-check": "None",

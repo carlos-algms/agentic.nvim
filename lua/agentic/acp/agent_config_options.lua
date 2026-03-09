@@ -1,21 +1,48 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.AgentConfigOptions
 --- @field mode? agentic.acp.ConfigOption
 --- @field model? agentic.acp.ConfigOption
 --- @field thought_level? agentic.acp.ConfigOption
+--- @field legacy_agent_modes agentic.acp.AgentModes
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
+--- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
+--- @param set_mode_callback fun(mode_id: string, is_legacy: boolean)
 --- @return agentic.acp.AgentConfigOptions
-function AgentConfigOptions:new()
+function AgentConfigOptions:new(buffers, set_mode_callback)
+    local AgentModes = require("agentic.acp.agent_modes")
+
     self = setmetatable({
         mode = nil,
         model = nil,
         thought_level = nil,
     }, self)
 
+    self.legacy_agent_modes = AgentModes:new()
+
+    for _, bufnr in pairs(buffers) do
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.change_mode,
+            bufnr,
+            function()
+                self:show_mode_selector(set_mode_callback)
+            end,
+            { desc = "Agentic: Select Agent Mode" }
+        )
+    end
+
     return self
+end
+
+function AgentConfigOptions:clear()
+    self.mode = nil
+    self.model = nil
+    self.thought_level = nil
+    self.legacy_agent_modes:clear()
 end
 
 --- @param configOptions agentic.acp.ConfigOption[]|nil
@@ -37,23 +64,39 @@ function AgentConfigOptions:set_options(configOptions)
     end
 end
 
---- @param default_mode string|nil
---- @param handle_mode_change fun(mode: string): any
-function AgentConfigOptions:set_initial_mode(default_mode, handle_mode_change)
-    if not default_mode or default_mode == "" then
+--- Modes from providers that don't support thew new Config Options
+--- @param modes_info agentic.acp.ModesInfo
+function AgentConfigOptions:set_legacy_modes(modes_info)
+    self.legacy_agent_modes:set_modes(modes_info)
+end
+
+--- @param target_mode string|nil
+--- @param handle_mode_change fun(mode: string, is_legacy: boolean|nil): any
+function AgentConfigOptions:set_initial_mode(target_mode, handle_mode_change)
+    if not target_mode or target_mode == "" then
+        Logger.debug("not setting initial mode", target_mode)
         return
     end
 
-    local can_use_default = default_mode ~= self.mode.currentValue
-        and self:get_mode(default_mode)
+    local is_legacy = false
+    local can_switch = false
 
-    if can_use_default then
-        handle_mode_change(default_mode)
+    if self:get_mode(target_mode) ~= nil then
+        can_switch = target_mode ~= self.mode.currentValue
+        Logger.debug("Setting initial config mode", target_mode, can_switch)
+    elseif self.legacy_agent_modes:get_mode(target_mode) ~= nil then
+        is_legacy = true
+        can_switch = target_mode ~= self.legacy_agent_modes.current_mode_id
+        Logger.debug("Setting initial legacy mode", target_mode, can_switch)
+    end
+
+    if can_switch then
+        handle_mode_change(target_mode, is_legacy)
     else
         Logger.notify(
             string.format(
-                "Configured default_mode '%s' not available. Using provider default '%s'",
-                default_mode,
+                "Configured default_mode '%s' not available. Using provider’s default '%s'",
+                target_mode,
                 self.mode.currentValue
             ),
             vim.log.levels.WARN,
@@ -85,6 +128,24 @@ function AgentConfigOptions:get_mode(mode_value)
     return getter(self.mode, mode_value)
 end
 
+--- @param mode_value string
+--- @return string|nil mode_name
+function AgentConfigOptions:get_mode_name(mode_value)
+    local mode = self:get_mode(mode_value)
+
+    if mode then
+        return mode.name
+    end
+
+    local legacy_mode = self.legacy_agent_modes:get_mode(mode_value)
+
+    if legacy_mode then
+        return legacy_mode.name
+    end
+
+    return nil
+end
+
 --- @param model_value string
 --- @return agentic.acp.ConfigOption.Option|nil
 function AgentConfigOptions:get_model(model_value)
@@ -94,10 +155,28 @@ end
 --- @param handle_mode_change fun(mode: string, is_config_option: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_mode_selector(handle_mode_change)
-    return self:_show_selector(
+    local shown = self:_show_selector(
         self.mode,
         "Select agent mode config:",
         handle_mode_change
+    )
+
+    if shown then
+        return true
+    end
+
+    return self.legacy_agent_modes:show_mode_selector(function(mode)
+        handle_mode_change(mode, true)
+    end)
+end
+
+--- @param handle_model_change fun(mode: string, is_config_option: boolean): any
+--- @return boolean shown
+function AgentConfigOptions:show_model_selector(handle_model_change)
+    return self:_show_selector(
+        self.mode,
+        "Select model to change:",
+        handle_model_change
     )
 end
 

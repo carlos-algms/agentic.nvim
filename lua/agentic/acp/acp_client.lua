@@ -890,7 +890,7 @@ return ACPClient
 --- @field cost? { amount: number, currency: string } Cumulative session cost
 
 --- @class agentic.acp.ConfigOptionsUpdate
---- @field sessionUpdate "config_options_update"
+--- @field sessionUpdate "config_option_update"
 --- @field configOptions agentic.acp.ConfigOption[]
 
 --- @alias agentic.acp.SessionUpdateMessage
