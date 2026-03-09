@@ -62,7 +62,7 @@ end
 --- @field code_selection agentic.ui.CodeSelection
 --- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field agent_modes agentic.acp.AgentModes
---- @field config_options agentic.acp.AgentConfigOptions
+--- @field config_options? agentic.acp.AgentConfigOptions
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
@@ -92,7 +92,6 @@ function SessionManager:new(tab_page_id)
     local PermissionManager = require("agentic.ui.permission_manager")
     local StatusAnimation = require("agentic.ui.status_animation")
     local AgentModes = require("agentic.acp.agent_modes")
-    local AgentConfigOptions = require("agentic.acp.agent_config_options")
     local FileList = require("agentic.ui.file_list")
     local CodeSelection = require("agentic.ui.code_selection")
     local FilePicker = require("agentic.ui.file_picker")
@@ -134,11 +133,12 @@ function SessionManager:new(tab_page_id)
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
-    self.agent_modes = AgentModes:new(self.widget.buf_nrs, function(mode_id)
-        self:_handle_mode_change(mode_id)
-    end)
-
-    self.config_options = AgentConfigOptions:new()
+    self.agent_modes = AgentModes:new(
+        self.widget.buf_nrs,
+        function(mode_id, is_config_option)
+            self:_handle_mode_change(mode_id, is_config_option)
+        end
+    )
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then
@@ -230,11 +230,12 @@ function SessionManager:_on_session_update(update)
             update.availableCommands
         )
     elseif update.sessionUpdate == "current_mode_update" then
-        if self.agent_modes:update_mode(update.currentModeId) then
+        -- only for legacy modes, not for config_options
+        if self.agent_modes:handle_agent_update_mode(update.currentModeId) then
             self:_set_mode_to_chat_header(update.currentModeId)
         end
     elseif update.sessionUpdate == "config_options_update" then
-        self.config_options.set_options(update.configOptions)
+        self:_handle_new_config_options(update.configOptions)
     elseif update.sessionUpdate == "usage_update" then
         -- Usage updates contain token/cost information - currently informational only
         -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
@@ -334,12 +335,13 @@ end
 
 --- Send the newly selected mode to the agent and handle the response
 --- @param mode_id string
-function SessionManager:_handle_mode_change(mode_id)
+--- @param is_config_option boolean
+function SessionManager:_handle_mode_change(mode_id, is_config_option)
     if not self.session_id then
         return
     end
 
-    self.agent:set_mode(self.session_id, mode_id, function(_result, err)
+    local function callback(_result, err)
         if err then
             Logger.notify(
                 "Failed to change mode: " .. err.message,
@@ -347,22 +349,39 @@ function SessionManager:_handle_mode_change(mode_id)
             )
         else
             self.agent_modes.current_mode_id = mode_id
+
             self:_set_mode_to_chat_header(mode_id)
 
             Logger.notify("Mode changed to: " .. mode_id, vim.log.levels.INFO, {
                 title = "Agentic Mode changed",
             })
         end
-    end)
+    end
+
+    if is_config_option then
+        self.agent:set_config_option(self.session_id, "mode", mode_id, callback)
+    else
+        self.agent:set_mode(self.session_id, mode_id, callback)
+    end
 end
 
 --- @param mode_id string
 function SessionManager:_set_mode_to_chat_header(mode_id)
-    local mode = self.agent_modes:get_mode(mode_id)
-    self.widget:render_header(
-        "chat",
-        string.format("Mode: %s", mode and mode.name or mode_id)
-    )
+    local mode = mode_id
+
+    if self.config_options then
+        local config_mode = self.config_options:get_mode(mode_id) or ""
+        if config_mode and config_mode.name then
+            mode = config_mode.name
+        end
+    else
+        local agent_mode = self.agent_modes:get_mode(mode_id) or ""
+        if agent_mode and agent_mode.name then
+            mode = agent_mode.name
+        end
+    end
+
+    self.widget:render_header("chat", string.format("Mode: %s", mode))
 end
 
 --- @param input_text string
@@ -687,13 +706,19 @@ function SessionManager:new_session(opts)
         self.chat_history.timestamp = os.time()
 
         if response.configOptions then
-            self.config_options:set_options(response.configOptions)
+            local AgentConfigOptions =
+                require("agentic.acp.agent_config_options")
+            self.config_options = AgentConfigOptions:new()
+
+            self:_handle_new_config_options(response.configOptions)
             self.config_options:set_initial_mode(
                 self.agent.provider_config.default_mode,
                 function(mode)
-                    self:_handle_mode_change(mode)
+                    self:_handle_mode_change(mode, true)
                 end
             )
+
+            self.agent_modes.agent_config_options = self.config_options
         elseif response.modes then
             self.agent_modes:set_modes(response.modes)
 
@@ -703,7 +728,7 @@ function SessionManager:new_session(opts)
                 and self.agent_modes:get_mode(default_mode)
 
             if can_use_default and default_mode then
-                self:_handle_mode_change(default_mode)
+                self:_handle_mode_change(default_mode, false)
             else
                 if
                     default_mode and not self.agent_modes:get_mode(default_mode)
@@ -757,6 +782,7 @@ function SessionManager:_cancel_session()
         self.file_list:clear()
         self.code_selection:clear()
         self.diagnostics_list:clear()
+        self.agent_modes:clear()
     end
 
     self.session_id = nil
@@ -924,6 +950,18 @@ function SessionManager:_clear_diff_in_buffer(tool_call_id, is_rejection)
     end
 
     DiffPreview.clear_diff(tracker.argument, is_rejection)
+end
+
+--- @param new_config_options agentic.acp.ConfigOption[]
+function SessionManager:_handle_new_config_options(new_config_options)
+    if self.config_options then
+        self.config_options:set_options(new_config_options)
+        if
+            self.config_options.mode and self.config_options.mode.currentValue
+        then
+            self:_set_mode_to_chat_header(self.config_options.mode.currentValue)
+        end
+    end
 end
 
 function SessionManager:_get_system_info()

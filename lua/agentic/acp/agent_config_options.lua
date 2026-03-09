@@ -7,6 +7,7 @@ local Logger = require("agentic.utils.logger")
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
+--- @return agentic.acp.AgentConfigOptions
 function AgentConfigOptions:new()
     self = setmetatable({
         mode = nil,
@@ -17,7 +18,7 @@ function AgentConfigOptions:new()
     return self
 end
 
---- @param configOptions? agentic.acp.ConfigOption[]
+--- @param configOptions agentic.acp.ConfigOption[]|nil
 function AgentConfigOptions:set_options(configOptions)
     if not configOptions then
         return
@@ -64,6 +65,10 @@ end
 --- @param mode_value string
 --- @return agentic.acp.ConfigOption.Option|nil
 function AgentConfigOptions:get_mode(mode_value)
+    if not self.mode or not self.mode.options then
+        return nil
+    end
+
     for _, mode in ipairs(self.mode.options) do
         if mode.value == mode_value then
             return mode
@@ -73,9 +78,11 @@ function AgentConfigOptions:get_mode(mode_value)
     return nil
 end
 
-function AgentConfigOptions:show_mode_selector()
+--- @param handle_mode_change fun(mode: string, is_config_option: boolean): any
+--- @return boolean shown
+function AgentConfigOptions:show_mode_selector(handle_mode_change)
     if not self.mode or #self.mode.options == 0 then
-        return
+        return false
     end
 
     vim.ui.select(self.mode.options, {
@@ -97,9 +104,11 @@ function AgentConfigOptions:show_mode_selector()
         end,
     }, function(selected_mode)
         if selected_mode and selected_mode.value ~= self.mode.currentValue then
-            self._set_mode_callback(selected_mode.value)
+            handle_mode_change(selected_mode.value, true)
         end
     end)
+
+    return true
 end
 
 return AgentConfigOptions

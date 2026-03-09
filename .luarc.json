@@ -9,11 +9,12 @@
     "severity": {
       "undefined-global": "Error",
       "unused-local": "Error",
-      "unused-function": "Error",
+      "unused-function": "Warning",
       "unused-label": "Error",
       "deprecated": "Warning",
       "redundant-parameter": "Warning",
-      "redundant-value": "Warning"
+      "redundant-value": "Warning",
+      "need-check-nil": "Error"
     },
     "neededFileStatus": {
       "codestyle-check": "None",
@@ -24,8 +25,8 @@
     "unusedLocalExclude": ["_*"],
     "globals": ["vim"],
     "groupSeverity": {
-      "strong": "Warning",
-      "strict": "Warning"
+      "strong": "Error",
+      "strict": "Error"
     }
   },
   "workspace": {
