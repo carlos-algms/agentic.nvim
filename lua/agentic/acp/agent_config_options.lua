@@ -62,35 +62,59 @@ function AgentConfigOptions:set_initial_mode(default_mode, handle_mode_change)
     end
 end
 
---- @param mode_value string
+--- @param target agentic.acp.ConfigOption|nil
+--- @param value string
 --- @return agentic.acp.ConfigOption.Option|nil
-function AgentConfigOptions:get_mode(mode_value)
-    if not self.mode or not self.mode.options then
+local function getter(target, value)
+    if not target or not target.options or #target.options == 0 then
         return nil
     end
 
-    for _, mode in ipairs(self.mode.options) do
-        if mode.value == mode_value then
-            return mode
+    for _, option in ipairs(target.options) do
+        if option.value == value then
+            return option
         end
     end
 
     return nil
 end
 
+--- @param mode_value string
+--- @return agentic.acp.ConfigOption.Option|nil
+function AgentConfigOptions:get_mode(mode_value)
+    return getter(self.mode, mode_value)
+end
+
+--- @param model_value string
+--- @return agentic.acp.ConfigOption.Option|nil
+function AgentConfigOptions:get_model(model_value)
+    return getter(self.model, model_value)
+end
+
 --- @param handle_mode_change fun(mode: string, is_config_option: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_mode_selector(handle_mode_change)
-    if not self.mode or #self.mode.options == 0 then
+    return self:_show_selector(
+        self.mode,
+        "Select agent mode config:",
+        handle_mode_change
+    )
+end
+
+--- @param target agentic.acp.ConfigOption|nil
+--- @param prompt string
+--- @param handle_change fun(mode: string, is_config_option: boolean): any
+--- @return boolean shown
+function AgentConfigOptions:_show_selector(target, prompt, handle_change)
+    if not target or not target.options or #target.options == 0 then
         return false
     end
 
-    vim.ui.select(self.mode.options, {
-        prompt = "Select Agent Mode:",
+    vim.ui.select(target.options, {
+        prompt = prompt,
         format_item = function(item)
             --- @cast item agentic.acp.ConfigOption.Option -- need to cast because `select` has a Generic, but not for `format_item`
-            local prefix = item.value == self.mode.currentValue and "● "
-                or "  "
+            local prefix = item.value == target.currentValue and "● " or "  "
 
             if item.description and item.description ~= "" then
                 return string.format(
@@ -103,8 +127,8 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
             return prefix .. item.name
         end,
     }, function(selected_mode)
-        if selected_mode and selected_mode.value ~= self.mode.currentValue then
-            handle_mode_change(selected_mode.value, true)
+        if selected_mode and selected_mode.value ~= target.currentValue then
+            handle_change(selected_mode.value, true)
         end
     end)
 
