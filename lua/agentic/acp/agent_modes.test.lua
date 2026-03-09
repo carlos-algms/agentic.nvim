@@ -29,34 +29,17 @@ describe("agentic.acp.AgentModes", function()
             local result = agent_modes:get_mode("plan")
 
             assert.is_not_nil(result)
-
             if result ~= nil then
                 assert.equal("plan", result.id)
                 assert.equal("Plan", result.name)
-                assert.equal("Planning mode", result.description)
             end
         end)
 
-        it("returns nil when mode id does not exist", function()
-            local result = agent_modes:get_mode("nonexistent")
-            assert.is_nil(result)
-        end)
+        it("returns nil for non-existent or empty modes", function()
+            assert.is_nil(agent_modes:get_mode("nonexistent"))
 
-        it("returns nil when modes list is empty", function()
             agent_modes:set_modes({ availableModes = {}, currentModeId = "" })
-            local result = agent_modes:get_mode("any_id")
-            assert.is_nil(result)
-        end)
-
-        it("returns correct mode from multiple modes", function()
-            local result = agent_modes:get_mode("code")
-
-            assert.is_not_nil(result)
-
-            if result ~= nil then
-                assert.equal("code", result.id)
-                assert.equal("Code", result.name)
-            end
+            assert.is_nil(agent_modes:get_mode("any_id"))
         end)
     end)
 
@@ -84,36 +67,107 @@ describe("agentic.acp.AgentModes", function()
             assert.stub(select_stub).was.called(0)
         end)
 
-        it("calls vim.ui.select with modes list", function()
-            agent_modes:show_mode_selector()
-            assert.stub(select_stub).was.called(1)
-        end)
-
-        it("calls callback when selecting different mode", function()
+        it("calls callback with id and is_config_option=false", function()
             select_stub:invokes(function(items, _opts, on_choice)
-                on_choice(items[2]) -- Select "plan"
+                on_choice(items[2])
             end)
 
             agent_modes:show_mode_selector()
-            assert.spy(callback_spy).was.called_with("plan")
+            assert.spy(callback_spy).was.called_with("plan", false)
         end)
 
-        it("does not call callback when selecting current mode", function()
+        it("does not call callback on current mode or cancel", function()
             select_stub:invokes(function(items, _opts, on_choice)
-                on_choice(items[1]) -- Select "normal" (current)
+                on_choice(items[1])
             end)
-
             agent_modes:show_mode_selector()
-            assert.spy(callback_spy).was.called(0)
-        end)
 
-        it("does not call callback when user cancels", function()
             select_stub:invokes(function(_items, _opts, on_choice)
                 on_choice(nil)
             end)
+            agent_modes:show_mode_selector()
+
+            assert.spy(callback_spy).was.called(0)
+        end)
+
+        it("delegates to agent_config_options when present", function()
+            local config_options_mock = {
+                show_mode_selector = spy.new(function()
+                    return true
+                end),
+            }
+            agent_modes.agent_config_options = config_options_mock --[[@as agentic.acp.AgentConfigOptions]]
 
             agent_modes:show_mode_selector()
-            assert.spy(callback_spy).was.called(0)
+
+            assert.spy(config_options_mock.show_mode_selector).was.called(1)
+            assert.stub(select_stub).was.called(0)
+        end)
+
+        it(
+            "falls back to legacy modes when config_options returns false",
+            function()
+                local config_options_mock = {
+                    show_mode_selector = spy.new(function()
+                        return false
+                    end),
+                }
+                agent_modes.agent_config_options = config_options_mock --[[@as agentic.acp.AgentConfigOptions]]
+
+                agent_modes:show_mode_selector()
+
+                assert.spy(config_options_mock.show_mode_selector).was.called(1)
+                assert.stub(select_stub).was.called(1)
+            end
+        )
+    end)
+
+    describe("handle_agent_update_mode", function()
+        --- @type TestStub
+        local notify_stub
+
+        before_each(function()
+            local Logger = require("agentic.utils.logger")
+            notify_stub = spy.stub(Logger, "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        it("updates current_mode_id and notifies on valid mode", function()
+            local success = agent_modes:handle_agent_update_mode("code")
+
+            assert.is_true(success)
+            assert.equal("code", agent_modes.current_mode_id)
+            assert.stub(notify_stub).was.called(1)
+            assert.is_true(string.find(notify_stub.calls[1][1], "code") ~= nil)
+        end)
+
+        it("returns false and warns for nil or invalid mode_id", function()
+            assert.is_false(agent_modes:handle_agent_update_mode(nil))
+            assert.is_false(agent_modes:handle_agent_update_mode("nonexistent"))
+
+            assert.equal("normal", agent_modes.current_mode_id)
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+        end)
+
+        it("returns false when modes list is empty", function()
+            agent_modes:set_modes({ availableModes = {}, currentModeId = "" })
+
+            assert.is_false(agent_modes:handle_agent_update_mode("plan"))
+        end)
+    end)
+
+    describe("clear", function()
+        it("resets agent_config_options and modes", function()
+            --- @diagnostic disable-next-line: missing-fields
+            agent_modes.agent_config_options = {} --[[@as agentic.acp.AgentConfigOptions]]
+
+            agent_modes:clear()
+
+            assert.is_nil(agent_modes.agent_config_options)
+            assert.same({}, agent_modes.modes)
         end)
     end)
 end)

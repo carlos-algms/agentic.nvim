@@ -1,9 +1,9 @@
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.acp.AgentConfigOptions
---- @field mode agentic.acp.ConfigOption
---- @field model agentic.acp.ConfigOption
---- @field thought_level agentic.acp.ConfigOption
+--- @field mode? agentic.acp.ConfigOption
+--- @field model? agentic.acp.ConfigOption
+--- @field thought_level? agentic.acp.ConfigOption
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
