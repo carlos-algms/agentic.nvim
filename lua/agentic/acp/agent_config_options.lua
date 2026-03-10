@@ -12,8 +12,9 @@ AgentConfigOptions.__index = AgentConfigOptions
 
 --- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
 --- @param set_mode_callback fun(mode_id: string, is_legacy: boolean)
+--- @param set_model_callback fun(model_id: string)
 --- @return agentic.acp.AgentConfigOptions
-function AgentConfigOptions:new(buffers, set_mode_callback)
+function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
     local AgentModes = require("agentic.acp.agent_modes")
 
     self = setmetatable({
@@ -32,6 +33,15 @@ function AgentConfigOptions:new(buffers, set_mode_callback)
                 self:show_mode_selector(set_mode_callback)
             end,
             { desc = "Agentic: Select Agent Mode" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.switch_model,
+            bufnr,
+            function()
+                self:show_model_selector(set_model_callback)
+            end,
+            { desc = "Agentic: Select Model" }
         )
     end
 
@@ -64,7 +74,7 @@ function AgentConfigOptions:set_options(configOptions)
     end
 end
 
---- Modes from providers that don't support thew new Config Options
+--- Modes from providers that don't support the new Config Options
 --- @param modes_info agentic.acp.ModesInfo
 function AgentConfigOptions:set_legacy_modes(modes_info)
     self.legacy_agent_modes:set_modes(modes_info)
@@ -93,11 +103,15 @@ function AgentConfigOptions:set_initial_mode(target_mode, handle_mode_change)
     if can_switch then
         handle_mode_change(target_mode, is_legacy)
     else
+        local current = self.mode and self.mode.currentValue
+            or self.legacy_agent_modes.current_mode_id
+            or "unknown"
         Logger.notify(
             string.format(
-                "Configured default_mode '%s' not available. Using provider’s default '%s'",
+                "Configured default_mode ‘%s’ not available. "
+                    .. "Using provider’s default ‘%s’",
                 target_mode,
-                self.mode.currentValue
+                current
             ),
             vim.log.levels.WARN,
             { title = "Agentic" }
@@ -152,7 +166,7 @@ function AgentConfigOptions:get_model(model_value)
     return getter(self.model, model_value)
 end
 
---- @param handle_mode_change fun(mode: string, is_config_option: boolean): any
+--- @param handle_mode_change fun(mode: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_mode_selector(handle_mode_change)
     local shown = self:_show_selector(
@@ -170,11 +184,11 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
     end)
 end
 
---- @param handle_model_change fun(mode: string, is_config_option: boolean): any
+--- @param handle_model_change fun(mode: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_model_selector(handle_model_change)
     return self:_show_selector(
-        self.mode,
+        self.model,
         "Select model to change:",
         handle_model_change
     )
@@ -182,7 +196,7 @@ end
 
 --- @param target agentic.acp.ConfigOption|nil
 --- @param prompt string
---- @param handle_change fun(mode: string, is_config_option: boolean): any
+--- @param handle_change fun(mode: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:_show_selector(target, prompt, handle_change)
     if not target or not target.options or #target.options == 0 then
@@ -207,7 +221,7 @@ function AgentConfigOptions:_show_selector(target, prompt, handle_change)
         end,
     }, function(selected_mode)
         if selected_mode and selected_mode.value ~= target.currentValue then
-            handle_change(selected_mode.value, true)
+            handle_change(selected_mode.value, false)
         end
     end)
 

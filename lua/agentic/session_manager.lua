@@ -133,6 +133,9 @@ function SessionManager:new(tab_page_id)
         self.widget.buf_nrs,
         function(mode_id, is_legacy)
             self:_handle_mode_change(mode_id, is_legacy)
+        end,
+        function(model_id)
+            self:_handle_model_change(model_id)
         end
     )
 
@@ -299,40 +302,6 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     end
 end
 
---- @param mode_id string
-function SessionManager:_handle_mode_option_change(mode_id)
-    if not self.session_id then
-        return
-    end
-
-    self.agent:set_config_option(
-        self.session_id,
-        "mode",
-        mode_id,
-        function(_result, err)
-            if err then
-                Logger.notify(
-                    "Failed to change mode option: " .. err.message,
-                    vim.log.levels.ERROR
-                )
-            else
-                self.widget:render_header(
-                    "chat",
-                    string.format("Mode: %s", mode_id)
-                )
-
-                Logger.notify(
-                    "Mode option changed to: " .. mode_id,
-                    vim.log.levels.INFO,
-                    {
-                        title = "Agentic Mode option changed",
-                    }
-                )
-            end
-        end
-    )
-end
-
 --- Send the newly selected mode to the agent and handle the response
 --- @param mode_id string
 --- @param is_legacy boolean|nil
@@ -375,10 +344,46 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
     end
 end
 
+--- Send the newly selected model to the agent
+--- @param model_id string
+function SessionManager:_handle_model_change(model_id)
+    if not self.session_id then
+        return
+    end
+
+    -- FIXIT: how to set legacy models?
+    self.agent:set_config_option(
+        self.session_id,
+        "model",
+        model_id,
+        function(_result, err)
+            if err then
+                Logger.notify(
+                    string.format(
+                        "Failed to change model to '%s': %s",
+                        model_id,
+                        err.message
+                    ),
+                    vim.log.levels.ERROR
+                )
+            else
+                Logger.notify(
+                    "Model changed to: " .. model_id,
+                    vim.log.levels.INFO,
+                    { title = "Agentic Model changed" }
+                )
+            end
+        end
+    )
+end
+
 --- @param mode_id string
 function SessionManager:_set_mode_to_chat_header(mode_id)
     local mode_name = self.config_options:get_mode_name(mode_id)
-    self.widget:render_header("chat", string.format("Mode: %s", mode_name))
+    self.widget:render_header(
+        "chat",
+        string.format("Mode: %s", mode_name or mode_id)
+    )
 end
 
 --- @param input_text string

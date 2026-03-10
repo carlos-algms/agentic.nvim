@@ -72,6 +72,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         test_bufnr = vim.api.nvim_create_buf(false, true)
         config_options = AgentConfigOptions:new(
             { chat = test_bufnr },
+            function() end,
             function() end
         )
     end)
@@ -79,6 +80,21 @@ describe("agentic.acp.AgentConfigOptions", function()
     after_each(function()
         multi_keymap_stub:revert()
         vim.api.nvim_buf_delete(test_bufnr, { force = true })
+    end)
+
+    describe("constructor", function()
+        it("registers keymaps for mode and model on all buffers", function()
+            -- multi_keymap_set is stubbed in before_each; constructor called there
+            -- Each buffer gets 2 keymaps (change_mode + switch_model),
+            -- we pass 1 buffer so expect 2 calls
+            assert.stub(multi_keymap_stub).was.called(2)
+
+            local mode_call = multi_keymap_stub.calls[1]
+            assert.equal("function", type(mode_call[3]))
+
+            local model_call = multi_keymap_stub.calls[2]
+            assert.equal("function", type(model_call[3]))
+        end)
     end)
 
     describe("set_options", function()
@@ -141,6 +157,26 @@ describe("agentic.acp.AgentConfigOptions", function()
                 assert.is_nil(config_options:get_mode("nonexistent"))
             end
         )
+    end)
+
+    describe("get_model", function()
+        it("returns matching model option by value", function()
+            config_options:set_options({ model_option })
+
+            local result = config_options:get_model("claude-sonnet")
+
+            assert.is_not_nil(result)
+            if result then
+                assert.equal("Sonnet", result.name)
+            end
+        end)
+
+        it("returns nil when model is unset or value not found", function()
+            assert.is_nil(config_options:get_model("claude-sonnet"))
+
+            config_options:set_options({ model_option })
+            assert.is_nil(config_options:get_model("nonexistent"))
+        end)
     end)
 
     describe("get_mode_name", function()
@@ -269,6 +305,31 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.spy(handler).was.called(0)
             assert.stub(notify_stub).was.called(0)
         end)
+
+        it(
+            "does not crash when no config options and no legacy modes exist",
+            function()
+                local fresh = AgentConfigOptions:new(
+                    { chat = test_bufnr },
+                    function() end,
+                    function() end
+                )
+                local handler = spy.new(function() end)
+
+                assert.has_no_errors(function()
+                    fresh:set_initial_mode(
+                        "nonexistent",
+                        handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
+                    )
+                end)
+
+                assert.spy(handler).was.called(0)
+                assert.stub(notify_stub).was.called(1)
+                assert.is_true(
+                    string.find(notify_stub.calls[1][1], "unknown") ~= nil
+                )
+            end
+        )
     end)
 
     describe("show_mode_selector", function()
@@ -295,7 +356,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         )
 
         it(
-            "calls handler with value and is_config_option=true on selection",
+            "calls handler with value and is_legacy=false on config-option selection",
             function()
                 local handler = spy.new(function() end)
                 select_stub:invokes(function(items, _opts, on_choice)
@@ -303,10 +364,10 @@ describe("agentic.acp.AgentConfigOptions", function()
                 end)
 
                 config_options:show_mode_selector(
-                    handler --[[@as fun(mode: string, is_config_option: boolean): any]]
+                    handler --[[@as fun(mode: string, is_legacy: boolean): any]]
                 )
 
-                assert.spy(handler).was.called_with("plan", true)
+                assert.spy(handler).was.called_with("plan", false)
             end
         )
 
@@ -335,6 +396,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             function()
                 local fresh = AgentConfigOptions:new(
                     { chat = test_bufnr },
+                    function() end,
                     function() end
                 )
                 fresh.legacy_agent_modes:set_modes({
@@ -371,6 +433,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         it("returns false when no modes exist at all", function()
             local fresh = AgentConfigOptions:new(
                 { chat = test_bufnr },
+                function() end,
                 function() end
             )
             local handler = function() end
@@ -380,12 +443,83 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
     end)
 
+    describe("show_model_selector", function()
+        --- @type TestStub
+        local select_stub
+
+        before_each(function()
+            config_options:set_options({ model_option })
+            select_stub = spy.stub(vim.ui, "select")
+        end)
+
+        after_each(function()
+            select_stub:revert()
+        end)
+
+        it("opens vim.ui.select with model options", function()
+            local shown = config_options:show_model_selector(function() end)
+
+            assert.is_true(shown)
+            assert.stub(select_stub).was.called(1)
+        end)
+
+        it(
+            "calls handler with selected model value and is_legacy=false",
+            function()
+                local handler = spy.new(function() end)
+                --- Add a second model so selection differs from current
+                local multi_model = vim.tbl_extend("force", model_option, {
+                    options = {
+                        {
+                            value = "claude-sonnet",
+                            name = "Sonnet",
+                            description = "Fast",
+                        },
+                        {
+                            value = "claude-opus",
+                            name = "Opus",
+                            description = "Smart",
+                        },
+                    },
+                }) --[[@as agentic.acp.ConfigOption]]
+                config_options:set_options({ multi_model })
+
+                select_stub:invokes(function(items, _opts, on_choice)
+                    on_choice(items[2])
+                end)
+
+                config_options:show_model_selector(
+                    handler --[[@as fun(model: string, is_legacy: boolean): any]]
+                )
+
+                assert.spy(handler).was.called_with("claude-opus", false)
+            end
+        )
+
+        it("returns false when no model options exist", function()
+            local fresh = AgentConfigOptions:new(
+                { chat = test_bufnr },
+                function() end,
+                function() end
+            )
+
+            assert.is_false(fresh:show_model_selector(function() end))
+            assert.stub(select_stub).was.called(0)
+        end)
+    end)
+
     describe("clear", function()
-        it("resets all fields", function()
+        it("resets all fields and legacy modes", function()
             config_options:set_options({
                 mode_option,
                 model_option,
                 thought_option,
+            })
+            config_options.legacy_agent_modes:set_modes({
+                availableModes = {
+                    { id = "legacy", name = "Legacy", description = "" },
+                },
+                currentModeId = "legacy",
             })
 
             config_options:clear()
@@ -393,6 +527,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.is_nil(config_options.mode)
             assert.is_nil(config_options.model)
             assert.is_nil(config_options.thought_level)
+            assert.is_nil(config_options.legacy_agent_modes:get_mode("legacy"))
+            assert.is_nil(config_options.legacy_agent_modes.current_mode_id)
         end)
     end)
 end)

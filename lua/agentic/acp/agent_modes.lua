@@ -101,8 +101,10 @@ function AgentModes:handle_agent_update_mode(mode_id)
     return true
 end
 
+--- Reset all modes and current selection
 function AgentModes:clear()
-    self.modes = {}
+    self._modes = {}
+    self.current_mode_id = nil
 end
 
 return AgentModes

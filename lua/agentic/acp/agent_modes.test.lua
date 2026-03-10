@@ -125,21 +125,26 @@ describe("agentic.acp.AgentModes", function()
             assert.is_false(agent_modes:handle_agent_update_mode("nonexistent"))
 
             assert.equal("normal", agent_modes.current_mode_id)
+            assert.stub(notify_stub).was.called(2)
             assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[2][2])
         end)
 
         it("returns false when modes list is empty", function()
             agent_modes:set_modes({ availableModes = {}, currentModeId = "" })
 
             assert.is_false(agent_modes:handle_agent_update_mode("plan"))
+            assert.stub(notify_stub).was.called(0)
         end)
     end)
 
     describe("clear", function()
-        it("resets modes", function()
+        it("resets modes and current_mode_id", function()
             agent_modes:clear()
 
-            assert.same({}, agent_modes.modes)
+            assert.is_nil(agent_modes:get_mode("normal"))
+            assert.is_nil(agent_modes:get_mode("plan"))
+            assert.is_nil(agent_modes.current_mode_id)
         end)
     end)
 end)

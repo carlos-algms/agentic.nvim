@@ -91,6 +91,78 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_on_session_update: config_option_update", function()
+        --- @type TestSpy
+        local render_header_spy
+        --- @type agentic.SessionManager
+        local session
+        --- @type integer
+        local test_bufnr
+
+        before_each(function()
+            render_header_spy = spy.new(function() end)
+            test_bufnr = vim.api.nvim_create_buf(false, true)
+
+            local AgentConfigOptions =
+                require("agentic.acp.agent_config_options")
+            local BufHelpers = require("agentic.utils.buf_helpers")
+            local keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
+
+            local config_opts = AgentConfigOptions:new(
+                { chat = test_bufnr },
+                function() end,
+                function() end
+            )
+
+            keymap_stub:revert()
+
+            session = {
+                config_options = config_opts,
+                widget = {
+                    render_header = render_header_spy,
+                    buf_nrs = { chat = test_bufnr },
+                },
+                _on_session_update = SessionManager._on_session_update,
+                _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
+                _handle_new_config_options = SessionManager._handle_new_config_options,
+            } --[[@as agentic.SessionManager]]
+        end)
+
+        after_each(function()
+            vim.api.nvim_buf_delete(test_bufnr, { force = true })
+        end)
+
+        it("sets config options and updates header on mode", function()
+            --- @type agentic.acp.ConfigOptionsUpdate
+            local update = {
+                sessionUpdate = "config_option_update",
+                configOptions = {
+                    {
+                        id = "mode-1",
+                        category = "mode",
+                        currentValue = "plan",
+                        description = "Mode",
+                        name = "Mode",
+                        options = {
+                            {
+                                value = "plan",
+                                name = "Plan",
+                                description = "",
+                            },
+                        },
+                    },
+                },
+            }
+
+            session:_on_session_update(update)
+
+            assert.is_not_nil(session.config_options.mode)
+            assert.equal("plan", session.config_options.mode.currentValue)
+            assert.spy(render_header_spy).was.called(1)
+            assert.equal("Mode: Plan", render_header_spy.calls[1][3])
+        end)
+    end)
+
     describe("_generate_welcome_header", function()
         it(
             "returns header with provider name, session id, and timestamp",

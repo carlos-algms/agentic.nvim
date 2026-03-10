@@ -90,6 +90,17 @@ describe("FilePicker:scan_files", function()
     end)
 
     describe("real commands", function()
+        local original_exclude_patterns
+
+        before_each(function()
+            original_exclude_patterns =
+                vim.tbl_extend("force", {}, FilePicker.GLOB_EXCLUDE_PATTERNS)
+        end)
+
+        after_each(function()
+            FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
+        end)
+
         it("should return same files in same order for all commands", function()
             -- Test rg
             FilePicker.CMD_RG[1] = original_cmd_rg
@@ -136,9 +147,6 @@ describe("FilePicker:scan_files", function()
         end)
 
         it("should use glob fallback when all commands fail", function()
-            local original_exclude_patterns =
-                vim.tbl_extend("force", {}, FilePicker.GLOB_EXCLUDE_PATTERNS)
-
             -- First, get files from rg for comparison
             FilePicker.CMD_RG[1] = original_cmd_rg
             FilePicker.CMD_FD[1] = "nonexistent_fd"
@@ -186,8 +194,6 @@ describe("FilePicker:scan_files", function()
             assert.are.same(rg_only, glob_only)
 
             assert.are.equal(#words_rg, #words_glob)
-
-            FilePicker.GLOB_EXCLUDE_PATTERNS = original_exclude_patterns
         end)
     end)
 end)

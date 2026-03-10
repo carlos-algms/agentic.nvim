@@ -624,8 +624,9 @@ function ACPClient:set_mode(session_id, mode_id, callback)
     return self:_send_request("session/set_mode", params, callback)
 end
 
+--- Set a config option value for a session
 --- @param session_id string
---- @param config_id agentic.acp.ConfigOption.Category
+--- @param config_id string
 --- @param config_value string
 --- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
 function ACPClient:set_config_option(
