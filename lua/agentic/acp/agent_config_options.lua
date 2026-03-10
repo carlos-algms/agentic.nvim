@@ -60,6 +60,8 @@ end
 
 --- @param configOptions agentic.acp.ConfigOption[]|nil
 function AgentConfigOptions:set_options(configOptions)
+    self:clear()
+
     if not configOptions then
         return
     end
