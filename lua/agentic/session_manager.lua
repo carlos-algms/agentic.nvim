@@ -134,8 +134,8 @@ function SessionManager:new(tab_page_id)
         function(mode_id, is_legacy)
             self:_handle_mode_change(mode_id, is_legacy)
         end,
-        function(model_id)
-            self:_handle_model_change(model_id)
+        function(model_id, is_legacy)
+            self:_handle_model_change(model_id, is_legacy)
         end
     )
 
@@ -346,35 +346,41 @@ end
 
 --- Send the newly selected model to the agent
 --- @param model_id string
-function SessionManager:_handle_model_change(model_id)
+--- @param is_legacy boolean|nil
+function SessionManager:_handle_model_change(model_id, is_legacy)
     if not self.session_id then
         return
     end
 
-    -- FIXIT: how to set legacy models?
-    self.agent:set_config_option(
-        self.session_id,
-        "model",
-        model_id,
-        function(_result, err)
-            if err then
-                Logger.notify(
-                    string.format(
-                        "Failed to change model to '%s': %s",
-                        model_id,
-                        err.message
-                    ),
-                    vim.log.levels.ERROR
-                )
-            else
-                Logger.notify(
-                    "Model changed to: " .. model_id,
-                    vim.log.levels.INFO,
-                    { title = "Agentic Model changed" }
-                )
-            end
+    local callback = function(_result, err)
+        if err then
+            Logger.notify(
+                string.format(
+                    "Failed to change model to '%s': %s",
+                    model_id,
+                    err.message
+                ),
+                vim.log.levels.ERROR
+            )
+        else
+            Logger.notify(
+                "Model changed to: " .. model_id,
+                vim.log.levels.INFO,
+                { title = "Agentic Model changed" }
+            )
         end
-    )
+    end
+
+    if is_legacy then
+        self.agent:set_model(self.session_id, model_id, callback)
+    else
+        self.agent:set_config_option(
+            self.session_id,
+            "model",
+            model_id,
+            callback
+        )
+    end
 end
 
 --- @param mode_id string
@@ -714,10 +720,17 @@ function SessionManager:new_session(opts)
         if response.configOptions then
             Logger.debug("Provider announce configOptions")
             self:_handle_new_config_options(response.configOptions)
-        elseif response.modes then
-            Logger.debug("Provider announce legacy mode")
-            self.config_options:set_legacy_modes(response.modes)
-            self:_set_mode_to_chat_header(response.modes.currentModeId)
+        else
+            if response.modes then
+                Logger.debug("Provider announce legacy mode")
+                self.config_options:set_legacy_modes(response.modes)
+                self:_set_mode_to_chat_header(response.modes.currentModeId)
+            end
+
+            if response.models then
+                Logger.debug("Provider announce legacy models")
+                self.config_options:set_legacy_models(response.models)
+            end
         end
 
         self.config_options:set_initial_mode(

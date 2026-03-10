@@ -7,21 +7,24 @@ local Logger = require("agentic.utils.logger")
 --- @field model? agentic.acp.ConfigOption
 --- @field thought_level? agentic.acp.ConfigOption
 --- @field legacy_agent_modes agentic.acp.AgentModes
+--- @field legacy_agent_models agentic.acp.AgentModels
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
 --- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
 --- @param set_mode_callback fun(mode_id: string, is_legacy: boolean)
---- @param set_model_callback fun(model_id: string)
+--- @param set_model_callback fun(model_id: string, is_legacy: boolean)
 --- @return agentic.acp.AgentConfigOptions
 function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
     local AgentModes = require("agentic.acp.agent_modes")
+    local AgentModels = require("agentic.acp.agent_models")
 
     self = setmetatable({
         mode = nil,
         model = nil,
         thought_level = nil,
         legacy_agent_modes = AgentModes:new(),
+        legacy_agent_models = AgentModels:new(),
     }, self)
 
     for _, bufnr in pairs(buffers) do
@@ -52,6 +55,7 @@ function AgentConfigOptions:clear()
     self.model = nil
     self.thought_level = nil
     self.legacy_agent_modes:clear()
+    self.legacy_agent_models:clear()
 end
 
 --- @param configOptions agentic.acp.ConfigOption[]|nil
@@ -77,6 +81,12 @@ end
 --- @param modes_info agentic.acp.ModesInfo
 function AgentConfigOptions:set_legacy_modes(modes_info)
     self.legacy_agent_modes:set_modes(modes_info)
+end
+
+--- Models from providers that don't support the new Config Options
+--- @param models_info agentic.acp.ModelsInfo
+function AgentConfigOptions:set_legacy_models(models_info)
+    self.legacy_agent_models:set_models(models_info)
 end
 
 --- @param target_mode string|nil
@@ -183,14 +193,22 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
     end)
 end
 
---- @param handle_model_change fun(mode: string, is_legacy: boolean): any
+--- @param handle_model_change fun(model_id: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_model_selector(handle_model_change)
-    return self:_show_selector(
+    local shown = self:_show_selector(
         self.model,
         "Select model to change:",
         handle_model_change
     )
+
+    if shown then
+        return true
+    end
+
+    return self.legacy_agent_models:show_model_selector(function(model_id)
+        handle_model_change(model_id, true)
+    end)
 end
 
 --- @param target agentic.acp.ConfigOption|nil

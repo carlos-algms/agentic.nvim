@@ -496,6 +496,45 @@ describe("agentic.acp.AgentConfigOptions", function()
             end
         )
 
+        it(
+            "falls back to legacy models and wraps callback with is_legacy=true",
+            function()
+                local fresh = AgentConfigOptions:new(
+                    { chat = test_bufnr },
+                    function() end,
+                    function() end
+                )
+                fresh.legacy_agent_models:set_models({
+                    availableModels = {
+                        {
+                            modelId = "default",
+                            name = "Default",
+                            description = "Default model",
+                        },
+                        {
+                            modelId = "opus",
+                            name = "Opus",
+                            description = "Most capable",
+                        },
+                    },
+                    currentModelId = "default",
+                })
+
+                local handler = spy.new(function() end)
+                select_stub:invokes(function(items, _opts, on_choice)
+                    on_choice(items[2])
+                end)
+
+                local shown = fresh:show_model_selector(
+                    handler --[[@as fun(model: string, is_legacy: boolean): any]]
+                )
+
+                assert.is_true(shown)
+                assert.stub(select_stub).was.called(1)
+                assert.spy(handler).was.called_with("opus", true)
+            end
+        )
+
         it("returns false when no model options exist", function()
             local fresh = AgentConfigOptions:new(
                 { chat = test_bufnr },
@@ -508,8 +547,30 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
     end)
 
+    describe("set_legacy_models", function()
+        it("stores legacy models info", function()
+            config_options:set_legacy_models({
+                availableModels = {
+                    {
+                        modelId = "opus",
+                        name = "Opus",
+                        description = "Most capable",
+                    },
+                },
+                currentModelId = "opus",
+            })
+
+            local model = config_options.legacy_agent_models:get_model("opus")
+            assert.is_not_nil(model)
+            assert.equal(
+                "opus",
+                config_options.legacy_agent_models.current_model_id
+            )
+        end)
+    end)
+
     describe("clear", function()
-        it("resets all fields and legacy modes", function()
+        it("resets all fields, legacy modes, and legacy models", function()
             config_options:set_options({
                 mode_option,
                 model_option,
@@ -521,6 +582,16 @@ describe("agentic.acp.AgentConfigOptions", function()
                 },
                 currentModeId = "legacy",
             })
+            config_options.legacy_agent_models:set_models({
+                availableModels = {
+                    {
+                        modelId = "opus",
+                        name = "Opus",
+                        description = "Most capable",
+                    },
+                },
+                currentModelId = "opus",
+            })
 
             config_options:clear()
 
@@ -529,6 +600,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.is_nil(config_options.thought_level)
             assert.is_nil(config_options.legacy_agent_modes:get_mode("legacy"))
             assert.is_nil(config_options.legacy_agent_modes.current_mode_id)
+            assert.is_nil(config_options.legacy_agent_models:get_model("opus"))
+            assert.is_nil(config_options.legacy_agent_models.current_model_id)
         end)
     end)
 end)

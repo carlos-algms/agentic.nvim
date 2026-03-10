@@ -644,6 +644,19 @@ function ACPClient:set_config_option(
     return self:_send_request("session/set_config_option", params, callback)
 end
 
+--- Set the provided model to the session
+--- @param session_id string
+--- @param model_id string
+--- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
+function ACPClient:set_model(session_id, model_id, callback)
+    local params = {
+        sessionId = session_id,
+        modelId = model_id,
+    }
+
+    self:_send_request("session/set_model", params, callback)
+end
+
 --- Stops current generation/tool execution, keeps session active for the next prompt
 --- @param session_id string
 function ACPClient:stop_generation(session_id)
