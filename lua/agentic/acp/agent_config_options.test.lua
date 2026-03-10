@@ -8,6 +8,9 @@ describe("agentic.acp.AgentConfigOptions", function()
     --- @type agentic.acp.AgentConfigOptions
     local config_options
 
+    --- @type TestStub
+    local multi_keymap_stub
+
     --- @type agentic.acp.ConfigOption
     local mode_option = {
         id = "mode-1",
@@ -58,9 +61,24 @@ describe("agentic.acp.AgentConfigOptions", function()
         },
     }
 
+    --- @type integer
+    local test_bufnr
+
     before_each(function()
+        local BufHelpers = require("agentic.utils.buf_helpers")
+        multi_keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
+
         AgentConfigOptions = require("agentic.acp.agent_config_options")
-        config_options = AgentConfigOptions:new()
+        test_bufnr = vim.api.nvim_create_buf(false, true)
+        config_options = AgentConfigOptions:new(
+            { chat = test_bufnr },
+            function() end
+        )
+    end)
+
+    after_each(function()
+        multi_keymap_stub:revert()
+        vim.api.nvim_buf_delete(test_bufnr, { force = true })
     end)
 
     describe("set_options", function()
@@ -125,6 +143,35 @@ describe("agentic.acp.AgentConfigOptions", function()
         )
     end)
 
+    describe("get_mode_name", function()
+        it("returns name from config option mode", function()
+            config_options:set_options({ mode_option })
+
+            assert.equal("Plan", config_options:get_mode_name("plan"))
+        end)
+
+        it("returns name from legacy mode", function()
+            config_options.legacy_agent_modes:set_modes({
+                availableModes = {
+                    {
+                        id = "legacy-mode",
+                        name = "Legacy",
+                        description = "Legacy mode",
+                    },
+                },
+                currentModeId = "legacy-mode",
+            })
+
+            assert.equal("Legacy", config_options:get_mode_name("legacy-mode"))
+        end)
+
+        it("returns nil when mode not found in either source", function()
+            config_options:set_options({ mode_option })
+
+            assert.is_nil(config_options:get_mode_name("nonexistent"))
+        end)
+    end)
+
     describe("set_initial_mode", function()
         --- @type TestStub
         local notify_stub
@@ -139,34 +186,65 @@ describe("agentic.acp.AgentConfigOptions", function()
             notify_stub:revert()
         end)
 
-        it("calls handler when default_mode differs from current", function()
+        it(
+            "calls handler when target differs from current config mode",
+            function()
+                local handler = spy.new(function() end)
+
+                config_options:set_initial_mode(
+                    "plan",
+                    handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
+                )
+
+                assert.spy(handler).was.called(1)
+                local args = handler.calls[1]
+                assert.equal("plan", args[1])
+                assert.is_false(args[2])
+            end
+        )
+
+        it("calls handler with is_legacy=true for legacy modes", function()
+            config_options.legacy_agent_modes:set_modes({
+                availableModes = {
+                    {
+                        id = "legacy-plan",
+                        name = "Legacy Plan",
+                        description = "",
+                    },
+                },
+                currentModeId = "legacy-normal",
+            })
+
             local handler = spy.new(function() end)
 
             config_options:set_initial_mode(
-                "plan",
-                handler --[[@as fun(mode: string): any]]
+                "legacy-plan",
+                handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
             )
 
-            assert.spy(handler).was.called_with("plan")
+            assert.spy(handler).was.called(1)
+            local args = handler.calls[1]
+            assert.equal("legacy-plan", args[1])
+            assert.is_true(args[2])
         end)
 
-        it("skips handler when default_mode matches currentValue", function()
+        it("skips handler when target matches currentValue", function()
             local handler = spy.new(function() end)
 
             config_options:set_initial_mode(
                 "normal",
-                handler --[[@as fun(mode: string): any]]
+                handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
             )
 
             assert.spy(handler).was.called(0)
         end)
 
-        it("warns when default_mode is not in options", function()
+        it("warns when target is not in any mode source", function()
             local handler = spy.new(function() end)
 
             config_options:set_initial_mode(
                 "nonexistent",
-                handler --[[@as fun(mode: string): any]]
+                handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
             )
 
             assert.spy(handler).was.called(0)
@@ -176,16 +254,16 @@ describe("agentic.acp.AgentConfigOptions", function()
             )
         end)
 
-        it("does nothing when default_mode is nil or empty", function()
+        it("does nothing when target is nil or empty", function()
             local handler = spy.new(function() end)
 
             config_options:set_initial_mode(
                 nil,
-                handler --[[@as fun(mode: string): any]]
+                handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
             )
             config_options:set_initial_mode(
                 "",
-                handler --[[@as fun(mode: string): any]]
+                handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
             )
 
             assert.spy(handler).was.called(0)
@@ -206,26 +284,15 @@ describe("agentic.acp.AgentConfigOptions", function()
             select_stub:revert()
         end)
 
-        it("returns false when mode is unset or has no options", function()
-            local handler = function() end
-            local fresh = AgentConfigOptions:new()
-            assert.is_false(fresh:show_mode_selector(handler))
+        it(
+            "returns true and opens vim.ui.select when config modes exist",
+            function()
+                local shown = config_options:show_mode_selector(function() end)
 
-            local empty_mode = vim.tbl_extend("force", mode_option, {
-                options = {},
-            }) --[[@as agentic.acp.ConfigOption]]
-            fresh:set_options({ empty_mode })
-            assert.is_false(fresh:show_mode_selector(handler))
-
-            assert.stub(select_stub).was.called(0)
-        end)
-
-        it("opens vim.ui.select and returns true", function()
-            local shown = config_options:show_mode_selector(function() end)
-
-            assert.is_true(shown)
-            assert.stub(select_stub).was.called(1)
-        end)
+                assert.is_true(shown)
+                assert.stub(select_stub).was.called(1)
+            end
+        )
 
         it(
             "calls handler with value and is_config_option=true on selection",
@@ -261,6 +328,71 @@ describe("agentic.acp.AgentConfigOptions", function()
             )
 
             assert.spy(handler).was.called(0)
+        end)
+
+        it(
+            "falls back to legacy modes and wraps callback with is_legacy=true",
+            function()
+                local fresh = AgentConfigOptions:new(
+                    { chat = test_bufnr },
+                    function() end
+                )
+                fresh.legacy_agent_modes:set_modes({
+                    availableModes = {
+                        {
+                            id = "legacy",
+                            name = "Legacy",
+                            description = "Legacy mode",
+                        },
+                        {
+                            id = "legacy-2",
+                            name = "Legacy 2",
+                            description = "Another",
+                        },
+                    },
+                    currentModeId = "legacy",
+                })
+
+                local handler = spy.new(function() end)
+                select_stub:invokes(function(items, _opts, on_choice)
+                    on_choice(items[2])
+                end)
+
+                local shown = fresh:show_mode_selector(
+                    handler --[[@as fun(mode: string, is_config_option: boolean): any]]
+                )
+
+                assert.is_true(shown)
+                assert.stub(select_stub).was.called(1)
+                assert.spy(handler).was.called_with("legacy-2", true)
+            end
+        )
+
+        it("returns false when no modes exist at all", function()
+            local fresh = AgentConfigOptions:new(
+                { chat = test_bufnr },
+                function() end
+            )
+            local handler = function() end
+
+            assert.is_false(fresh:show_mode_selector(handler))
+            assert.stub(select_stub).was.called(0)
+        end)
+    end)
+
+    describe("clear", function()
+        it("resets all fields", function()
+            config_options:set_options({
+                mode_option,
+                model_option,
+                thought_option,
+            })
+
+            config_options:clear()
+
+            assert.is_nil(config_options.mode)
+            assert.is_nil(config_options.model)
+            assert.is_nil(config_options.thought_level)
         end)
     end)
 end)

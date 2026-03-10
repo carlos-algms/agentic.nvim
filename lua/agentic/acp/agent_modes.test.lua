@@ -20,7 +20,7 @@ describe("agentic.acp.AgentModes", function()
 
     before_each(function()
         AgentModes = require("agentic.acp.agent_modes")
-        agent_modes = AgentModes:new({}, function() end)
+        agent_modes = AgentModes:new()
         agent_modes:set_modes(modes_info)
     end)
 
@@ -44,16 +44,10 @@ describe("agentic.acp.AgentModes", function()
     end)
 
     describe("show_mode_selector", function()
-        --- @type TestSpy
-        local callback_spy
         --- @type TestStub
         local select_stub
 
         before_each(function()
-            callback_spy = spy.new(function() end)
-            agent_modes =
-                AgentModes:new({}, callback_spy --[[@as fun(mode_id: string)]])
-            agent_modes:set_modes(modes_info)
             select_stub = spy.stub(vim.ui, "select")
         end)
 
@@ -61,65 +55,47 @@ describe("agentic.acp.AgentModes", function()
             select_stub:revert()
         end)
 
-        it("does nothing when modes list is empty", function()
+        it("returns false when modes list is empty", function()
             agent_modes:set_modes({ availableModes = {}, currentModeId = "" })
-            agent_modes:show_mode_selector()
+
+            local shown = agent_modes:show_mode_selector(function() end)
+
+            assert.is_false(shown)
             assert.stub(select_stub).was.called(0)
         end)
 
-        it("calls callback with id and is_config_option=false", function()
+        it("calls callback with selected mode id", function()
+            local callback_spy = spy.new(function() end)
             select_stub:invokes(function(items, _opts, on_choice)
                 on_choice(items[2])
             end)
 
-            agent_modes:show_mode_selector()
-            assert.spy(callback_spy).was.called_with("plan", false)
+            agent_modes:show_mode_selector(
+                callback_spy --[[@as fun(mode_id: string)]]
+            )
+
+            assert.spy(callback_spy).was.called_with("plan")
         end)
 
         it("does not call callback on current mode or cancel", function()
+            local callback_spy = spy.new(function() end)
+
             select_stub:invokes(function(items, _opts, on_choice)
                 on_choice(items[1])
             end)
-            agent_modes:show_mode_selector()
+            agent_modes:show_mode_selector(
+                callback_spy --[[@as fun(mode_id: string)]]
+            )
 
             select_stub:invokes(function(_items, _opts, on_choice)
                 on_choice(nil)
             end)
-            agent_modes:show_mode_selector()
+            agent_modes:show_mode_selector(
+                callback_spy --[[@as fun(mode_id: string)]]
+            )
 
             assert.spy(callback_spy).was.called(0)
         end)
-
-        it("delegates to agent_config_options when present", function()
-            local config_options_mock = {
-                show_mode_selector = spy.new(function()
-                    return true
-                end),
-            }
-            agent_modes.agent_config_options = config_options_mock --[[@as agentic.acp.AgentConfigOptions]]
-
-            agent_modes:show_mode_selector()
-
-            assert.spy(config_options_mock.show_mode_selector).was.called(1)
-            assert.stub(select_stub).was.called(0)
-        end)
-
-        it(
-            "falls back to legacy modes when config_options returns false",
-            function()
-                local config_options_mock = {
-                    show_mode_selector = spy.new(function()
-                        return false
-                    end),
-                }
-                agent_modes.agent_config_options = config_options_mock --[[@as agentic.acp.AgentConfigOptions]]
-
-                agent_modes:show_mode_selector()
-
-                assert.spy(config_options_mock.show_mode_selector).was.called(1)
-                assert.stub(select_stub).was.called(1)
-            end
-        )
     end)
 
     describe("handle_agent_update_mode", function()
@@ -160,13 +136,9 @@ describe("agentic.acp.AgentModes", function()
     end)
 
     describe("clear", function()
-        it("resets agent_config_options and modes", function()
-            --- @diagnostic disable-next-line: missing-fields
-            agent_modes.agent_config_options = {} --[[@as agentic.acp.AgentConfigOptions]]
-
+        it("resets modes", function()
             agent_modes:clear()
 
-            assert.is_nil(agent_modes.agent_config_options)
             assert.same({}, agent_modes.modes)
         end)
     end)
