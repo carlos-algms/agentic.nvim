@@ -21,9 +21,8 @@ function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
         mode = nil,
         model = nil,
         thought_level = nil,
+        legacy_agent_modes = AgentModes:new(),
     }, self)
-
-    self.legacy_agent_modes = AgentModes:new()
 
     for _, bufnr in pairs(buffers) do
         BufHelpers.multi_keymap_set(
