@@ -609,7 +609,7 @@ function ACPClient:send_prompt(session_id, prompt, callback)
         prompt = prompt,
     }
 
-    return self:_send_request("session/prompt", params, callback)
+    self:_send_request("session/prompt", params, callback)
 end
 
 --- Set the agent mode for a session
@@ -621,7 +621,8 @@ function ACPClient:set_mode(session_id, mode_id, callback)
         sessionId = session_id,
         modeId = mode_id,
     }
-    return self:_send_request("session/set_mode", params, callback)
+
+    self:_send_request("session/set_mode", params, callback)
 end
 
 --- Set a config option value for a session
@@ -641,7 +642,7 @@ function ACPClient:set_config_option(
         value = config_value,
     }
 
-    return self:_send_request("session/set_config_option", params, callback)
+    self:_send_request("session/set_config_option", params, callback)
 end
 
 --- Set the provided model to the session
