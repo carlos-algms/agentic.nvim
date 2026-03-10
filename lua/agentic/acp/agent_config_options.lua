@@ -188,9 +188,21 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
         return true
     end
 
-    return self.legacy_agent_modes:show_mode_selector(function(mode)
-        handle_mode_change(mode, true)
-    end)
+    local legacy_shown = self.legacy_agent_modes:show_mode_selector(
+        function(mode)
+            handle_mode_change(mode, true)
+        end
+    )
+
+    if not legacy_shown then
+        Logger.notify(
+            "This provider does not support mode switching",
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+    end
+
+    return legacy_shown
 end
 
 --- @param handle_model_change fun(model_id: string, is_legacy: boolean): any
@@ -206,9 +218,21 @@ function AgentConfigOptions:show_model_selector(handle_model_change)
         return true
     end
 
-    return self.legacy_agent_models:show_model_selector(function(model_id)
-        handle_model_change(model_id, true)
-    end)
+    local legacy_shown = self.legacy_agent_models:show_model_selector(
+        function(model_id)
+            handle_model_change(model_id, true)
+        end
+    )
+
+    if not legacy_shown then
+        Logger.notify(
+            "This provider does not support model switching",
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+    end
+
+    return legacy_shown
 end
 
 --- @param target agentic.acp.ConfigOption|nil

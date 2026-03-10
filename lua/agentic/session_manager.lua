@@ -310,7 +310,7 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
         return
     end
 
-    local function callback(_result, err)
+    local function callback(result, err)
         if err then
             Logger.notify(
                 string.format(
@@ -323,6 +323,11 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
         else
             -- needed for backward compatibility
             self.config_options.legacy_agent_modes.current_mode_id = mode_id
+
+            if result and result.configOptions then
+                Logger.debug("received result after setting mode")
+                self:_handle_new_config_options(result.configOptions)
+            end
 
             self:_set_mode_to_chat_header(mode_id)
 
@@ -352,7 +357,7 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
         return
     end
 
-    local callback = function(_result, err)
+    local callback = function(result, err)
         if err then
             Logger.notify(
                 string.format(
@@ -363,6 +368,11 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
                 vim.log.levels.ERROR
             )
         else
+            if result and result.configOptions then
+                Logger.debug("received result after setting model")
+                self:_handle_new_config_options(result.configOptions)
+            end
+
             Logger.notify(
                 "Model changed to: " .. model_id,
                 vim.log.levels.INFO,

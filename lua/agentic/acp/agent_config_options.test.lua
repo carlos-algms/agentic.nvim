@@ -430,7 +430,10 @@ describe("agentic.acp.AgentConfigOptions", function()
             end
         )
 
-        it("returns false when no modes exist at all", function()
+        it("returns false and notifies when no modes exist at all", function()
+            local Logger = require("agentic.utils.logger")
+            local notify_stub = spy.stub(Logger, "notify")
+
             local fresh = AgentConfigOptions:new(
                 { chat = test_bufnr },
                 function() end,
@@ -440,6 +443,13 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             assert.is_false(fresh:show_mode_selector(handler))
             assert.stub(select_stub).was.called(0)
+            assert.stub(notify_stub).was.called(1)
+            assert.truthy(
+                string.find(notify_stub.calls[1][1], "mode switching")
+            )
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+
+            notify_stub:revert()
         end)
     end)
 
@@ -535,7 +545,10 @@ describe("agentic.acp.AgentConfigOptions", function()
             end
         )
 
-        it("returns false when no model options exist", function()
+        it("returns false and notifies when no model options exist", function()
+            local Logger = require("agentic.utils.logger")
+            local notify_stub = spy.stub(Logger, "notify")
+
             local fresh = AgentConfigOptions:new(
                 { chat = test_bufnr },
                 function() end,
@@ -544,6 +557,13 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             assert.is_false(fresh:show_model_selector(function() end))
             assert.stub(select_stub).was.called(0)
+            assert.stub(notify_stub).was.called(1)
+            assert.truthy(
+                string.find(notify_stub.calls[1][1], "model switching")
+            )
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+
+            notify_stub:revert()
         end)
     end)
 
