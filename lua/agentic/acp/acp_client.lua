@@ -260,7 +260,7 @@ function ACPClient:_handle_message(message)
     -- Check if this is a notification (has method but no id, or has both method and id for notifications)
     if message.method and not message.result and not message.error then
         -- This is a notification
-        self:_handle_notification(message.id, message.method, message.params)
+        self:__handle_notification(message.id, message.method, message.params)
     elseif message.id and (message.result or message.error) then
         local callback = self.callbacks[message.id]
         if callback then
@@ -279,10 +279,11 @@ function ACPClient:_handle_message(message)
     end
 end
 
+--- @protected
 --- @param message_id number
 --- @param method string
 --- @param params table
-function ACPClient:_handle_notification(message_id, method, params)
+function ACPClient:__handle_notification(message_id, method, params)
     if method == "session/update" then
         self:__handle_session_update(params)
     elseif method == "session/request_permission" then

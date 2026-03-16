@@ -95,8 +95,10 @@ local ConfigDefault = {
 
         ["cursor-acp"] = {
             name = "Cursor Agent ACP",
-            command = "cursor-agent-acp",
-            args = {},
+            command = "cursor-agent",
+            args = {
+                "acp",
+            },
             env = {},
         },
 
@@ -236,6 +238,7 @@ local ConfigDefault = {
     --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",
+        in_progress = "󰔛",
         completed = "✔",
         failed = "",
     },
