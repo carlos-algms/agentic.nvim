@@ -22,21 +22,6 @@ Theme.HL_GROUPS = {
     SPINNER_BUSY = "AgenticSpinnerBusy",
 }
 
-local COLORS = {
-    diff_delete_word_bg = "#9a3c3c",
-    diff_add_word_bg = "#155729",
-    status_pending_bg = "#5f4d8f",
-    status_completed_bg = "#2d5a3d",
-    status_failed_bg = "#7a2d2d",
-
-    title_bg = "#2787b0",
-    title_fg = "#000000",
-
-    spinner_generating_fg = "#61afef",
-    spinner_thinking_fg = "#c678dd",
-    spinner_searching_fg = "#e5c07b",
-}
-
 --- A lang map of extension to language identifier for markdown code fences
 --- Keep only possible unknown mappings
 local lang_map = {
@@ -72,22 +57,23 @@ function Theme.setup()
         -- Diff highlights
         { Theme.HL_GROUPS.DIFF_DELETE, { link = "DiffDelete" } },
         { Theme.HL_GROUPS.DIFF_ADD, { link = "DiffAdd" } },
-        { Theme.HL_GROUPS.DIFF_DELETE_WORD, { bg = COLORS.diff_delete_word_bg, bold = true } },
-        { Theme.HL_GROUPS.DIFF_ADD_WORD, { bg = COLORS.diff_add_word_bg, bold = true } },
+        -- TODO: Add better link for these two groups
+        { Theme.HL_GROUPS.DIFF_DELETE_WORD, { link = "DiffDelete", bold = true } },
+        { Theme.HL_GROUPS.DIFF_ADD_WORD, { link = "DiffAdd", bold = true } },
 
         -- Status highlights
-        { Theme.HL_GROUPS.STATUS_PENDING, { bg = COLORS.status_pending_bg } },
-        { Theme.HL_GROUPS.STATUS_COMPLETED, { bg = COLORS.status_completed_bg } },
-        { Theme.HL_GROUPS.STATUS_FAILED, { bg = COLORS.status_failed_bg } },
+        { Theme.HL_GROUPS.STATUS_PENDING, { link = "InfoFloat" } },
+        { Theme.HL_GROUPS.STATUS_COMPLETED, { link = "OkFloat" } },
+        { Theme.HL_GROUPS.STATUS_FAILED, { link = "ErrorFloat" } },
         { Theme.HL_GROUPS.CODE_BLOCK_FENCE, { link = "Directory" } },
 
         -- Title highlight
-        { Theme.HL_GROUPS.WIN_BAR_TITLE, { bg = COLORS.title_bg, fg = COLORS.title_fg, bold = true } },
+        { Theme.HL_GROUPS.WIN_BAR_TITLE, { link = "Title", bold = true } },
 
         -- Spinner highlights
-        { Theme.HL_GROUPS.SPINNER_GENERATING, { fg = COLORS.spinner_generating_fg, bold = true } },
-        { Theme.HL_GROUPS.SPINNER_THINKING, { fg = COLORS.spinner_thinking_fg, bold = true } },
-        { Theme.HL_GROUPS.SPINNER_SEARCHING, { fg = COLORS.spinner_searching_fg, bold = true } },
+        { Theme.HL_GROUPS.SPINNER_GENERATING, { link = "Constant", bold = true } },
+        { Theme.HL_GROUPS.SPINNER_THINKING, { link = "Float", bold = true } },
+        { Theme.HL_GROUPS.SPINNER_SEARCHING, { link = "Structure", bold = true } },
         { Theme.HL_GROUPS.SPINNER_BUSY, { link = "Comment" } },
     }
     -- stylua: ignore end
