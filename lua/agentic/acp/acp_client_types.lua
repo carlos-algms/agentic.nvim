@@ -86,9 +86,12 @@
 --- | "low"
 
 --- @class agentic.acp.RawInput
---- @field file_path string
+--- @field file_path? string
+--- @field filePath? string OpenCode was sending it camelCase
 --- @field new_string? string
+--- @field newString? string OpenCode was sending it camelCase
 --- @field old_string? string
+--- @field oldString? string OpenCode was sending it camelCase
 --- @field replace_all? boolean
 --- @field description? string
 --- @field command? string

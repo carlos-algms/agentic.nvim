@@ -389,6 +389,26 @@ function ACPClient:__build_tool_call_message(update)
         end
     end
 
+    -- Fallback: build diff from rawInput when content is missing (e.g. OpenCode)
+    local raw_input = update.rawInput
+
+    if not message.diff and update.kind == "edit" and raw_input then
+        local new_string = raw_input.new_string or raw_input.newString
+        local old_string = raw_input.old_string or raw_input.oldString
+
+        if new_string then
+            message.diff = {
+                new = self:safe_split(new_string),
+                old = self:safe_split(old_string),
+                all = raw_input.replace_all or false,
+            }
+        end
+    end
+
+    if not message.file_path and raw_input then
+        message.file_path = raw_input.file_path or raw_input.filePath
+    end
+
     if not message.file_path and update.locations then
         local first_location = update.locations[1]
         if first_location and first_location.path then
