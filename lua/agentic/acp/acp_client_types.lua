@@ -97,9 +97,19 @@
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
 
---- @class agentic.acp.ToolCall
+--- Shared base fields for ToolCall and ToolCallUpdate.
+--- In the ACP spec, ToolCallUpdate is a partial version where all fields
+--- except toolCallId are optional. ToolCall (initial) additionally requires title.
+--- @class agentic.acp.ToolCallBase
 --- @field toolCallId string
+--- @field title? string
+--- @field kind? agentic.acp.ToolKind
+--- @field status? agentic.acp.ToolCallStatus
+--- @field content? agentic.acp.ACPToolCallContent[]
+--- @field locations? agentic.acp.ToolCallLocation[]
 --- @field rawInput? agentic.acp.RawInput
+--- @field rawOutput? table
+--- @field _meta? table<string, any>
 
 --- @class agentic.acp.ToolCallRegularContent
 --- @field type "content"
@@ -108,7 +118,7 @@
 --- @class agentic.acp.ToolCallDiffContent
 --- @field type "diff"
 --- @field path string
---- @field oldText string
+--- @field oldText? string
 --- @field newText string
 
 --- @alias agentic.acp.ACPToolCallContent
@@ -179,22 +189,16 @@
 --- @field params? { sessionId: string, update: agentic.acp.SessionUpdateMessage }
 --- @field error? agentic.acp.ACPError
 
---- @class agentic.acp.ToolCallMessage
+--- Initial tool call notification (sessionUpdate="tool_call").
+--- Per ACP JSON schema, only toolCallId and title are required.
+--- @class agentic.acp.ToolCallMessage : agentic.acp.ToolCallBase
 --- @field sessionUpdate "tool_call"
---- @field toolCallId string
---- @field title string most likely the command to be executed
---- @field kind agentic.acp.ToolKind
---- @field status agentic.acp.ToolCallStatus
---- @field content? agentic.acp.ACPToolCallContent[]
---- @field locations? agentic.acp.ToolCallLocation[]
---- @field rawInput? agentic.acp.RawInput
+--- @field title string
 
---- @class agentic.acp.ToolCallUpdate
+--- Tool call progress update (sessionUpdate="tool_call_update").
+--- Only toolCallId is required. All other fields are optional — only changed fields are sent.
+--- @class agentic.acp.ToolCallUpdate : agentic.acp.ToolCallBase
 --- @field sessionUpdate "tool_call_update"
---- @field toolCallId string
---- @field status? agentic.acp.ToolCallStatus
---- @field content? agentic.acp.ACPToolCallContent[]
---- @field rawOutput? table Not all providers are sending it, seems non standard
 
 --- @class agentic.acp.PlanUpdate
 --- @field sessionUpdate "plan"
@@ -235,10 +239,12 @@
 --- @field name string
 --- @field kind "allow_once" | "allow_always" | "reject_once" | "reject_always"
 
+--- Permission request (session/request_permission JSON-RPC request).
+--- Per ACP spec, toolCall is a ToolCallUpdate (partial) — same shape used in tool_call_update.
 --- @class agentic.acp.RequestPermission
 --- @field options agentic.acp.PermissionOption[]
 --- @field sessionId string
---- @field toolCall agentic.acp.ToolCall
+--- @field toolCall agentic.acp.ToolCallBase
 
 --- @class agentic.acp.RequestPermissionOutcome
 --- @field outcome "cancelled" | "selected"
