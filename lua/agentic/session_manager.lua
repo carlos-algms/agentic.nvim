@@ -27,8 +27,8 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
---- @param data agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
+--- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
+--- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
@@ -952,6 +952,16 @@ function SessionManager:new_session(opts)
 
     self.agent:create_session(handlers, function(response, err)
         self.status_animation:stop()
+
+        --- @type agentic.UserConfig.CreateSessionResponseData
+        local hook_data = {
+            session_id = response and response.sessionId,
+            tab_page_id = self.tab_page_id,
+            response = response,
+            err = err,
+        }
+
+        P.invoke_hook("on_create_session_response", hook_data)
 
         if err or not response then
             -- no log here, already logged in create_session

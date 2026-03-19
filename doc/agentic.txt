@@ -594,6 +594,12 @@ Event hooks ~
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
+      on_create_session_response = function(data)
+        -- data.response: table|nil - The ACP session creation response (nil if err is set)
+        -- data.err: table|nil - Error details if session creation failed
+        -- data.session_id: string
+        -- data.tab_page_id: number
+      end,
       on_prompt_submit = function(data)
         -- data.prompt: string
         -- data.session_id: string

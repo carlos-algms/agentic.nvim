@@ -23,6 +23,13 @@
 ---
 --- @alias agentic.UserConfig.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts|agentic.UserConfig.HeaderRenderFn|nil>
 
+--- Data passed to the on_create_session_response hook
+--- @class agentic.UserConfig.CreateSessionResponseData
+--- @field session_id string|nil
+--- @field tab_page_id number
+--- @field response agentic.acp.SessionCreationResponse|nil
+--- @field err? agentic.acp.ACPError
+
 --- Data passed to the on_prompt_submit hook
 --- @class agentic.UserConfig.PromptSubmitData
 --- @field prompt string The user's prompt text
@@ -164,6 +171,7 @@
 --- @field tool_calls agentic.UserConfig.Folding.ToolCalls
 
 --- @class agentic.UserConfig.Hooks
+--- @field on_create_session_response? fun(data: agentic.UserConfig.CreateSessionResponseData): nil
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
@@ -470,6 +478,7 @@ local ConfigDefault = {
     },
 
     hooks = {
+        on_create_session_response = nil,
         on_prompt_submit = nil,
         on_response_complete = nil,
         on_session_update = nil,

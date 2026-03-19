@@ -822,6 +822,21 @@ integrating with other plugins.
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
+      -- Called when a new ACP session is created (or fails to create)
+      on_create_session_response = function(data)
+        -- data.session_id: string|nil - The ACP session ID (nil if err is set)
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.response: table|nil - The ACP session creation response (nil if err is set)
+        -- data.err: table|nil - Error details if session creation failed
+        if data.response then
+          vim.notify("New session: " .. data.response.sessionId)
+        end
+
+        if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
+          vim.t[data.tab_page_id].agentic_usage = nil
+        end
+      end,
+
       -- Called when the user submits a prompt
       on_prompt_submit = function(data)
         -- data.prompt: string - The user's prompt text
