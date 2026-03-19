@@ -405,6 +405,7 @@ describe("agentic.ui.MessageWriter", function()
                 status = "pending",
                 kind = "edit",
                 argument = "/test.lua",
+                file_path = "/test.lua",
                 diff = {
                     old = { "line1", "line2", "line3" },
                     new = { "line1", "inserted", "line2", "line3" },

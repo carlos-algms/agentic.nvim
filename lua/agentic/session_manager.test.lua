@@ -447,7 +447,11 @@ describe("agentic.SessionManager", function()
                 },
                 status_animation = { start = function() end },
                 _clear_diff_in_buffer = function() end,
-                chat_history = { update_tool_call = function() end },
+                _on_tool_call = function() end,
+                chat_history = {
+                    update_tool_call = function() end,
+                    add_message = function() end,
+                },
             } --[[@as agentic.SessionManager]]
         end
 
