@@ -1,4 +1,3 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -35,14 +34,18 @@ describe("config selector", function()
                 function() end,
                 function() end
             )
+            ---@diagnostic disable-next-line: missing-fields
             config:set_options({
+                ---@diagnostic disable-next-line: missing-fields
                 {
                     id = "model-1",
                     category = "model",
                     currentValue = "m2",
                     name = "Model",
                     options = {
+                        ---@diagnostic disable-next-line: missing-fields
                         { value = "m1", name = "M1" },
+                        ---@diagnostic disable-next-line: missing-fields
                         { value = "m2", name = "M2" },
                     },
                 },
@@ -50,14 +53,18 @@ describe("config selector", function()
 
             -- Simulate provider update after selection
             local handle_model_change = function(model_id)
+                ---@diagnostic disable-next-line: missing-fields
                 config:set_options({
+                    ---@diagnostic disable-next-line: missing-fields
                     {
                         id = "model-1",
                         category = "model",
                         currentValue = model_id,
                         name = "Model",
                         options = {
+                            ---@diagnostic disable-next-line: missing-fields
                             { value = "m1", name = "M1" },
+                            ---@diagnostic disable-next-line: missing-fields
                             { value = "m2", name = "M2" },
                         },
                     },
@@ -89,7 +96,7 @@ describe("config selector", function()
     describe("AgentModels (legacy provider integration)", function()
         it("marks initial legacy model and updates after success", function()
             -- Setup minimal session that uses the REAL _handle_model_change logic
-            --- @type agentic.SessionManager
+            ---@type any
             local session = {
                 session_id = "s1",
                 config_options = AgentConfigOptions:new(
@@ -102,8 +109,9 @@ describe("config selector", function()
                         callback({}, nil) -- Success
                     end,
                 },
+                ---@diagnostic disable-next-line: invisible
                 _handle_model_change = SessionManager._handle_model_change,
-            } --[[@as agentic.SessionManager]]
+            }
 
             session.config_options:set_legacy_models({
                 availableModels = {
@@ -124,6 +132,7 @@ describe("config selector", function()
             assert.same({ "  M1: D1", "● M2: D2" }, first_render)
 
             -- Call the REAL _handle_model_change
+            ---@diagnostic disable-next-line: invisible
             session:_handle_model_change("m1", true)
 
             -- Verify the fix: legacy_agent_models state should be updated via SessionManager callback
@@ -142,6 +151,7 @@ describe("config selector", function()
             -- Selection logic triggers model change handler
             session.config_options:show_model_selector(
                 function(model_id, is_legacy)
+                    ---@diagnostic disable-next-line: invisible
                     session:_handle_model_change(model_id, is_legacy)
                 end
             )
