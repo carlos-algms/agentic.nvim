@@ -16,7 +16,8 @@
       "redundant-value": "Warning",
       "need-check-nil": "Error",
       "undefined-field": "Error",
-      "missing-parameter": "Error"
+      "missing-parameter": "Error",
+      "param-type-mismatch": "Error"
     },
     "neededFileStatus": {
       "codestyle-check": "None",

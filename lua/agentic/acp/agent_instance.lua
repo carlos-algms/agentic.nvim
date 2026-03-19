@@ -6,6 +6,7 @@
 
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local ACPClient = require("agentic.acp.acp_client")
 
 --- @class agentic.acp.AgentInstance
 --- @field chat_widget agentic.ui.ChatWidget
@@ -42,42 +43,7 @@ function AgentInstance.get_instance(provider_name, on_ready)
         "Creating new ACP agent instance for provider: " .. provider_name
     )
 
-    if provider_name == "claude-acp" then
-        local ClaudeACPAdapter =
-            require("agentic.acp.adapters.claude_acp_adapter")
-        client = ClaudeACPAdapter:new(config, on_ready)
-    elseif provider_name == "claude-agent-acp" then
-        local ClaudeAgentACPAdapter =
-            require("agentic.acp.adapters.claude_agent_acp_adapter")
-        client = ClaudeAgentACPAdapter:new(config, on_ready)
-    elseif provider_name == "codex-acp" then
-        local CodexACPAdapter =
-            require("agentic.acp.adapters.codex_acp_adapter")
-        client = CodexACPAdapter:new(config, on_ready)
-    elseif provider_name == "gemini-acp" then
-        local GeminiACPAdapter =
-            require("agentic.acp.adapters.gemini_acp_adapter")
-        client = GeminiACPAdapter:new(config, on_ready)
-    elseif provider_name == "opencode-acp" then
-        local OpenCodeACPAdapter =
-            require("agentic.acp.adapters.opencode_acp_adapter")
-        client = OpenCodeACPAdapter:new(config, on_ready)
-    elseif provider_name == "cursor-acp" then
-        local CursorACPAdapter =
-            require("agentic.acp.adapters.cursor_acp_adapter")
-        client = CursorACPAdapter:new(config, on_ready)
-    elseif provider_name == "auggie-acp" then
-        local AuggieACPAdapter =
-            require("agentic.acp.adapters.auggie_acp_adapter")
-        client = AuggieACPAdapter:new(config, on_ready)
-    elseif provider_name == "mistral-vibe-acp" then
-        local MistralVibeACPAdapter =
-            require("agentic.acp.adapters.mistral_vibe_acp_adapter")
-        client = MistralVibeACPAdapter:new(config, on_ready)
-    else
-        error("Unsupported ACP provider: " .. provider_name)
-    end
-
+    client = ACPClient:new(config, on_ready)
     AgentInstance._instances[provider_name] = client
 
     return client

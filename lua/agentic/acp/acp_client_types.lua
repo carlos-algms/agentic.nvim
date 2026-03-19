@@ -97,20 +97,6 @@
 --- @field query? string Usually from the web_search tool
 --- @field timeout? number
 
---- Shared base fields for ToolCall and ToolCallUpdate.
---- In the ACP spec, ToolCallUpdate is a partial version where all fields
---- except toolCallId are optional. ToolCall (initial) additionally requires title.
---- @class agentic.acp.ToolCallBase
---- @field toolCallId string
---- @field title? string
---- @field kind? agentic.acp.ToolKind
---- @field status? agentic.acp.ToolCallStatus
---- @field content? agentic.acp.ACPToolCallContent[]
---- @field locations? agentic.acp.ToolCallLocation[]
---- @field rawInput? agentic.acp.RawInput
---- @field rawOutput? table
---- @field _meta? table<string, any>
-
 --- @class agentic.acp.ToolCallRegularContent
 --- @field type "content"
 --- @field content agentic.acp.Content
@@ -189,11 +175,24 @@
 --- @field params? { sessionId: string, update: agentic.acp.SessionUpdateMessage }
 --- @field error? agentic.acp.ACPError
 
+--- Shared base fields for ToolCall and ToolCallUpdate.
+--- In the ACP spec, ToolCallUpdate is a partial version where all fields
+--- except toolCallId are optional. ToolCall (initial) additionally requires title.
+--- @class agentic.acp.ToolCallBase
+--- @field toolCallId string
+--- @field title? string
+--- @field kind? agentic.acp.ToolKind
+--- @field status? agentic.acp.ToolCallStatus
+--- @field content? agentic.acp.ACPToolCallContent[]
+--- @field locations? agentic.acp.ToolCallLocation[]
+--- @field rawInput? agentic.acp.RawInput
+--- @field rawOutput? table
+--- @field _meta? table<string, any>
+
 --- Initial tool call notification (sessionUpdate="tool_call").
 --- Per ACP JSON schema, only toolCallId and title are required.
 --- @class agentic.acp.ToolCallMessage : agentic.acp.ToolCallBase
 --- @field sessionUpdate "tool_call"
---- @field title string
 
 --- Tool call progress update (sessionUpdate="tool_call_update").
 --- Only toolCallId is required. All other fields are optional — only changed fields are sent.
@@ -280,7 +279,7 @@
 --- @field on_request_permission agentic.acp.ClientHandlers.on_request_permission
 --- @field on_error agentic.acp.ClientHandlers.on_error
 --- @field on_tool_call fun(tool_call: agentic.ui.MessageWriter.ToolCallBlock): nil
---- @field on_tool_call_update fun(tool_call: agentic.ui.MessageWriter.ToolCallBase): nil
+--- @field on_tool_call_update fun(tool_call: agentic.ui.MessageWriter.ToolCallBlock): nil
 
 --- @class agentic.acp.ACPProviderConfig
 --- @field name? string Provider name

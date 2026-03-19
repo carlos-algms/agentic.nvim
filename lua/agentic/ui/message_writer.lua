@@ -24,21 +24,18 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @class agentic.ui.MessageWriter.ToolCallDiff
 --- @field new string[]
 --- @field old string[]
---- @field all? boolean
+--- @field all? boolean TODO: check if it's still necessary to replace all occurrences or the agents send multiple requests
 
---- @class agentic.ui.MessageWriter.ToolCallBase
+--- @class agentic.ui.MessageWriter.ToolCallBlock
 --- @field tool_call_id string
---- @field status agentic.acp.ToolCallStatus
---- @field body? string[]
---- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field kind? agentic.acp.ToolKind
 --- @field argument? string
-
---- @class agentic.ui.MessageWriter.ToolCallBlock : agentic.ui.MessageWriter.ToolCallBase
---- @field kind agentic.acp.ToolKind
---- @field argument string
+--- @field file_path? string
 --- @field extmark_id? integer Range extmark spanning the block
 --- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
+--- @field status? agentic.acp.ToolCallStatus
+--- @field body? string[]
+--- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -256,7 +253,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
             bufnr,
             start_row,
             end_row,
-            kind,
+            kind or "other",
             highlight_ranges
         )
 
@@ -284,7 +281,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     end)
 end
 
---- @param tool_call_block agentic.ui.MessageWriter.ToolCallBase
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:update_tool_call_block(tool_call_block)
     local tracker = self.tool_call_blocks[tool_call_block.tool_call_id]
 
@@ -356,6 +353,16 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 return false
             end
 
+            -- Re-write header line so updated kind/argument are visible
+            local header = self:_build_header_line(tracker)
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                start_row,
+                start_row + 1,
+                false,
+                { header }
+            )
+
             self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
             tracker.decoration_extmark_ids =
                 self:_render_decorations(start_row, old_end_row)
@@ -422,19 +429,28 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     end)
 end
 
+--- Build the header line string for a tool call block
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
---- @return string[] lines Array of lines to render
---- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
-function MessageWriter:_prepare_block_lines(tool_call_block)
-    local kind = tool_call_block.kind
-    local argument = tool_call_block.argument
+--- @return string header
+function MessageWriter:_build_header_line(tool_call_block)
+    local kind = tool_call_block.kind or "other"
+    local argument = tool_call_block.argument or ""
 
     -- Sanitize argument to prevent newlines in the header line
     -- nvim_buf_set_lines doesn't accept array items with embedded newlines
     argument = argument:gsub("\n", "\\n")
 
+    return string.format(" %s(%s) ", kind, argument)
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string[] lines Array of lines to render
+--- @return agentic.ui.MessageWriter.HighlightRange[] highlight_ranges Array of highlight range specifications (relative to returned lines)
+function MessageWriter:_prepare_block_lines(tool_call_block)
+    local kind = tool_call_block.kind
+
     local lines = {
-        string.format(" %s(%s) ", kind, argument),
+        self:_build_header_line(tool_call_block),
     }
 
     --- @type agentic.ui.MessageWriter.HighlightRange[]
@@ -456,14 +472,16 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             table.insert(highlight_ranges, range)
         end
     elseif tool_call_block.diff then
+        local diff_path = tool_call_block.file_path or ""
+
         local diff_blocks = ToolCallDiff.extract_diff_blocks({
-            path = argument,
+            path = diff_path,
             old_text = tool_call_block.diff.old,
             new_text = tool_call_block.diff.new,
             replace_all = tool_call_block.diff.all,
         })
 
-        local lang = Theme.get_language_from_path(argument)
+        local lang = Theme.get_language_from_path(diff_path)
 
         -- Hack to avoid triple backtick conflicts in markdown files
         local has_fences = lang ~= "md" and lang ~= "markdown"

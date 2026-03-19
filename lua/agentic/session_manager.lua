@@ -265,21 +265,39 @@ function SessionManager:_on_session_update(update)
     })
 end
 
---- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers
---- @param tool_call_update agentic.ui.MessageWriter.ToolCallBase
-function SessionManager:_on_tool_call_update(tool_call_update)
-    self.message_writer:update_tool_call_block(tool_call_update)
-
+--- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
+function SessionManager:_on_tool_call(tool_call)
+    self.message_writer:write_tool_call_block(tool_call)
+    -- Store full tool_call in chat history
     --- @type agentic.ui.ChatHistory.ToolCall
-    local tool_call = {
+    local tool_msg = vim.tbl_deep_extend("force", {
         type = "tool_call",
-        tool_call_id = tool_call_update.tool_call_id,
-        status = tool_call_update.status,
-        body = tool_call_update.body,
-        diff = tool_call_update.diff,
-    }
+    }, tool_call)
 
-    self.chat_history:update_tool_call(tool_call_update.tool_call_id, tool_call)
+    self.chat_history:add_message(tool_msg)
+end
+
+--- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers
+--- @param tool_call_update agentic.ui.MessageWriter.ToolCallBlock
+function SessionManager:_on_tool_call_update(tool_call_update)
+    if
+        not self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
+    then
+        self:_on_tool_call(tool_call_update)
+    else
+        self.message_writer:update_tool_call_block(tool_call_update)
+
+        -- Store full tool_call in chat history
+        --- @type agentic.ui.ChatHistory.ToolCall
+        local tool_msg = vim.tbl_deep_extend("force", {
+            type = "tool_call",
+        }, tool_call_update)
+
+        self.chat_history:update_tool_call(
+            tool_call_update.tool_call_id,
+            tool_msg
+        )
+    end
 
     -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
     local is_rejection = tool_call_update.status == "failed"
@@ -677,19 +695,7 @@ function SessionManager:new_session(opts)
         end,
 
         on_tool_call = function(tool_call)
-            self.message_writer:write_tool_call_block(tool_call)
-            -- Store full tool_call in chat history
-            --- @type agentic.ui.ChatHistory.ToolCall
-            local tool_msg = {
-                type = "tool_call",
-                tool_call_id = tool_call.tool_call_id,
-                kind = tool_call.kind,
-                status = tool_call.status,
-                argument = tool_call.argument,
-                body = tool_call.body,
-                diff = tool_call.diff,
-            }
-            self.chat_history:add_message(tool_msg)
+            self:_on_tool_call(tool_call)
         end,
 
         on_tool_call_update = function(tool_call_update)
@@ -925,12 +931,17 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
     local tracker = tool_call_id
         and self.message_writer.tool_call_blocks[tool_call_id]
 
-    if not tracker or tracker.kind ~= "edit" or tracker.diff == nil then
+    if
+        not tracker
+        or tracker.kind ~= "edit"
+        or tracker.diff == nil
+        or not tracker.file_path
+    then
         return
     end
 
     DiffPreview.show_diff({
-        file_path = tracker.argument,
+        file_path = tracker.file_path,
         diff = tracker.diff,
         get_winid = function(bufnr)
             local winid = self.widget:find_first_non_widget_window()
@@ -957,11 +968,16 @@ function SessionManager:_clear_diff_in_buffer(tool_call_id, is_rejection)
     local tracker = tool_call_id
         and self.message_writer.tool_call_blocks[tool_call_id]
 
-    if not tracker or tracker.kind ~= "edit" or tracker.diff == nil then
+    if
+        not tracker
+        or tracker.kind ~= "edit"
+        or tracker.diff == nil
+        or not tracker.file_path
+    then
         return
     end
 
-    DiffPreview.clear_diff(tracker.argument, is_rejection)
+    DiffPreview.clear_diff(tracker.file_path, is_rejection)
 end
 
 --- @param new_config_options agentic.acp.ConfigOption[]

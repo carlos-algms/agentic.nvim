@@ -328,26 +328,6 @@ function ACPClient:__handle_session_update(params)
     end
 end
 
---- Extract body text from standard ACP content field.
---- Adapters should use this to avoid duplicating content extraction logic.
---- @param update agentic.acp.ToolCallMessage|agentic.acp.ToolCallUpdate
---- @return string[]|nil body
---- @deprecated I want to use all items in content, not only the first.
-function ACPClient:extract_content_body(update)
-    local content = update.content and update.content[1]
-
-    if
-        content
-        and content.type == "content"
-        and content.content
-        and content.content.text
-    then
-        return self:safe_split(content.content.text)
-    end
-
-    return nil
-end
-
 --- Safely split a string into an array of lines
 --- Some agents send `nil` other send `vim.NIL` for empty content
 --- @param possible_string string|nil|vim.NIL
@@ -361,19 +341,60 @@ function ACPClient:safe_split(possible_string)
 end
 
 --- Build the message for a tool_call. it's usually the first update received for a tool call
---- Adapters override this to add provider-specific fields or transformations.
 --- @protected
---- @param update agentic.acp.ToolCallMessage
+--- @param update agentic.acp.ToolCallBase
 --- @return agentic.ui.MessageWriter.ToolCallBlock message
 function ACPClient:__build_tool_call_message(update)
     --- @type agentic.ui.MessageWriter.ToolCallBlock
     local message = {
         tool_call_id = update.toolCallId,
-        kind = update.kind,
-        status = update.status,
-        argument = update.title,
-        body = self:extract_content_body(update),
     }
+
+    if update.kind then
+        message.kind = update.kind
+    end
+
+    if update.status then
+        message.status = update.status
+    end
+
+    if update.title then
+        message.argument = update.title
+    end
+
+    if update.content then
+        for _i, content in ipairs(update.content) do
+            if content then
+                if
+                    content.type == "content"
+                    and content.content
+                    and content.content.text
+                then
+                    message.body = self:safe_split(content.content.text)
+                elseif content.type == "diff" then
+                    local new_string = content.newText
+                    local old_string = content.oldText
+
+                    message.diff = {
+                        new = self:safe_split(new_string),
+                        old = self:safe_split(old_string),
+                        all = false,
+                    }
+
+                    if content.path then
+                        message.file_path = content.path
+                    end
+                end
+            end
+        end
+    end
+
+    if not message.file_path and update.locations then
+        local first_location = update.locations[1]
+        if first_location and first_location.path then
+            message.file_path = first_location.path
+        end
+    end
 
     return message
 end
@@ -392,31 +413,12 @@ function ACPClient:__handle_tool_call(session_id, update)
     end)
 end
 
---- Build the message for a tool_call_update.
---- Adapters override this to add provider-specific fields.
---- @protected
---- @param update agentic.acp.ToolCallUpdate
---- @return agentic.ui.MessageWriter.ToolCallBase message
-function ACPClient:__build_tool_call_update(update)
-    --- @type agentic.ui.MessageWriter.ToolCallBase
-    local message = {
-        tool_call_id = update.toolCallId,
-        status = update.status,
-        body = self:extract_content_body(update),
-    }
-    return message
-end
-
 --- Default handler for tool_call_update session updates.
 --- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
 function ACPClient:__handle_tool_call_update(session_id, update)
-    if not update.status then
-        return
-    end
-
-    local message = self:__build_tool_call_update(update)
+    local message = self:__build_tool_call_message(update)
 
     self:__with_subscriber(session_id, function(subscriber)
         subscriber.on_tool_call_update(message)
@@ -435,17 +437,21 @@ function ACPClient:__handle_request_permission(message_id, request)
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
-        -- Every change to this block MUST be reflected in Gemini's ACP Adapter, as it has custom implementation @see gemini_acp_adapter.lua
+        if request.toolCall then
+            local message = self:__build_tool_call_message(request.toolCall)
+            subscriber.on_tool_call_update(message)
+        end
+
         subscriber.on_request_permission(request, function(option_id)
-            self:__send_result(
-                message_id,
-                { --- @type agentic.acp.RequestPermissionOutcome
-                    outcome = {
-                        outcome = "selected",
-                        optionId = option_id,
-                    },
-                }
-            )
+            --- @type agentic.acp.RequestPermissionOutcome
+            local outcome = {
+                outcome = "selected",
+                optionId = option_id,
+            }
+
+            self:__send_result(message_id, {
+                outcome = outcome,
+            })
         end)
     end)
 end

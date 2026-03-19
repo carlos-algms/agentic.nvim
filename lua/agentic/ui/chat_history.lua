@@ -16,7 +16,7 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic.ui.ChatHistory.ThoughtMessage : agentic.ui.ChatHistory.AgentMessage
 --- @field type "thought"
 
---- @class agentic.ui.ChatHistory.ToolCall : agentic.ui.MessageWriter.ToolCallBase
+--- @class agentic.ui.ChatHistory.ToolCall : agentic.ui.MessageWriter.ToolCallBlock
 --- @field tool_call_id? string
 --- @field type "tool_call"
 
