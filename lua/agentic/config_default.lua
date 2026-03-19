@@ -5,6 +5,7 @@
 --- | "codex-acp"
 --- | "opencode-acp"
 --- | "cursor-acp"
+--- | "copilot-acp"
 --- | "auggie-acp"
 --- | "mistral-vibe-acp"
 
@@ -102,8 +103,20 @@ local ConfigDefault = {
 
         ["cursor-acp"] = {
             name = "Cursor Agent ACP",
-            command = "cursor-agent-acp",
-            args = {},
+            command = "cursor-agent",
+            args = {
+                "acp",
+            },
+            env = {},
+        },
+
+        ["copilot-acp"] = {
+            name = "Copilot ACP",
+            command = "copilot",
+            args = {
+                "--acp",
+                "--stdio",
+            },
             env = {},
         },
 
@@ -243,6 +256,7 @@ local ConfigDefault = {
     --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",
+        in_progress = "󰔛",
         completed = "✔",
         failed = "",
     },

@@ -132,7 +132,8 @@ tools like `nvm`, `fnm`, etc...
 | [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
 | [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
 | [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
-| [cursor-agent][cursor-agent]         | `pnpm add -g @blowmage/cursor-agent-acp`<br/> **OR** `npm i -g @blowmage/cursor-agent-acp`                                                                                                     |
+| [cursor-agent][cursor-agent]         | `curl https://cursor.com/install -fsS \| bash` **OR** windows: `irm 'https://cursor.com/install?win32=true' \| iex`                                                                            |
+| [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                     |
 | [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
 | [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
 
@@ -156,7 +157,7 @@ tools like `nvm`, `fnm`, etc...
   "carlos-algms/agentic.nvim",
 
   opts = {
-    -- Available by default: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "auggie-acp" | "mistral-vibe-acp"
+    -- Available by default: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -946,7 +947,7 @@ the the acknowledgments 😊.
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
 [opencode]: https://github.com/sst/opencode
-[cursor-agent]: https://github.com/blowmage/cursor-agent-acp-npm
+[cursor-agent]: https://cursor.com/docs/cli/installation
 [auggie]: https://www.npmjs.com/package/@augmentcode/auggie
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
@@ -955,3 +956,4 @@ the the acknowledgments 😊.
   https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
 [preview-diff-inline-image]:
   https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[copilot-cli]: https://github.com/github/copilot-cli
