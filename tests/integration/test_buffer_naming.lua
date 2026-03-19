@@ -78,6 +78,111 @@ end)()
         assert.equal(5, session_count)
     end)
 
+    it("uses custom buffer_name from windows config when set", function()
+        child.lua([[
+            require("agentic").setup({ windows = { chat = { buffer_name = "My Chat" } } })
+            require("agentic").toggle()
+        ]])
+        child.flush()
+
+        local basename = get_panel_basename("chat")
+        assert.is_true(vim.startswith(basename, "My Chat"))
+    end)
+
+    it("uses buffer_name function to derive name from header parts", function()
+        child.lua([[
+            require("agentic").setup({
+                windows = {
+                    chat = {
+                        buffer_name = function(parts)
+                            return "Custom: " .. parts.title
+                        end,
+                    },
+                },
+            })
+            require("agentic").toggle()
+        ]])
+        child.flush()
+
+        local basename = get_panel_basename("chat")
+        assert.is_true(vim.startswith(basename, "Custom: 󰻞 Agentic Chat"))
+    end)
+
+    it("falls back to header title when buffer_name not set", function()
+        child.lua([[
+            require("agentic").setup({})
+            require("agentic").toggle()
+        ]])
+        child.flush()
+
+        local basename = get_panel_basename("chat")
+        assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
+    end)
+
+    it("falls back to header title when buffer_name function throws", function()
+        child.lua([[
+            require("agentic").setup({
+                windows = {
+                    chat = {
+                        buffer_name = function()
+                            error("intentional error")
+                        end,
+                    },
+                },
+            })
+            require("agentic").toggle()
+        ]])
+        child.flush()
+
+        local basename = get_panel_basename("chat")
+        assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
+    end)
+
+    it(
+        "falls back to header title when buffer_name function returns nil",
+        function()
+            child.lua([[
+            require("agentic").setup({
+                windows = {
+                    chat = {
+                        buffer_name = function()
+                            return nil
+                        end,
+                    },
+                },
+            })
+            require("agentic").toggle()
+        ]])
+            child.flush()
+
+            local basename = get_panel_basename("chat")
+            assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
+        end
+    )
+
+    it(
+        "assigns unique names when two panels share the same buffer_name",
+        function()
+            child.lua([[
+            require("agentic").setup({
+                windows = {
+                    chat = { buffer_name = "Shared Name" },
+                    input = { buffer_name = "Shared Name" },
+                },
+            })
+            require("agentic").toggle()
+        ]])
+            child.flush()
+
+            local chat_basename = get_panel_basename("chat")
+            local input_basename = get_panel_basename("input")
+
+            assert.is_true(vim.startswith(chat_basename, "Shared Name"))
+            assert.is_true(vim.startswith(input_basename, "Shared Name"))
+            assert.is_not.equal(chat_basename, input_basename)
+        end
+    )
+
     it("each panel has distinct buffer name prefix", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()

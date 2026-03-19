@@ -306,6 +306,10 @@ windows ~
   `height`             Height when position is `"bottom"`. String
                        percentage or number. Default: `"30%"`.
   `stack_width_ratio`  Ratio for stacked panels. Default: `0.4`.
+  `buffer_name`        Name of the window buffer. String title
+                       or function returning string title.
+                       Default: window header title.
+                       See |agentic-config-headers|.
 
   Sub-panel options (each accepts `win_opts` table):
 

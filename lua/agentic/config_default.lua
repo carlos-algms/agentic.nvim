@@ -91,26 +91,34 @@
 --- Overrides default options (wrap, linebreak, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
+--- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts): string|nil
+
 --- @class agentic.UserConfig.Windows.Chat
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field win_opts? agentic.UserConfig.WinOpts
 
 --- @class agentic.UserConfig.Windows.Input
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field height number
 --- @field win_opts? agentic.UserConfig.WinOpts
 
 --- @class agentic.UserConfig.Windows.Code
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field max_height number
 --- @field win_opts? agentic.UserConfig.WinOpts
 
 --- @class agentic.UserConfig.Windows.Files
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field max_height number
 --- @field win_opts? agentic.UserConfig.WinOpts
 
 --- @class agentic.UserConfig.Windows.Diagnostics
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field max_height number
 --- @field win_opts? agentic.UserConfig.WinOpts
 
 --- @class agentic.UserConfig.Windows.Todos
+--- @field buffer_name? string|agentic.UserConfig.BufferNameFn
 --- @field display boolean
 --- @field max_height number
 --- @field win_opts? agentic.UserConfig.WinOpts

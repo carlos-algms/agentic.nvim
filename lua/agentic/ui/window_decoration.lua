@@ -251,12 +251,76 @@ function WindowDecoration._set_buffer_name(bufnr, buf_name)
     vim.api.nvim_buf_set_name(bufnr, buf_name)
 end
 
+--- Resolves the buffer name from config, supporting string or function values
+--- @param window_name string Window name for Config.windows[name].buffer_name lookup
+--- @param header_parts agentic.ui.ChatWidget.HeaderParts Header parts passed to function-type buffer_name
+--- @param fallback string|nil Fallback name (resolved header text) when buffer_name is not set
+--- @return string|nil name
+local function resolve_buffer_name(window_name, header_parts, fallback)
+    local win_cfg = Config.windows[window_name]
+    local buffer_name = win_cfg and win_cfg.buffer_name
+
+    if buffer_name == nil then
+        return fallback
+    end
+
+    if type(buffer_name) == "string" then
+        return buffer_name
+    end
+
+    if type(buffer_name) == "function" then
+        local ok, result = pcall(buffer_name, header_parts)
+        if not ok then
+            Logger.notify(
+                string.format(
+                    "Error in buffer_name function for '%s': %s",
+                    window_name,
+                    result
+                )
+            )
+            return fallback
+        end
+        if result == nil then
+            return fallback
+        end
+        if type(result) ~= "string" then
+            Logger.notify(
+                string.format(
+                    "buffer_name function for '%s' must return string|nil, got %s",
+                    window_name,
+                    type(result)
+                )
+            )
+            return fallback
+        end
+        return result
+    end
+
+    Logger.notify(
+        string.format(
+            "buffer_name for '%s' must be string|function|nil, got %s",
+            window_name,
+            type(buffer_name)
+        )
+    )
+    return fallback
+end
+
 --- Sets the buffer name based on header text and tab count
 --- @param bufnr integer Buffer number
 --- @param header_text string|nil Resolved header text
 --- @param tab_page_id integer Tab page ID for suffix
-local function set_buffer_name(bufnr, header_text, tab_page_id)
-    if not header_text or header_text == "" then
+--- @param window_name string Window name for Config.windows[name].buffer_name lookup
+--- @param header_parts agentic.ui.ChatWidget.HeaderParts Header parts for function-type buffer_name
+local function set_buffer_name(
+    bufnr,
+    header_text,
+    tab_page_id,
+    window_name,
+    header_parts
+)
+    local name = resolve_buffer_name(window_name, header_parts, header_text)
+    if not name or name == "" then
         return
     end
 
@@ -266,9 +330,9 @@ local function set_buffer_name(bufnr, header_text, tab_page_id)
     --- @type string
     local buf_name
     if total_tabs > 1 then
-        buf_name = string.format("%s (Tab %d)", header_text, tab_page_id)
+        buf_name = string.format("%s (Tab %d)", name, tab_page_id)
     else
-        buf_name = header_text
+        buf_name = name
     end
 
     WindowDecoration._set_buffer_name(bufnr, buf_name)
@@ -319,7 +383,13 @@ function WindowDecoration.render_header(bufnr, window_name, context)
         local text = (header_text and header_text ~= "") and header_text or ""
 
         set_winbar(winid, text)
-        set_buffer_name(bufnr, header_text, tab_page_id)
+        set_buffer_name(
+            bufnr,
+            header_text,
+            tab_page_id,
+            window_name,
+            dynamic_header
+        )
     end)
 end
 

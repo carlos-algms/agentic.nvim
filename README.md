@@ -470,6 +470,47 @@ header parts:
 }
 ```
 
+### Customizing Buffer Names
+
+By default, buffer names mirror the window header titles. You can override them
+independently via the `buffer_name` field in each window's config, for example
+to show cleaner names in your statusline or buffer switcher:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    windows = {
+      chat = { buffer_name = "Agentic Chat" },
+      input = { buffer_name = "Agentic Prompt" },
+      code = { buffer_name = "Code Snippets" },
+      files = { buffer_name = "Files" },
+      diagnostics = { buffer_name = "Diagnostics" },
+      todos = { buffer_name = "Tasks" },
+    },
+  },
+}
+```
+
+You can also use a function that receives the header parts and returns a string:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    windows = {
+      chat = {
+        buffer_name = function(parts)
+          return "AI: " .. parts.title
+        end,
+      },
+    },
+  },
+}
+```
+
+When a panel has no `buffer_name` set, it falls back to the header title.
+
 ### Folding
 
 Completed tool call outputs are automatically folded to keep the chat buffer
