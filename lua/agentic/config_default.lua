@@ -78,7 +78,7 @@ local ConfigDefault = {
         ["gemini-acp"] = {
             name = "Gemini ACP",
             command = "gemini",
-            args = { "--experimental-acp" },
+            args = { "--acp" },
             env = {},
         },
 
