@@ -698,6 +698,23 @@ integrating with other plugins.
           vim.notify("Agent error: " .. vim.inspect(data.error), vim.log.levels.ERROR)
         end
       end,
+
+      -- Called when the session is updated.
+      on_session_update = function(data)
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.update: table -- The update
+
+          if data.update.sessionUpdate == "usage_update" then
+            -- Use this in your status line, scoped per tab/session.
+            if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
+              vim.t[data.tab_page_id].agentic_usage = {
+                used = data.update.used,
+                size = data.update.size,
+              }
+            end
+          end
+      end
     }
   }
 }
