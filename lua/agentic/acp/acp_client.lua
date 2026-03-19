@@ -303,8 +303,9 @@ function ACPClient:__handle_session_update(params)
     end
 
     if session_update_type == "tool_call" then
-        -- kind is optional and has default value
         update.kind = update.kind or "other"
+        update.status = update.status or "pending"
+
         if not KNOWN_ACP_KINDS[update.kind] then
             -- Using notify intentionally so users of providers
             -- we don't use daily report unknown kinds as issues

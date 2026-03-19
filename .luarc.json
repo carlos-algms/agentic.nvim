@@ -17,7 +17,8 @@
       "need-check-nil": "Error",
       "undefined-field": "Error",
       "missing-parameter": "Error",
-      "param-type-mismatch": "Error"
+      "param-type-mismatch": "Error",
+      "assign-type-mismatch": "Error"
     },
     "neededFileStatus": {
       "codestyle-check": "None",

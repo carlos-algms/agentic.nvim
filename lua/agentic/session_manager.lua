@@ -267,6 +267,12 @@ end
 
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
 function SessionManager:_on_tool_call(tool_call)
+    if self.message_writer.tool_call_blocks[tool_call.tool_call_id] then
+        -- fallback for bad ACP implementations which sends multiple `tool_call` with different data (initially added for Mistral)
+        self:_on_tool_call_update(tool_call)
+        return
+    end
+
     self.message_writer:write_tool_call_block(tool_call)
     -- Store full tool_call in chat history
     --- @type agentic.ui.ChatHistory.ToolCall
