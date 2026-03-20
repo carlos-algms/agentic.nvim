@@ -86,7 +86,7 @@ describe("tool_call_diff", function()
         )
 
         it(
-            "strips trailing empty string from adapter vim.split of \\n-terminated ACP text",
+            "strips trailing empty string from vim.split of \\n-terminated ACP text",
             function()
                 local file_lines = { "line 1." }
                 read_stub:returns(file_lines)

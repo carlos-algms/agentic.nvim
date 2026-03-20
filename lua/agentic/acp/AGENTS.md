@@ -1,9 +1,9 @@
-# Provider System
+# Provider system
 
-## ACP Providers (Agent Client Protocol)
+## ACP providers (Agent Client Protocol)
 
-This plugin spawn **external CLI tools** as subprocesses and communicate via the
-Agent Client Protocol:
+This plugin spawns **external CLI tools** as subprocesses and communicates via
+the Agent Client Protocol:
 
 - **Requirements**: External CLI tools must be installed by the user, we don't
   install them for security reasons.
@@ -15,23 +15,29 @@ Agent Client Protocol:
   - `auggie` for Augment Code
   - `vibe-acp` for Mistral Vibe
 
-NOTE: Install instructs are in the README.md
+NOTE: Install instructions are in the README.md
 
-## Provider adapters:
+## Generic ACPClient (no per-provider adapters)
 
-Each provider has a dedicated adapter in `lua/agentic/acp/adapters/`
+All providers use a **single generic `ACPClient`** (`acp_client.lua`). There are
+no per-provider adapter files.
 
-These adapters implement provider-specific message formatting, tool call
-handling, and protocol quirks.
+The client parses standard ACP protocol fields and handles provider quirks (e.g.
+`rawInput` fallback for OpenCode) inline via protected methods in `ACPClient`
+itself.
 
-## ACP provider configuration:
+**Adding a new provider** only requires a config entry in `config_default.lua`
+under `acp_providers` — no adapter code needed unless the provider deviates from
+ACP in ways not yet handled.
+
+## ACP provider configuration
 
 ```lua
 acp_providers = {
   ["claude-agent-acp"] = {
-    name = "Claude Agent ACP",             -- Display name
-    command = "claude-agent-acp",          -- CLI command to spawn
-    env = {                                -- Environment variables
+    name = "Claude Agent ACP",
+    command = "claude-agent-acp",
+    env = {
       NODE_NO_WARNINGS = "1",
       IS_AI_TERMINAL = "1",
     },
@@ -39,7 +45,7 @@ acp_providers = {
   ["gemini-acp"] = {
     name = "Gemini ACP",
     command = "gemini",
-    args = { "--experimental-acp" },       -- CLI arguments
+    args = { "--acp" },
     env = {
       NODE_NO_WARNINGS = "1",
       IS_AI_TERMINAL = "1",
@@ -58,8 +64,8 @@ ACPTransport      -- parses JSON, calls callbacks.on_message()
   |
   v
 ACPClient         -- routes by message type (notification vs response)
-  |  adapter override point: __handle_tool_call,
-  |  __handle_tool_call_update, __build_tool_call_update
+  |  protected methods: __handle_tool_call,
+  |  __handle_tool_call_update, __build_tool_call_message
   v
 SessionManager    -- registered as subscriber per session_id
   |  routes by sessionUpdate type
@@ -77,8 +83,8 @@ determines routing:
 
 | `sessionUpdate` value   | Routed to                                  |
 | ----------------------- | ------------------------------------------ |
-| `"tool_call"`           | adapter `__handle_tool_call` → subscriber  |
-| `"tool_call_update"`    | adapter `__handle_tool_call_update` → sub  |
+| `"tool_call"`           | `__handle_tool_call` → subscriber          |
+| `"tool_call_update"`    | `__handle_tool_call_update` → subscriber   |
 | `"agent_message_chunk"` | `MessageWriter:write_message_chunk()`      |
 | `"agent_thought_chunk"` | `MessageWriter:write_message_chunk()`      |
 | `"plan"`                | `TodoList.render()`                        |
@@ -94,7 +100,8 @@ Tool calls go through **3 phases**. `MessageWriter` tracks each via
 
 ```
 Provider sends "tool_call"
-  -> Adapter builds ToolCallBlock { tool_call_id, kind, argument, status, body?, diff? }
+  -> ACPClient builds ToolCallBlock via __build_tool_call_message
+     { tool_call_id, kind, argument, status, body?, diff? }
   -> subscriber.on_tool_call(block)
   -> MessageWriter:write_tool_call_block(block)
      1. Renders header + body/diff lines to buffer
@@ -107,7 +114,7 @@ Provider sends "tool_call"
 
 ```
 Provider sends "tool_call_update"
-  -> Adapter builds ToolCallBase { tool_call_id, status, body?, diff? }
+  -> ACPClient builds ToolCallBase via __build_tool_call_message
      (only CHANGED fields needed — MessageWriter merges)
   -> subscriber.on_tool_call_update(partial)
   -> MessageWriter:update_tool_call_block(partial)
@@ -128,7 +135,7 @@ Same as Phase 2, but status = "completed" | "failed"
   -> If "failed": PermissionManager removes pending request
 ```
 
-## Key design rules for adapters
+## Key design rules
 
 - **Updates are partial:** Only send what changed. MessageWriter merges onto the
   existing tracker via `tbl_deep_extend`.
@@ -141,11 +148,26 @@ Same as Phase 2, but status = "completed" | "failed"
   auto-adjusts when buffer content shifts. Single source of truth for block
   position.
 
+## Provider quirk handling
+
+Instead of per-provider adapters, `ACPClient` handles protocol deviations inline
+in `__build_tool_call_message`:
+
+- **`rawInput` fallback** (OpenCode): when `content` is missing for `edit` kind
+  tool calls, builds diff from `rawInput.new_string`/`rawInput.newString` fields
+- **`locations` fallback**: extracts `file_path` from `update.locations[0].path`
+  when not in `rawInput`
+- **Unknown kinds**: logs a warning for unrecognized `kind` values so users
+  report them as issues
+
+To handle a new provider quirk, add the fallback logic in
+`__build_tool_call_message` with a comment explaining which provider needs it.
+
 ## Permission flow (interleaved with tool calls)
 
 ```
 Provider sends "session/request_permission"
-  -> SessionManager: opens diff preview in editor window (if kind = "diff")
+  -> SessionManager: opens diff preview (if kind = "diff")
   -> PermissionManager:add_request(request, callback)
      -> Queues request (sequential — one prompt at a time)
      -> Renders permission buttons in chat buffer
@@ -156,18 +178,15 @@ Provider sends "session/request_permission"
      -> Dequeues next permission if any
 ```
 
-## Adapter override points
+## Protected methods in ACPClient
 
-Each provider adapter can override these **protected** methods on `ACPClient`:
+These protected methods can be overridden by subclasses if a future provider
+requires it, but currently all providers use the default implementations:
 
-| Method                        | Default behavior                          |
+| Method                        | Behavior                                  |
 | ----------------------------- | ----------------------------------------- |
-| `__handle_tool_call`          | Builds ToolCallBlock from standard fields |
-| `__build_tool_call_update`    | Builds ToolCallBase with status + body    |
-| `__handle_tool_call_update`   | Calls build then notifies subscriber      |
+| `__handle_tool_call`          | Builds ToolCallBlock, notifies subscriber |
+| `__build_tool_call_message`   | Parses ACP fields + quirk fallbacks       |
+| `__handle_tool_call_update`   | Builds partial, notifies subscriber       |
 | `__handle_request_permission` | Sends result back to provider             |
-
-Override when the provider sends data in non-standard fields (e.g. `rawInput`,
-`rawOutput`), needs synthetic events (Gemini synthesizes `tool_call` from
-permission request), or skips events (Gemini doesn't send cancel updates on
-rejection).
+| `__handle_session_update`     | Routes by `sessionUpdate` type            |

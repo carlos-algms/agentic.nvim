@@ -422,7 +422,6 @@ end
 
 --- Default handler for tool_call session updates.
 --- Builds a generic ToolCallBlock from standard ACP fields.
---- Adapters override this for provider-specific transformations.
 --- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage

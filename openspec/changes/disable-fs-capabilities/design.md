@@ -39,8 +39,8 @@ silently reloaded when `checktime` detects disk changes.
 **Alternatives considered:**
 
 - `vim.cmd("edit!")` per file — requires knowing exact file
-  paths from tool calls; adapters don't always expose paths in
-  `tool_call_update`
+  paths from tool calls; ACPClient doesn't always expose paths
+  in `tool_call_update`
 - `FocusGained` autocommand — only fires on window focus, not
   useful when Neovim stays focused during agent work
 - `checktime` alone (no FileChangedShell) — prompts user on

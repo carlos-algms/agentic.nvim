@@ -39,8 +39,10 @@ Build only what's needed now:
 Apply where appropriate:
 
 - **Single Responsibility** - Each module/class should have one reason to change
-- **Open/Closed** - Open for extension (adapters), closed for modification
-- **Liskov Substitution** - Provider adapters must be interchangeable
+- **Open/Closed** - Open for extension (protected methods), closed
+  for modification
+- **Liskov Substitution** - Provider configurations must be
+  interchangeable
 - **Interface Segregation** - Don't force modules to depend on unused interfaces
 - **Dependency Inversion** - Depend on abstractions (e.g., `ACPClient` base
   class)
@@ -334,46 +336,37 @@ When exploring the codebase, start here:
 
 ## Domain Context
 
-### Provider Adapters
+### Generic ACPClient (no per-provider adapters)
 
-**Why adapters exist:** Each ACP provider implements the protocol differently.
-We were forced to create individual adapter classes because providers have:
-
-- Different message formats
-- Different message ordering
-- Different parameter names (`rawInput` vs `content` vs `locations`)
-- Different tool call structures
+All providers use a **single generic `ACPClient`**. Provider
+quirks are handled inline via fallback logic in
+`__build_tool_call_message`.
 
 **What IS normalized across providers:**
 
 - Permission requests (`session/request_permission`)
 - Message chunks (`agent_message_chunk`, `agent_thought_chunk`)
+- Tool calls and tool call updates (via standard ACP fields +
+  fallbacks)
 
-**What IS NOT normalized (requires adapter handling):**
+**Provider quirks handled in ACPClient:**
 
-- Tool calls (`tool_call`) - structure varies significantly
-- Tool call updates (`tool_call_update`) - different content formats
-- Edit operations - some use `rawInput.new_string`, others use
-  `content[].newText`
-- File paths - some in `rawInput.file_path`, others in `locations[].path`
+- `rawInput` fallback (OpenCode): builds diff from
+  `rawInput.new_string`/`rawInput.newString` when `content` is
+  missing
+- `locations` fallback: extracts `file_path` from
+  `locations[0].path` when not in `rawInput`
+- Field name variants: handles both `snake_case` and
+  `camelCase` (`new_string`/`newString`, `file_path`/`filePath`)
 
 **When adding a new provider:**
 
-1. Create new adapter class extending `ACPClient`
-2. Override `__handle_session_update` to intercept provider-specific messages
-3. Implement `_handle_tool_call` and `_handle_tool_call_update` for that
-   provider's format
-4. Handle any permission request quirks (e.g., Gemini sends diff in permission
-   request, not tool_call)
-
-**Examples of provider differences:**
-
-- **Claude**: Uses `rawInput.file_path`, `rawInput.new_string`,
-  `rawInput.old_string`
-- **Gemini**: Uses `locations[].path`, `content[].newText`, `content[].oldText`;
-  sends tool call data inside permission request
-- **Gemini**: Doesn't send `failed` status on cancel - adapter must synthesize
-  it
+1. Add config entry in `config_default.lua` under
+   `acp_providers`
+2. If the provider follows standard ACP, no code changes needed
+3. If it has quirks, add fallback logic in
+   `__build_tool_call_message` with a comment explaining which
+   provider needs it
 
 ## Error Handling
 

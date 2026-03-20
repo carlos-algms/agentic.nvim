@@ -358,7 +358,9 @@ how to run them.
 
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
-**ALWAYS run all validations after making ANY Lua file changes:**
+**Run validations ONLY after changing `.lua` files.** Do NOT run
+`make validate` when only non-Lua files were changed (markdown,
+openspec, config, etc.) — it's a waste of time.
 
 ```bash
 make validate
@@ -480,8 +482,8 @@ plugin.
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
 
-### ACP and clients, adapters, and providers
+### ACP and providers
 
-Read @lua/agentic/acp/AGENTS.md when working with ACP adapters, permission
-requests, messages sent and received, tool call flows, and formatting on the
-chat widget, or adding a new adapter to a new ACP provider.
+Read @lua/agentic/acp/AGENTS.md when working with ACP client,
+permission requests, messages sent and received, tool call flows,
+and formatting on the chat widget, or adding a new ACP provider.
