@@ -364,6 +364,7 @@ function ACPClient:__build_tool_call_message(update)
     end
 
     if update.content then
+        local body_parts = {}
         for _, content in ipairs(update.content) do
             if content then
                 if
@@ -371,7 +372,10 @@ function ACPClient:__build_tool_call_message(update)
                     and content.content
                     and content.content.text
                 then
-                    message.body = self:safe_split(content.content.text)
+                    table.insert(
+                        body_parts,
+                        self:safe_split(content.content.text)
+                    )
                 elseif content.type == "diff" then
                     local new_string = content.newText
                     local old_string = content.oldText
@@ -387,6 +391,15 @@ function ACPClient:__build_tool_call_message(update)
                     end
                 end
             end
+        end
+
+        if #body_parts > 0 then
+            local merged = body_parts[1]
+            for i = 2, #body_parts do
+                table.insert(merged, "---")
+                vim.list_extend(merged, body_parts[i])
+            end
+            message.body = merged
         end
     end
 
