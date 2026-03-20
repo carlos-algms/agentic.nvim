@@ -27,7 +27,7 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_prompt_submit" | "on_response_complete"
+--- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update"
 --- @param data table
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
@@ -255,6 +255,14 @@ function SessionManager:_on_session_update(update)
             { title = "⚠️ Unknown session update" }
         )
     end
+
+    -- This is being done after handling specific updates but one could argue
+    -- there should be pre/post hooks for everything.
+    P.invoke_hook("on_session_update", {
+        session_id = self.session_id,
+        tab_page_id = self.tab_page_id,
+        update = update,
+    })
 end
 
 --- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers

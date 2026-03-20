@@ -25,10 +25,17 @@
 --- @field tab_page_id number The tabpage ID
 --- @field success boolean Whether response completed without error
 --- @field error? table Error details if failed
+---
+--- Data passed to the on_session_update hook
+--- @class agentic.UserConfig.SessionUpdateData
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+--- @field update agentic.acp.SessionUpdateMessage ACP session update details.
 
 --- @class agentic.UserConfig.Hooks
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
+--- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
 
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
@@ -293,6 +300,7 @@ local ConfigDefault = {
     hooks = {
         on_prompt_submit = nil,
         on_response_complete = nil,
+        on_session_update = nil,
     },
 
     --- Customize window headers for each panel in the chat widget.
