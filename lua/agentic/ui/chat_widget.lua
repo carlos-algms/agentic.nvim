@@ -24,7 +24,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- Options for adding file paths or buffers to the current Chat context
 --- @class agentic.ui.ChatWidget.AddFilesToContextOpts : agentic.ui.ChatWidget.AddToContextOpts
---- @field files string[]|integer[]
+--- @field files (string|integer)[]
 
 --- Options for showing the widget
 --- @class agentic.ui.ChatWidget.ShowOpts : agentic.ui.ChatWidget.AddToContextOpts

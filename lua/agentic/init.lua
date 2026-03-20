@@ -81,7 +81,7 @@ function Agentic.add_files_to_context(opts)
         local files = opts.files
 
         if files and type(files) == "table" then
-            for _, path in ipairs(opts.files) do
+            for _, path in ipairs(files) do
                 session:add_file_to_session(path)
             end
         else
