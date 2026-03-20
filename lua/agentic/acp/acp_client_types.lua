@@ -29,6 +29,11 @@
 --- @field audio boolean
 --- @field embeddedContext boolean
 
+--- @class agentic.acp.AgentInfo
+--- @field name? string
+--- @field version? string
+--- @field title? string
+
 --- @class agentic.acp.AuthMethod
 --- @field id string
 --- @field name string

@@ -65,15 +65,23 @@ end
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
---- Generate the welcome header for a new session
 --- @param provider_name string
 --- @param session_id string|nil
+--- @param version string|nil
 --- @return string header
-function SessionManager._generate_welcome_header(provider_name, session_id)
+function SessionManager._generate_welcome_header(
+    provider_name,
+    session_id,
+    version
+)
     local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local name = provider_name
+    if version then
+        name = name .. " v" .. version
+    end
     return string.format(
-        "# Agentic - %s - %s\n- %s\n--- --",
-        provider_name,
+        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
+        name,
         session_id or "unknown",
         timestamp
     )
@@ -786,9 +794,11 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
+            local agent_info = self.agent.agent_info
             local welcome_message = SessionManager._generate_welcome_header(
                 self.agent.provider_config.name,
-                self.session_id
+                self.session_id,
+                agent_info and agent_info.version
             )
 
             self.message_writer:write_message(

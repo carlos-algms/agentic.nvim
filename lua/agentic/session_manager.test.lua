@@ -172,10 +172,9 @@ describe("agentic.SessionManager", function()
                     "abc123"
                 )
 
-                assert.truthy(
-                    header:match("^# Agentic %- Claude ACP %- abc123\n")
-                )
+                assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
                 assert.truthy(header:match("\n%- %d%d%d%d%-%d%d%-%d%d"))
+                assert.truthy(header:match("\n%- session id: abc123\n"))
                 assert.truthy(header:match("\n%-%-%- %-%-$"))
             end
         )
@@ -184,8 +183,31 @@ describe("agentic.SessionManager", function()
             local header =
                 SessionManager._generate_welcome_header("Claude ACP", nil)
 
-            assert.truthy(header:match("^# Agentic %- Claude ACP %- unknown\n"))
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.truthy(header:match("\n%- session id: unknown\n"))
             assert.truthy(header:match("\n%-%-%- %-%-$"))
+        end)
+
+        it("includes version when provided", function()
+            local header = SessionManager._generate_welcome_header(
+                "Claude ACP",
+                "abc123",
+                "1.2.3"
+            )
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP v1%.2%.3\n"))
+            assert.truthy(header:match("\n%- session id: abc123\n"))
+        end)
+
+        it("omits version when nil", function()
+            local header = SessionManager._generate_welcome_header(
+                "Claude ACP",
+                "abc123",
+                nil
+            )
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.is_nil(header:match(" v"))
         end)
     end)
 
