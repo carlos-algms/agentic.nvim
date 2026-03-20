@@ -1,3 +1,4 @@
+--- @diagnostic disable: missing-fields, param-type-mismatch
 local Object = require("agentic.utils.object")
 local assert = require("tests.helpers.assert")
 
@@ -35,7 +36,6 @@ describe("object utils", function()
     it(
         "merges config with default config with keymaps overrides instead of merge",
         function()
-            --- @type agentic.UserConfig
             local default_config = {
                 option1 = true,
                 option2 = {
