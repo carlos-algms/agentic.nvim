@@ -27,7 +27,7 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update"
+--- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
 --- @param data table
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
@@ -299,6 +299,21 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
         if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
             vim.cmd.checktime()
+
+            -- Invoke on_file_edit hook for file-mutating tool calls
+            local filepath = tracker.argument
+            if filepath then
+                local bufnr = vim.fn.bufnr(FileSystem.to_absolute_path(filepath))
+                if bufnr == -1 then
+                    bufnr = nil
+                end
+                P.invoke_hook("on_file_edit", {
+                    filepath = FileSystem.to_absolute_path(filepath),
+                    session_id = self.session_id,
+                    tab_page_id = self.widget.tabpage,
+                    bufnr = bufnr,
+                })
+            end
         end
     end
 
