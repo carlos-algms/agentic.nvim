@@ -483,6 +483,7 @@ header parts:
 | `:lua require("agentic").add_selection()`                    | Add visual selection to context                                   |
 | `:lua require("agentic").add_file()`                         | Add current file to context                                       |
 | `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                     |
+| `:lua require("agentic").add_files_to_context(opts)`         | Add a list of file paths or buffer numbers to context             |
 | `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
 | `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
@@ -510,12 +511,32 @@ focus the prompt input after opening the chat:
   input after opening the chat
 
 Available on: `add_selection(opts)`, `add_file(opts)`,
-`add_selection_or_file_to_context(opts)`, `add_current_line_diagnostics(opts)`,
-`add_buffer_diagnostics(opts)`
+`add_selection_or_file_to_context(opts)`, `add_files_to_context(opts)`,
+`add_current_line_diagnostics(opts)`, `add_buffer_diagnostics(opts)`
 
 ```lua
 -- Add selection without focusing the prompt
 require("agentic").add_selection({ focus_prompt = false })
+```
+
+`add_files_to_context(opts)` accepts a **files** field with a list of file paths
+(strings) or buffer numbers (integers). It can be used from anywhere, like your
+file picker.
+
+```lua
+-- Add specific files by path
+require("agentic").add_files_to_context({
+  files = {
+    "src/main.lua",
+    "src/utils.lua",
+  },
+})
+
+-- Add files by buffer number
+require("agentic").add_files_to_context({
+  files = { 1, 5 },
+  focus_prompt = false,
+})
 ```
 
 ### Built-in Keybindings

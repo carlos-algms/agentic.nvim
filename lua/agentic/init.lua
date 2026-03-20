@@ -73,6 +73,28 @@ function Agentic.add_file(opts)
     end)
 end
 
+--- Add a list of file paths or buffer numbers to the Chat context
+--- You can add 1 or more in a single call
+--- @param opts agentic.ui.ChatWidget.AddFilesToContextOpts
+function Agentic.add_files_to_context(opts)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        local files = opts.files
+
+        if files and type(files) == "table" then
+            for _, path in ipairs(opts.files) do
+                session:add_file_to_session(path)
+            end
+        else
+            Logger.notify(
+                "Wrong parameters passed to `add_files_to_context()`: "
+                    .. vim.inspect(opts)
+            )
+        end
+
+        session.widget:show(opts)
+    end)
+end
+
 --- Add either the current visual selection or the current file to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection_or_file_to_context(opts)

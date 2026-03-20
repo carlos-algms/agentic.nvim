@@ -904,7 +904,7 @@ function SessionManager:add_selection_to_session()
     return false
 end
 
---- @param buf number|string|nil Buffer number or path, if nil the current buffer is used or `0`
+--- @param buf integer|string|nil Buffer number or path, if nil the current buffer is used or `0`
 function SessionManager:add_file_to_session(buf)
     local bufnr = buf and vim.fn.bufnr(buf) or 0
     local buf_path = vim.api.nvim_buf_get_name(bufnr)
