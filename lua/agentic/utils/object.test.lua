@@ -1,4 +1,3 @@
---- @diagnostic disable: missing-fields, param-type-mismatch
 local Object = require("agentic.utils.object")
 local assert = require("tests.helpers.assert")
 
@@ -119,6 +118,7 @@ describe("object utils", function()
             }
 
             local merged_config =
+                ---@diagnostic disable-next-line: param-type-mismatch
                 Object.merge_config(default_config, user_config)
 
             assert.same(expected_merged_config, merged_config)
