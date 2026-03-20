@@ -29,6 +29,7 @@ local KNOWN_ACP_KINDS = {
 --- @field client_info agentic.acp.ClientInfo
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
+--- @field agent_info? agentic.acp.AgentInfo
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
@@ -527,6 +528,7 @@ function ACPClient:_connect()
 
         self.protocol_version = result.protocolVersion
         self.agent_capabilities = result.agentCapabilities
+        self.agent_info = result.agentInfo
         self.auth_methods = result.authMethods or {}
 
         -- Check if we need to authenticate
