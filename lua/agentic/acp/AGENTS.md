@@ -167,7 +167,7 @@ To handle a new provider quirk, add the fallback logic in
 
 ```
 Provider sends "session/request_permission"
-  -> SessionManager: opens diff preview (if kind = "diff")
+  -> SessionManager: opens diff preview (if the request carries a diff)
   -> PermissionManager:add_request(request, callback)
      -> Queues request (sequential — one prompt at a time)
      -> Renders permission buttons in chat buffer

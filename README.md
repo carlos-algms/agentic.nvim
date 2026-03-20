@@ -2,9 +2,10 @@
 
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
-> ⚡ A Chat interface for Ai agents in Neovim that supports Claude, Gemini,
-> Codex, OpenCode, Cursor Agent, Auggie, and Mistral Vibe through the Agent
-> Client Protocol (ACP).
+> ⚡ A Chat interface for AI agents in Neovim that works with any provider
+> supporting the [Agent Client Protocol (ACP)](https://agentclientprotocol.com)
+> — including Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot, Auggie,
+> Mistral Vibe, Cline, Goose, and more.
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
@@ -26,12 +27,93 @@ feature.
 There're no hidden prompts or magic happening behind the scenes. Just a Chat
 interface, your colors, and your keymaps.
 
+### Supported providers
+
+Works with **any** AI provider that implements the
+[Agent Client Protocol](https://agentclientprotocol.com), including, but not
+limited to:
+
+<table>
+  <tr>
+    <td align="center" width="130">
+      <img src=".github/assets/images/claude.svg" width="48" height="48" alt="Claude"><br>
+      <b>Claude</b>
+    </td>
+    <td align="center" width="130">
+      <img src=".github/assets/images/gemini.svg" width="48" height="48" alt="Gemini"><br>
+      <b>Gemini</b>
+    </td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/openai-light.svg">
+        <img src=".github/assets/images/openai.svg" width="48" height="48" alt="Codex">
+      </picture><br>
+      <b>Codex</b>
+    </td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/opencode-light.svg">
+        <img src=".github/assets/images/opencode.svg" width="48" height="48" alt="OpenCode">
+      </picture><br>
+      <b>OpenCode</b>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/cursor-light.svg">
+        <img src=".github/assets/images/cursor.svg" width="48" height="48" alt="Cursor">
+      </picture><br>
+      <b>Cursor</b>
+    </td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/copilot-light.svg">
+        <img src=".github/assets/images/copilot.svg" width="48" height="48" alt="Copilot">
+      </picture><br>
+      <b>Copilot</b>
+    </td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/augment-light.svg">
+        <img src=".github/assets/images/augment.svg" width="48" height="48" alt="Augment">
+      </picture><br>
+      <b>Augment</b>
+    </td>
+    <td align="center" width="130">
+      <img src=".github/assets/images/mistral.svg" width="48" height="48" alt="Mistral Vibe"><br>
+      <b>Mistral Vibe</b>
+    </td>
+  </tr>
+  <tr>
+    <td width="130"></td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/cline-light.svg">
+        <img src=".github/assets/images/cline.svg" width="48" height="48" alt="Cline">
+      </picture><br>
+      <b>Cline</b>
+    </td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/goose-light.svg">
+        <img src=".github/assets/images/goose.svg" width="48" height="48" alt="Goose">
+      </picture><br>
+      <b>Goose</b>
+    </td>
+    <td width="130"></td>
+  </tr>
+</table>
+
+_...and any future ACP-compatible provider._
+
 ## ✨ Features
 
 - **⚡ Performance First** - Optimized for minimal overhead and fast response
   times
-- **🔌 Multiple ACP Providers** - Support for Claude, Gemini, Codex, OpenCode,
-  and Cursor Agent 🥇
+- **🔌 Any ACP Provider** - Works with any AI provider that implements the Agent
+  Client Protocol — Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot,
+  Auggie, Mistral Vibe, Cline, Goose, and any future ACP-compatible provider
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -115,7 +197,8 @@ https://github.com/user-attachments/assets/c6653a8b-20ef-49c8-b644-db0df1b342f0
 ## 📋 Requirements
 
 - **Neovim** v0.11.0 or higher
-- **ACP Provider CLI** - Chose your favorite ACP and install its CLI tool
+- **ACP Provider CLI** - Install the CLI for any ACP-compatible provider of your
+  choice
   - For security reasons, this plugin doesn't install or manage binaries for
     you. You must install them manually.
 
@@ -136,6 +219,8 @@ tools like `nvm`, `fnm`, etc...
 | [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                     |
 | [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
 | [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
+| [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                      |
+| [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                        |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -157,7 +242,7 @@ tools like `nvm`, `fnm`, etc...
   "carlos-algms/agentic.nvim",
 
   opts = {
-    -- Available by default: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp"
+    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -218,8 +303,8 @@ here for ease access and reference:
 
 ### Customizing ACP Providers
 
-You can customize the supported ACP providers by configuring the `acp_providers`
-property:
+You can customize the built-in providers or add any new ACP-compatible provider
+by configuring the `acp_providers` property:
 
 > [!NOTE]  
 > You don't have to override anything or include these in your setup!  
@@ -242,6 +327,16 @@ property:
       -- Example of how override the ACP command to suit your installation, if needed
       ["codex-acp"] = {
         command = "~/.local/bin/codex-acp",
+      },
+
+      -- Add any new ACP-compatible provider — the name and command are up to you
+      ["my-cool-acp"] = {
+        name = "My Cool ACP",
+        command = "cool-acp",
+        args = { "--mode", "acp" },
+        env = {
+          COOL_API_KEY = os.getenv("COOL_API_KEY"),
+        },
       },
     },
   },
@@ -957,3 +1052,7 @@ the the acknowledgments 😊.
 [preview-diff-inline-image]:
   https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
+[cline]: https://github.com/cline/cline
+[cline-docs]: https://docs.cline.bot/getting-started/installing-cline
+[goose]: https://github.com/block/goose
+[goose-docs]: https://block.github.io/goose/docs/getting-started/installation
