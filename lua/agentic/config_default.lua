@@ -14,6 +14,13 @@
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
 --- User config headers - each panel can have either config parts or a custom render function
+--- Customize window headers for each panel in the chat widget.
+--- Each header can be either:
+--- 1. A table with title and suffix fields
+--- 2. A function that receives header parts and returns a custom header string
+---
+--- The context field is managed internally and shows dynamic info like counts.
+---
 --- @alias agentic.UserConfig.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts|agentic.UserConfig.HeaderRenderFn|nil>
 
 --- Data passed to the on_prompt_submit hook
@@ -35,11 +42,6 @@
 --- @field tab_page_id number The tabpage ID
 --- @field update agentic.acp.SessionUpdateMessage ACP session update details.
 
---- @class agentic.UserConfig.Hooks
---- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
---- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
---- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
-
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
 --- @field mode string|string[] The mode(s) for this binding
@@ -55,15 +57,139 @@
 --- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
+--- @class agentic.UserConfig.Windows.Chat
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @class agentic.UserConfig.Windows.Input
+--- @field height number
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @class agentic.UserConfig.Windows.Code
+--- @field max_height number
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @class agentic.UserConfig.Windows.Files
+--- @field max_height number
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @class agentic.UserConfig.Windows.Diagnostics
+--- @field max_height number
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @class agentic.UserConfig.Windows.Todos
+--- @field display boolean
+--- @field max_height number
+--- @field win_opts? agentic.UserConfig.WinOpts
+
+--- @alias agentic.UserConfig.Windows.Position "right"|"left"|"bottom"
+
+--- @class agentic.UserConfig.Windows
+--- @field position agentic.UserConfig.Windows.Position
+--- @field width string|number
+--- @field height string|number
+--- @field stack_width_ratio number
+--- @field chat agentic.UserConfig.Windows.Chat
+--- @field input agentic.UserConfig.Windows.Input
+--- @field code agentic.UserConfig.Windows.Code
+--- @field files agentic.UserConfig.Windows.Files
+--- @field diagnostics agentic.UserConfig.Windows.Diagnostics
+--- @field todos agentic.UserConfig.Windows.Todos
+
+--- @class agentic.UserConfig.SpinnerChars
+--- @field generating string[]
+--- @field thinking string[]
+--- @field searching string[]
+--- @field busy string[]
+
+--- Icons used to identify tool call states
+--- @class agentic.UserConfig.StatusIcons
+--- @field pending string
+--- @field in_progress string
+--- @field failed string
+
+--- Icons used for diagnostics in the context panel
+--- @class agentic.UserConfig.DiagnosticIcons
+--- @field error string
+--- @field warn string
+--- @field info string
+--- @field hint string
+
+--- @class agentic.UserConfig.PermissionIcons
+--- @field allow_once string
+--- @field allow_always string
+--- @field reject_once string
+--- @field reject_always string
+
+--- @class agentic.UserConfig.FilePicker
+--- @field enabled boolean
+
+--- @class agentic.UserConfig.ImagePaste
+--- @field enabled boolean Enable image drag-and-drop to add images to referenced files
+
+--- @class agentic.UserConfig.AutoScroll
+--- @field threshold integer Lines from bottom to trigger auto-scroll (default: 10)
+
+--- Show diff preview for edit tool calls in the buffer
+--- @class agentic.UserConfig.DiffPreview
+--- @field enabled boolean
+--- @field layout "inline" | "split"
+--- @field center_on_navigate_hunks boolean
+
+--- @class agentic.UserConfig.Hooks
+--- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
+--- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
+--- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
+
+--- Control various behaviors and features of the plugin
+--- @class agentic.UserConfig.Settings
+--- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
+
+--- @class agentic.UserConfig.SessionRestore
+--- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
+
+--- All the user config configurable options are optional
+--- @class agentic.PartialUserConfig
+--- @field debug? boolean Enable printing debug messages which can be read via `:messages`
+--- @field provider? agentic.UserConfig.ProviderName
+--- @field acp_providers? table<agentic.UserConfig.ProviderName, agentic.acp.ACPProviderConfig|nil>
+--- @field windows? agentic.UserConfig.Windows
+--- @field keymaps? agentic.UserConfig.Keymaps
+--- @field spinner_chars? agentic.UserConfig.SpinnerChars
+--- @field status_icons? agentic.UserConfig.StatusIcons
+--- @field diagnostic_icons? agentic.UserConfig.DiagnosticIcons
+--- @field permission_icons? agentic.UserConfig.PermissionIcons
+--- @field file_picker? agentic.UserConfig.FilePicker
+--- @field image_paste? agentic.UserConfig.ImagePaste
+--- @field auto_scroll? agentic.UserConfig.AutoScroll
+--- @field diff_preview? agentic.UserConfig.DiffPreview
+--- @field hooks? agentic.UserConfig.Hooks
+--- @field headers? agentic.UserConfig.Headers
+--- @field settings? agentic.UserConfig.Settings
+--- @field session_restore? agentic.UserConfig.SessionRestore
+
 --- @class agentic.UserConfig
+--- @field debug boolean Enable printing debug messages which can be read via `:messages`
+--- @field provider agentic.UserConfig.ProviderName
+--- @field acp_providers table<agentic.UserConfig.ProviderName, agentic.acp.ACPProviderConfig|nil>
+--- @field windows agentic.UserConfig.Windows
+--- @field keymaps agentic.UserConfig.Keymaps
+--- @field spinner_chars agentic.UserConfig.SpinnerChars
+--- @field status_icons agentic.UserConfig.StatusIcons
+--- @field diagnostic_icons agentic.UserConfig.DiagnosticIcons
+--- @field permission_icons agentic.UserConfig.PermissionIcons
+--- @field file_picker agentic.UserConfig.FilePicker
+--- @field image_paste agentic.UserConfig.ImagePaste
+--- @field auto_scroll agentic.UserConfig.AutoScroll
+--- @field diff_preview agentic.UserConfig.DiffPreview
+--- @field hooks agentic.UserConfig.Hooks
+--- @field headers agentic.UserConfig.Headers
+--- @field settings agentic.UserConfig.Settings
+--- @field session_restore agentic.UserConfig.SessionRestore
 local ConfigDefault = {
-    --- Enable printing debug messages which can be read via `:messages`
     debug = false,
 
-    --- @type agentic.UserConfig.ProviderName
     provider = "claude-agent-acp",
 
-    --- @type table<agentic.UserConfig.ProviderName, agentic.acp.ACPProviderConfig|nil>
     acp_providers = {
         ["claude-agent-acp"] = {
             name = "Claude Agent ACP",
@@ -153,43 +279,6 @@ local ConfigDefault = {
         },
     },
 
-    --- @class agentic.UserConfig.Windows.Chat
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @class agentic.UserConfig.Windows.Input
-    --- @field height number
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @class agentic.UserConfig.Windows.Code
-    --- @field max_height number
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @class agentic.UserConfig.Windows.Files
-    --- @field max_height number
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @class agentic.UserConfig.Windows.Diagnostics
-    --- @field max_height number
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @class agentic.UserConfig.Windows.Todos
-    --- @field display boolean
-    --- @field max_height number
-    --- @field win_opts? agentic.UserConfig.WinOpts
-
-    --- @alias agentic.UserConfig.Windows.Position "right"|"left"|"bottom"
-
-    --- @class agentic.UserConfig.Windows
-    --- @field position agentic.UserConfig.Windows.Position
-    --- @field width string|number
-    --- @field height string|number
-    --- @field stack_width_ratio number
-    --- @field chat agentic.UserConfig.Windows.Chat
-    --- @field input agentic.UserConfig.Windows.Input
-    --- @field code agentic.UserConfig.Windows.Code
-    --- @field files agentic.UserConfig.Windows.Files
-    --- @field diagnostics agentic.UserConfig.Windows.Diagnostics
-    --- @field todos agentic.UserConfig.Windows.Todos
     windows = {
         position = "right",
         width = "40%",
@@ -203,7 +292,6 @@ local ConfigDefault = {
         todos = { display = true, max_height = 10, win_opts = {} },
     },
 
-    --- @type agentic.UserConfig.Keymaps
     keymaps = {
         --- Keys bindings for ALL buffers in the widget
         widget = {
@@ -255,11 +343,6 @@ local ConfigDefault = {
     },
 
     -- stylua: ignore start
-    --- @class agentic.UserConfig.SpinnerChars
-    --- @field generating string[]
-    --- @field thinking string[]
-    --- @field searching string[]
-    --- @field busy string[]
     spinner_chars = {
         generating = { "·", "✢", "✳", "∗", "✻", "✽" },
         thinking = { "🤔", "🤨" },
@@ -268,8 +351,6 @@ local ConfigDefault = {
     },
     -- stylua: ignore end
 
-    --- Icons used to identify tool call states
-    --- @class agentic.UserConfig.StatusIcons
     status_icons = {
         pending = "󰔛",
         in_progress = "󰔛",
@@ -277,12 +358,6 @@ local ConfigDefault = {
         failed = "",
     },
 
-    --- Icons used for diagnostics in the context panel
-    --- @class agentic.UserConfig.DiagnosticIcons
-    --- @field error string
-    --- @field warn string
-    --- @field info string
-    --- @field hint string
     diagnostic_icons = {
         error = "❌",
         warn = "⚠️",
@@ -290,7 +365,6 @@ local ConfigDefault = {
         hint = "✨",
     },
 
-    --- @class agentic.UserConfig.PermissionIcons
     permission_icons = {
         allow_once = "",
         allow_always = "",
@@ -298,61 +372,36 @@ local ConfigDefault = {
         reject_always = "󰜺",
     },
 
-    --- @class agentic.UserConfig.FilePicker
     file_picker = {
         enabled = true,
     },
 
-    --- @class agentic.UserConfig.ImagePaste
-    --- @field enabled boolean Enable image drag-and-drop to add images to referenced files
     image_paste = {
         enabled = true,
     },
 
-    --- @class agentic.UserConfig.AutoScroll
-    --- @field threshold integer Lines from bottom to trigger auto-scroll (default: 10)
     auto_scroll = {
         threshold = 10,
     },
 
-    --- Show diff preview for edit tool calls in the buffer
-    --- @class agentic.UserConfig.DiffPreview
-    --- @field enabled boolean
-    --- @field layout "inline" | "split"
-    --- @field center_on_navigate_hunks boolean
     diff_preview = {
         enabled = true,
         layout = "split",
         center_on_navigate_hunks = true,
     },
 
-    --- @type agentic.UserConfig.Hooks
     hooks = {
         on_prompt_submit = nil,
         on_response_complete = nil,
         on_session_update = nil,
     },
 
-    --- Customize window headers for each panel in the chat widget.
-    --- Each header can be either:
-    --- 1. A table with title and suffix fields
-    --- 2. A function that receives header parts and returns a custom header string
-    ---
-    --- The context field is managed internally and shows dynamic info like counts.
-    ---
-    --- @type agentic.UserConfig.Headers
     headers = {},
 
-    --- Control various behaviors and features of the plugin
-    --- @class agentic.UserConfig.Settings
     settings = {
-
-        --- Automatically move cursor to chat window after submitting a prompt
         move_cursor_to_chat_on_submit = true,
     },
 
-    --- @class agentic.UserConfig.SessionRestore
-    --- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
     session_restore = {
         storage_path = nil,
     },

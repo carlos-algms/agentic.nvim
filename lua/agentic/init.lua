@@ -222,7 +222,7 @@ local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
 
 --- Merges the current user configuration with the default configuration
 --- This method should be safe to be called multiple times
---- @param opts agentic.UserConfig
+--- @param opts agentic.PartialUserConfig
 function Agentic.setup(opts)
     -- make sure invalid user config doesn't crash setup and leave things half-initialized
     local ok, err = pcall(function()
