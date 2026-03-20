@@ -404,6 +404,9 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
                 vim.log.levels.ERROR
             )
         else
+            -- Always update legacy state on success (mirrors _handle_mode_change pattern)
+            self.config_options.legacy_agent_models.current_model_id = model_id
+
             if result and result.configOptions then
                 Logger.debug("received result after setting model")
                 self:_handle_new_config_options(result.configOptions)
