@@ -170,12 +170,16 @@
 --- @field models? agentic.acp.ModelsInfo
 --- @field configOptions? agentic.acp.ConfigOption[]
 
+--- @alias agentic.acp.ResponseRawParams
+--- | { sessionId: string, update: agentic.acp.SessionUpdateMessage }
+--- | agentic.acp.RequestPermission
+
 --- @class agentic.acp.ResponseRaw
 --- @field id? number
 --- @field jsonrpc string
 --- @field method string
 --- @field result? table
---- @field params? { sessionId: string, update: agentic.acp.SessionUpdateMessage }
+--- @field params? agentic.acp.ResponseRawParams
 --- @field error? agentic.acp.ACPError
 
 --- Shared base fields for ToolCall and ToolCallUpdate.
@@ -244,8 +248,8 @@
 --- Permission request (session/request_permission JSON-RPC request).
 --- Per ACP spec, toolCall is a ToolCallUpdate (partial) — same shape used in tool_call_update.
 --- @class agentic.acp.RequestPermission
---- @field options agentic.acp.PermissionOption[]
 --- @field sessionId string
+--- @field options agentic.acp.PermissionOption[]
 --- @field toolCall agentic.acp.ToolCallBase
 
 --- @class agentic.acp.RequestPermissionOutcome

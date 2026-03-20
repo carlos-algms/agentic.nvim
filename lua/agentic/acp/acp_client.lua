@@ -364,7 +364,7 @@ function ACPClient:__build_tool_call_message(update)
     end
 
     if update.content then
-        for _i, content in ipairs(update.content) do
+        for _, content in ipairs(update.content) do
             if content then
                 if
                     content.type == "content"
@@ -458,10 +458,8 @@ function ACPClient:__handle_request_permission(message_id, request)
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
-        if request.toolCall then
-            local message = self:__build_tool_call_message(request.toolCall)
-            subscriber.on_tool_call_update(message)
-        end
+        local message = self:__build_tool_call_message(request.toolCall)
+        subscriber.on_tool_call_update(message)
 
         subscriber.on_request_permission(request, function(option_id)
             --- @type agentic.acp.RequestPermissionOutcome

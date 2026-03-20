@@ -274,11 +274,13 @@ function SessionManager:_on_tool_call(tool_call)
     end
 
     self.message_writer:write_tool_call_block(tool_call)
-    -- Store full tool_call in chat history
+
+    -- Store merged block from MessageWriter (has normalized/accumulated fields)
+    local merged = self.message_writer.tool_call_blocks[tool_call.tool_call_id]
     --- @type agentic.ui.ChatHistory.ToolCall
     local tool_msg = vim.tbl_deep_extend("force", {
         type = "tool_call",
-    }, tool_call)
+    }, merged)
 
     self.chat_history:add_message(tool_msg)
 end
@@ -293,11 +295,13 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     else
         self.message_writer:update_tool_call_block(tool_call_update)
 
-        -- Store full tool_call in chat history
+        -- Store merged block from MessageWriter (has accumulated body and normalized fields)
+        local merged =
+            self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
         --- @type agentic.ui.ChatHistory.ToolCall
         local tool_msg = vim.tbl_deep_extend("force", {
             type = "tool_call",
-        }, tool_call_update)
+        }, merged)
 
         self.chat_history:update_tool_call(
             tool_call_update.tool_call_id,
