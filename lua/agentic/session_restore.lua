@@ -110,7 +110,7 @@ local function show_local_picker(tab_page_id, current_session)
 end
 
 --- Show ACP session picker
---- @param sessions table[]
+--- @param sessions agentic.acp.SessionInfo[]
 --- @param current_session agentic.SessionManager|nil
 --- @param session_manager agentic.SessionManager
 local function show_acp_picker(sessions, current_session, session_manager)
@@ -145,12 +145,7 @@ local function show_acp_picker(sessions, current_session, session_manager)
                 prompt = "Current session has messages. What would you like to do?",
             }, function(conflict_choice)
                 if conflict_choice == "Clear current session and restore" then
-                    if session_manager.session_id then
-                        session_manager.agent:cancel_session(
-                            session_manager.session_id
-                        )
-                        session_manager.widget:clear()
-                    end
+                    -- load_acp_session calls _cancel_session internally
                     session_manager:load_acp_session(
                         choice.session_id,
                         choice.title

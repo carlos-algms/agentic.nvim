@@ -509,8 +509,7 @@ describe("SessionRestore", function()
                 local conflict_callback = vim_ui_select_stub.calls[2][3]
                 conflict_callback("Clear current session and restore")
 
-                assert.spy(mock_session.agent.cancel_session).was.called(1)
-                assert.spy(mock_session.widget.clear).was.called(1)
+                -- cancel happens inside load_acp_session → _cancel_session
                 assert.spy(mock_session.load_acp_session).was.called(1)
                 assert.spy(mock_session.widget.show).was.called(1)
             end

@@ -831,6 +831,8 @@ function SessionManager:new_session(opts)
 end
 
 function SessionManager:_cancel_session()
+    self._is_loading_session = false
+
     if self.session_id then
         -- only cancel and clear content if there was an session
         -- Otherwise, it clears selections and files when opening for the first time
