@@ -30,6 +30,7 @@ local KNOWN_ACP_KINDS = {
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
 --- @field agent_info? agentic.acp.AgentInfo
+--- @field auth_methods agentic.acp.AuthMethod[]
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
@@ -71,6 +72,7 @@ function ACPClient:new(config, on_ready)
             },
             terminal = false,
         },
+        auth_methods = {},
         callbacks = {},
         transport = nil,
         state = "disconnected",
