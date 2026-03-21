@@ -92,24 +92,25 @@ describe("ACPClient", function()
         return client
     end
 
-    --- @param client agentic.acp.ACPClient
+    --- @param _client agentic.acp.ACPClient
     --- @param method string
     --- @param response_result table|nil
     --- @param response_err agentic.acp.ACPError|nil
     local function stub_send_response(
-        client,
+        _client,
         method,
         response_result,
         response_err
     )
         transport_send_stub:invokes(function(_self, data)
             local decoded = vim.json.decode(data)
-            if decoded.method == method then
-                local cb = client.callbacks[decoded.id]
-                if cb then
-                    client.callbacks[decoded.id] = nil
-                    cb(response_result, response_err)
-                end
+            if decoded.method == method and captured_on_message then
+                captured_on_message({
+                    jsonrpc = "2.0",
+                    id = decoded.id,
+                    result = response_result,
+                    error = response_err,
+                })
             end
         end)
     end

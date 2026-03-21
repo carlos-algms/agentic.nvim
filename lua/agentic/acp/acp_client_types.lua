@@ -203,10 +203,10 @@
 --- @class agentic.acp.ResponseRaw
 --- @field id? number
 --- @field jsonrpc string
---- @field method string
+--- @field method? string
 --- @field result? table
---- @field params? agentic.acp.ResponseRawParams
 --- @field error? agentic.acp.ACPError
+--- @field params? agentic.acp.ResponseRawParams
 
 --- Shared base fields for ToolCall and ToolCallUpdate.
 --- In the ACP spec, ToolCallUpdate is a partial version where all fields
