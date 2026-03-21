@@ -694,18 +694,9 @@ function SessionManager:_handle_input_submit(input_text)
     end)
 end
 
---- Create a new session, optionally cancelling any existing one
---- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
-function SessionManager:new_session(opts)
-    opts = opts or {}
-    local restore_mode = opts.restore_mode or false
-    local on_created = opts.on_created
-    if not restore_mode then
-        self:_cancel_session()
-    end
-
-    self.status_animation:start("busy")
-
+--- Build the standard ACP client handlers for session subscriptions
+--- @return agentic.acp.ClientHandlers handlers
+function SessionManager:_build_handlers()
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
@@ -757,6 +748,23 @@ function SessionManager:new_session(opts)
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
+
+    return handlers
+end
+
+--- Create a new session, optionally cancelling any existing one
+--- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
+function SessionManager:new_session(opts)
+    opts = opts or {}
+    local restore_mode = opts.restore_mode or false
+    local on_created = opts.on_created
+    if not restore_mode then
+        self:_cancel_session()
+    end
+
+    self.status_animation:start("busy")
+
+    local handlers = self:_build_handlers()
 
     self.agent:create_session(handlers, function(response, err)
         self.status_animation:stop()
@@ -1088,6 +1096,28 @@ end
 function SessionManager:destroy()
     self:_cancel_session()
     self.widget:destroy()
+end
+
+--- Load an existing ACP session by ID, subscribing to its updates
+--- @param session_id string
+--- @param title string|nil
+function SessionManager:load_acp_session(session_id, title)
+    self:_cancel_session()
+    self._is_loading_session = true
+    self.status_animation:start("busy")
+
+    local handlers = self:_build_handlers()
+    local cwd = vim.fn.getcwd()
+
+    self.agent:load_session(session_id, cwd, {}, handlers, function()
+        self._is_loading_session = false
+        self.session_id = session_id
+        self.chat_history.session_id = session_id
+        self.chat_history.title = title or ""
+        self.chat_history.timestamp = os.time()
+        self._is_first_message = false
+        self.status_animation:stop()
+    end)
 end
 
 --- Restore session from loaded chat history
