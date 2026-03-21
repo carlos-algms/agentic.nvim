@@ -450,17 +450,18 @@ describe("agentic.SessionManager", function()
 
     describe("_on_session_update: user_message_chunk", function()
         --- @type TestSpy
-        local write_chunk_spy
+        local write_message_spy
 
         --- @type agentic.SessionManager
         local session
 
         before_each(function()
-            write_chunk_spy = spy.new(function() end)
+            write_message_spy = spy.new(function() end)
 
             session = {
                 _is_loading_session = false,
-                message_writer = { write_message_chunk = write_chunk_spy },
+                message_writer = { write_message = write_message_spy },
+                agent = { provider_config = { name = "test-provider" } },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
         end)
@@ -468,26 +469,29 @@ describe("agentic.SessionManager", function()
         it("ignores chunk when _is_loading_session is false", function()
             session:_on_session_update({
                 sessionUpdate = "user_message_chunk",
-                content = { text = "hello" },
+                content = { type = "text", text = "hello" },
             })
 
-            assert.spy(write_chunk_spy).was.called(0)
+            assert.spy(write_message_spy).was.called(0)
         end)
 
-        it("renders chunk when _is_loading_session is true", function()
-            session._is_loading_session = true --- @diagnostic disable-line: inject-field
+        it(
+            "renders as formatted message when _is_loading_session is true",
+            function()
+                session._is_loading_session = true --- @diagnostic disable-line: inject-field
 
-            --- @type agentic.acp.SessionUpdateMessage
-            local update = {
-                sessionUpdate = "user_message_chunk",
-                content = { text = "hello" },
-            }
+                session:_on_session_update({
+                    sessionUpdate = "user_message_chunk",
+                    content = { type = "text", text = "hello" },
+                })
 
-            session:_on_session_update(update)
-
-            assert.spy(write_chunk_spy).was.called(1)
-            assert.equal(update, write_chunk_spy.calls[1][2])
-        end)
+                assert.spy(write_message_spy).was.called(1)
+                local message = write_message_spy.calls[1][2]
+                assert.truthy(message.content.text:match("User"))
+                assert.truthy(message.content.text:match("hello"))
+                assert.truthy(message.content.text:match("Agent"))
+            end
+        )
     end)
 
     describe("on_tool_call_update: buffer reload", function()

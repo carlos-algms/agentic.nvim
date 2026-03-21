@@ -61,7 +61,7 @@ end
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
---- @field _is_loading_session boolean Whether a session is being loaded from history
+--- @field _is_restoring_session boolean Whether a session is being loaded from history
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -205,11 +205,22 @@ end
 
 --- @param update agentic.acp.SessionUpdateMessage
 function SessionManager:_on_session_update(update)
-    -- order the IF blocks in order of likeliness to be called for performance
-
     if update.sessionUpdate == "user_message_chunk" then
-        if self._is_loading_session then
-            self.message_writer:write_message_chunk(update)
+        if self._is_restoring_session then
+            local text = update.content
+                and update.content.type == "text"
+                and update.content.text
+            if text and text ~= "" then
+                local message_lines = {
+                    "##  User",
+                    "",
+                    text,
+                    "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name,
+                }
+                self.message_writer:write_message(
+                    ACPPayloads.generate_user_message(message_lines)
+                )
+            end
         end
         return
     end
@@ -831,7 +842,7 @@ function SessionManager:new_session(opts)
 end
 
 function SessionManager:_cancel_session()
-    self._is_loading_session = false
+    self._is_restoring_session = false
 
     if self.session_id then
         -- only cancel and clear content if there was an session
@@ -1114,20 +1125,32 @@ function SessionManager:load_acp_session(session_id, title)
     end
 
     self:_cancel_session()
-    self._is_loading_session = true
+    self._is_restoring_session = true
     self.status_animation:start("busy")
 
     local handlers = self:_build_handlers()
     local cwd = vim.fn.getcwd()
 
     self.agent:load_session(session_id, cwd, {}, handlers, function()
-        self._is_loading_session = false
-        self.session_id = session_id
-        self.chat_history.session_id = session_id
-        self.chat_history.title = title or ""
-        self.chat_history.timestamp = os.time()
-        self._is_first_message = false
-        self.status_animation:stop()
+        -- vim.schedule to run AFTER deferred session update notifications
+        -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
+        vim.schedule(function()
+            self._is_restoring_session = false
+            self.session_id = session_id
+            self.chat_history.session_id = session_id
+            self.chat_history.title = title or ""
+            self.chat_history.timestamp = os.time()
+            self._is_first_message = false
+            self.status_animation:stop()
+
+            local finish_message = string.format(
+                "\n### 🏁 Session restored - %s\n-----",
+                os.date("%Y-%m-%d %H:%M:%S")
+            )
+            self.message_writer:write_message(
+                ACPPayloads.generate_agent_message(finish_message)
+            )
+        end)
     end)
 end
 
