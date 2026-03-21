@@ -1104,6 +1104,15 @@ end
 --- @param session_id string
 --- @param title string|nil
 function SessionManager:load_acp_session(session_id, title)
+    local caps = self.agent.agent_capabilities
+    if not caps or not caps.loadSession then
+        Logger.notify(
+            "Agent does not support loading sessions",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
     self:_cancel_session()
     self._is_loading_session = true
     self.status_animation:start("busy")

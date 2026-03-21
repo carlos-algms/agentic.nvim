@@ -30,9 +30,10 @@ local KNOWN_ACP_KINDS = {
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
 --- @field agent_info? agentic.acp.AgentInfo
---- @field auth_methods agentic.acp.AuthMethod[]
+--- @field auth_methods? agentic.acp.AuthMethod[]
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
+--- @field ready_listeners fun(client: agentic.acp.ACPClient)[]
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 
 --- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
@@ -73,6 +74,7 @@ function ACPClient:new(config, on_ready)
             terminal = false,
         },
         auth_methods = {},
+        ready_listeners = {},
         callbacks = {},
         transport = nil,
         state = "disconnected",
@@ -80,11 +82,29 @@ function ACPClient:new(config, on_ready)
     }
 
     local client = setmetatable(instance, self) --[[@as agentic.acp.ACPClient]]
-    client._on_ready = on_ready
+    client._on_ready = function(c)
+        on_ready(c)
+        for _, listener in ipairs(c.ready_listeners) do
+            vim.schedule(function()
+                listener(c)
+            end)
+        end
+        c.ready_listeners = {}
+    end
 
     client:_setup_transport()
     client:_connect()
     return client
+end
+
+--- Calls callback immediately if ready, or queues it for when initialization completes
+--- @param callback fun(client: agentic.acp.ACPClient)
+function ACPClient:when_ready(callback)
+    if self.state == "ready" then
+        callback(self)
+    else
+        self.ready_listeners[#self.ready_listeners + 1] = callback
+    end
 end
 
 --- @param session_id string

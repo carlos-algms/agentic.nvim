@@ -209,9 +209,9 @@ end
 
 --- show a selector to restore a previous session
 function Agentic.restore_session()
-    local tab_page_id = vim.api.nvim_get_current_tabpage()
-    local current_session = SessionRegistry.sessions[tab_page_id]
-    SessionRestore.show_picker(tab_page_id, current_session)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        SessionRestore.show_picker(session)
+    end)
 end
 
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
