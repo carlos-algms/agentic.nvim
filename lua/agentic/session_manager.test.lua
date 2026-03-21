@@ -459,14 +459,14 @@ describe("agentic.SessionManager", function()
             write_message_spy = spy.new(function() end)
 
             session = {
-                _is_loading_session = false,
+                _is_restoring_session = false,
                 message_writer = { write_message = write_message_spy },
                 agent = { provider_config = { name = "test-provider" } },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
         end)
 
-        it("ignores chunk when _is_loading_session is false", function()
+        it("ignores chunk when _is_restoring_session is false", function()
             session:_on_session_update({
                 sessionUpdate = "user_message_chunk",
                 content = { type = "text", text = "hello" },
@@ -476,9 +476,9 @@ describe("agentic.SessionManager", function()
         end)
 
         it(
-            "renders as formatted message when _is_loading_session is true",
+            "renders as formatted message when _is_restoring_session is true",
             function()
-                session._is_loading_session = true --- @diagnostic disable-line: inject-field
+                session._is_restoring_session = true --- @diagnostic disable-line: inject-field
 
                 session:_on_session_update({
                     sessionUpdate = "user_message_chunk",
