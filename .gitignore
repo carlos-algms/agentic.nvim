@@ -31,3 +31,6 @@ deps/
 # Mac files
 .DS_Store
 
+# Git worktrees
+.worktrees/
+
