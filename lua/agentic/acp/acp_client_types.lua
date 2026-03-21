@@ -20,9 +20,24 @@
 --- @field readTextFile boolean
 --- @field writeTextFile boolean
 
+--- @class agentic.acp.SessionCapabilities
+--- @field list? boolean
+
 --- @class agentic.acp.AgentCapabilities
 --- @field loadSession boolean
+--- @field sessionCapabilities? agentic.acp.SessionCapabilities
 --- @field promptCapabilities agentic.acp.PromptCapabilities
+
+--- @class agentic.acp.SessionInfo
+--- @field sessionId string
+--- @field cwd string
+--- @field title? string
+--- @field updatedAt? string
+--- @field _meta? table
+
+--- @class agentic.acp.SessionListResponse
+--- @field sessions agentic.acp.SessionInfo[]
+--- @field nextCursor? string
 
 --- @class agentic.acp.PromptCapabilities
 --- @field image boolean
