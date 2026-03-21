@@ -387,7 +387,7 @@ describe("SessionRestore", function()
             })
         end
 
-        it("uses ACP list when agent:list_sessions returns true", function()
+        it("uses ACP list with formatted sessions when capable", function()
             local mock_session = create_acp_session()
             setup_registry_stub(mock_session)
 
@@ -401,6 +401,10 @@ describe("SessionRestore", function()
             assert.equal(2, #items)
             assert.equal("acp-1", items[1].session_id)
             assert.equal("acp-2", items[2].session_id)
+            assert.truthy(items[1].display:match("2026%-03%-20 14:30"))
+            assert.truthy(items[1].display:match("ACP First"))
+            assert.truthy(items[2].display:match("2026%-03%-21 09:15"))
+            assert.truthy(items[2].display:match("ACP Second"))
         end)
 
         it(
@@ -445,19 +449,6 @@ describe("SessionRestore", function()
                 logger_notify_stub.calls[1][1]
             )
             assert.spy(vim_ui_select_stub).was.called(0)
-        end)
-
-        it("formats ACP sessions with updatedAt and title", function()
-            local mock_session = create_acp_session()
-            setup_registry_stub(mock_session)
-
-            SessionRestore.show_picker(1, nil)
-
-            local items = vim_ui_select_stub.calls[1][1]
-            assert.truthy(items[1].display:match("2026%-03%-20 14:30"))
-            assert.truthy(items[1].display:match("ACP First"))
-            assert.truthy(items[2].display:match("2026%-03%-21 09:15"))
-            assert.truthy(items[2].display:match("ACP Second"))
         end)
 
         it("calls load_acp_session on selection without conflict", function()
@@ -514,21 +505,5 @@ describe("SessionRestore", function()
                 assert.spy(mock_session.widget.show).was.called(1)
             end
         )
-
-        it("shows widget after ACP load", function()
-            local mock_session = create_acp_session()
-            setup_registry_stub(mock_session)
-
-            SessionRestore.show_picker(1, nil)
-
-            local callback = select_session(1)
-            callback({
-                session_id = "acp-1",
-                title = "ACP First",
-                display = "2026-03-20 14:30 - ACP First",
-            })
-
-            assert.spy(mock_session.widget.show).was.called(1)
-        end)
     end)
 end)

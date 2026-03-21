@@ -24,34 +24,50 @@ describe("ACPClient", function()
 
     local mock_transport
 
-    --- Captured on_state_change callback from create_stdio_transport
     --- @type fun(state: agentic.acp.ClientConnectionState)|nil
     local captured_on_state_change
 
-    --- Captured on_message callback from create_stdio_transport
     --- @type fun(message: agentic.acp.ResponseRaw)|nil
     local captured_on_message
 
-    --- Creates an ACPClient instance with mocked transport, already in "ready" state.
+    local PROMPT_CAPS =
+        { image = false, audio = false, embeddedContext = false }
+
+    local LIST_CAPS = {
+        loadSession = true,
+        sessionCapabilities = { list = true },
+        promptCapabilities = PROMPT_CAPS,
+    }
+
+    local LOAD_CAPS = {
+        loadSession = true,
+        promptCapabilities = PROMPT_CAPS,
+    }
+
+    --- @type agentic.acp.ClientHandlers
+    local NOOP_HANDLERS = {
+        on_session_update = function() end,
+        on_request_permission = function() end,
+        on_error = function() end,
+        on_tool_call = function() end,
+        on_tool_call_update = function() end,
+    }
+
     --- @param agent_caps agentic.acp.AgentCapabilities|nil
     --- @return agentic.acp.ACPClient client
     local function create_ready_client(agent_caps)
-        -- Capture the transport callbacks passed to create_stdio_transport
         create_transport_stub:invokes(function(_config, callbacks)
             captured_on_state_change = callbacks.on_state_change
             captured_on_message = callbacks.on_message
             return mock_transport
         end)
 
-        -- transport:start triggers on_state_change("connected")
         transport_start_stub:invokes(function()
             if captured_on_state_change then
                 captured_on_state_change("connected")
             end
         end)
 
-        -- Intercept the initialize request and respond immediately
-        -- Note: transport:send(data) passes (self, data) to the stub
         transport_send_stub:invokes(function(_self, data)
             local decoded = vim.json.decode(data)
             if decoded.method == "initialize" and captured_on_message then
@@ -70,11 +86,32 @@ describe("ACPClient", function()
 
         local client = ACPClient:new({ command = "test-agent" }, function() end)
 
-        -- Clear send stub for test assertions
         transport_send_stub:reset()
         transport_send_stub:invokes(function() end)
 
         return client
+    end
+
+    --- @param client agentic.acp.ACPClient
+    --- @param method string
+    --- @param response_result table|nil
+    --- @param response_err agentic.acp.ACPError|nil
+    local function stub_send_response(
+        client,
+        method,
+        response_result,
+        response_err
+    )
+        transport_send_stub:invokes(function(_self, data)
+            local decoded = vim.json.decode(data)
+            if decoded.method == method then
+                local cb = client.callbacks[decoded.id]
+                if cb then
+                    client.callbacks[decoded.id] = nil
+                    cb(response_result, response_err)
+                end
+            end
+        end)
     end
 
     before_each(function()
@@ -115,106 +152,59 @@ describe("ACPClient", function()
     end)
 
     describe("list_sessions", function()
-        it("returns false when agent_capabilities is nil", function()
-            local client = create_ready_client(nil)
-
-            local result = client:list_sessions("/tmp", function() end)
-
-            assert.is_false(result)
-            assert.spy(transport_send_stub).was.called(0)
-        end)
-
-        it("returns false when sessionCapabilities is nil", function()
-            local client = create_ready_client({
-                loadSession = true,
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
+        local incapable_cases = {
+            { "agent_capabilities is nil", nil },
+            {
+                "sessionCapabilities is nil",
+                { loadSession = true, promptCapabilities = PROMPT_CAPS },
+            },
+            {
+                "sessionCapabilities.list is false",
+                {
+                    loadSession = true,
+                    sessionCapabilities = { list = false },
+                    promptCapabilities = PROMPT_CAPS,
                 },
-            })
+            },
+        }
 
-            local result = client:list_sessions("/tmp", function() end)
+        for _, case in ipairs(incapable_cases) do
+            it("returns false when " .. case[1], function()
+                local client = create_ready_client(case[2])
 
-            assert.is_false(result)
-            assert.spy(transport_send_stub).was.called(0)
-        end)
+                assert.is_false(client:list_sessions("/tmp", function() end))
+                assert.spy(transport_send_stub).was.called(0)
+            end)
+        end
 
-        it("returns false when sessionCapabilities.list is falsy", function()
-            local client = create_ready_client({
-                loadSession = true,
-                sessionCapabilities = { list = false },
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
+        it(
+            "returns true and sends session/list request when capable",
+            function()
+                local client = create_ready_client(LIST_CAPS)
 
-            local result = client:list_sessions("/tmp", function() end)
+                assert.is_true(client:list_sessions("/tmp", function() end))
+                assert.spy(transport_send_stub).was.called(1)
 
-            assert.is_false(result)
-            assert.spy(transport_send_stub).was.called(0)
-        end)
-
-        it("returns true and sends request when capable", function()
-            local client = create_ready_client({
-                loadSession = true,
-                sessionCapabilities = { list = true },
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
-
-            local result = client:list_sessions("/tmp", function() end)
-
-            assert.is_true(result)
-            assert.spy(transport_send_stub).was.called(1)
-
-            -- calls[1][1] is self (mock_transport), [2] is the actual data
-            local sent_data = transport_send_stub.calls[1][2]
-            local decoded = vim.json.decode(sent_data)
-            assert.equal("session/list", decoded.method)
-            assert.equal("/tmp", decoded.params.cwd)
-        end)
+                local sent_data = transport_send_stub.calls[1][2]
+                local decoded = vim.json.decode(sent_data)
+                assert.equal("session/list", decoded.method)
+                assert.equal("/tmp", decoded.params.cwd)
+            end
+        )
 
         it("callback receives SessionListResponse on success", function()
-            local client = create_ready_client({
-                loadSession = true,
-                sessionCapabilities = { list = true },
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
+            local client = create_ready_client(LIST_CAPS)
 
             --- @type agentic.acp.SessionListResponse|nil
             local received_result
             --- @type agentic.acp.ACPError|nil
             local received_err
 
-            -- Capture the request id from the send
-            transport_send_stub:invokes(function(_self, data)
-                local decoded = vim.json.decode(data)
-                if decoded.method == "session/list" then
-                    local cb = client.callbacks[decoded.id]
-                    if cb then
-                        client.callbacks[decoded.id] = nil
-                        cb({
-                            sessions = {
-                                {
-                                    sessionId = "s1",
-                                    cwd = "/tmp",
-                                    title = "Session 1",
-                                },
-                            },
-                        }, nil)
-                    end
-                end
-            end)
+            stub_send_response(client, "session/list", {
+                sessions = {
+                    { sessionId = "s1", cwd = "/tmp", title = "Session 1" },
+                },
+            }, nil)
 
             client:list_sessions("/tmp", function(result, err)
                 received_result = result
@@ -229,31 +219,19 @@ describe("ACPClient", function()
         end)
 
         it("callback receives error on failure", function()
-            local client = create_ready_client({
-                loadSession = true,
-                sessionCapabilities = { list = true },
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
+            local client = create_ready_client(LIST_CAPS)
 
             --- @type agentic.acp.SessionListResponse|nil
             local received_result
             --- @type agentic.acp.ACPError|nil
             local received_err
 
-            transport_send_stub:invokes(function(_self, data)
-                local decoded = vim.json.decode(data)
-                if decoded.method == "session/list" then
-                    local cb = client.callbacks[decoded.id]
-                    if cb then
-                        client.callbacks[decoded.id] = nil
-                        cb(nil, { code = -32000, message = "Transport error" })
-                    end
-                end
-            end)
+            stub_send_response(
+                client,
+                "session/list",
+                nil,
+                { code = -32000, message = "Transport error" }
+            )
 
             client:list_sessions("/tmp", function(result, err)
                 received_result = result
@@ -270,38 +248,12 @@ describe("ACPClient", function()
 
     describe("load_session", function()
         it("calls on_load_complete callback when response arrives", function()
-            local client = create_ready_client({
-                loadSession = true,
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
-
+            local client = create_ready_client(LOAD_CAPS)
             local complete_called = false
 
-            transport_send_stub:invokes(function(_self, data)
-                local decoded = vim.json.decode(data)
-                if decoded.method == "session/load" then
-                    local cb = client.callbacks[decoded.id]
-                    if cb then
-                        client.callbacks[decoded.id] = nil
-                        cb({}, nil)
-                    end
-                end
-            end)
+            stub_send_response(client, "session/load", {}, nil)
 
-            --- @type agentic.acp.ClientHandlers
-            local handlers = {
-                on_session_update = function() end,
-                on_request_permission = function() end,
-                on_error = function() end,
-                on_tool_call = function() end,
-                on_tool_call_update = function() end,
-            }
-
-            client:load_session("sid-1", "/tmp", {}, handlers, function()
+            client:load_session("sid-1", "/tmp", {}, NOOP_HANDLERS, function()
                 complete_called = true
             end)
 
@@ -309,38 +261,12 @@ describe("ACPClient", function()
         end)
 
         it("works without on_load_complete (backward compatible)", function()
-            local client = create_ready_client({
-                loadSession = true,
-                promptCapabilities = {
-                    image = false,
-                    audio = false,
-                    embeddedContext = false,
-                },
-            })
+            local client = create_ready_client(LOAD_CAPS)
 
-            transport_send_stub:invokes(function(_self, data)
-                local decoded = vim.json.decode(data)
-                if decoded.method == "session/load" then
-                    local cb = client.callbacks[decoded.id]
-                    if cb then
-                        client.callbacks[decoded.id] = nil
-                        cb({}, nil)
-                    end
-                end
-            end)
+            stub_send_response(client, "session/load", {}, nil)
 
-            --- @type agentic.acp.ClientHandlers
-            local handlers = {
-                on_session_update = function() end,
-                on_request_permission = function() end,
-                on_error = function() end,
-                on_tool_call = function() end,
-                on_tool_call_update = function() end,
-            }
-
-            -- Should not error when on_load_complete is omitted
             assert.has_no_errors(function()
-                client:load_session("sid-1", "/tmp", {}, handlers)
+                client:load_session("sid-1", "/tmp", {}, NOOP_HANDLERS)
             end)
         end)
     end)
