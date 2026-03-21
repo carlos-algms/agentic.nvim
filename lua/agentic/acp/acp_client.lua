@@ -298,11 +298,6 @@ function ACPClient:__handle_session_update(params)
 
     local session_update_type = update.sessionUpdate
 
-    if session_update_type == "user_message_chunk" then
-        -- Ignore user message chunks, Agentic writes its own user messages and these can cause duplication
-        return
-    end
-
     if session_update_type == "tool_call" then
         update.kind = update.kind or "other"
         update.status = update.status or "pending"

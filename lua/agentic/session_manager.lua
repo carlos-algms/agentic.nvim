@@ -61,6 +61,7 @@ end
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
+--- @field _is_loading_session boolean Whether a session is being loaded from history
 --- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -105,6 +106,7 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
+        _is_loading_session = false,
         _restoring = false,
     }, self)
 
@@ -204,6 +206,13 @@ end
 --- @param update agentic.acp.SessionUpdateMessage
 function SessionManager:_on_session_update(update)
     -- order the IF blocks in order of likeliness to be called for performance
+
+    if update.sessionUpdate == "user_message_chunk" then
+        if self._is_loading_session then
+            self.message_writer:write_message_chunk(update)
+        end
+        return
+    end
 
     if update.sessionUpdate == "plan" then
         if Config.windows.todos.display then

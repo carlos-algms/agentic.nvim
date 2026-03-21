@@ -448,6 +448,48 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_on_session_update: user_message_chunk", function()
+        --- @type TestSpy
+        local write_chunk_spy
+
+        --- @type agentic.SessionManager
+        local session
+
+        before_each(function()
+            write_chunk_spy = spy.new(function() end)
+
+            session = {
+                _is_loading_session = false,
+                message_writer = { write_message_chunk = write_chunk_spy },
+                _on_session_update = SessionManager._on_session_update,
+            } --[[@as agentic.SessionManager]]
+        end)
+
+        it("ignores chunk when _is_loading_session is false", function()
+            session:_on_session_update({
+                sessionUpdate = "user_message_chunk",
+                content = { text = "hello" },
+            })
+
+            assert.spy(write_chunk_spy).was.called(0)
+        end)
+
+        it("renders chunk when _is_loading_session is true", function()
+            session._is_loading_session = true --- @diagnostic disable-line: inject-field
+
+            --- @type agentic.acp.SessionUpdateMessage
+            local update = {
+                sessionUpdate = "user_message_chunk",
+                content = { text = "hello" },
+            }
+
+            session:_on_session_update(update)
+
+            assert.spy(write_chunk_spy).was.called(1)
+            assert.equal(update, write_chunk_spy.calls[1][2])
+        end)
+    end)
+
     describe("on_tool_call_update: buffer reload", function()
         --- @type TestStub
         local checktime_stub
