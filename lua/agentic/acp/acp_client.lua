@@ -360,7 +360,7 @@ function ACPClient:__build_tool_call_message(update)
         message.status = update.status
     end
 
-    if update.title then
+    if update.title and update.title ~= "" then
         message.argument = update.title
     end
 
@@ -603,7 +603,14 @@ end
 --- @param cwd string
 --- @param mcp_servers table[]|nil
 --- @param handlers agentic.acp.ClientHandlers
-function ACPClient:load_session(session_id, cwd, mcp_servers, handlers)
+--- @param on_load_complete fun()|nil
+function ACPClient:load_session(
+    session_id,
+    cwd,
+    mcp_servers,
+    handlers,
+    on_load_complete
+)
     --FIXIT: check if it's possible to ignore this check and just try to send load message
     -- handle the response error properly also
     if
@@ -620,8 +627,37 @@ function ACPClient:load_session(session_id, cwd, mcp_servers, handlers)
         cwd = cwd,
         mcpServers = mcp_servers or {},
     }, function()
-        -- no-op
+        if on_load_complete then
+            on_load_complete()
+        end
     end)
+end
+
+--- @param cwd string
+--- @param callback fun(result: agentic.acp.SessionListResponse|nil, err: agentic.acp.ACPError|nil)
+--- @return boolean supported
+function ACPClient:list_sessions(cwd, callback)
+    if
+        not self.agent_capabilities
+        or not self.agent_capabilities.sessionCapabilities
+        or not self.agent_capabilities.sessionCapabilities.list
+    then
+        return false
+    end
+
+    self:_send_request("session/list", {
+        cwd = cwd,
+    }, function(result, err)
+        if err then
+            callback(nil, err)
+            return
+        end
+
+        --- @cast result agentic.acp.SessionListResponse
+        callback(result, nil)
+    end)
+
+    return true
 end
 
 --- @param session_id string
