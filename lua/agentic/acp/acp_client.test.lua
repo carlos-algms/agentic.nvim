@@ -117,7 +117,6 @@ describe("ACPClient", function()
     before_each(function()
         package.loaded["agentic.acp.acp_client"] = nil
         package.loaded["agentic.acp.acp_transport"] = nil
-        package.loaded["agentic.utils.logger"] = nil
 
         local Logger = require("agentic.utils.logger")
         logger_debug_stub = spy.stub(Logger, "debug")
