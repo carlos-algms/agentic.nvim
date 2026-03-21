@@ -71,10 +71,10 @@ local function restore_with_conflict_check(
     end
 end
 
---- Show session picker and restore selected session
+--- Show local session picker using ChatHistory
 --- @param tab_page_id integer
 --- @param current_session agentic.SessionManager|nil
-function SessionRestore.show_picker(tab_page_id, current_session)
+local function show_local_picker(tab_page_id, current_session)
     ChatHistory.list_sessions(function(sessions)
         if #sessions == 0 then
             Logger.notify("No saved sessions found", vim.log.levels.INFO)
@@ -106,6 +106,94 @@ function SessionRestore.show_picker(tab_page_id, current_session)
                 )
             end
         end)
+    end)
+end
+
+--- Show ACP session picker
+--- @param sessions table[]
+--- @param current_session agentic.SessionManager|nil
+--- @param session_manager agentic.SessionManager
+local function show_acp_picker(sessions, current_session, session_manager)
+    local items = {}
+    for _, s in ipairs(sessions) do
+        local date = s.updatedAt and s.updatedAt:sub(1, 16):gsub("T", " ")
+            or "unknown date"
+        local title = s.title or "(no title)"
+        table.insert(items, {
+            display = string.format("%s - %s", date, title),
+            session_id = s.sessionId,
+            title = s.title,
+        })
+    end
+
+    vim.ui.select(items, {
+        prompt = "Select session to restore:",
+        format_item = function(item)
+            return item.display
+        end,
+    }, function(choice)
+        if not choice then
+            return
+        end
+
+        local has_conflict = check_conflict(current_session)
+        if has_conflict then
+            vim.ui.select({
+                "Cancel",
+                "Clear current session and restore",
+            }, {
+                prompt = "Current session has messages. What would you like to do?",
+            }, function(conflict_choice)
+                if conflict_choice == "Clear current session and restore" then
+                    if session_manager.session_id then
+                        session_manager.agent:cancel_session(
+                            session_manager.session_id
+                        )
+                        session_manager.widget:clear()
+                    end
+                    session_manager:load_acp_session(
+                        choice.session_id,
+                        choice.title
+                    )
+                    session_manager.widget:show()
+                end
+            end)
+        else
+            session_manager:load_acp_session(choice.session_id, choice.title)
+            session_manager.widget:show()
+        end
+    end)
+end
+
+--- Show session picker and restore selected session
+--- @param tab_page_id integer
+--- @param current_session agentic.SessionManager|nil
+function SessionRestore.show_picker(tab_page_id, current_session)
+    SessionRegistry.get_session_for_tab_page(tab_page_id, function(session)
+        local cwd = vim.fn.getcwd()
+        local supported = session.agent:list_sessions(cwd, function(result, err)
+            if err or not result then
+                Logger.notify(
+                    "Failed to list sessions: "
+                        .. (err and err.message or "unknown error"),
+                    vim.log.levels.WARN
+                )
+                show_local_picker(tab_page_id, current_session)
+                return
+            end
+
+            local sessions = result.sessions
+            if not sessions or #sessions == 0 then
+                Logger.notify("No saved sessions found", vim.log.levels.INFO)
+                return
+            end
+
+            show_acp_picker(sessions, current_session, session)
+        end)
+
+        if not supported then
+            show_local_picker(tab_page_id, current_session)
+        end
     end)
 end
 

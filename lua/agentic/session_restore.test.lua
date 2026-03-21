@@ -42,12 +42,18 @@ describe("SessionRestore", function()
         return {
             session_id = opts.session_id or "current-session",
             chat_history = opts.chat_history or { messages = {} },
-            agent = { cancel_session = spy.new(function() end) },
+            agent = {
+                cancel_session = spy.new(function() end),
+                list_sessions = opts.list_sessions or spy.new(function()
+                    return false
+                end),
+            },
             widget = {
                 clear = spy.new(function() end),
                 show = spy.new(function() end),
             },
             restore_from_history = spy.new(function() end),
+            load_acp_session = spy.new(function() end),
         }
     end
 
@@ -75,6 +81,9 @@ describe("SessionRestore", function()
         return callback, items
     end
 
+    --- Default mock session returned by registry stub (list_sessions returns false → local path)
+    local default_registry_session
+
     before_each(function()
         package.loaded["agentic.session_restore"] = nil
         package.loaded["agentic.ui.chat_history"] = nil
@@ -92,6 +101,9 @@ describe("SessionRestore", function()
             spy.stub(SessionRegistry, "get_session_for_tab_page")
         logger_notify_stub = spy.stub(Logger, "notify")
         vim_ui_select_stub = spy.stub(vim.ui, "select")
+
+        default_registry_session = create_mock_session()
+        setup_registry_stub(default_registry_session)
     end)
 
     after_each(function()
@@ -264,7 +276,7 @@ describe("SessionRestore", function()
                 logger_notify_stub.calls[1][1]:match("File not found")
             )
             assert.equal(vim.log.levels.WARN, logger_notify_stub.calls[1][2])
-            assert.spy(session_registry_stub).was.called(0)
+            assert.spy(session_registry_stub).was.called(1)
         end)
 
         it("shows warning on nil history without error", function()
@@ -278,7 +290,7 @@ describe("SessionRestore", function()
 
             assert.spy(logger_notify_stub).was.called(1)
             assert.truthy(logger_notify_stub.calls[1][1]:match("unknown error"))
-            assert.spy(session_registry_stub).was.called(0)
+            assert.spy(session_registry_stub).was.called(1)
         end)
     end)
 
@@ -341,6 +353,183 @@ describe("SessionRestore", function()
             callback({ session_id = "session-1" })
 
             assert.spy(vim_ui_select_stub).was.called(1)
+        end)
+    end)
+
+    describe("show_picker with ACP session list", function()
+        local acp_sessions = {
+            {
+                sessionId = "acp-1",
+                title = "ACP First",
+                updatedAt = "2026-03-20T14:30:00Z",
+            },
+            {
+                sessionId = "acp-2",
+                title = "ACP Second",
+                updatedAt = "2026-03-21T09:15:00Z",
+            },
+        }
+
+        local function create_acp_session(opts)
+            opts = opts or {}
+            local list_sessions_spy = spy.new(function(_self, _cwd, callback)
+                if opts.error then
+                    callback(nil, opts.error)
+                else
+                    callback({ sessions = opts.sessions or acp_sessions }, nil)
+                end
+                return true
+            end)
+            return create_mock_session({
+                list_sessions = list_sessions_spy,
+                chat_history = opts.chat_history,
+                session_id = opts.session_id,
+            })
+        end
+
+        it("uses ACP list when agent:list_sessions returns true", function()
+            local mock_session = create_acp_session()
+            setup_registry_stub(mock_session)
+
+            SessionRestore.show_picker(1, nil)
+
+            assert.spy(mock_session.agent.list_sessions).was.called(1)
+            assert.spy(chat_history_list_stub).was.called(0)
+            assert.spy(vim_ui_select_stub).was.called(1)
+
+            local items = vim_ui_select_stub.calls[1][1]
+            assert.equal(2, #items)
+            assert.equal("acp-1", items[1].session_id)
+            assert.equal("acp-2", items[2].session_id)
+        end)
+
+        it(
+            "falls back to local ChatHistory when agent returns false",
+            function()
+                local mock_session = create_mock_session()
+                setup_registry_stub(mock_session)
+                setup_list_stub()
+
+                SessionRestore.show_picker(1, nil)
+
+                assert.spy(mock_session.agent.list_sessions).was.called(1)
+                assert.spy(chat_history_list_stub).was.called(1)
+            end
+        )
+
+        it("falls back to local on ACP error", function()
+            local mock_session = create_acp_session({
+                error = { message = "Provider error" },
+            })
+            setup_registry_stub(mock_session)
+            setup_list_stub()
+
+            SessionRestore.show_picker(1, nil)
+
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:match("Provider error")
+            )
+            assert.spy(chat_history_list_stub).was.called(1)
+        end)
+
+        it("shows no sessions found when ACP returns empty list", function()
+            local mock_session = create_acp_session({ sessions = {} })
+            setup_registry_stub(mock_session)
+
+            SessionRestore.show_picker(1, nil)
+
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.equal(
+                "No saved sessions found",
+                logger_notify_stub.calls[1][1]
+            )
+            assert.spy(vim_ui_select_stub).was.called(0)
+        end)
+
+        it("formats ACP sessions with updatedAt and title", function()
+            local mock_session = create_acp_session()
+            setup_registry_stub(mock_session)
+
+            SessionRestore.show_picker(1, nil)
+
+            local items = vim_ui_select_stub.calls[1][1]
+            assert.truthy(items[1].display:match("2026%-03%-20 14:30"))
+            assert.truthy(items[1].display:match("ACP First"))
+            assert.truthy(items[2].display:match("2026%-03%-21 09:15"))
+            assert.truthy(items[2].display:match("ACP Second"))
+        end)
+
+        it("calls load_acp_session on selection without conflict", function()
+            local mock_session = create_acp_session()
+            setup_registry_stub(mock_session)
+
+            SessionRestore.show_picker(1, nil)
+
+            local callback = select_session(1)
+            callback({
+                session_id = "acp-1",
+                title = "ACP First",
+                display = "2026-03-20 14:30 - ACP First",
+            })
+
+            assert.spy(mock_session.load_acp_session).was.called(1)
+            local call_args = mock_session.load_acp_session.calls[1]
+            assert.equal("acp-1", call_args[2])
+            assert.equal("ACP First", call_args[3])
+            assert.spy(mock_session.widget.show).was.called(1)
+        end)
+
+        it(
+            "handles conflict: prompts user and calls load_acp_session on confirm",
+            function()
+                local mock_session = create_acp_session({
+                    chat_history = { messages = { { type = "user" } } },
+                    session_id = "existing-session",
+                })
+                setup_registry_stub(mock_session)
+
+                SessionRestore.show_picker(
+                    1,
+                    mock_session --[[@as agentic.SessionManager]]
+                )
+
+                -- Select an ACP session
+                local callback = select_session(1)
+                callback({
+                    session_id = "acp-1",
+                    title = "ACP First",
+                    display = "2026-03-20 14:30 - ACP First",
+                })
+
+                -- Conflict prompt should appear
+                assert.spy(vim_ui_select_stub).was.called(2)
+
+                -- Confirm restore
+                local conflict_callback = vim_ui_select_stub.calls[2][3]
+                conflict_callback("Clear current session and restore")
+
+                assert.spy(mock_session.agent.cancel_session).was.called(1)
+                assert.spy(mock_session.widget.clear).was.called(1)
+                assert.spy(mock_session.load_acp_session).was.called(1)
+                assert.spy(mock_session.widget.show).was.called(1)
+            end
+        )
+
+        it("shows widget after ACP load", function()
+            local mock_session = create_acp_session()
+            setup_registry_stub(mock_session)
+
+            SessionRestore.show_picker(1, nil)
+
+            local callback = select_session(1)
+            callback({
+                session_id = "acp-1",
+                title = "ACP First",
+                display = "2026-03-20 14:30 - ACP First",
+            })
+
+            assert.spy(mock_session.widget.show).was.called(1)
         end)
     end)
 end)
