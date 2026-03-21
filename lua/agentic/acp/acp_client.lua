@@ -521,6 +521,7 @@ function ACPClient:_connect()
             return
         end
 
+        --- @cast result agentic.acp.InitializeResponse
         self.protocol_version = result.protocolVersion
         self.agent_capabilities = result.agentCapabilities
         self.agent_info = result.agentInfo
@@ -632,10 +633,11 @@ end
 --- @param callback fun(result: agentic.acp.SessionListResponse|nil, err: agentic.acp.ACPError|nil)
 --- @return boolean supported
 function ACPClient:list_sessions(cwd, callback)
+    local agent_capabilities = self.agent_capabilities
     if
-        not self.agent_capabilities
-        or not self.agent_capabilities.sessionCapabilities
-        or not self.agent_capabilities.sessionCapabilities.list
+        not agent_capabilities
+        or not agent_capabilities.sessionCapabilities
+        or not agent_capabilities.sessionCapabilities.list
     then
         return false
     end

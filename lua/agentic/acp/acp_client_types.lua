@@ -16,6 +16,12 @@
 --- @field clientInfo agentic.acp.ClientInfo
 --- @field clientCapabilities agentic.acp.ClientCapabilities
 
+--- @class agentic.acp.InitializeResponse
+--- @field protocolVersion number
+--- @field agentCapabilities agentic.acp.AgentCapabilities
+--- @field agentInfo agentic.acp.AgentInfo
+--- @field authMethods agentic.acp.AuthMethod[]
+
 --- @class agentic.acp.FileSystemCapability
 --- @field readTextFile boolean
 --- @field writeTextFile boolean
