@@ -122,15 +122,16 @@ local SENDER_MAP = {
 
 --- Writes a sender header to the buffer if the sender changed
 --- @param session_update_type string
+--- @return boolean header_written
 function MessageWriter:_maybe_write_sender_header(session_update_type)
     if session_update_type == "plan" then
-        return
+        return false
     end
 
     local sender = SENDER_MAP[session_update_type] or "agent"
 
     if sender == self._last_sender then
-        return
+        return false
     end
 
     self._last_sender = sender
@@ -155,6 +156,8 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
     self:_with_modifiable_and_notify_change(function()
         self:_append_lines({ header, "" })
     end)
+
+    return true
 end
 
 --- Writes a full message to the chat buffer and append two blank lines after
@@ -200,9 +203,13 @@ function MessageWriter:write_message_chunk(update)
         return
     end
 
-    self:_maybe_write_sender_header(update.sessionUpdate)
+    local header_written = self:_maybe_write_sender_header(update.sessionUpdate)
 
-    if
+    if header_written then
+        -- The header's trailing blank line will be consumed by set_text below,
+        -- so prepend a newline to preserve spacing after the header
+        text = "\n" .. text
+    elseif
         self._last_message_type == "agent_thought_chunk"
         and update.sessionUpdate == "agent_message_chunk"
     then
