@@ -1185,6 +1185,9 @@ function SessionManager:restore_from_history(history, opts)
         )
         -- ACP session already knows these messages; clear to prevent duplicate prepend
         self._history_to_send = nil
+
+        -- Reset provider name to current after replaying old messages
+        self.message_writer:set_provider_name(self.agent.provider_config.name)
     else
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({
@@ -1194,6 +1197,11 @@ function SessionManager:restore_from_history(history, opts)
                 SessionRestore.replay_messages(
                     self.message_writer,
                     self._history_to_send
+                )
+
+                -- Reset provider name to current after replaying old messages
+                self.message_writer:set_provider_name(
+                    self.agent.provider_config.name
                 )
             end,
         })
