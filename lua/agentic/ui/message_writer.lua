@@ -153,7 +153,7 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
     end
 
     self:_with_modifiable_and_notify_change(function()
-        self:_append_lines({ "", header, "" })
+        self:_append_lines({ header, "" })
     end)
 end
 
