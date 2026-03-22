@@ -181,23 +181,15 @@ end
 --- @param writer agentic.ui.MessageWriter
 --- @param messages agentic.ui.ChatHistory.Message[]
 function SessionRestore.replay_messages(writer, messages)
+    writer:set_restoring(true)
+
     for _, msg in ipairs(messages) do
         if msg.type == "user" then
-            -- Format user message for display with original timestamp
-            local timestamp_str = msg.timestamp
-                    and os.date("%Y-%m-%d %H:%M:%S", msg.timestamp)
-                or os.date("%Y-%m-%d %H:%M:%S")
-            local message_lines = {
-                string.format("##  User - %s", timestamp_str),
-                "",
-                msg.text,
-                "\n\n### 󱚠 Agent - "
-                    .. (msg.provider_name or "Unknown provider"),
-            }
-            local user_message =
-                ACPPayloads.generate_user_message(message_lines)
+            writer:set_provider_name(msg.provider_name or "Unknown provider")
+            local user_message = ACPPayloads.generate_user_message(msg.text)
             writer:write_message(user_message)
         elseif msg.type == "agent" then
+            writer:set_provider_name(msg.provider_name or "Unknown provider")
             local agent_message = ACPPayloads.generate_agent_message(msg.text)
             writer:write_message(agent_message)
         elseif msg.type == "thought" then
@@ -220,6 +212,8 @@ function SessionRestore.replay_messages(writer, messages)
             writer:write_tool_call_block(tool_block)
         end
     end
+
+    writer:set_restoring(false)
 end
 
 return SessionRestore
