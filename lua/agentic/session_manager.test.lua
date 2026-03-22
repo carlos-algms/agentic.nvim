@@ -460,7 +460,10 @@ describe("agentic.SessionManager", function()
 
             session = {
                 _is_restoring_session = false,
-                message_writer = { write_message = write_message_spy },
+                message_writer = {
+                    write_message = write_message_spy,
+                    set_restoring = function() end,
+                },
                 agent = { provider_config = { name = "test-provider" } },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
@@ -487,9 +490,7 @@ describe("agentic.SessionManager", function()
 
                 assert.spy(write_message_spy).was.called(1)
                 local message = write_message_spy.calls[1][2]
-                assert.truthy(message.content.text:match("User"))
                 assert.truthy(message.content.text:match("hello"))
-                assert.truthy(message.content.text:match("Agent"))
             end
         )
     end)

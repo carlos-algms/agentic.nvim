@@ -106,7 +106,6 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
-        _is_loading_session = false,
         _restoring = false,
     }, self)
 
@@ -133,6 +132,7 @@ function SessionManager:new(tab_page_id)
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
+    self.message_writer:set_provider_name(self.agent.provider_config.name)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.permission_manager = PermissionManager:new(self.message_writer)
 
@@ -211,15 +211,11 @@ function SessionManager:_on_session_update(update)
                 and update.content.type == "text"
                 and update.content.text
             if text and text ~= "" then
-                local message_lines = {
-                    "##  User",
-                    "",
-                    text,
-                    "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name,
-                }
+                self.message_writer:set_restoring(true)
                 self.message_writer:write_message(
-                    ACPPayloads.generate_user_message(message_lines)
+                    ACPPayloads.generate_user_message(text)
                 )
+                self.message_writer:set_restoring(false)
             end
         end
         return
@@ -509,9 +505,7 @@ function SessionManager:_handle_input_submit(input_text)
     end
 
     --- The message to be written to the chat widget
-    local message_lines = {
-        string.format("##  User - %s", os.date("%Y-%m-%d %H:%M:%S")),
-    }
+    local message_lines = {}
 
     table.insert(message_lines, "")
     table.insert(message_lines, input_text)
@@ -624,11 +618,6 @@ function SessionManager:_handle_input_submit(input_text)
             table.insert(message_lines, summary_line)
         end
     end
-
-    table.insert(
-        message_lines,
-        "\n\n### 󱚠 Agent - " .. self.agent.provider_config.name
-    )
 
     local user_message = ACPPayloads.generate_user_message(message_lines)
     self.message_writer:write_message(user_message)
