@@ -462,7 +462,7 @@ describe("agentic.SessionManager", function()
                 _is_restoring_session = false,
                 message_writer = {
                     write_message = write_message_spy,
-                    set_restoring = function() end,
+                    write_restoring_message = write_message_spy,
                 },
                 agent = { provider_config = { name = "test-provider" } },
                 _on_session_update = SessionManager._on_session_update,

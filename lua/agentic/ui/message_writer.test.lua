@@ -534,8 +534,7 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it("omits timestamp when restoring", function()
-            writer:set_restoring(true)
-            writer:write_message_chunk(
+            writer:write_restoring_message(
                 make_update("restored", "user_message_chunk")
             )
 

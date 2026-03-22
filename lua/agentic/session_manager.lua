@@ -212,7 +212,7 @@ function SessionManager:_on_session_update(update)
                 and update.content.type == "text"
                 and update.content.text
             if text and text ~= "" then
-                self.message_writer:write_message(
+                self.message_writer:write_restoring_message(
                     ACPPayloads.generate_user_message(text)
                 )
             end
@@ -817,13 +817,9 @@ function SessionManager:new_session(opts)
                 agent_info and agent_info.version
             )
 
-            self.message_writer:write_message(
+            self.message_writer:write_structural_message(
                 ACPPayloads.generate_user_message(welcome_message)
             )
-
-            -- Welcome is structural, not a real user message — reset so
-            -- the first real user/agent message gets its own header
-            self.message_writer:reset_sender_tracking()
 
             -- Invoke on_created callback after welcome message is written
             if on_created then

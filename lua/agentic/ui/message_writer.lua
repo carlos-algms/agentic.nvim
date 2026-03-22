@@ -84,6 +84,17 @@ function MessageWriter:reset_sender_tracking()
     self._last_sender = nil
 end
 
+--- Writes a structural message (e.g. welcome banner) without triggering
+--- a sender header. Resets sender tracking after so the next real message
+--- gets its own header.
+--- @param update agentic.acp.SessionUpdateMessage
+function MessageWriter:write_structural_message(update)
+    local saved = self._last_sender
+    self._last_sender = "user"
+    self:write_message(update)
+    self._last_sender = saved
+end
+
 function MessageWriter:_notify_content_changed()
     if self._on_content_changed then
         self._on_content_changed()
