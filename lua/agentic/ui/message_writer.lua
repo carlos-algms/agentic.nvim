@@ -79,11 +79,6 @@ function MessageWriter:set_provider_name(name)
     self._provider_name = name
 end
 
---- @param is_restoring boolean
-function MessageWriter:set_restoring(is_restoring)
-    self._is_restoring = is_restoring
-end
-
 --- Resets sender tracking so the next message writes a fresh header
 function MessageWriter:reset_sender_tracking()
     self._last_sender = nil
@@ -130,28 +125,33 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
     self._last_sender = sender
 
     local icons = Config.chat_icons or {}
-    local header
+    local header = ""
 
     if sender == "user" then
         local icon = icons.user or ""
-        if self._is_restoring then
-            header = string.format("## %s User", icon)
-        else
-            header = string.format(
-                "## %s User - %s",
-                icon,
-                os.date("%Y-%m-%d %H:%M:%S")
-            )
+        header = string.format("## %s User", icon)
+
+        if not self._is_restoring then
+            header =
+                string.format("%s - %s", header, os.date("%Y-%m-%d %H:%M:%S"))
         end
     else
         local icon = icons.agent or ""
-        local name = self._provider_name or "Agent"
+        local name = self._provider_name or "unknown"
         header = string.format("### %s Agent - %s", icon, name)
     end
 
     self:_with_modifiable_and_notify_change(function()
         self:_append_lines({ "", header, "" })
     end)
+end
+
+--- Writes a full message to the chat buffer and append two blank lines after
+--- @param update agentic.acp.SessionUpdateMessage
+function MessageWriter:write_restoring_message(update)
+    self._is_restoring = true
+    self:write_message(update)
+    self._is_restoring = false
 end
 
 --- Writes a full message to the chat buffer and append two blank lines after

@@ -379,8 +379,8 @@ local ConfigDefault = {
     },
 
     chat_icons = {
-        user = "",
-        agent = "󱚠",
+        user = " ",
+        agent = "󱚠 ",
     },
 
     file_picker = {

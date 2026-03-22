@@ -181,17 +181,15 @@ end
 --- @param writer agentic.ui.MessageWriter
 --- @param messages agentic.ui.ChatHistory.Message[]
 function SessionRestore.replay_messages(writer, messages)
-    writer:set_restoring(true)
-
     for _, msg in ipairs(messages) do
         if msg.type == "user" then
             writer:set_provider_name(msg.provider_name or "Unknown provider")
             local user_message = ACPPayloads.generate_user_message(msg.text)
-            writer:write_message(user_message)
+            writer:write_restoring_message(user_message)
         elseif msg.type == "agent" then
             writer:set_provider_name(msg.provider_name or "Unknown provider")
             local agent_message = ACPPayloads.generate_agent_message(msg.text)
-            writer:write_message(agent_message)
+            writer:write_restoring_message(agent_message)
         elseif msg.type == "thought" then
             --- @type agentic.acp.AgentThoughtChunk
             local thought_chunk = {
@@ -200,20 +198,9 @@ function SessionRestore.replay_messages(writer, messages)
             }
             writer:write_message_chunk(thought_chunk)
         elseif msg.type == "tool_call" then
-            --- @type agentic.ui.MessageWriter.ToolCallBlock
-            local tool_block = {
-                tool_call_id = msg.tool_call_id,
-                kind = msg.kind,
-                argument = msg.argument or "",
-                status = msg.status,
-                body = msg.body,
-                diff = msg.diff,
-            }
-            writer:write_tool_call_block(tool_block)
+            writer:write_tool_call_block(msg)
         end
     end
-
-    writer:set_restoring(false)
 end
 
 return SessionRestore

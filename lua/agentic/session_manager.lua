@@ -106,6 +106,7 @@ function SessionManager:new(tab_page_id)
         tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
+        _is_restoring_session = false,
         _restoring = false,
     }, self)
 
@@ -211,11 +212,9 @@ function SessionManager:_on_session_update(update)
                 and update.content.type == "text"
                 and update.content.text
             if text and text ~= "" then
-                self.message_writer:set_restoring(true)
                 self.message_writer:write_message(
                     ACPPayloads.generate_user_message(text)
                 )
-                self.message_writer:set_restoring(false)
             end
         end
         return
@@ -1141,6 +1140,7 @@ function SessionManager:load_acp_session(session_id, title)
                 "\n### 🏁 Session restored - %s\n-----",
                 os.date("%Y-%m-%d %H:%M:%S")
             )
+
             self.message_writer:write_message(
                 ACPPayloads.generate_agent_message(finish_message)
             )
