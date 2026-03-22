@@ -247,17 +247,52 @@ describe("ACPClient", function()
     end)
 
     describe("load_session", function()
-        it("calls on_load_complete callback when response arrives", function()
+        it("calls on_load_complete with nil err on success", function()
             local client = create_ready_client(LOAD_CAPS)
             local complete_called = false
+            local received_err
 
             stub_send_response(client, "session/load", {}, nil)
 
-            client:load_session("sid-1", "/tmp", {}, NOOP_HANDLERS, function()
-                complete_called = true
-            end)
+            client:load_session(
+                "sid-1",
+                "/tmp",
+                {},
+                NOOP_HANDLERS,
+                function(err)
+                    complete_called = true
+                    received_err = err
+                end
+            )
 
             assert.is_true(complete_called)
+            assert.is_nil(received_err)
+        end)
+
+        it("propagates error to on_load_complete", function()
+            local client = create_ready_client(LOAD_CAPS)
+            local received_err
+
+            stub_send_response(
+                client,
+                "session/load",
+                nil,
+                { code = -32000, message = "load failed" }
+            )
+
+            client:load_session(
+                "sid-1",
+                "/tmp",
+                {},
+                NOOP_HANDLERS,
+                function(err)
+                    received_err = err
+                end
+            )
+
+            assert.is_not_nil(received_err)
+            assert.equal(-32000, received_err.code)
+            assert.equal("load failed", received_err.message)
         end)
 
         it("works without on_load_complete (backward compatible)", function()

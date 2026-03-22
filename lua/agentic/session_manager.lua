@@ -1119,17 +1119,27 @@ function SessionManager:load_acp_session(session_id, title)
     local handlers = self:_build_handlers()
     local cwd = vim.fn.getcwd()
 
-    self.agent:load_session(session_id, cwd, {}, handlers, function()
+    self.agent:load_session(session_id, cwd, {}, handlers, function(err)
         -- vim.schedule to run AFTER deferred session update notifications
         -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
         vim.schedule(function()
             self._is_restoring_session = false
+            self.status_animation:stop()
+
+            if err then
+                Logger.notify(
+                    "Failed to load session: "
+                        .. (err.message or "unknown error"),
+                    vim.log.levels.ERROR
+                )
+                return
+            end
+
             self.session_id = session_id
             self.chat_history.session_id = session_id
             self.chat_history.title = title or ""
             self.chat_history.timestamp = os.time()
             self._is_first_message = false
-            self.status_animation:stop()
 
             local finish_message = string.format(
                 "\n### 🏁 Session restored - %s\n-----",

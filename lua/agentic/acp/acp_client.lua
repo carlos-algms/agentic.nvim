@@ -621,7 +621,7 @@ end
 --- @param cwd string
 --- @param mcp_servers table[]|nil
 --- @param handlers agentic.acp.ClientHandlers
---- @param on_load_complete fun()|nil
+--- @param on_load_complete fun(err: agentic.acp.ACPError|nil)|nil
 function ACPClient:load_session(
     session_id,
     cwd,
@@ -629,8 +629,6 @@ function ACPClient:load_session(
     handlers,
     on_load_complete
 )
-    --FIXIT: check if it's possible to ignore this check and just try to send load message
-    -- handle the response error properly also
     if
         not self.agent_capabilities or not self.agent_capabilities.loadSession
     then
@@ -644,9 +642,9 @@ function ACPClient:load_session(
         sessionId = session_id,
         cwd = cwd,
         mcpServers = mcp_servers or {},
-    }, function()
+    }, function(_result, err)
         if on_load_complete then
-            on_load_complete()
+            on_load_complete(err)
         end
     end)
 end
