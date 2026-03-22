@@ -120,6 +120,10 @@
 --- @field reject_once string
 --- @field reject_always string
 
+--- @class agentic.UserConfig.ChatIcons
+--- @field user string
+--- @field agent string
+
 --- @class agentic.UserConfig.FilePicker
 --- @field enabled boolean
 
@@ -158,6 +162,7 @@
 --- @field status_icons? agentic.UserConfig.StatusIcons
 --- @field diagnostic_icons? agentic.UserConfig.DiagnosticIcons
 --- @field permission_icons? agentic.UserConfig.PermissionIcons
+--- @field chat_icons? agentic.UserConfig.ChatIcons
 --- @field file_picker? agentic.UserConfig.FilePicker
 --- @field image_paste? agentic.UserConfig.ImagePaste
 --- @field auto_scroll? agentic.UserConfig.AutoScroll
@@ -177,6 +182,7 @@
 --- @field status_icons agentic.UserConfig.StatusIcons
 --- @field diagnostic_icons agentic.UserConfig.DiagnosticIcons
 --- @field permission_icons agentic.UserConfig.PermissionIcons
+--- @field chat_icons agentic.UserConfig.ChatIcons
 --- @field file_picker agentic.UserConfig.FilePicker
 --- @field image_paste agentic.UserConfig.ImagePaste
 --- @field auto_scroll agentic.UserConfig.AutoScroll
@@ -370,6 +376,11 @@ local ConfigDefault = {
         allow_always = "",
         reject_once = "",
         reject_always = "󰜺",
+    },
+
+    chat_icons = {
+        user = "",
+        agent = "󱚠",
     },
 
     file_picker = {
