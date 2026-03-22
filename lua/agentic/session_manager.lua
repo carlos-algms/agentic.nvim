@@ -506,7 +506,6 @@ function SessionManager:_handle_input_submit(input_text)
     --- The message to be written to the chat widget
     local message_lines = {}
 
-    table.insert(message_lines, "")
     table.insert(message_lines, input_text)
 
     if not self.code_selection:is_empty() then
