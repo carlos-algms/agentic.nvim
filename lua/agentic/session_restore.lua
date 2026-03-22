@@ -115,6 +115,7 @@ local function show_acp_picker(sessions, current_session)
             display = string.format("%s - %s", date, title),
             session_id = s.sessionId,
             title = s.title,
+            updated_at = date,
         })
     end
 
@@ -132,7 +133,8 @@ local function show_acp_picker(sessions, current_session)
             with_conflict_check(current_session, function()
                 current_session:load_acp_session(
                     choice.session_id,
-                    choice.title
+                    choice.title,
+                    choice.updated_at
                 )
                 current_session.widget:show()
             end)

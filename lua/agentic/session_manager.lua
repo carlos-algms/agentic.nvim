@@ -69,13 +69,20 @@ SessionManager.__index = SessionManager
 --- @param provider_name string
 --- @param session_id string|nil
 --- @param version string|nil
+--- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
 --- @return string header
 function SessionManager._generate_welcome_header(
     provider_name,
     session_id,
-    version
+    version,
+    timestamp
 )
-    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local date_str
+    if type(timestamp) == "string" then
+        date_str = timestamp
+    else
+        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
+    end
     local name = provider_name
     if version then
         name = name .. " v" .. version
@@ -84,7 +91,7 @@ function SessionManager._generate_welcome_header(
         "# Agentic - %s\n- session id: %s\n- %s\n--- --",
         name,
         session_id or "unknown",
-        timestamp
+        date_str
     )
 end
 
@@ -751,7 +758,7 @@ function SessionManager:_build_handlers()
 end
 
 --- Create a new session, optionally cancelling any existing one
---- @param opts {restore_mode?: boolean, on_created?: fun()}|nil
+--- @param opts {restore_mode?: boolean, on_created?: fun(), timestamp?: string|integer}|nil
 function SessionManager:new_session(opts)
     opts = opts or {}
     local restore_mode = opts.restore_mode or false
@@ -813,7 +820,8 @@ function SessionManager:new_session(opts)
             local welcome_message = SessionManager._generate_welcome_header(
                 self.agent.provider_config.name,
                 self.session_id,
-                agent_info and agent_info.version
+                agent_info and agent_info.version,
+                opts.timestamp
             )
 
             self.message_writer:write_structural_message(
@@ -1102,7 +1110,8 @@ end
 --- Load an existing ACP session by ID, subscribing to its updates
 --- @param session_id string
 --- @param title string|nil
-function SessionManager:load_acp_session(session_id, title)
+--- @param timestamp string|integer|nil Timestamp for the banner; defaults to now
+function SessionManager:load_acp_session(session_id, title, timestamp)
     local caps = self.agent.agent_capabilities
     if not caps or not caps.loadSession then
         Logger.notify(
@@ -1121,7 +1130,8 @@ function SessionManager:load_acp_session(session_id, title)
     local welcome_message = SessionManager._generate_welcome_header(
         self.agent.provider_config.name,
         session_id,
-        agent_info and agent_info.version
+        agent_info and agent_info.version,
+        timestamp
     )
     self.message_writer:write_structural_message(
         ACPPayloads.generate_user_message(welcome_message)
@@ -1204,6 +1214,7 @@ function SessionManager:restore_from_history(history, opts)
         -- Create fresh ACP session, then replay messages after session is ready
         self:new_session({
             restore_mode = true,
+            timestamp = history.timestamp,
             on_created = function()
                 self._restoring = false
                 SessionRestore.replay_messages(
