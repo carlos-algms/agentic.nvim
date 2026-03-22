@@ -1116,6 +1116,17 @@ function SessionManager:load_acp_session(session_id, title)
     self._is_restoring_session = true
     self.status_animation:start("busy")
 
+    -- Write banner before loading so it appears at top of cleared buffer
+    local agent_info = self.agent.agent_info
+    local welcome_message = SessionManager._generate_welcome_header(
+        self.agent.provider_config.name,
+        session_id,
+        agent_info and agent_info.version
+    )
+    self.message_writer:write_structural_message(
+        ACPPayloads.generate_user_message(welcome_message)
+    )
+
     local handlers = self:_build_handlers()
     local cwd = vim.fn.getcwd()
 
@@ -1165,6 +1176,7 @@ function SessionManager:restore_from_history(history, opts)
     self._restoring = true
     self._history_to_send = history.messages
     self._is_first_message = false
+    self.message_writer:reset_sender_tracking()
 
     -- Update existing chat_history with loaded data, keeping current session_id
     if opts.reuse_session then
