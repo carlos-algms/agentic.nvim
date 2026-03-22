@@ -84,6 +84,11 @@ function MessageWriter:set_restoring(is_restoring)
     self._is_restoring = is_restoring
 end
 
+--- Resets sender tracking so the next message writes a fresh header
+function MessageWriter:reset_sender_tracking()
+    self._last_sender = nil
+end
+
 function MessageWriter:_notify_content_changed()
     if self._on_content_changed then
         self._on_content_changed()

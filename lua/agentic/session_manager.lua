@@ -822,6 +822,10 @@ function SessionManager:new_session(opts)
                 ACPPayloads.generate_user_message(welcome_message)
             )
 
+            -- Welcome is structural, not a real user message — reset so
+            -- the first real user/agent message gets its own header
+            self.message_writer:reset_sender_tracking()
+
             -- Invoke on_created callback after welcome message is written
             if on_created then
                 on_created()
@@ -851,6 +855,7 @@ function SessionManager:_cancel_session()
 
     self.chat_history = ChatHistory:new()
     self._history_to_send = nil
+    self.message_writer:reset_sender_tracking()
 end
 
 --- Switch to a different ACP provider while preserving chat UI and history.
