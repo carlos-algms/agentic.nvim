@@ -430,4 +430,164 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal("inserted", new_ranges[1].new_line)
         end)
     end)
+
+    describe("sender header tracking", function()
+        --- @type TestStub
+        local schedule_stub
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+        end)
+
+        --- @return string[]
+        local function get_all_lines()
+            return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        end
+
+        --- @param text string
+        --- @param session_update string|nil
+        --- @return agentic.acp.SessionUpdateMessage
+        local function make_update(text, session_update)
+            return {
+                sessionUpdate = session_update or "agent_message_chunk",
+                content = { type = "text", text = text },
+            }
+        end
+
+        it("writes user header on first user_message_chunk", function()
+            writer:write_message_chunk(
+                make_update("hello", "user_message_chunk")
+            )
+
+            local lines = get_all_lines()
+            local header_found = false
+            for _, line in ipairs(lines) do
+                if line:match("^## .* User %- %d%d%d%d%-%d%d%-%d%d") then
+                    header_found = true
+                    break
+                end
+            end
+            assert.is_true(header_found)
+        end)
+
+        it("writes agent header on first agent_message_chunk", function()
+            writer:set_provider_name("TestAgent")
+            writer:write_message_chunk(
+                make_update("response", "agent_message_chunk")
+            )
+
+            local lines = get_all_lines()
+            local header_found = false
+            for _, line in ipairs(lines) do
+                if line:match("### .* Agent %- TestAgent") then
+                    header_found = true
+                    break
+                end
+            end
+            assert.is_true(header_found)
+        end)
+
+        it("skips header for consecutive same sender", function()
+            writer:write_message_chunk(
+                make_update("msg1", "user_message_chunk")
+            )
+            writer:write_message_chunk(
+                make_update("msg2", "user_message_chunk")
+            )
+
+            local lines = get_all_lines()
+            local header_count = 0
+            for _, line in ipairs(lines) do
+                if line:match("^## .* User") then
+                    header_count = header_count + 1
+                end
+            end
+            assert.equal(1, header_count)
+        end)
+
+        it("writes agent header before tool call block", function()
+            writer:set_provider_name("TestAgent")
+            writer:write_message_chunk(
+                make_update("question", "user_message_chunk")
+            )
+            writer:write_tool_call_block(
+                make_tool_call_block("tc-1", "pending")
+            )
+
+            local lines = get_all_lines()
+            local user_idx, agent_idx
+            for i, line in ipairs(lines) do
+                if line:match("^## .* User") then
+                    user_idx = i
+                end
+                if line:match("### .* Agent %- TestAgent") then
+                    agent_idx = i
+                end
+            end
+            assert.is_not_nil(user_idx)
+            assert.is_not_nil(agent_idx)
+            assert.is_true(agent_idx > user_idx)
+        end)
+
+        it("omits timestamp when restoring", function()
+            writer:set_restoring(true)
+            writer:write_message_chunk(
+                make_update("restored", "user_message_chunk")
+            )
+
+            local lines = get_all_lines()
+            local header_found = false
+            local has_timestamp = false
+            for _, line in ipairs(lines) do
+                if line:match("^## .* User$") then
+                    header_found = true
+                end
+                if line:match("^## .* User %- %d%d%d%d") then
+                    has_timestamp = true
+                end
+            end
+            assert.is_true(header_found)
+            assert.is_false(has_timestamp)
+        end)
+
+        it("skips header for plan updates", function()
+            writer:_maybe_write_sender_header("plan")
+
+            local lines = get_all_lines()
+            local has_header = false
+            for _, line in ipairs(lines) do
+                if line:match("Agent") or line:match("User") then
+                    has_header = true
+                end
+            end
+            assert.is_false(has_header)
+        end)
+
+        it(
+            "writes agent header for thought chunk if last sender was user",
+            function()
+                writer:set_provider_name("TestAgent")
+                writer:write_message_chunk(
+                    make_update("question", "user_message_chunk")
+                )
+                writer:write_message_chunk(
+                    make_update("thinking...", "agent_thought_chunk")
+                )
+
+                local lines = get_all_lines()
+                local agent_header_found = false
+                for _, line in ipairs(lines) do
+                    if line:match("### .* Agent %- TestAgent") then
+                        agent_header_found = true
+                        break
+                    end
+                end
+                assert.is_true(agent_header_found)
+            end
+        )
+    end)
 end)

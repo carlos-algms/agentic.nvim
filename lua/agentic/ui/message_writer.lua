@@ -44,6 +44,9 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled? boolean
 --- @field _on_content_changed? fun()
+--- @field _last_sender? "user"|"agent"
+--- @field _provider_name? string
+--- @field _is_restoring boolean
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -60,6 +63,7 @@ function MessageWriter:new(bufnr)
         _last_message_type = nil,
         _should_auto_scroll = nil,
         _scroll_scheduled = false,
+        _is_restoring = false,
     }, self)
 
     return instance
@@ -68,6 +72,16 @@ end
 --- @param callback fun()|nil
 function MessageWriter:set_on_content_changed(callback)
     self._on_content_changed = callback
+end
+
+--- @param name string
+function MessageWriter:set_provider_name(name)
+    self._provider_name = name
+end
+
+--- @param is_restoring boolean
+function MessageWriter:set_restoring(is_restoring)
+    self._is_restoring = is_restoring
 end
 
 function MessageWriter:_notify_content_changed()
@@ -87,6 +101,54 @@ function MessageWriter:_with_modifiable_and_notify_change(fn)
     end
 end
 
+--- @type table<string, "user"|"agent">
+local SENDER_MAP = {
+    user_message_chunk = "user",
+    agent_message_chunk = "agent",
+    agent_thought_chunk = "agent",
+    tool_call = "agent",
+}
+
+--- Writes a sender header to the buffer if the sender changed
+--- @param session_update_type string
+function MessageWriter:_maybe_write_sender_header(session_update_type)
+    if session_update_type == "plan" then
+        return
+    end
+
+    local sender = SENDER_MAP[session_update_type] or "agent"
+
+    if sender == self._last_sender then
+        return
+    end
+
+    self._last_sender = sender
+
+    local icons = Config.chat_icons or {}
+    local header
+
+    if sender == "user" then
+        local icon = icons.user or ""
+        if self._is_restoring then
+            header = string.format("## %s User", icon)
+        else
+            header = string.format(
+                "## %s User - %s",
+                icon,
+                os.date("%Y-%m-%d %H:%M:%S")
+            )
+        end
+    else
+        local icon = icons.agent or ""
+        local name = self._provider_name or "Agent"
+        header = string.format("### %s Agent - %s", icon, name)
+    end
+
+    self:_with_modifiable_and_notify_change(function()
+        self:_append_lines({ "", header, "" })
+    end)
+end
+
 --- Writes a full message to the chat buffer and append two blank lines after
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
@@ -97,6 +159,8 @@ function MessageWriter:write_message(update)
     if not text or text == "" then
         return
     end
+
+    self:_maybe_write_sender_header(update.sessionUpdate)
 
     local lines = vim.split(text, "\n", { plain = true })
 
@@ -119,6 +183,8 @@ function MessageWriter:write_message_chunk(update)
     if not text or text == "" then
         return
     end
+
+    self:_maybe_write_sender_header(update.sessionUpdate)
 
     if
         self._last_message_type == "agent_thought_chunk"
@@ -233,6 +299,7 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    self:_maybe_write_sender_header("tool_call")
     self:_auto_scroll(self.bufnr)
 
     self:_with_modifiable_and_notify_change(function(bufnr)
