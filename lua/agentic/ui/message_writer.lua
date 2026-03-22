@@ -168,7 +168,7 @@ function MessageWriter:write_restoring_message(update)
     self._is_restoring = false
 end
 
---- Writes a full message to the chat buffer and append two blank lines after
+--- Writes a full message to the chat buffer and appends a trailing blank line
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message(update)
     local text = update.content
@@ -187,7 +187,7 @@ function MessageWriter:write_message(update)
 
     self:_with_modifiable_and_notify_change(function()
         self:_append_lines(lines)
-        self:_append_lines({ "", "" })
+        self:_append_lines({ "" })
     end)
 end
 
