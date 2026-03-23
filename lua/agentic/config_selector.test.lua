@@ -75,11 +75,11 @@ describe("config selector", function()
             local first_render = {}
             select_stub:invokes(function(items, opts, on_choice)
                 first_render = format_all(items, opts)
-                on_choice(items[1]) -- select m1
+                on_choice(items[2]) -- select m1
             end)
             config:show_model_selector(handle_model_change)
 
-            assert.same({ "  M1", "● M2" }, first_render)
+            assert.same({ "● M2", "  M1" }, first_render)
 
             -- Re-open to verify it was updated
             local second_render = {}
@@ -129,7 +129,7 @@ describe("config selector", function()
             end)
             session.config_options:show_model_selector(function() end)
 
-            assert.same({ "  M1: D1", "● M2: D2" }, first_render)
+            assert.same({ "● M2: D2", "  M1: D1" }, first_render)
 
             -- Call the REAL _handle_model_change
             ---@diagnostic disable-next-line: invisible

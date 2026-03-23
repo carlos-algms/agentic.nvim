@@ -1,6 +1,7 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local List = require("agentic.utils.list")
 
 --- @class agentic.acp.AgentConfigOptions
 --- @field mode? agentic.acp.ConfigOption
@@ -246,7 +247,10 @@ function AgentConfigOptions:_show_selector(target, prompt, handle_change)
         return false
     end
 
-    vim.ui.select(target.options, {
+    local ordered_options =
+        List.move_to_head(target.options, "value", target.currentValue)
+
+    vim.ui.select(ordered_options, {
         prompt = prompt,
         format_item = function(item)
             --- @cast item agentic.acp.ConfigOption.Option -- need to cast because `select` has a Generic, but not for `format_item`
