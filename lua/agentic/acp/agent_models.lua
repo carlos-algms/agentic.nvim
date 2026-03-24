@@ -2,6 +2,7 @@
 --- Provides model selection via vim.ui.select
 
 local Logger = require("agentic.utils.logger")
+local List = require("agentic.utils.list")
 
 --- @class agentic.acp.AgentModels
 --- @field _models agentic.acp.Model[]
@@ -44,7 +45,10 @@ function AgentModels:show_model_selector(set_model_callback)
         return false
     end
 
-    vim.ui.select(self._models, {
+    local ordered_models =
+        List.move_to_head(self._models, "modelId", self.current_model_id or "")
+
+    vim.ui.select(ordered_models, {
         prompt = "Select Model:",
         format_item = function(item)
             --- @cast item agentic.acp.Model
