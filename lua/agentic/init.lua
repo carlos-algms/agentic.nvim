@@ -210,6 +210,11 @@ end
 --- show a selector to restore a previous session
 function Agentic.restore_session()
     SessionRegistry.get_session_for_tab_page(nil, function(session)
+        -- Prevent auto-creating an empty session on a fresh tab
+        -- (load_acp_session will create one when the user picks a session)
+        if session.session_id == nil then
+            session.skip_auto_session = true
+        end
         SessionRestore.show_picker(session)
     end)
 end

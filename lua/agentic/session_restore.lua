@@ -75,8 +75,8 @@ end
 --- Show session picker and restore selected session
 --- @param current_session agentic.SessionManager
 function SessionRestore.show_picker(current_session)
+    local cwd = vim.fn.getcwd()
     current_session.agent:when_ready(function()
-        local cwd = vim.fn.getcwd()
         current_session.agent:list_sessions(cwd, function(result, err)
             if err or not result then
                 Logger.notify(

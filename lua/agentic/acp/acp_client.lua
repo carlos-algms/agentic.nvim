@@ -30,7 +30,7 @@ local KNOWN_ACP_KINDS = {
 --- @field capabilities agentic.acp.ClientCapabilities
 --- @field agent_capabilities? agentic.acp.AgentCapabilities
 --- @field agent_info? agentic.acp.AgentInfo
---- @field auth_methods? agentic.acp.AuthMethod[]
+--- @field auth_methods agentic.acp.AuthMethod[]
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field ready_listeners fun(client: agentic.acp.ACPClient)[]
@@ -54,7 +54,7 @@ ACPClient.ERROR_CODES = {
 
 --- @param config agentic.acp.ACPProviderConfig
 --- @param on_ready fun(client: agentic.acp.ACPClient)
---- @return agentic.acp.ACPClient
+--- @return agentic.acp.ACPClient client
 function ACPClient:new(config, on_ready)
     --- @type agentic.acp.ACPClientData
     local instance = {
@@ -97,11 +97,12 @@ function ACPClient:new(config, on_ready)
     return client
 end
 
---- Calls callback immediately if ready, or queues it for when initialization completes
 --- @param callback fun(client: agentic.acp.ACPClient)
 function ACPClient:when_ready(callback)
     if self.state == "ready" then
-        callback(self)
+        vim.schedule(function()
+            callback(self)
+        end)
     else
         self.ready_listeners[#self.ready_listeners + 1] = callback
     end
@@ -179,7 +180,7 @@ end
 --- @param code number
 --- @param message string
 --- @param data any|nil
---- @return agentic.acp.ACPError
+--- @return agentic.acp.ACPError error
 function ACPClient:__create_error(code, message, data)
     return {
         code = code,
@@ -188,7 +189,7 @@ function ACPClient:__create_error(code, message, data)
     }
 end
 
---- @return number
+--- @return number id
 function ACPClient:_next_id()
     self.id_counter = self.id_counter + 1
     return self.id_counter
@@ -234,7 +235,6 @@ end
 --- @protected
 --- @param id number
 --- @param result table | string | vim.NIL | nil
---- @return nil
 function ACPClient:__send_result(id, result)
     local message = { jsonrpc = "2.0", id = id, result = result }
 
@@ -633,6 +633,14 @@ function ACPClient:load_session(
         not self.agent_capabilities or not self.agent_capabilities.loadSession
     then
         Logger.notify("Agent does not support loading sessions")
+        if on_load_complete then
+            on_load_complete(
+                self:__create_error(
+                    -1,
+                    "Agent does not support loading sessions"
+                )
+            )
+        end
         return
     end
 
@@ -751,7 +759,7 @@ function ACPClient:cancel_session(session_id)
     })
 end
 
---- @return boolean
+--- @return boolean connected
 function ACPClient:is_connected()
     return self.state ~= "disconnected" and self.state ~= "error"
 end

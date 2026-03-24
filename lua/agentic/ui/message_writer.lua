@@ -42,7 +42,7 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
---- @field _scroll_scheduled? boolean
+--- @field _scroll_scheduled boolean
 --- @field _on_content_changed? fun()
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
@@ -51,7 +51,7 @@ local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
 --- @param bufnr integer
---- @return agentic.ui.MessageWriter
+--- @return agentic.ui.MessageWriter instance
 function MessageWriter:new(bufnr)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         error("Invalid buffer number: " .. tostring(bufnr))
@@ -160,7 +160,7 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
     return true
 end
 
---- Writes a full message to the chat buffer and append two blank lines after
+--- Writes a message during session restore (suppresses timestamp in user header)
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_restoring_message(update)
     self._is_restoring = true
@@ -252,7 +252,6 @@ function MessageWriter:write_message_chunk(update)
 end
 
 --- @param lines string[]
---- @return nil
 function MessageWriter:_append_lines(lines)
     local start_line = BufHelpers.is_buffer_empty(self.bufnr) and 0 or -1
 
@@ -271,7 +270,7 @@ function MessageWriter:_append_lines(lines)
 end
 
 --- @param bufnr integer
---- @return boolean
+--- @return boolean should_scroll
 function MessageWriter:_check_auto_scroll(bufnr)
     local wins = vim.fn.win_findbuf(bufnr)
     if #wins == 0 then
@@ -672,6 +671,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 end
 
 --- Display permission request buttons at the end of the buffer
+--- @param tool_call_id string
 --- @param options agentic.acp.PermissionOption[]
 --- @return integer button_start_row Start row of button block
 --- @return integer button_end_row End row of button block

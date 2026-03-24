@@ -62,6 +62,7 @@ end
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _is_restoring_session boolean Whether a session is being loaded from history
+--- @field skip_auto_session boolean When true, skip auto-creating a session on ready (e.g. restore picker)
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -113,11 +114,14 @@ function SessionManager:new(tab_page_id)
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
+        skip_auto_session = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
-            self:new_session()
+            if not self.skip_auto_session then
+                self:new_session()
+            end
         end)
     end)
 
@@ -225,10 +229,7 @@ function SessionManager:_on_session_update(update)
                 })
             end
         end
-        return
-    end
-
-    if update.sessionUpdate == "plan" then
+    elseif update.sessionUpdate == "plan" then
         if Config.windows.todos.display then
             self.todo_list:render(update.entries)
         end
@@ -873,6 +874,9 @@ function SessionManager:switch_provider()
         function(client)
             vim.schedule(function()
                 self.agent = client
+                self.message_writer:set_provider_name(
+                    client.provider_config.name
+                )
 
                 self:new_session({
                     restore_mode = true,
@@ -1136,11 +1140,23 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             self._is_restoring_session = false
             self.status_animation:stop()
 
+            -- Guard: if a new session was created while the load was in flight,
+            -- don't stomp the new session's state
+            if self.session_id ~= nil then
+                return
+            end
+
             if err then
+                local error_text = err.message or "unknown error"
                 Logger.notify(
-                    "Failed to load session: "
-                        .. (err.message or "unknown error"),
+                    "Failed to load session: " .. error_text,
                     vim.log.levels.ERROR
+                )
+                self.widget:clear()
+                self.message_writer:write_message(
+                    ACPPayloads.generate_agent_message(
+                        "### ❌ Failed to restore session\n\n" .. error_text
+                    )
                 )
                 return
             end

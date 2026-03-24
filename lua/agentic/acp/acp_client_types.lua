@@ -20,7 +20,7 @@
 --- @field protocolVersion number
 --- @field agentCapabilities agentic.acp.AgentCapabilities
 --- @field agentInfo agentic.acp.AgentInfo
---- @field authMethods agentic.acp.AuthMethod[]
+--- @field authMethods? agentic.acp.AuthMethod[]
 
 --- @class agentic.acp.FileSystemCapability
 --- @field readTextFile boolean
@@ -39,7 +39,7 @@
 --- @field cwd string
 --- @field title? string
 --- @field updatedAt? string
---- @field _meta? table
+--- @field _meta? table<string, any>
 
 --- @class agentic.acp.SessionListResponse
 --- @field sessions agentic.acp.SessionInfo[]
