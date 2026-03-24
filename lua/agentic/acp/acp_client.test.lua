@@ -35,7 +35,6 @@ describe("ACPClient", function()
 
     local LIST_CAPS = {
         loadSession = true,
-        sessionCapabilities = { list = true },
         promptCapabilities = PROMPT_CAPS,
     }
 
@@ -152,45 +151,17 @@ describe("ACPClient", function()
     end)
 
     describe("list_sessions", function()
-        local incapable_cases = {
-            { "agent_capabilities is nil", nil },
-            {
-                "sessionCapabilities is nil",
-                { loadSession = true, promptCapabilities = PROMPT_CAPS },
-            },
-            {
-                "sessionCapabilities.list is false",
-                {
-                    loadSession = true,
-                    sessionCapabilities = { list = false },
-                    promptCapabilities = PROMPT_CAPS,
-                },
-            },
-        }
+        it("sends session/list request", function()
+            local client = create_ready_client(LIST_CAPS)
 
-        for _, case in ipairs(incapable_cases) do
-            it("returns false when " .. case[1], function()
-                local client = create_ready_client(case[2])
+            client:list_sessions("/tmp", function() end)
+            assert.spy(transport_send_stub).was.called(1)
 
-                assert.is_false(client:list_sessions("/tmp", function() end))
-                assert.spy(transport_send_stub).was.called(0)
-            end)
-        end
-
-        it(
-            "returns true and sends session/list request when capable",
-            function()
-                local client = create_ready_client(LIST_CAPS)
-
-                assert.is_true(client:list_sessions("/tmp", function() end))
-                assert.spy(transport_send_stub).was.called(1)
-
-                local sent_data = transport_send_stub.calls[1][2]
-                local decoded = vim.json.decode(sent_data)
-                assert.equal("session/list", decoded.method)
-                assert.equal("/tmp", decoded.params.cwd)
-            end
-        )
+            local sent_data = transport_send_stub.calls[1][2]
+            local decoded = vim.json.decode(sent_data)
+            assert.equal("session/list", decoded.method)
+            assert.equal("/tmp", decoded.params.cwd)
+        end)
 
         it("callback receives SessionListResponse on success", function()
             local client = create_ready_client(LIST_CAPS)

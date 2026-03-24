@@ -148,9 +148,6 @@
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
 
---- @class agentic.UserConfig.SessionRestore
---- @field storage_path? string Path to store session data; if nil, default path is used: ~/.cache/nvim/agentic/sessions/
-
 --- All the user config configurable options are optional
 --- @class agentic.PartialUserConfig
 --- @field debug? boolean Enable printing debug messages which can be read via `:messages`
@@ -170,8 +167,6 @@
 --- @field hooks? agentic.UserConfig.Hooks
 --- @field headers? agentic.UserConfig.Headers
 --- @field settings? agentic.UserConfig.Settings
---- @field session_restore? agentic.UserConfig.SessionRestore
-
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
 --- @field provider agentic.UserConfig.ProviderName
@@ -190,7 +185,6 @@
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
---- @field session_restore agentic.UserConfig.SessionRestore
 local ConfigDefault = {
     debug = false,
 
@@ -411,10 +405,6 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
-    },
-
-    session_restore = {
-        storage_path = nil,
     },
 }
 

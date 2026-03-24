@@ -62,7 +62,6 @@ end
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _is_restoring_session boolean Whether a session is being loaded from history
---- @field _restoring boolean Flag to prevent auto-new_session during restore
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -114,15 +113,11 @@ function SessionManager:new(tab_page_id)
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
-        _restoring = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
-            -- Skip auto-new_session if restore_from_history was called
-            if not self._restoring then
-                self:new_session()
-            end
+            self:new_session()
         end)
     end)
 
@@ -646,9 +641,6 @@ function SessionManager:_handle_input_submit(input_text)
 
     local session_id = self.session_id
     local tab_page_id = self.tab_page_id
-    -- Capture chat_history before send to avoid race with _cancel_session
-    -- replacing self.chat_history while the callback is pending
-    local chat_history = self.chat_history
 
     self.is_generating = true
 
@@ -686,15 +678,6 @@ function SessionManager:_handle_input_submit(input_text)
                 success = err == nil,
                 error = err,
             })
-
-            -- Save chat history after successful turn completion
-            if not err then
-                chat_history:save(function(save_err)
-                    if save_err then
-                        Logger.debug("Chat history save error:", save_err)
-                    end
-                end)
-            end
         end)
     end)
 end
@@ -1172,63 +1155,6 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             )
         end)
     end)
-end
-
---- Restore session from loaded chat history
---- Creates a new ACP session (agent doesn't know old session_id)
---- and replays messages to UI. History is sent on first prompt submit.
---- @param history agentic.ui.ChatHistory
---- @param opts {reuse_session?: boolean}|nil If reuse_session=true, replay into current session without creating new one
-function SessionManager:restore_from_history(history, opts)
-    opts = opts or {}
-
-    -- Prevent constructor's auto-new_session from running
-    self._restoring = true
-    self._history_to_send = history.messages
-    self._is_first_message = false
-    self.message_writer:reset_sender_tracking()
-
-    -- Update existing chat_history with loaded data, keeping current session_id
-    if opts.reuse_session then
-        self.chat_history.messages = vim.deepcopy(history.messages)
-        self.chat_history.title = history.title or ""
-    else
-        self.chat_history = history
-    end
-
-    local SessionRestore = require("agentic.session_restore")
-
-    if opts.reuse_session and self.session_id then
-        -- Reuse existing ACP session, just replay messages
-        self._restoring = false
-        SessionRestore.replay_messages(
-            self.message_writer,
-            self._history_to_send
-        )
-        -- ACP session already knows these messages; clear to prevent duplicate prepend
-        self._history_to_send = nil
-
-        -- Reset provider name to current after replaying old messages
-        self.message_writer:set_provider_name(self.agent.provider_config.name)
-    else
-        -- Create fresh ACP session, then replay messages after session is ready
-        self:new_session({
-            restore_mode = true,
-            timestamp = history.timestamp,
-            on_created = function()
-                self._restoring = false
-                SessionRestore.replay_messages(
-                    self.message_writer,
-                    self._history_to_send
-                )
-
-                -- Reset provider name to current after replaying old messages
-                self.message_writer:set_provider_name(
-                    self.agent.provider_config.name
-                )
-            end,
-        })
-    end
 end
 
 return SessionManager

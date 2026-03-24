@@ -651,17 +651,7 @@ end
 
 --- @param cwd string
 --- @param callback fun(result: agentic.acp.SessionListResponse|nil, err: agentic.acp.ACPError|nil)
---- @return boolean supported
 function ACPClient:list_sessions(cwd, callback)
-    local agent_capabilities = self.agent_capabilities
-    if
-        not agent_capabilities
-        or not agent_capabilities.sessionCapabilities
-        or not agent_capabilities.sessionCapabilities.list
-    then
-        return false
-    end
-
     self:_send_request("session/list", {
         cwd = cwd,
     }, function(result, err)
@@ -673,8 +663,6 @@ function ACPClient:list_sessions(cwd, callback)
         --- @cast result agentic.acp.SessionListResponse
         callback(result, nil)
     end)
-
-    return true
 end
 
 --- @param session_id string
