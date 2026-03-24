@@ -455,17 +455,21 @@ describe("agentic.SessionManager", function()
         --- @type TestSpy
         local write_message_spy
 
+        --- @type TestSpy
+        local write_restoring_message_spy
+
         --- @type agentic.SessionManager
         local session
 
         before_each(function()
             write_message_spy = spy.new(function() end)
+            write_restoring_message_spy = spy.new(function() end)
 
             session = {
                 _is_restoring_session = false,
                 message_writer = {
                     write_message = write_message_spy,
-                    write_restoring_message = write_message_spy,
+                    write_restoring_message = write_restoring_message_spy,
                 },
                 agent = { provider_config = { name = "test-provider" } },
                 chat_history = { add_message = spy.new(function() end) },
@@ -480,6 +484,7 @@ describe("agentic.SessionManager", function()
             })
 
             assert.spy(write_message_spy).was.called(0)
+            assert.spy(write_restoring_message_spy).was.called(0)
         end)
 
         it(
@@ -492,8 +497,9 @@ describe("agentic.SessionManager", function()
                     content = { type = "text", text = "hello" },
                 })
 
-                assert.spy(write_message_spy).was.called(1)
-                local message = write_message_spy.calls[1][2]
+                assert.spy(write_restoring_message_spy).was.called(1)
+                assert.spy(write_message_spy).was.called(0)
+                local message = write_restoring_message_spy.calls[1][2]
                 assert.truthy(message.content.text:match("hello"))
 
                 assert.spy(session.chat_history.add_message).was.called(1)

@@ -179,11 +179,10 @@ function MessageWriter:write_message(update)
         return
     end
 
+    self:_auto_scroll(self.bufnr)
     self:_maybe_write_sender_header(update.sessionUpdate)
 
     local lines = vim.split(text, "\n", { plain = true })
-
-    self:_auto_scroll(self.bufnr)
 
     self:_with_modifiable_and_notify_change(function()
         self:_append_lines(lines)
@@ -203,6 +202,8 @@ function MessageWriter:write_message_chunk(update)
         return
     end
 
+    self:_auto_scroll(self.bufnr)
+
     local header_written = self:_maybe_write_sender_header(update.sessionUpdate)
 
     if header_written then
@@ -219,8 +220,6 @@ function MessageWriter:write_message_chunk(update)
     end
 
     self._last_message_type = update.sessionUpdate
-
-    self:_auto_scroll(self.bufnr)
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
@@ -321,8 +320,8 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
-    self:_maybe_write_sender_header("tool_call")
     self:_auto_scroll(self.bufnr)
+    self:_maybe_write_sender_header("tool_call")
 
     self:_with_modifiable_and_notify_change(function(bufnr)
         local kind = tool_call_block.kind

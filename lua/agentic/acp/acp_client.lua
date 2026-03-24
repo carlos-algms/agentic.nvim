@@ -651,6 +651,11 @@ function ACPClient:load_session(
         cwd = cwd,
         mcpServers = mcp_servers or {},
     }, function(_result, err)
+        if err then
+            -- Avoid dangling subscribers if there are errors
+            self.subscribers[session_id] = nil
+        end
+
         if on_load_complete then
             on_load_complete(err)
         end
