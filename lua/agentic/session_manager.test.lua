@@ -465,6 +465,7 @@ describe("agentic.SessionManager", function()
                     write_restoring_message = write_message_spy,
                 },
                 agent = { provider_config = { name = "test-provider" } },
+                chat_history = { add_message = spy.new(function() end) },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
         end)
@@ -491,6 +492,11 @@ describe("agentic.SessionManager", function()
                 assert.spy(write_message_spy).was.called(1)
                 local message = write_message_spy.calls[1][2]
                 assert.truthy(message.content.text:match("hello"))
+
+                assert.spy(session.chat_history.add_message).was.called(1)
+                local added = session.chat_history.add_message.calls[1][2] --- @diagnostic disable-line: undefined-field
+                assert.equal("user", added.type)
+                assert.equal("hello", added.text)
             end
         )
     end)

@@ -217,6 +217,12 @@ function SessionManager:_on_session_update(update)
                 self.message_writer:write_restoring_message(
                     ACPPayloads.generate_user_message(text)
                 )
+                self.chat_history:add_message({
+                    type = "user",
+                    text = text,
+                    timestamp = os.time(),
+                    provider_name = self.agent.provider_config.name,
+                })
             end
         end
         return
