@@ -62,7 +62,6 @@ end
 --- @field chat_history agentic.ui.ChatHistory
 --- @field _history_to_send? agentic.ui.ChatHistory.Message[] Messages to prepend on next prompt submit
 --- @field _is_restoring_session boolean Whether a session is being loaded from history
---- @field skip_auto_session boolean When true, skip auto-creating a session on ready (e.g. restore picker)
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -114,14 +113,11 @@ function SessionManager:new(tab_page_id)
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
-        skip_auto_session = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
-            if not self.skip_auto_session then
-                self:new_session()
-            end
+            self:new_session()
         end)
     end)
 
@@ -1114,7 +1110,24 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
         return
     end
 
+    -- Preserve config_options (mode/model) across cancel — session/load doesn't
+    -- re-send them and they belong to the agent instance, not the session.
+    local saved_config = {
+        mode = self.config_options.mode,
+        model = self.config_options.model,
+        thought_level = self.config_options.thought_level,
+        legacy_modes = self.config_options.legacy_agent_modes,
+        legacy_models = self.config_options.legacy_agent_models,
+    }
+
     self:_cancel_session()
+
+    self.config_options.mode = saved_config.mode
+    self.config_options.model = saved_config.model
+    self.config_options.thought_level = saved_config.thought_level
+    self.config_options.legacy_agent_modes = saved_config.legacy_modes
+    self.config_options.legacy_agent_models = saved_config.legacy_models
+
     self._is_restoring_session = true
     self.status_animation:start("busy")
 
@@ -1166,6 +1179,14 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             self.chat_history.title = title or ""
             self.chat_history.timestamp = os.time()
             self._is_first_message = false
+
+            -- Re-render mode in chat header from preserved config_options
+            local current_mode = self.config_options.mode
+                    and self.config_options.mode.currentValue
+                or self.config_options.legacy_agent_modes.current_mode_id
+            if current_mode then
+                self:_set_mode_to_chat_header(current_mode)
+            end
 
             local finish_message = string.format(
                 "\n### 🏁 Session restored - %s\n-----",
