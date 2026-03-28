@@ -36,6 +36,7 @@ describe("ACPClient", function()
     local LIST_CAPS = {
         loadSession = true,
         promptCapabilities = PROMPT_CAPS,
+        sessionCapabilities = { list = true },
     }
 
     local LOAD_CAPS = {

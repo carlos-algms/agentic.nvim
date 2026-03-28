@@ -547,7 +547,12 @@ function ACPClient:_connect()
         self.protocol_version = result.protocolVersion
         self.agent_capabilities = result.agentCapabilities
         self.agent_info = result.agentInfo
-        self.auth_methods = result.authMethods or {}
+
+        local auth_methods = result.authMethods
+        if type(auth_methods) ~= "table" or auth_methods == vim.NIL then
+            auth_methods = {}
+        end
+        self.auth_methods = auth_methods
 
         -- Check if we need to authenticate
         local auth_method = self.provider_config.auth_method
@@ -665,11 +670,38 @@ end
 --- @param cwd string
 --- @param callback fun(result: agentic.acp.SessionListResponse|nil, err: agentic.acp.ACPError|nil)
 function ACPClient:list_sessions(cwd, callback)
+    local caps = self.agent_capabilities
+    if
+        not caps
+        or not caps.sessionCapabilities
+        or not caps.sessionCapabilities.list
+    then
+        callback(
+            nil,
+            self:__create_error(
+                self.ERROR_CODES.PROTOCOL_ERROR,
+                "Agent does not support listing sessions"
+            )
+        )
+        return
+    end
+
     self:_send_request("session/list", {
         cwd = cwd,
     }, function(result, err)
         if err then
             callback(nil, err)
+            return
+        end
+
+        if type(result) ~= "table" or not result.sessions then
+            callback(
+                nil,
+                self:__create_error(
+                    self.ERROR_CODES.PROTOCOL_ERROR,
+                    "Malformed session/list response: missing sessions field"
+                )
+            )
             return
         end
 
