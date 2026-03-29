@@ -351,6 +351,8 @@ by configuring the `acp_providers` property:
 - `env` (table, optional) - Environment variables to set for the process
 - `default_mode` (string, optional) - Default mode ID to set on session creation
   (e.g., `"bypassPermissions"`, `"plan"`)
+- `initial_model` (string, optional) - Default model ID to set on session
+  creation (e.g., `"claude-sonnet-4-5-20250514"`)
 
 > [!NOTE]  
 > Customizing a provider only requires specifying the fields you want to
@@ -377,6 +379,28 @@ configure it per provider:
 
 The mode will only be set if it's available from the provider. Use `<S-Tab>` to
 see available modes for your provider.
+
+#### Setting an Initial Model
+
+If you want to start sessions with a specific model instead of the provider's
+default:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    acp_providers = {
+      ["claude-agent-acp"] = {
+        -- Automatically switch to this model when a new session starts
+        initial_model = "haiku",
+      },
+    },
+  },
+}
+```
+
+The model will only be set if it's available from the provider. Use
+`<localLeader>m` to see available models for your provider.
 
 ### Window Layout
 

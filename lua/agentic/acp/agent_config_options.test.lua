@@ -46,6 +46,11 @@ describe("agentic.acp.AgentConfigOptions", function()
                 name = "Sonnet",
                 description = "Fast model",
             },
+            {
+                value = "claude-opus",
+                name = "Opus",
+                description = "Powerful model",
+            },
         },
     }
 
@@ -320,6 +325,130 @@ describe("agentic.acp.AgentConfigOptions", function()
                     fresh:set_initial_mode(
                         "nonexistent",
                         handler --[[@as fun(mode: string, is_legacy: boolean|nil): any]]
+                    )
+                end)
+
+                assert.spy(handler).was.called(0)
+                assert.stub(notify_stub).was.called(1)
+                assert.is_true(
+                    string.find(notify_stub.calls[1][1], "unknown") ~= nil
+                )
+            end
+        )
+    end)
+
+    describe("set_initial_model", function()
+        --- @type TestStub
+        local notify_stub
+
+        before_each(function()
+            config_options:set_options({ model_option })
+            local Logger = require("agentic.utils.logger")
+            notify_stub = spy.stub(Logger, "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        it(
+            "calls handler when target differs from current config model",
+            function()
+                local handler = spy.new(function() end)
+
+                config_options:set_initial_model(
+                    "claude-opus",
+                    handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+                )
+
+                assert.spy(handler).was.called(1)
+                local args = handler.calls[1]
+                assert.equal("claude-opus", args[1])
+                assert.is_false(args[2])
+            end
+        )
+
+        it("calls handler with is_legacy=true for legacy models", function()
+            config_options.legacy_agent_models:set_models({
+                availableModels = {
+                    {
+                        modelId = "legacy-opus",
+                        name = "Legacy Opus",
+                        description = "",
+                    },
+                },
+                currentModelId = "legacy-sonnet",
+            })
+
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_model(
+                "legacy-opus",
+                handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+            )
+
+            assert.spy(handler).was.called(1)
+            local args = handler.calls[1]
+            assert.equal("legacy-opus", args[1])
+            assert.is_true(args[2])
+        end)
+
+        it("skips handler when target matches currentValue", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_model(
+                "claude-sonnet",
+                handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+            )
+
+            assert.spy(handler).was.called(0)
+        end)
+
+        it("warns when target is not in any model source", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_model(
+                "nonexistent",
+                handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+            )
+
+            assert.spy(handler).was.called(0)
+            assert.stub(notify_stub).was.called(1)
+            assert.is_true(
+                string.find(notify_stub.calls[1][1], "nonexistent") ~= nil
+            )
+        end)
+
+        it("does nothing when target is nil or empty", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_model(
+                nil,
+                handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+            )
+            config_options:set_initial_model(
+                "",
+                handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+            )
+
+            assert.spy(handler).was.called(0)
+            assert.stub(notify_stub).was.called(0)
+        end)
+
+        it(
+            "does not crash when no config options and no legacy models exist",
+            function()
+                local fresh = AgentConfigOptions:new(
+                    { chat = test_bufnr },
+                    function() end,
+                    function() end
+                )
+                local handler = spy.new(function() end)
+
+                assert.has_no_errors(function()
+                    fresh:set_initial_model(
+                        "nonexistent",
+                        handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
                     )
                 end)
 

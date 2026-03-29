@@ -131,6 +131,45 @@ function AgentConfigOptions:set_initial_mode(target_mode, handle_mode_change)
     end
 end
 
+--- @param target_model string|nil
+--- @param handle_model_change fun(model: string, is_legacy: boolean|nil): any
+function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
+    if not target_model or target_model == "" then
+        Logger.debug("not setting initial model", target_model)
+        return
+    end
+
+    local is_legacy = false
+    local can_switch = false
+
+    if self:get_model(target_model) ~= nil then
+        can_switch = target_model ~= self.model.currentValue
+        Logger.debug("Setting initial config model", target_model, can_switch)
+    elseif self.legacy_agent_models:get_model(target_model) ~= nil then
+        is_legacy = true
+        can_switch = target_model ~= self.legacy_agent_models.current_model_id
+        Logger.debug("Setting initial legacy model", target_model, can_switch)
+    end
+
+    if can_switch then
+        handle_model_change(target_model, is_legacy)
+    else
+        local current = self.model and self.model.currentValue
+            or self.legacy_agent_models.current_model_id
+            or "unknown"
+        Logger.notify(
+            string.format(
+                "Configured initial_model '%s' not available."
+                    .. " Using provider's default '%s'",
+                target_model,
+                current
+            ),
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+    end
+end
+
 --- @param target agentic.acp.ConfigOption|nil
 --- @param value string
 --- @return agentic.acp.ConfigOption.Option|nil

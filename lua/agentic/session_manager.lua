@@ -793,6 +793,13 @@ function SessionManager:new_session(opts)
             end
         )
 
+        self.config_options:set_initial_model(
+            self.agent.provider_config.initial_model,
+            function(model, is_legacy)
+                self:_handle_model_change(model, is_legacy)
+            end
+        )
+
         -- Reset first message flag for new session (skip when restoring)
         if not restore_mode then
             self._is_first_message = true
