@@ -352,7 +352,7 @@ by configuring the `acp_providers` property:
 - `default_mode` (string, optional) - Default mode ID to set on session creation
   (e.g., `"bypassPermissions"`, `"plan"`)
 - `initial_model` (string, optional) - Default model ID to set on session
-  creation (e.g., `"claude-sonnet-4-5-20250514"`)
+  creation (e.g., `"haiku"`)
 
 > [!NOTE]  
 > Customizing a provider only requires specifying the fields you want to

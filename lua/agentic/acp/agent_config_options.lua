@@ -101,34 +101,43 @@ function AgentConfigOptions:set_initial_mode(target_mode, handle_mode_change)
     end
 
     local is_legacy = false
-    local can_switch = false
+    local found = false
 
     if self:get_mode(target_mode) ~= nil then
-        can_switch = target_mode ~= self.mode.currentValue
-        Logger.debug("Setting initial config mode", target_mode, can_switch)
+        found = true
+        Logger.debug("Going to set initial config mode", target_mode)
     elseif self.legacy_agent_modes:get_mode(target_mode) ~= nil then
+        found = true
         is_legacy = true
-        can_switch = target_mode ~= self.legacy_agent_modes.current_mode_id
-        Logger.debug("Setting initial legacy mode", target_mode, can_switch)
+        Logger.debug("Going to set initial legacy mode", target_mode)
     end
 
-    if can_switch then
-        handle_mode_change(target_mode, is_legacy)
-    else
+    if not found then
         local current = self.mode and self.mode.currentValue
             or self.legacy_agent_modes.current_mode_id
             or "unknown"
         Logger.notify(
             string.format(
-                "Configured default_mode ‘%s’ not available. "
-                    .. "Using provider’s default ‘%s’",
+                "Configured default_mode ‘%s’ not available."
+                    .. " Using provider’s default ‘%s’",
                 target_mode,
                 current
             ),
             vim.log.levels.WARN,
             { title = "Agentic" }
         )
+        return
     end
+
+    local current_value = is_legacy and self.legacy_agent_modes.current_mode_id
+        or self.mode.currentValue
+
+    if target_mode == current_value then
+        Logger.debug("initial mode already matches current", target_mode)
+        return
+    end
+
+    handle_mode_change(target_mode, is_legacy)
 end
 
 --- @param target_model string|nil
@@ -140,20 +149,18 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
     end
 
     local is_legacy = false
-    local can_switch = false
+    local found = false
 
     if self:get_model(target_model) ~= nil then
-        can_switch = target_model ~= self.model.currentValue
-        Logger.debug("Setting initial config model", target_model, can_switch)
+        found = true
+        Logger.debug("Setting initial config model", target_model)
     elseif self.legacy_agent_models:get_model(target_model) ~= nil then
+        found = true
         is_legacy = true
-        can_switch = target_model ~= self.legacy_agent_models.current_model_id
-        Logger.debug("Setting initial legacy model", target_model, can_switch)
+        Logger.debug("Setting initial legacy model", target_model)
     end
 
-    if can_switch then
-        handle_model_change(target_model, is_legacy)
-    else
+    if not found then
         local current = self.model and self.model.currentValue
             or self.legacy_agent_models.current_model_id
             or "unknown"
@@ -167,7 +174,19 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
             vim.log.levels.WARN,
             { title = "Agentic" }
         )
+        return
     end
+
+    local current_value = is_legacy
+            and self.legacy_agent_models.current_model_id
+        or self.model.currentValue
+
+    if target_model == current_value then
+        Logger.debug("initial model already matches current", target_model)
+        return
+    end
+
+    handle_model_change(target_model, is_legacy)
 end
 
 --- @param target agentic.acp.ConfigOption|nil

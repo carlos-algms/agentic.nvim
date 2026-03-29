@@ -278,6 +278,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             )
 
             assert.spy(handler).was.called(0)
+            assert.stub(notify_stub).was.called(0)
+            assert.equal("normal", config_options.mode.currentValue)
         end)
 
         it("warns when target is not in any mode source", function()
@@ -402,6 +404,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             )
 
             assert.spy(handler).was.called(0)
+            assert.stub(notify_stub).was.called(0)
+            assert.equal("claude-sonnet", config_options.model.currentValue)
         end)
 
         it("warns when target is not in any model source", function()
@@ -457,6 +461,34 @@ describe("agentic.acp.AgentConfigOptions", function()
                 assert.is_true(
                     string.find(notify_stub.calls[1][1], "unknown") ~= nil
                 )
+            end
+        )
+
+        it(
+            "prefers config options over legacy when model exists in both",
+            function()
+                config_options.legacy_agent_models:set_models({
+                    availableModels = {
+                        {
+                            modelId = "claude-opus",
+                            name = "Legacy Opus",
+                            description = "",
+                        },
+                    },
+                    currentModelId = "legacy-default",
+                })
+
+                local handler = spy.new(function() end)
+
+                config_options:set_initial_model(
+                    "claude-opus",
+                    handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
+                )
+
+                assert.spy(handler).was.called(1)
+                local args = handler.calls[1]
+                assert.equal("claude-opus", args[1])
+                assert.is_false(args[2])
             end
         )
     end)
