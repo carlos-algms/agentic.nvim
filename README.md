@@ -211,7 +211,7 @@ tools like `nvm`, `fnm`, etc...
 
 | Provider                             | Install                                                                                                                                                                                        |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @zed-industries/claude-agent-acp`<br/> **OR** `npm i -g @zed-industries/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                                |
+| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @agentclientprotocol/claude-agent-acp`<br/> **OR** `npm i -g @agentclientprotocol/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                      |
 | [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
 | [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
 | [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
@@ -1049,9 +1049,9 @@ the the acknowledgments 😊.
 - [avante.nvim](https://github.com/yetone/avante.nvim) - for the ACP client code
   and sidebar structured with multiple panels
 
-[claude-agent-acp]: https://github.com/zed-industries/claude-agent-acp
+[claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
 [claude-agent-acp-releases]:
-  https://github.com/zed-industries/claude-agent-acp/releases
+  https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
