@@ -2,6 +2,7 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local DiffSplitView = require("agentic.ui.diff_split_view")
+local FileSystem = require("agentic.utils.file_system")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
@@ -240,6 +241,21 @@ function M.show_diff(opts)
         Logger.debug("show_diff: split view failed, falling back to inline")
     end
 
+    if
+        ToolCallDiff.is_empty_lines(
+            ToolCallDiff.normalize_to_lines(opts.diff.old)
+        )
+    then
+        local abs_path = FileSystem.to_absolute_path(opts.file_path)
+        if not vim.uv.fs_stat(abs_path) then
+            local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new)
+            if not ToolCallDiff.is_empty_lines(new_lines) then
+                M._show_new_file_diff(opts, new_lines)
+            end
+            return
+        end
+    end
+
     local diff_blocks = ToolCallDiff.extract_diff_blocks({
         path = opts.file_path,
         old_text = opts.diff.old,
@@ -371,6 +387,15 @@ end
 function M.clear_diff(buf, is_rejection)
     local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
 
+    -- Fallback: check for suggestion buffer by smart path
+    if bufnr == -1 and type(buf) == "string" then
+        local smart = FileSystem.to_smart_path(buf)
+        local smart_bufnr = vim.fn.bufnr(smart)
+        if smart_bufnr ~= -1 and vim.b[smart_bufnr]._agentic_suggestion_for then
+            bufnr = smart_bufnr
+        end
+    end
+
     if bufnr == -1 then
         return
     end
@@ -391,11 +416,17 @@ function M.clear_diff(buf, is_rejection)
 
     pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
 
+    local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
+
     -- Restore modifiable state if it was saved
-    local prev_modifiable = vim.b[bufnr]._agentic_prev_modifiable
-    if prev_modifiable ~= nil then
-        vim.bo[bufnr].modifiable = prev_modifiable
-        vim.b[bufnr]._agentic_prev_modifiable = nil
+    -- (skip for suggestion buffers on acceptance —
+    -- text stays visible until real file takes over)
+    if not is_suggestion then
+        local prev_modifiable = vim.b[bufnr]._agentic_prev_modifiable
+        if prev_modifiable ~= nil then
+            vim.bo[bufnr].modifiable = prev_modifiable
+            vim.b[bufnr]._agentic_prev_modifiable = nil
+        end
     end
 
     -- On rejection for new files, switch window to alternate buffer
@@ -506,6 +537,84 @@ function M.setup_diff_navigation_keymaps(buf_nrs)
         end, {
             desc = "Go to previous hunk - Agentic DiffPreview",
         })
+    end
+end
+
+--- Show diff for a new file using a suggestion buffer with
+--- real text content (scrollable, no virtual lines).
+--- @param opts agentic.ui.DiffPreview.ShowOpts
+--- @param new_lines string[]
+function M._show_new_file_diff(opts, new_lines)
+    local suggestion_name = FileSystem.to_smart_path(opts.file_path)
+    local bufnr = vim.fn.bufnr(suggestion_name)
+    if bufnr == -1 then
+        bufnr = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_name(bufnr, suggestion_name)
+    end
+
+    -- Set buffer properties
+    vim.bo[bufnr].buflisted = false
+    vim.b[bufnr]._agentic_suggestion_for = opts.file_path
+
+    -- Set filetype from real path
+    local ft = vim.filetype.match({ filename = opts.file_path })
+    if ft then
+        vim.bo[bufnr].filetype = ft
+    end
+
+    -- Write content as real text
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+
+    -- Apply green diff highlights on all lines
+    vim.api.nvim_buf_set_extmark(bufnr, NS_DIFF, 0, 0, {
+        end_row = #new_lines - 1,
+        end_col = #new_lines[#new_lines],
+        hl_group = Theme.HL_GROUPS.DIFF_ADD,
+        hl_eol = true,
+    })
+
+    vim.bo[bufnr].modifiable = false
+
+    -- Display in window
+    opts.get_winid(bufnr)
+end
+
+--- Replace suggestion buffer with the real file in the same window.
+--- Called when a file-mutating tool call completes.
+--- @param file_path string|nil
+function M.cleanup_temp_new_file_buffer(file_path)
+    if not file_path then
+        return
+    end
+
+    local suggestion_name = FileSystem.to_smart_path(file_path)
+    local suggestion_bufnr = vim.fn.bufnr(suggestion_name)
+    if
+        suggestion_bufnr == -1
+        or not vim.b[suggestion_bufnr]._agentic_suggestion_for
+    then
+        return
+    end
+
+    local winid = vim.fn.bufwinid(suggestion_bufnr)
+
+    -- Delete suggestion buffer first, then create the real one.
+    -- Must delete first because bufadd can match the suggestion
+    -- buffer name (it contains the real path as a substring).
+    -- Use a temporary buffer to keep the window alive during
+    -- the swap.
+    if winid ~= -1 then
+        local tmp_bufnr = vim.api.nvim_create_buf(false, true)
+        pcall(vim.api.nvim_win_set_buf, winid, tmp_bufnr)
+    end
+
+    pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })
+
+    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
+        local abs_path = FileSystem.to_absolute_path(file_path)
+        local real_bufnr = vim.fn.bufadd(abs_path)
+        pcall(vim.api.nvim_win_set_buf, winid, real_bufnr)
     end
 end
 

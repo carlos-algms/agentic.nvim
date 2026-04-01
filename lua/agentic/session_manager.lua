@@ -463,6 +463,8 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
         if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
             vim.cmd.checktime()
+
+            DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
         end
     end
 
