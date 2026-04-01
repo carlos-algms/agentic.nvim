@@ -583,7 +583,7 @@ end
 --- Replace suggestion buffer with the real file in the same window.
 --- Called when a file-mutating tool call completes.
 --- @param file_path string|nil
-function M.cleanup_temp_new_file_buffer(file_path)
+function M.cleanup_suggestion_buffer(file_path)
     if not file_path then
         return
     end
@@ -599,22 +599,20 @@ function M.cleanup_temp_new_file_buffer(file_path)
 
     local winid = vim.fn.bufwinid(suggestion_bufnr)
 
-    -- Delete suggestion buffer first, then create the real one.
-    -- Must delete first because bufadd can match the suggestion
-    -- buffer name (it contains the real path as a substring).
-    -- Use a temporary buffer to keep the window alive during
-    -- the swap.
+    -- Must delete suggestion buffer before bufadd because Neovim path
+    -- resolution can match the smart-path name to the absolute path.
+    -- A temporary buffer keeps the window alive during the swap.
     if winid ~= -1 then
         local tmp_bufnr = vim.api.nvim_create_buf(false, true)
         pcall(vim.api.nvim_win_set_buf, winid, tmp_bufnr)
-    end
+        pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })
 
-    pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })
-
-    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
         local abs_path = FileSystem.to_absolute_path(file_path)
         local real_bufnr = vim.fn.bufadd(abs_path)
         pcall(vim.api.nvim_win_set_buf, winid, real_bufnr)
+        pcall(vim.api.nvim_buf_delete, tmp_bufnr, { force = true })
+    else
+        pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })
     end
 end
 
