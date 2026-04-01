@@ -36,12 +36,12 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
---- @field on_submit_input fun(prompt: string) external callback to be called when user submits the input
+--- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
 --- @param tab_page_id integer
---- @param on_submit_input fun(prompt: string)
+--- @param on_submit_input fun(prompt: string): boolean
 function ChatWidget:new(tab_page_id, on_submit_input)
     self = setmetatable({}, self)
 
@@ -210,6 +210,13 @@ function ChatWidget:_submit_input()
         return
     end
 
+    -- Ask session if it can accept this prompt
+    local accepted = self.on_submit_input(prompt)
+    if not accepted then
+        return
+    end
+
+    -- Clear buffers only after successful submission
     vim.api.nvim_buf_set_lines(self.buf_nrs.input, 0, -1, false, {})
 
     BufHelpers.with_modifiable(self.buf_nrs.code, function(bufnr)
@@ -223,8 +230,6 @@ function ChatWidget:_submit_input()
     BufHelpers.with_modifiable(self.buf_nrs.diagnostics, function(bufnr)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
     end)
-
-    self.on_submit_input(prompt)
 
     self:close_optional_window("code")
     self:close_optional_window("files")

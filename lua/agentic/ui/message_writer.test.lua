@@ -724,6 +724,11 @@ describe("agentic.ui.MessageWriter", function()
 
             -- Tool call should be tracked
             assert.is_not_nil(writer.tool_call_blocks["tc-1"])
+
+            -- Tool call content should be rendered in buffer
+            local lines = get_all_lines()
+            local content = table.concat(lines, "\n")
+            assert.truthy(content:match("read"))
         end)
     end)
 end)

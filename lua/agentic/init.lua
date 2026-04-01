@@ -231,53 +231,49 @@ local function apply_provider_switch(provider_name)
         Logger.debug("apply_provider_switch: creating new session")
         local new_session =
             SessionRegistry.get_session_for_tab_page(tab_page_id)
-        if new_session then
-            Logger.debug(
-                "apply_provider_switch: new_session created, session_id="
-                    .. tostring(new_session.session_id)
+        if not new_session then
+            Logger.notify(
+                "Failed to create session for provider '"
+                    .. provider_name
+                    .. "'.",
+                vim.log.levels.ERROR
             )
+            return
         end
-        if new_session then
-            -- Restore files and code selections immediately (don't wait for session ready)
-            for _, file_path in ipairs(saved_files) do
-                new_session.file_list:add(file_path)
-            end
-            for _, selection in ipairs(saved_selections) do
-                new_session.code_selection:add(selection)
-            end
 
-            -- Set history_to_send IMMEDIATELY so it's available if user submits prompt
-            -- before async callbacks fire (critical for history to be sent with next prompt)
+        Logger.debug(
+            "apply_provider_switch: new_session created, session_id="
+                .. tostring(new_session.session_id)
+        )
+        -- Restore files and code selections immediately (don't wait for session ready)
+        for _, file_path in ipairs(saved_files) do
+            new_session.file_list:add(file_path)
+        end
+        for _, selection in ipairs(saved_selections) do
+            new_session.code_selection:add(selection)
+        end
+
+        -- Register callback for when session is ready
+        -- This waits for: agent ready -> session created -> welcome banner written
+        new_session:on_session_ready(function(ready_session)
             Logger.debug(
-                "apply_provider_switch: setting history_to_send to "
+                "Replaying "
                     .. tostring(#saved_messages)
-                    .. " messages"
+                    .. " messages after provider switch"
             )
-            new_session.history_to_send = saved_messages
 
-            -- Register callback for when session is ready
-            -- This waits for: agent ready -> session created -> welcome banner written
-            new_session:on_session_ready(function(ready_session)
-                Logger.debug(
-                    "Replaying "
-                        .. tostring(#saved_messages)
-                        .. " messages after provider switch"
-                )
+            -- Restore chat history and history_to_send for persistence
+            -- Must be set here (not before) because new_session() clears history_to_send
+            ready_session.chat_history.messages = saved_messages
+            ready_session.history_to_send = saved_messages
 
-                -- Restore chat history for persistence
-                ready_session.chat_history.messages = saved_messages
-                ready_session.history_to_send = saved_messages
+            -- Replay messages visually in the chat buffer (after welcome header is written)
+            ready_session.message_writer:replay_history_messages(saved_messages)
+        end)
 
-                -- Replay messages visually in the chat buffer (after welcome header is written)
-                ready_session.message_writer:replay_history_messages(
-                    saved_messages
-                )
-            end)
-
-            -- Open widget immediately if it was open before
-            if widget_was_open then
-                new_session.widget:show()
-            end
+        -- Open widget immediately if it was open before
+        if widget_was_open then
+            new_session.widget:show()
         end
     end)
 end

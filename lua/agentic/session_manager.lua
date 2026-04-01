@@ -144,7 +144,7 @@ function SessionManager:new(tab_page_id)
     self.chat_history = ChatHistory:new()
 
     self.widget = ChatWidget:new(tab_page_id, function(input_text)
-        self:_handle_input_submit(input_text)
+        return self:_handle_input_submit(input_text)
     end)
 
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
@@ -153,9 +153,15 @@ function SessionManager:new(tab_page_id)
     self.status_animation:start("busy")
 
     -- Check for sync failure during ACPClient construction
-    if self.agent.state == "error" or self.agent.state == "disconnected" then
+    -- Guard with _connection_error to avoid double-fire if async callback already ran
+    if
+        not self._connection_error
+        and (self.agent.state == "error" or self.agent.state == "disconnected")
+    then
         vim.schedule(function()
-            self:_handle_connection_error()
+            if not self._connection_error then
+                self:_handle_connection_error()
+            end
         end)
     end
 
@@ -232,6 +238,7 @@ end
 --- Stops busy animation and writes error to chat buffer.
 function SessionManager:_handle_connection_error()
     self._connection_error = true
+    self._session_ready_callbacks = {}
     self.status_animation:stop()
     self.message_writer:write_message(
         ACPPayloads.generate_agent_message(
@@ -272,6 +279,14 @@ end
 --- restoring. Notifies user of the reason.
 --- @return boolean can_submit
 function SessionManager:can_submit_prompt()
+    if self._connection_error then
+        Logger.notify(
+            "Provider connection failed. Start a new session.",
+            vim.log.levels.ERROR
+        )
+        return false
+    end
+
     if not self.session_id then
         Logger.notify(
             "Session not ready. Wait for initialization to complete.",
@@ -577,20 +592,21 @@ function SessionManager:_set_mode_to_chat_header(mode_id)
 end
 
 --- @param input_text string
+--- @return boolean submitted
 function SessionManager:_handle_input_submit(input_text)
     self.todo_list:close_if_all_completed()
+
+    -- Guard: cannot submit if session not ready or generating
+    if not self:can_submit_prompt() then
+        return false
+    end
 
     -- Intercept /new command to start new session locally, cancelling existing one
     -- Its necessary to avoid race conditions and make sure everything is cleaned properly,
     -- the Agent might not send an identifiable response that could be acted upon
     if input_text:match("^/new%s*") then
         self:new_session()
-        return
-    end
-
-    -- Guard: cannot submit if session not ready or generating
-    if not self:can_submit_prompt() then
-        return
+        return true
     end
 
     --- @type agentic.acp.Content[]
@@ -795,6 +811,8 @@ function SessionManager:_handle_input_submit(input_text)
             })
         end)
     end)
+
+    return true
 end
 
 --- Build the standard ACP client handlers for session subscriptions

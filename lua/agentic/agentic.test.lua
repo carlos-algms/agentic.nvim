@@ -124,6 +124,7 @@ describe("agentic: switch_provider", function()
         local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
         flush_schedule()
         assert.is_not_nil(session)
+        SessionRegistry.sessions[tab_page_id] = session
     end)
 
     it("restores chat history messages after switching provider", function()
@@ -169,6 +170,7 @@ describe("agentic: switch_provider", function()
         -- Get new session
         local new_session = SessionRegistry.sessions[tab_page_id] --[[@as agentic.SessionManager]]
         assert.is_not_nil(new_session)
+        assert.are_not.equal(session, new_session)
 
         -- CRITICAL TEST: Verify history messages were restored
         -- This test will fail if replay_history_messages wasn't called
@@ -206,6 +208,7 @@ describe("agentic: switch_provider", function()
         assert.spy(logger_notify_stub).was.called()
         local msg = logger_notify_stub.calls[1][1]
         assert.truthy(msg:match("[Ii]nitializ"))
+        assert.equal(session, SessionRegistry.sessions[tab_page_id])
     end)
 
     it("blocks switch when generating", function()
@@ -227,6 +230,7 @@ describe("agentic: switch_provider", function()
         assert.spy(logger_notify_stub).was.called()
         local msg = logger_notify_stub.calls[1][1]
         assert.truthy(msg:match("[Gg]enerating"))
+        assert.equal(session, SessionRegistry.sessions[tab_page_id])
     end)
 
     it(
@@ -374,4 +378,31 @@ describe("agentic: switch_provider", function()
             )
         end
     )
+
+    it("does not clear prompt buffer when session cannot submit", function()
+        local SessionManager = require("agentic.session_manager")
+        local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+        -- Create session without flushing — session_id is nil
+        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+        assert.is_nil(session.session_id)
+        SessionRegistry.sessions[tab_page_id] = session
+
+        -- Write text to the input buffer
+        local input_bufnr = session.widget.buf_nrs.input
+        vim.api.nvim_buf_set_lines(
+            input_bufnr,
+            0,
+            -1,
+            false,
+            { "my prompt text" }
+        )
+
+        -- Try to submit (session not ready, should be blocked)
+        session.widget:_submit_input()
+
+        -- Prompt buffer should NOT have been cleared
+        local lines = vim.api.nvim_buf_get_lines(input_bufnr, 0, -1, false)
+        assert.equal("my prompt text", lines[1])
+    end)
 end)
