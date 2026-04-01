@@ -576,8 +576,11 @@ function M._show_new_file_diff(opts, new_lines)
 
     vim.bo[bufnr].modifiable = false
 
-    -- Display in window
-    opts.get_winid(bufnr)
+    -- Display in window; delete orphaned buffer if no window available
+    local winid = opts.get_winid(bufnr)
+    if not winid then
+        pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+    end
 end
 
 --- Replace suggestion buffer with the real file in the same window.
