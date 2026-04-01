@@ -65,7 +65,15 @@ end
 --- @param opts vim.keymap.set.Opts|nil
 function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     opts = opts or {}
-    opts.buffer = bufnr
+    if vim.fn.has("nvim-0.12") == 1 then
+        opts.buf = bufnr
+    else
+        -- TODO: drop `buffer` fallback when min version >= 0.13
+        -- `buffer` renamed to `buf` in Neovim 0.12 (removed in 0.15)
+
+        --- @diagnostic disable-next-line: inject-field
+        opts.buffer = bufnr
+    end
     vim.keymap.set(mode, lhs, rhs, opts)
 end
 
