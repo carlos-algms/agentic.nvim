@@ -163,9 +163,12 @@ describe("agentic: switch_provider", function()
 
         -- Now do the provider switch
         local Agentic = require("agentic")
-        Config.provider = "NewProvider"
+        assert.are_not.equal("NewProvider", Config.provider)
         Agentic.switch_provider({ provider = "NewProvider" })
         flush_schedule()
+
+        -- Verify Config.provider was updated by switch_provider
+        assert.equal("NewProvider", Config.provider)
 
         -- Get new session
         local new_session = SessionRegistry.sessions[tab_page_id] --[[@as agentic.SessionManager]]
@@ -306,9 +309,12 @@ describe("agentic: switch_provider", function()
             assert.equal(tab1_id, vim.api.nvim_get_current_tabpage())
 
             -- Perform provider switch on tab1 only
-            Config.provider = "SwitchedProvider"
+            assert.are_not.equal("SwitchedProvider", Config.provider)
             Agentic.switch_provider({ provider = "SwitchedProvider" })
             flush_schedule()
+
+            -- Verify Config.provider was updated by switch_provider
+            assert.equal("SwitchedProvider", Config.provider)
 
             -- === Tab 1: session was updated ===
             local new_session1 = SessionRegistry.sessions[tab1_id] --[[@as agentic.SessionManager]]
