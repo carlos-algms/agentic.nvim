@@ -610,6 +610,80 @@ local result = child.lua_get("vim.b.result")
 where it's prohibited. `vim.uv.sleep()` is a simple blocking sleep that lets the
 child continue independently.
 
+### Async Code in Same-Process Tests
+
+**🚨 CRITICAL: Assertions inside async callbacks are silently
+ignored**
+
+mini.test wraps each `it()` body in `pcall()`. Any assertion that
+runs inside `vim.schedule()`, a coroutine callback, or any deferred
+function executes **after `pcall` has already returned** — so:
+
+- Assertion failures are **silently lost** (test appears to pass)
+- Errors inside callbacks **don't register** as test failures
+- The test runner may **not report a dot** for that `it()` block
+
+Reference:
+[echasnovski/mini.nvim Discussion #1107](https://github.com/echasnovski/mini.nvim/discussions/1107)
+
+**Rules:**
+
+- ❌ **NEVER** put `assert.*` or `expect.*` inside `vim.schedule`,
+  coroutine callbacks, or any deferred function
+- ✅ **ALWAYS** keep assertions synchronous in the `it()` body
+- ✅ Store async results in a variable, wait, then assert
+- ✅ **Verify dot count matches `it()` count** — if a test file
+  has 5 `it()` blocks but only 4 dots are reported, one test is
+  silently being skipped due to async code escaping `pcall`
+
+#### Same-process async pattern
+
+```lua
+-- ❌ WRONG: Assertion inside vim.schedule is silently ignored
+it('breaks silently', function()
+  vim.schedule(function()
+    assert.equal('expected', some_result)  -- NEVER runs in pcall
+  end)
+end)
+
+-- ✅ CORRECT: Store result, sleep, assert synchronously
+it('tests async code', function()
+  local result = nil
+  vim.schedule(function()
+    result = some_async_operation()
+  end)
+  vim.uv.sleep(10)  -- let scheduled callback execute
+  assert.equal('expected', result)
+end)
+```
+
+#### Child process async pattern
+
+```lua
+-- ✅ CORRECT: Async work in child, assert in parent
+it('tests async in child', function()
+  child.lua([[
+    some_async_operation(function(res)
+      vim.b.test_result = res  -- store, don't assert
+    end)
+  ]])
+  vim.uv.sleep(50)  -- wait in parent
+  local result = child.lua_get('vim.b.test_result')
+  assert.equal('expected', result)
+end)
+```
+
+#### Event loop flush (child process only)
+
+For operations that only need one event loop tick (e.g., a single
+`vim.schedule` call), use an RPC round-trip instead of sleeping:
+
+```lua
+child.lua([[vim.schedule(function() vim.b.done = true end)]])
+child.api.nvim_eval('1')  -- forces event loop flush
+assert.is_true(child.b.done)
+```
+
 ## Debugging Tests
 
 ### Verbose Output
