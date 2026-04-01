@@ -207,11 +207,12 @@ local function apply_provider_switch(provider_name)
         local tab_page_id = session.tab_page_id
 
         -- Validate new provider exists BEFORE destroying old session
-        local new_agent = AgentInstance.get_instance(
+        local ok, new_agent = pcall(
+            AgentInstance.get_instance,
             provider_name,
             function() end
         )
-        if not new_agent then
+        if not ok or not new_agent then
             Logger.notify(
                 "Provider '" .. provider_name .. "' not available.",
                 vim.log.levels.ERROR

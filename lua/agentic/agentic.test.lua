@@ -18,6 +18,7 @@ describe("agentic: switch_provider", function()
     --- @type TestStub
     local schedule_stub
     local original_provider
+    local initial_tab_id
 
     --- @type fun()[]
     local schedule_queue = {}
@@ -32,6 +33,7 @@ describe("agentic: switch_provider", function()
 
     before_each(function()
         original_provider = Config.provider
+        initial_tab_id = vim.api.nvim_get_current_tabpage()
         logger_notify_stub = spy.stub(Logger, "notify")
 
         -- Queue vim.schedule callbacks so they run after synchronous code completes
@@ -97,8 +99,21 @@ describe("agentic: switch_provider", function()
         end
 
         -- Clean up any sessions created during tests
+        -- Collect IDs first to avoid mutating the table during pairs() iteration
+        local tab_ids = {}
         for tab_id, _ in pairs(SessionRegistry.sessions) do
+            table.insert(tab_ids, tab_id)
+        end
+        for _, tab_id in ipairs(tab_ids) do
             SessionRegistry.destroy_session(tab_id)
+        end
+
+        -- Close any extra tabs created during the test
+        vim.api.nvim_set_current_tabpage(initial_tab_id)
+        for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
+            if tp ~= initial_tab_id then
+                vim.cmd("tabclose " .. vim.api.nvim_tabpage_get_number(tp))
+            end
         end
     end)
 
@@ -357,10 +372,6 @@ describe("agentic: switch_provider", function()
                 "Tab2Provider",
                 current_session2.chat_history.messages[1].provider_name
             )
-
-            -- Clean up tab2
-            vim.api.nvim_set_current_tabpage(tab2_id)
-            vim.cmd("tabclose")
         end
     )
 end)

@@ -659,8 +659,9 @@ describe("agentic.ui.MessageWriter", function()
             local lines = get_all_lines()
             local content = table.concat(lines, "\n")
 
-            -- Both provider names should appear and messages should be there
-            assert.truthy(content:match("Claude"))
+            -- Both provider headers should appear with correct names
+            assert.truthy(content:match("### .* Agent %- Claude"))
+            assert.truthy(content:match("### .* Agent %- Gemini"))
             assert.truthy(content:match("from claude"))
             assert.truthy(content:match("from gemini"))
         end)
