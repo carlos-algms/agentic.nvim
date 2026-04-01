@@ -100,6 +100,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get calendar week (for nightly cache rotation)
+        id: week
+        run: echo "week=$(date +%Y-%W)" >> "$GITHUB_OUTPUT"
+
       - name: Install system dependencies
         run: |
           # Install newer versions of rg and fd for unit tests
@@ -125,7 +129,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .local/nvim
-          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
+          # Weekly rotation for nightly, stable versions stay cached indefinitely
+          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}-${{ matrix.neovim-version == 'nightly' && steps.week.outputs.week || 'stable' }}
 
       - name: Install Neovim
         if: steps.cache-neovim.outputs.cache-hit != 'true'
@@ -156,6 +161,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Get calendar week (for nightly cache rotation)
+        id: week
+        run: echo "week=$(date +%Y-%W)" >> "$GITHUB_OUTPUT"
+
       - name: Setup directories
         run: mkdir -p .local/nvim .local/bin .local/luals
 
@@ -164,7 +173,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .local/nvim
-          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}
+          # Weekly rotation for nightly, stable versions stay cached indefinitely
+          key: neovim-${{ runner.os }}-${{ matrix.neovim-version }}-${{ matrix.neovim-version == 'nightly' && steps.week.outputs.week || 'stable' }}
 
       - name: Install Neovim
         if: steps.cache-neovim.outputs.cache-hit != 'true'
