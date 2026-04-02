@@ -981,6 +981,7 @@ end
 function SessionManager:_cancel_session()
     self._is_restoring_session = false
     self.is_generating = false
+    self.status_animation:stop()
 
     if self.session_id then
         -- only cancel and clear content if there was an session

@@ -834,6 +834,7 @@ describe("agentic.SessionManager", function()
                 code_selection = { clear = function() end },
                 diagnostics_list = { clear = function() end },
                 config_options = { clear = function() end },
+                status_animation = { stop = function() end },
                 chat_history = ChatHistory:new(),
                 history_to_send = {},
                 message_writer = {
