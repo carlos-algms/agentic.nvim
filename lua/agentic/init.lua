@@ -302,6 +302,8 @@ function Agentic.stop_generation()
         if session.is_generating then
             session.agent:stop_generation(session.session_id)
             session.permission_manager:clear()
+            session.is_generating = false
+            session.status_animation:stop()
         end
     end)
 end

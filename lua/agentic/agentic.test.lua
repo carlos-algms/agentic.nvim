@@ -385,6 +385,37 @@ describe("agentic: switch_provider", function()
         end
     )
 
+    it("stop_generation resets is_generating and stops animation", function()
+        local Agentic = require("agentic")
+        local SessionManager = require("agentic.session_manager")
+        local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+        -- Create an initialized session
+        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+        flush_schedule()
+        session.session_id = "test-session-id" --[[@as string]]
+        session.is_generating = true
+        SessionRegistry.sessions[tab_page_id] = session
+
+        -- Stub agent.stop_generation to avoid real RPC call
+        local agent_stop_stub = spy.stub(session.agent, "stop_generation")
+        -- Stub permission_manager.clear
+        local pm_clear_stub = spy.stub(session.permission_manager, "clear")
+        -- Spy on status_animation.stop
+        local anim_stop_spy = spy.stub(session.status_animation, "stop")
+
+        Agentic.stop_generation()
+
+        -- is_generating must be false immediately (not waiting for callback)
+        assert.is_false(session.is_generating)
+        -- animation must have been stopped immediately
+        assert.spy(anim_stop_spy).was.called(1)
+
+        agent_stop_stub:revert()
+        pm_clear_stub:revert()
+        anim_stop_spy:revert()
+    end)
+
     it("does not clear prompt buffer when session cannot submit", function()
         local SessionManager = require("agentic.session_manager")
         local tab_page_id = vim.api.nvim_get_current_tabpage()
