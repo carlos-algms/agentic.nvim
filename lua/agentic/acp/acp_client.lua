@@ -511,10 +511,12 @@ function ACPClient:__handle_request_permission(message_id, request)
 
         subscriber.on_request_permission(request, function(option_id)
             --- @type agentic.acp.RequestPermissionOutcome
-            local outcome = {
-                outcome = "selected",
-                optionId = option_id,
-            }
+            local outcome
+            if option_id then
+                outcome = { outcome = "selected", optionId = option_id }
+            else
+                outcome = { outcome = "cancelled" }
+            end
 
             self:__send_result(message_id, {
                 outcome = outcome,
