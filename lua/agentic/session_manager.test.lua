@@ -866,4 +866,102 @@ describe("agentic.SessionManager", function()
             assert.spy(new_session_spy).was.called(1)
         end)
     end)
+
+    describe("send_prompt callback ignores stale session", function()
+        --- @type TestStub
+        local schedule_stub
+        --- @type fun()[]
+        local schedule_queue
+
+        before_each(function()
+            schedule_queue = {}
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                table.insert(schedule_queue, fn)
+            end)
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+        end)
+
+        it("does not write finish message if session_id changed", function()
+            local write_message_spy = spy.new(function() end)
+
+            --- @type fun(response: table|nil, err: table|nil)|nil
+            local captured_callback = nil
+
+            --- @type agentic.SessionManager
+            local session = {
+                session_id = "original-session",
+                tab_page_id = 1,
+                is_generating = false,
+                _connection_error = false,
+                _is_restoring_session = false,
+                _is_first_message = false,
+                history_to_send = nil,
+                chat_history = {
+                    title = "",
+                    add_message = function() end,
+                },
+                todo_list = { close_if_all_completed = function() end },
+                code_selection = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                file_list = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                diagnostics_list = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                message_writer = { write_message = write_message_spy },
+                status_animation = {
+                    start = function() end,
+                    stop = function() end,
+                },
+                agent = {
+                    provider_config = { name = "TestProvider" },
+                    send_prompt = function(_self, _sid, _prompt, callback)
+                        captured_callback = callback
+                    end,
+                },
+                can_submit_prompt = function()
+                    return true
+                end,
+                _handle_input_submit = SessionManager._handle_input_submit,
+            } --[[@as agentic.SessionManager]]
+
+            -- Trigger submit — captures send_prompt callback, writes user message once
+            session:_handle_input_submit("hello")
+
+            -- Verify send_prompt callback was captured
+            assert.is_not_nil(captured_callback)
+
+            -- Reset write_message tracking so we only count finish-message writes
+            write_message_spy:reset()
+
+            -- Simulate session change (cancel/restore/new session)
+            session.session_id = "new-session"
+
+            -- Fire the stale callback (simulates provider responding after session change)
+            if captured_callback then
+                captured_callback(nil, nil)
+            end
+
+            -- Flush vim.schedule queue — runs the callback body
+            while #schedule_queue > 0 do
+                local fn = table.remove(schedule_queue, 1)
+                fn()
+            end
+
+            -- Finish message must NOT be written for stale session
+            assert.spy(write_message_spy).was.called(0)
+        end)
+    end)
 end)

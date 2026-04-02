@@ -780,6 +780,11 @@ function SessionManager:_handle_input_submit(input_text)
         vim.schedule(function()
             self.is_generating = false
 
+            -- Guard: skip stale response if session changed (cancel/restore/new)
+            if self.session_id ~= session_id then
+                return
+            end
+
             local finish_message = string.format(
                 "\n### 🏁 %s\n-----",
                 os.date("%Y-%m-%d %H:%M:%S")
