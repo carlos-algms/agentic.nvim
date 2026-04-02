@@ -798,4 +798,53 @@ describe("agentic.SessionManager", function()
             debug_stub:revert()
         end)
     end)
+
+    describe("_cancel_session resets is_generating", function()
+        --- @type TestStub
+        local slash_commands_stub
+
+        before_each(function()
+            local SlashCommands = require("agentic.acp.slash_commands")
+            slash_commands_stub = spy.stub(SlashCommands, "setCommands")
+        end)
+
+        after_each(function()
+            slash_commands_stub:revert()
+        end)
+
+        it("resets is_generating to false", function()
+            local ChatHistory = require("agentic.ui.chat_history")
+            --- @type agentic.SessionManager
+            local session = {
+                is_generating = true,
+                _is_restoring_session = true,
+                session_id = nil,
+                permission_manager = {
+                    clear = spy.new(function() end),
+                },
+                agent = {
+                    cancel_session = spy.new(function() end),
+                },
+                widget = {
+                    clear = spy.new(function() end),
+                    buf_nrs = { input = 1 },
+                },
+                todo_list = { clear = function() end },
+                file_list = { clear = function() end },
+                code_selection = { clear = function() end },
+                diagnostics_list = { clear = function() end },
+                config_options = { clear = function() end },
+                chat_history = ChatHistory:new(),
+                history_to_send = {},
+                message_writer = {
+                    reset_sender_tracking = function() end,
+                },
+                _cancel_session = SessionManager._cancel_session,
+            } --[[@as agentic.SessionManager]]
+
+            session:_cancel_session()
+
+            assert.is_false(session.is_generating)
+        end)
+    end)
 end)
