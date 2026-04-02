@@ -279,6 +279,21 @@ describe("ACPClient", function()
     end)
 
     describe("_drain_pending_callbacks", function()
+        local original_schedule = vim.schedule
+
+        before_each(function()
+            -- Drain uses vim.schedule to avoid fast-event errors;
+            -- run synchronously in tests so assertions work
+            ---@diagnostic disable-next-line: duplicate-set-field
+            vim.schedule = function(fn)
+                fn()
+            end
+        end)
+
+        after_each(function()
+            vim.schedule = original_schedule
+        end)
+
         it("calls pending callbacks with error when disconnected", function()
             local client = create_ready_client()
 
@@ -358,6 +373,7 @@ describe("ACPClient", function()
             assert.is_not_nil(captured_on_state_change)
             --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
             captured_on_state_change("ready")
+            vim.uv.sleep(10) -- flush any potential vim.schedule
 
             assert.is_false(callback_called)
         end)

@@ -190,7 +190,9 @@ function ACPClient:_drain_pending_callbacks(reason)
     local err = self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, reason)
 
     for _, callback in pairs(pending) do
-        pcall(callback, nil, err)
+        vim.schedule(function()
+            pcall(callback, nil, err)
+        end)
     end
 end
 
