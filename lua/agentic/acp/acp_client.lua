@@ -174,6 +174,24 @@ end
 --- @param state agentic.acp.ClientConnectionState
 function ACPClient:_set_state(state)
     self.state = state
+
+    if state == "disconnected" or state == "error" then
+        self:_drain_pending_callbacks(state)
+    end
+end
+
+--- Reject all pending RPC callbacks when the connection drops.
+--- @protected
+--- @param reason string
+function ACPClient:_drain_pending_callbacks(reason)
+    local pending = self.callbacks
+    self.callbacks = {}
+
+    local err = self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, reason)
+
+    for _, callback in pairs(pending) do
+        pcall(callback, nil, err)
+    end
 end
 
 --- @protected

@@ -277,4 +277,116 @@ describe("ACPClient", function()
             end)
         end)
     end)
+
+    describe("_drain_pending_callbacks", function()
+        it("calls pending callbacks with error when disconnected", function()
+            local client = create_ready_client()
+
+            -- Register a pending callback via send_prompt (transport stub is a noop)
+            --- @type table|nil
+            local received_result
+            --- @type agentic.acp.ACPError|nil
+            local received_err
+            local callback_called = false
+
+            client:send_prompt("sid-1", {}, function(result, err)
+                callback_called = true
+                received_result = result
+                received_err = err
+            end)
+
+            -- Callback should NOT have been called yet (transport is a noop stub)
+            assert.is_false(callback_called)
+
+            -- Simulate disconnect via the on_state_change callback
+            assert.is_not_nil(captured_on_state_change)
+            --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
+            captured_on_state_change("disconnected")
+
+            -- Callback should now have been called with error
+            assert.is_true(callback_called)
+            assert.is_nil(received_result)
+            assert.is_not_nil(received_err)
+            --- @cast received_err agentic.acp.ACPError
+            assert.equal(
+                ACPClient.ERROR_CODES.TRANSPORT_ERROR,
+                received_err.code
+            )
+            assert.equal("disconnected", received_err.message)
+        end)
+
+        it("calls pending callbacks with error on error state", function()
+            local client = create_ready_client()
+
+            local callback_called = false
+            --- @type agentic.acp.ACPError|nil
+            local received_err
+
+            client:send_prompt("sid-1", {}, function(_result, err)
+                callback_called = true
+                received_err = err
+            end)
+
+            assert.is_false(callback_called)
+
+            assert.is_not_nil(captured_on_state_change)
+            --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
+            captured_on_state_change("error")
+
+            assert.is_true(callback_called)
+            assert.is_not_nil(received_err)
+            --- @cast received_err agentic.acp.ACPError
+            assert.equal(
+                ACPClient.ERROR_CODES.TRANSPORT_ERROR,
+                received_err.code
+            )
+            assert.equal("error", received_err.message)
+        end)
+
+        it("does not drain callbacks on normal state transitions", function()
+            local client = create_ready_client()
+
+            local callback_called = false
+
+            client:send_prompt("sid-1", {}, function()
+                callback_called = true
+            end)
+
+            assert.is_false(callback_called)
+
+            -- Transition to "ready" should NOT drain callbacks
+            assert.is_not_nil(captured_on_state_change)
+            --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
+            captured_on_state_change("ready")
+
+            assert.is_false(callback_called)
+        end)
+
+        it("drains multiple pending callbacks", function()
+            local client = create_ready_client()
+
+            local calls = { false, false, false }
+
+            client:send_prompt("sid-1", {}, function()
+                calls[1] = true
+            end)
+            client:send_prompt("sid-1", {}, function()
+                calls[2] = true
+            end)
+            client:send_prompt("sid-1", {}, function()
+                calls[3] = true
+            end)
+
+            assert.is_not_nil(captured_on_state_change)
+            --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
+            captured_on_state_change("disconnected")
+
+            assert.is_true(calls[1])
+            assert.is_true(calls[2])
+            assert.is_true(calls[3])
+
+            -- callbacks table should be empty after drain
+            assert.equal(0, vim.tbl_count(client.callbacks))
+        end)
+    end)
 end)
