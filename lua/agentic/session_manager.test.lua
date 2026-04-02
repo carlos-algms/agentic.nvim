@@ -847,4 +847,23 @@ describe("agentic.SessionManager", function()
             assert.is_false(session.is_generating)
         end)
     end)
+
+    describe("_handle_input_submit /new while generating", function()
+        it("allows /new even when is_generating is true", function()
+            local new_session_spy = spy.new(function() end)
+
+            --- @type agentic.SessionManager
+            local session = {
+                is_generating = true,
+                todo_list = { close_if_all_completed = function() end },
+                new_session = new_session_spy,
+                _handle_input_submit = SessionManager._handle_input_submit,
+            } --[[@as agentic.SessionManager]]
+
+            local result = session:_handle_input_submit("/new")
+
+            assert.is_true(result)
+            assert.spy(new_session_spy).was.called(1)
+        end)
+    end)
 end)

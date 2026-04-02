@@ -598,17 +598,16 @@ end
 function SessionManager:_handle_input_submit(input_text)
     self.todo_list:close_if_all_completed()
 
-    -- Guard: cannot submit if session not ready or generating
-    if not self:can_submit_prompt() then
-        return false
-    end
-
-    -- Intercept /new command to start new session locally, cancelling existing one
-    -- Its necessary to avoid race conditions and make sure everything is cleaned properly,
-    -- the Agent might not send an identifiable response that could be acted upon
+    -- Intercept /new command BEFORE the generation guard so users can
+    -- escape a stuck state from the chat input
     if input_text:match("^/new%s*") then
         self:new_session()
         return true
+    end
+
+    -- Guard: cannot submit if session not ready or generating
+    if not self:can_submit_prompt() then
+        return false
     end
 
     --- @type agentic.acp.Content[]
