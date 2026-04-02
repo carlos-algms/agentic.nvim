@@ -600,7 +600,7 @@ function SessionManager:_handle_input_submit(input_text)
 
     -- Intercept /new command BEFORE the generation guard so users can
     -- escape a stuck state from the chat input
-    if input_text:match("^/new%s*") then
+    if input_text:match("^/new%s") or input_text:match("^/new$") then
         self:new_session()
         return true
     end

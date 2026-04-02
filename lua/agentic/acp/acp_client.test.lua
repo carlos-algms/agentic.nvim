@@ -284,7 +284,7 @@ describe("ACPClient", function()
         before_each(function()
             -- Drain uses vim.schedule to avoid fast-event errors;
             -- run synchronously in tests so assertions work
-            ---@diagnostic disable-next-line: duplicate-set-field
+            --- @diagnostic disable-next-line: duplicate-set-field
             vim.schedule = function(fn)
                 fn()
             end

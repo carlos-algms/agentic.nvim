@@ -834,7 +834,7 @@ describe("agentic.SessionManager", function()
                 code_selection = { clear = function() end },
                 diagnostics_list = { clear = function() end },
                 config_options = { clear = function() end },
-                status_animation = { stop = function() end },
+                status_animation = { stop = spy.new(function() end) },
                 chat_history = ChatHistory:new(),
                 history_to_send = {},
                 message_writer = {
@@ -846,6 +846,7 @@ describe("agentic.SessionManager", function()
             session:_cancel_session()
 
             assert.is_false(session.is_generating)
+            assert.spy(session.status_animation.stop).was.called(1)
         end)
     end)
 
