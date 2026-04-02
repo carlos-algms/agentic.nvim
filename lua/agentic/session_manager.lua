@@ -778,12 +778,12 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.agent:send_prompt(self.session_id, prompt, function(response, err)
         vim.schedule(function()
-            self.is_generating = false
-
             -- Guard: skip stale response if session changed (cancel/restore/new)
             if self.session_id ~= session_id then
                 return
             end
+
+            self.is_generating = false
 
             local finish_message = string.format(
                 "\n### 🏁 %s\n-----",
