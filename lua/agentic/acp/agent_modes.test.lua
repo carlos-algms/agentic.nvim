@@ -147,4 +147,34 @@ describe("agentic.acp.AgentModes", function()
             assert.is_nil(agent_modes.current_mode_id)
         end)
     end)
+
+    describe("save and restore", function()
+        it("returns snapshot with current state", function()
+            local snapshot = agent_modes:save()
+
+            assert.equal("normal", snapshot.current_mode_id)
+            assert.equal(3, #snapshot.modes)
+            assert.equal("normal", snapshot.modes[1].id)
+        end)
+
+        it("restores state from snapshot", function()
+            local snapshot = agent_modes:save()
+            agent_modes:clear()
+
+            agent_modes:restore(snapshot)
+
+            assert.equal("normal", agent_modes.current_mode_id)
+            assert.is_not_nil(agent_modes:get_mode("normal"))
+            assert.is_not_nil(agent_modes:get_mode("plan"))
+            assert.is_not_nil(agent_modes:get_mode("code"))
+        end)
+
+        it("snapshot survives clear (no shared reference)", function()
+            local snapshot = agent_modes:save()
+            agent_modes:clear()
+
+            assert.equal("normal", snapshot.current_mode_id)
+            assert.equal(3, #snapshot.modes)
+        end)
+    end)
 end)

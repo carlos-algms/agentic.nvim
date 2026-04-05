@@ -166,4 +166,34 @@ describe("agentic.acp.AgentModels", function()
             assert.is_nil(agent_models.current_model_id)
         end)
     end)
+
+    describe("save and restore", function()
+        it("returns snapshot with current state", function()
+            local snapshot = agent_models:save()
+
+            assert.equal("default", snapshot.current_model_id)
+            assert.equal(3, #snapshot.models)
+            assert.equal("default", snapshot.models[1].modelId)
+        end)
+
+        it("restores state from snapshot", function()
+            local snapshot = agent_models:save()
+            agent_models:clear()
+
+            agent_models:restore(snapshot)
+
+            assert.equal("default", agent_models.current_model_id)
+            assert.is_not_nil(agent_models:get_model("default"))
+            assert.is_not_nil(agent_models:get_model("opus"))
+            assert.is_not_nil(agent_models:get_model("sonnet"))
+        end)
+
+        it("snapshot survives clear (no shared reference)", function()
+            local snapshot = agent_models:save()
+            agent_models:clear()
+
+            assert.equal("default", snapshot.current_model_id)
+            assert.equal(3, #snapshot.models)
+        end)
+    end)
 end)

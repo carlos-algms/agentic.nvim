@@ -113,4 +113,17 @@ function AgentModels:clear()
     self.current_model_id = nil
 end
 
+--- Save internal state (snapshot before a destructive operation)
+--- @return { models: agentic.acp.Model[], current_model_id: string|nil } snapshot
+function AgentModels:save()
+    return { models = self._models, current_model_id = self.current_model_id }
+end
+
+--- Restore internal state from a previous save()
+--- @param snapshot { models: agentic.acp.Model[], current_model_id: string|nil }
+function AgentModels:restore(snapshot)
+    self._models = snapshot.models
+    self.current_model_id = snapshot.current_model_id
+end
+
 return AgentModels

@@ -107,4 +107,17 @@ function AgentModes:clear()
     self.current_mode_id = nil
 end
 
+--- Save internal state (snapshot before a destructive operation)
+--- @return { modes: agentic.acp.AgentMode[], current_mode_id: string|nil }
+function AgentModes:save()
+    return { modes = self._modes, current_mode_id = self.current_mode_id }
+end
+
+--- Restore internal state from a previous save()
+--- @param snapshot { modes: agentic.acp.AgentMode[], current_mode_id: string|nil }
+function AgentModes:restore(snapshot)
+    self._modes = snapshot.modes
+    self.current_mode_id = snapshot.current_mode_id
+end
+
 return AgentModes

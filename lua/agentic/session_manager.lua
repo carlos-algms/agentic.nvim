@@ -1206,12 +1206,13 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
 
     -- Preserve config_options (mode/model) across cancel — session/load doesn't
     -- re-send them and they belong to the agent instance, not the session.
+    -- Save snapshots, NOT object references — :clear() mutates in-place.
     local saved_config = {
         mode = self.config_options.mode,
         model = self.config_options.model,
         thought_level = self.config_options.thought_level,
-        legacy_modes = self.config_options.legacy_agent_modes,
-        legacy_models = self.config_options.legacy_agent_models,
+        legacy_modes = self.config_options.legacy_agent_modes:save(),
+        legacy_models = self.config_options.legacy_agent_models:save(),
     }
 
     self:_cancel_session()
@@ -1219,8 +1220,8 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     self.config_options.mode = saved_config.mode
     self.config_options.model = saved_config.model
     self.config_options.thought_level = saved_config.thought_level
-    self.config_options.legacy_agent_modes = saved_config.legacy_modes
-    self.config_options.legacy_agent_models = saved_config.legacy_models
+    self.config_options.legacy_agent_modes:restore(saved_config.legacy_modes)
+    self.config_options.legacy_agent_models:restore(saved_config.legacy_models)
 
     self._is_restoring_session = true
     self.status_animation:start("busy")
