@@ -767,10 +767,9 @@ describe("agentic.ui.MessageWriter", function()
             )
 
             assert.equal(1, #extmarks)
-            local details = extmarks[1][4]
-            assert.is_not_nil(details)
-            assert.equal("AgenticThinking", details and details.hl_group)
-            assert.is_true(details and details.hl_eol)
+            local details = extmarks[1][4] --- @type table
+            assert.equal("AgenticThinking", details.hl_group)
+            assert.is_true(details.hl_eol)
         end)
 
         it("prepends brain emoji on first thought chunk", function()

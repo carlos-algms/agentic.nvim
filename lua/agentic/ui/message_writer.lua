@@ -243,8 +243,6 @@ function MessageWriter:write_message_chunk(update)
     self._last_message_type = update.sessionUpdate
 
     --- @cast text string
-    local chunk = text
-
     self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
@@ -262,7 +260,7 @@ function MessageWriter:write_message_chunk(update)
         )[1] or ""
         local start_col = #current_line
 
-        local lines_to_write = vim.split(chunk, "\n", { plain = true })
+        local lines_to_write = vim.split(text, "\n", { plain = true })
 
         local success, err = pcall(
             vim.api.nvim_buf_set_text,
