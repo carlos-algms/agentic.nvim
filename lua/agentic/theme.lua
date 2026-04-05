@@ -20,6 +20,7 @@ Theme.HL_GROUPS = {
     SPINNER_THINKING = "AgenticSpinnerThinking",
     SPINNER_SEARCHING = "AgenticSpinnerSearching",
     SPINNER_BUSY = "AgenticSpinnerBusy",
+    THINKING = "AgenticThinking",
 }
 
 local COLORS = {
@@ -89,6 +90,9 @@ function Theme.setup()
         { Theme.HL_GROUPS.SPINNER_THINKING, { fg = COLORS.spinner_thinking_fg, bold = true } },
         { Theme.HL_GROUPS.SPINNER_SEARCHING, { fg = COLORS.spinner_searching_fg, bold = true } },
         { Theme.HL_GROUPS.SPINNER_BUSY, { link = "Comment" } },
+
+        -- Thinking block highlight
+        { Theme.HL_GROUPS.THINKING, { link = "Comment" } },
     }
     -- stylua: ignore end
 
