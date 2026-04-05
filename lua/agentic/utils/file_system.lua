@@ -120,8 +120,8 @@ end
 --- @param limit integer|nil
 --- @param callback fun(content: string|nil)
 function FileSystem.read_file(abs_path, line, limit, callback)
-    local lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
-    lines = lines or {}
+    local result, err = FileSystem.read_from_buffer_or_disk(abs_path)
+    local lines = result or {}
 
     if err ~= nil then
         Logger.notify(
