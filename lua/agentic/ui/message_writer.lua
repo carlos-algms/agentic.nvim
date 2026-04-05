@@ -14,6 +14,7 @@ local NS_PERMISSION_BUTTONS =
 local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
+local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
 --- @class agentic.ui.MessageWriter.HighlightRange
 --- @field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
@@ -47,6 +48,9 @@ local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
 --- @field _is_restoring boolean
+--- @field _thinking_extmark_id? integer
+--- @field _thinking_start_line? integer
+--- @field _thinking_end_line? integer
 local MessageWriter = {}
 MessageWriter.__index = MessageWriter
 
@@ -82,6 +86,9 @@ end
 --- Resets sender tracking so the next message writes a fresh header
 function MessageWriter:reset_sender_tracking()
     self._last_sender = nil
+    self._thinking_extmark_id = nil
+    self._thinking_start_line = nil
+    self._thinking_end_line = nil
 end
 
 --- Writes a structural message (e.g. welcome banner) without triggering
@@ -204,6 +211,20 @@ function MessageWriter:write_message_chunk(update)
 
     self:_auto_scroll(self.bufnr)
 
+    local is_thought = update.sessionUpdate == "agent_thought_chunk"
+
+    -- Clear thinking state when leaving a thinking block
+    if not is_thought and self._thinking_extmark_id then
+        self._thinking_extmark_id = nil
+        self._thinking_start_line = nil
+        self._thinking_end_line = nil
+    end
+
+    -- Prepend emoji on first thought chunk of a block
+    if is_thought and not self._thinking_extmark_id then
+        text = "🧠 " .. text
+    end
+
     local header_written = self:_maybe_write_sender_header(update.sessionUpdate)
 
     if header_written then
@@ -221,8 +242,17 @@ function MessageWriter:write_message_chunk(update)
 
     self._last_message_type = update.sessionUpdate
 
+    --- @cast text string
+    local chunk = text
+
     self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
+
+        -- Capture start line before writing for new thinking blocks
+        local thinking_start = nil
+        if is_thought and not self._thinking_extmark_id then
+            thinking_start = last_line
+        end
 
         local current_line = vim.api.nvim_buf_get_lines(
             bufnr,
@@ -232,7 +262,7 @@ function MessageWriter:write_message_chunk(update)
         )[1] or ""
         local start_col = #current_line
 
-        local lines_to_write = vim.split(text, "\n", { plain = true })
+        local lines_to_write = vim.split(chunk, "\n", { plain = true })
 
         local success, err = pcall(
             vim.api.nvim_buf_set_text,
@@ -246,6 +276,47 @@ function MessageWriter:write_message_chunk(update)
 
         if not success then
             Logger.debug("Failed to set text in buffer", err, lines_to_write)
+            return
+        end
+
+        -- Thinking extmark management
+        if is_thought then
+            local new_end_line = vim.api.nvim_buf_line_count(bufnr) - 1
+
+            if thinking_start then
+                -- First chunk: create extmark
+                self._thinking_start_line = thinking_start
+                self._thinking_end_line = new_end_line
+                self._thinking_extmark_id = vim.api.nvim_buf_set_extmark(
+                    bufnr,
+                    NS_THINKING,
+                    thinking_start,
+                    0,
+                    {
+                        hl_group = Theme.HL_GROUPS.THINKING,
+                        end_row = new_end_line,
+                        end_col = 0,
+                        hl_eol = true,
+                    }
+                )
+            elseif new_end_line > self._thinking_end_line then
+                -- Subsequent chunk with new lines: update in-place
+                self._thinking_end_line = new_end_line
+                vim.api.nvim_buf_set_extmark(
+                    bufnr,
+                    NS_THINKING,
+                    self._thinking_start_line,
+                    0,
+                    {
+                        id = self._thinking_extmark_id,
+                        hl_group = Theme.HL_GROUPS.THINKING,
+                        end_row = new_end_line,
+                        end_col = 0,
+                        hl_eol = true,
+                    }
+                )
+            end
+            -- Same line: no-op, hl_eol covers it
         end
     end)
 end
