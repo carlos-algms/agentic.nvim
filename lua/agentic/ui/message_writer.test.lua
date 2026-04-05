@@ -731,4 +731,116 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(content:match("read"))
         end)
     end)
+
+    describe("thinking block highlighting", function()
+        --- @param text string
+        --- @return agentic.acp.SessionUpdateMessage
+        local function make_thought_update(text)
+            return {
+                sessionUpdate = "agent_thought_chunk",
+                content = { type = "text", text = text },
+            }
+        end
+
+        it("clears thinking state on reset_sender_tracking", function()
+            writer:write_message_chunk(make_thought_update("thinking..."))
+            assert.is_not_nil(writer._thinking_extmark_id)
+
+            writer:reset_sender_tracking()
+            assert.is_nil(writer._thinking_extmark_id)
+            assert.is_nil(writer._thinking_start_line)
+            assert.is_nil(writer._thinking_end_line)
+        end)
+
+        it("creates extmark on first thought chunk", function()
+            writer:write_message_chunk(make_thought_update("hello"))
+
+            assert.is_not_nil(writer._thinking_extmark_id)
+            assert.is_not_nil(writer._thinking_start_line)
+
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                vim.api.nvim_create_namespace("agentic_thinking"),
+                0,
+                -1,
+                { details = true }
+            )
+
+            assert.equal(1, #extmarks)
+            local details = extmarks[1][4]
+            assert.is_not_nil(details)
+            assert.equal("AgenticThinking", details and details.hl_group)
+            assert.is_true(details and details.hl_eol)
+        end)
+
+        it("prepends brain emoji on first thought chunk", function()
+            writer:write_message_chunk(make_thought_update("thinking"))
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local found = false
+            for _, line in ipairs(lines) do
+                if line:find("🧠 thinking") then
+                    found = true
+                    break
+                end
+            end
+
+            assert.is_true(found)
+        end)
+
+        it("does not prepend emoji on subsequent thought chunks", function()
+            writer:write_message_chunk(make_thought_update("first"))
+            writer:write_message_chunk(make_thought_update(" second"))
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local emoji_count = 0
+            for _, line in ipairs(lines) do
+                if line:find("🧠") then
+                    emoji_count = emoji_count + 1
+                end
+            end
+
+            assert.equal(1, emoji_count)
+        end)
+
+        it("updates extmark end_row when thought adds newlines", function()
+            writer:write_message_chunk(make_thought_update("line1"))
+            local initial_end = writer._thinking_end_line
+
+            writer:write_message_chunk(make_thought_update("\nline2"))
+
+            assert.is_true(writer._thinking_end_line > initial_end)
+
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                vim.api.nvim_create_namespace("agentic_thinking"),
+                0,
+                -1,
+                { details = true }
+            )
+
+            assert.equal(1, #extmarks)
+            assert.equal(writer._thinking_end_line, extmarks[1][4].end_row)
+        end)
+
+        it("stops updating extmark when switching to message", function()
+            writer:write_message_chunk(make_thought_update("thinking"))
+            local extmark_id = writer._thinking_extmark_id
+            assert.is_not_nil(extmark_id)
+
+            writer:write_message_chunk(make_message_update("response"))
+
+            assert.is_nil(writer._thinking_extmark_id)
+
+            -- Extmark still exists in buffer (not deleted)
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                vim.api.nvim_create_namespace("agentic_thinking"),
+                0,
+                -1,
+                {}
+            )
+            assert.equal(1, #extmarks)
+        end)
+    end)
 end)
