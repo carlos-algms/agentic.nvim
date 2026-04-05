@@ -911,13 +911,27 @@ function MessageWriter:replay_history_messages(messages)
         elseif msg.type == "agent" then
             self:write_message(ACPPayloads.generate_agent_message(msg.text))
         elseif msg.type == "thought" then
+            local start_line = vim.api.nvim_buf_line_count(self.bufnr) - 1
             self:write_message({
                 sessionUpdate = "agent_thought_chunk",
                 content = {
                     type = "text",
-                    text = msg.text,
+                    text = "🧠 " .. msg.text,
                 },
             })
+            local end_line = vim.api.nvim_buf_line_count(self.bufnr) - 1
+            vim.api.nvim_buf_set_extmark(
+                self.bufnr,
+                NS_THINKING,
+                start_line,
+                0,
+                {
+                    hl_group = Theme.HL_GROUPS.THINKING,
+                    end_row = end_line,
+                    end_col = 0,
+                    hl_eol = true,
+                }
+            )
         elseif msg.type == "tool_call" then
             self:write_tool_call_block(msg)
         end

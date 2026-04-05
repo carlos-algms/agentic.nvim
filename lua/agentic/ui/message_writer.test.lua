@@ -822,6 +822,56 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal(writer._thinking_end_line, extmarks[1][4].end_row)
         end)
 
+        it("highlights thought messages during history replay", function()
+            writer:replay_history_messages({
+                {
+                    type = "agent",
+                    text = "hello",
+                },
+                {
+                    type = "thought",
+                    text = "let me think\nabout this",
+                },
+                {
+                    type = "agent",
+                    text = "done",
+                },
+            })
+
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                vim.api.nvim_create_namespace("agentic_thinking"),
+                0,
+                -1,
+                { details = true }
+            )
+
+            assert.equal(1, #extmarks)
+            local details = extmarks[1][4] --- @type table
+            assert.equal("AgenticThinking", details.hl_group)
+            assert.is_true(details.hl_eol)
+        end)
+
+        it("prepends brain emoji in replayed thought messages", function()
+            writer:replay_history_messages({
+                {
+                    type = "thought",
+                    text = "pondering",
+                },
+            })
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local found = false
+            for _, line in ipairs(lines) do
+                if line:find("🧠 pondering") then
+                    found = true
+                    break
+                end
+            end
+
+            assert.is_true(found)
+        end)
+
         it("stops updating extmark when switching to message", function()
             writer:write_message_chunk(make_thought_update("thinking"))
             local extmark_id = writer._thinking_extmark_id
