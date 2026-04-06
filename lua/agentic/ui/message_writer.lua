@@ -289,7 +289,7 @@ function MessageWriter:write_message_chunk(update)
 
         if not success then
             Logger.debug("Failed to set text in buffer", err, lines_to_write)
-            return
+            return false
         end
 
         -- Thinking extmark management
