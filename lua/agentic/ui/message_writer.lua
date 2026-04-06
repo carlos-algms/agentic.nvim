@@ -283,51 +283,21 @@ function MessageWriter:write_message_chunk(update)
 
         -- Thinking extmark management
         if is_thought then
-            local new_end_line = vim.api.nvim_buf_line_count(bufnr) - 1
-            local end_line_text = vim.api.nvim_buf_get_lines(
-                bufnr,
-                new_end_line,
-                new_end_line + 1,
-                false
-            )[1] or ""
-
             if thinking_start then
                 -- First chunk: skip blank separator line when header was written
                 if header_written then
                     thinking_start = thinking_start + 1
                 end
-
                 self._thinking_start_line = thinking_start
-                self._thinking_end_line = new_end_line
-                self._thinking_extmark_id = vim.api.nvim_buf_set_extmark(
-                    bufnr,
-                    NS_THINKING,
-                    thinking_start,
-                    0,
-                    {
-                        hl_group = Theme.HL_GROUPS.THINKING,
-                        end_row = new_end_line,
-                        end_col = #end_line_text,
-                        hl_eol = true,
-                    }
-                )
-            else
-                -- Subsequent chunk: always update to track end position and column
-                self._thinking_end_line = new_end_line
-                vim.api.nvim_buf_set_extmark(
-                    bufnr,
-                    NS_THINKING,
-                    self._thinking_start_line,
-                    0,
-                    {
-                        id = self._thinking_extmark_id,
-                        hl_group = Theme.HL_GROUPS.THINKING,
-                        end_row = new_end_line,
-                        end_col = #end_line_text,
-                        hl_eol = true,
-                    }
-                )
             end
+
+            local new_end_line = vim.api.nvim_buf_line_count(bufnr) - 1
+            self._thinking_end_line = new_end_line
+            self._thinking_extmark_id = self:_set_thinking_extmark(
+                self._thinking_start_line,
+                new_end_line,
+                self._thinking_extmark_id
+            )
         end
     end)
 end
@@ -934,25 +904,7 @@ function MessageWriter:replay_history_messages(messages)
             end)
 
             local end_line = start_line + #lines - 1
-            local end_line_text = vim.api.nvim_buf_get_lines(
-                self.bufnr,
-                end_line,
-                end_line + 1,
-                false
-            )[1] or ""
-
-            vim.api.nvim_buf_set_extmark(
-                self.bufnr,
-                NS_THINKING,
-                start_line,
-                0,
-                {
-                    hl_group = Theme.HL_GROUPS.THINKING,
-                    end_row = end_line,
-                    end_col = #end_line_text,
-                    hl_eol = true,
-                }
-            )
+            self:_set_thinking_extmark(start_line, end_line)
         elseif msg.type == "tool_call" then
             self:write_tool_call_block(msg)
         end
@@ -1106,6 +1058,34 @@ function MessageWriter:_apply_status_footer(footer_line, status)
         },
         virt_text_pos = "overlay",
     })
+end
+
+--- Sets or updates a thinking highlight extmark over the given line range.
+--- @param start_line integer
+--- @param end_line integer
+--- @param id integer|nil
+--- @return integer extmark_id
+function MessageWriter:_set_thinking_extmark(start_line, end_line, id)
+    local end_line_text = vim.api.nvim_buf_get_lines(
+        self.bufnr,
+        end_line,
+        end_line + 1,
+        false
+    )[1] or ""
+
+    return vim.api.nvim_buf_set_extmark(
+        self.bufnr,
+        NS_THINKING,
+        start_line,
+        0,
+        {
+            id = id,
+            hl_group = Theme.HL_GROUPS.THINKING,
+            end_row = end_line,
+            end_col = #end_line_text,
+            hl_eol = true,
+        }
+    )
 end
 
 --- @param ids integer[]|nil
