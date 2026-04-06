@@ -235,9 +235,17 @@ function MessageWriter:write_message_chunk(update)
 
     local header_written = self:_maybe_write_sender_header(update.sessionUpdate)
 
-    if header_written then
+    -- First thought chunk after non-thought output: start on a new line
+    -- so the thinking extmark doesn't recolor existing agent output
+    local thought_after_output = is_thought
+        and not self._thinking_extmark_id
+        and self._last_message_type
+        and self._last_message_type ~= "agent_thought_chunk"
+
+    if header_written or thought_after_output then
         -- The header's trailing blank line will be consumed by set_text below,
-        -- so prepend a newline to preserve spacing after the header
+        -- so prepend a newline to preserve spacing after the header.
+        -- Same for thought chunks that follow non-thought output.
         text = "\n" .. text
     elseif
         self._last_message_type == "agent_thought_chunk"
@@ -287,8 +295,9 @@ function MessageWriter:write_message_chunk(update)
         -- Thinking extmark management
         if is_thought then
             if thinking_start then
-                -- First chunk: skip blank separator line when header was written
-                if header_written then
+                -- First chunk: skip leading separator when a newline was
+                -- prepended (header written, or thought after non-thought output)
+                if header_written or thought_after_output then
                     thinking_start = thinking_start + 1
                 end
                 self._thinking_start_line = thinking_start
