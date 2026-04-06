@@ -55,11 +55,54 @@ describe("agentic.ui.MessageWriter", function()
         vim.api.nvim_win_set_cursor(winid, { cursor_line, 0 })
     end
 
+    --- @return string[]
+    local function get_all_lines()
+        return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    end
+
+    --- @return string
+    local function get_all_content()
+        return table.concat(get_all_lines(), "\n")
+    end
+
+    --- @param pattern string
+    --- @return boolean
+    local function content_has(pattern)
+        for _, line in ipairs(get_all_lines()) do
+            if line:find(pattern) then
+                return true
+            end
+        end
+        return false
+    end
+
+    --- @param pattern string
+    --- @return integer
+    local function count_matching_lines(pattern)
+        local count = 0
+        for _, line in ipairs(get_all_lines()) do
+            if line:match(pattern) then
+                count = count + 1
+            end
+        end
+        return count
+    end
+
+    --- @param text string
+    --- @param session_update string|nil
+    --- @return agentic.acp.SessionUpdateMessage
+    local function make_update(text, session_update)
+        return {
+            sessionUpdate = session_update or "agent_message_chunk",
+            content = { type = "text", text = text },
+        }
+    end
+
     --- @param text string
     --- @return agentic.acp.SessionUpdateMessage
-    local function make_message_update(text)
+    local function make_thought_update(text)
         return {
-            sessionUpdate = "agent_message_chunk",
+            sessionUpdate = "agent_thought_chunk",
             content = { type = "text", text = text },
         }
     end
@@ -76,6 +119,19 @@ describe("agentic.ui.MessageWriter", function()
             argument = "ls",
             body = body or { "output" },
         }
+    end
+
+    local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
+
+    --- @return vim.api.keyset.get_extmark_item[]
+    local function get_thinking_extmarks()
+        return vim.api.nvim_buf_get_extmarks(
+            bufnr,
+            NS_THINKING,
+            0,
+            -1,
+            { details = true }
+        )
     end
 
     describe("_check_auto_scroll", function()
@@ -236,7 +292,6 @@ describe("agentic.ui.MessageWriter", function()
                 schedule_stub = spy.stub(vim, "schedule")
 
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
                 writer:_auto_scroll(bufnr)
                 assert.is_false(writer._should_auto_scroll)
 
@@ -258,7 +313,7 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it(
-            "write_message captures scroll decision before buffer grows",
+            "captures scroll decision before buffer grows for write_message and write_tool_call_block",
             function()
                 setup_buffer(10, 10)
 
@@ -266,35 +321,24 @@ describe("agentic.ui.MessageWriter", function()
                 for i = 1, 50 do
                     long_text[i] = "message line " .. i
                 end
-
-                writer:write_message(
-                    make_message_update(table.concat(long_text, "\n"))
-                )
-
+                writer:write_message(make_update(table.concat(long_text, "\n")))
                 assert.is_true(writer._should_auto_scroll)
-            end
-        )
 
-        it(
-            "write_tool_call_block captures scroll decision before buffer grows",
-            function()
+                writer._should_auto_scroll = nil
+                writer._scroll_scheduled = false
                 setup_buffer(10, 10)
 
                 local body = {}
                 for i = 1, 15 do
                     body[i] = "file" .. i .. ".lua"
                 end
-
-                --- @type agentic.ui.MessageWriter.ToolCallBlock
-                local block = {
+                writer:write_tool_call_block({
                     tool_call_id = "test-1",
                     status = "pending",
                     kind = "execute",
                     argument = "ls -la",
                     body = body,
-                }
-                writer:write_tool_call_block(block)
-
+                })
                 assert.is_true(writer._should_auto_scroll)
                 assert.is_true(vim.api.nvim_buf_line_count(bufnr) > 20)
             end
@@ -303,9 +347,7 @@ describe("agentic.ui.MessageWriter", function()
         it("write_message does not scroll when user has scrolled up", function()
             setup_buffer(50, 1)
 
-            writer:write_message(
-                make_message_update("new content\nmore content")
-            )
+            writer:write_message(make_update("new content\nmore content"))
 
             assert.is_false(writer._should_auto_scroll)
         end)
@@ -351,8 +393,8 @@ describe("agentic.ui.MessageWriter", function()
                 local callback_spy = spy.new(function() end)
                 writer:set_on_content_changed(callback_spy --[[@as function]])
 
-                writer:write_message(make_message_update("hello"))
-                writer:write_message_chunk(make_message_update("chunk"))
+                writer:write_message(make_update("hello"))
+                writer:write_message_chunk(make_update("chunk"))
                 writer:write_tool_call_block(
                     make_tool_call_block("cb-1", "pending")
                 )
@@ -370,8 +412,8 @@ describe("agentic.ui.MessageWriter", function()
             local callback_spy = spy.new(function() end)
             writer:set_on_content_changed(callback_spy --[[@as function]])
 
-            writer:write_message(make_message_update(""))
-            writer:write_message_chunk(make_message_update(""))
+            writer:write_message(make_update(""))
+            writer:write_message_chunk(make_update(""))
 
             assert.spy(callback_spy).was.called(0)
         end)
@@ -443,35 +485,15 @@ describe("agentic.ui.MessageWriter", function()
             schedule_stub:revert()
         end)
 
-        --- @return string[]
-        local function get_all_lines()
-            return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-        end
-
-        --- @param text string
-        --- @param session_update string|nil
-        --- @return agentic.acp.SessionUpdateMessage
-        local function make_update(text, session_update)
-            return {
-                sessionUpdate = session_update or "agent_message_chunk",
-                content = { type = "text", text = text },
-            }
-        end
-
         it("writes user header on first user_message_chunk", function()
             writer:write_message_chunk(
                 make_update("hello", "user_message_chunk")
             )
 
-            local lines = get_all_lines()
-            local header_found = false
-            for _, line in ipairs(lines) do
-                if line:match("^## .* User %- %d%d%d%d%-%d%d%-%d%d") then
-                    header_found = true
-                    break
-                end
-            end
-            assert.is_true(header_found)
+            assert.equal(
+                1,
+                count_matching_lines("^## .* User %- %d%d%d%d%-%d%d%-%d%d")
+            )
         end)
 
         it("writes agent header on first agent_message_chunk", function()
@@ -480,15 +502,7 @@ describe("agentic.ui.MessageWriter", function()
                 make_update("response", "agent_message_chunk")
             )
 
-            local lines = get_all_lines()
-            local header_found = false
-            for _, line in ipairs(lines) do
-                if line:match("### .* Agent %- TestAgent") then
-                    header_found = true
-                    break
-                end
-            end
-            assert.is_true(header_found)
+            assert.equal(1, count_matching_lines("### .* Agent %- TestAgent"))
         end)
 
         it("skips header for consecutive same sender", function()
@@ -499,14 +513,7 @@ describe("agentic.ui.MessageWriter", function()
                 make_update("msg2", "user_message_chunk")
             )
 
-            local lines = get_all_lines()
-            local header_count = 0
-            for _, line in ipairs(lines) do
-                if line:match("^## .* User") then
-                    header_count = header_count + 1
-                end
-            end
-            assert.equal(1, header_count)
+            assert.equal(1, count_matching_lines("^## .* User"))
         end)
 
         it("writes agent header before tool call block", function()
@@ -538,32 +545,15 @@ describe("agentic.ui.MessageWriter", function()
                 make_update("restored", "user_message_chunk")
             )
 
-            local lines = get_all_lines()
-            local header_found = false
-            local has_timestamp = false
-            for _, line in ipairs(lines) do
-                if line:match("^## .* User$") then
-                    header_found = true
-                end
-                if line:match("^## .* User %- %d%d%d%d") then
-                    has_timestamp = true
-                end
-            end
-            assert.is_true(header_found)
-            assert.is_false(has_timestamp)
+            assert.equal(1, count_matching_lines("^## .* User$"))
+            assert.equal(0, count_matching_lines("^## .* User %- %d%d%d%d"))
         end)
 
         it("skips header for plan updates", function()
             writer:_maybe_write_sender_header("plan")
 
-            local lines = get_all_lines()
-            local has_header = false
-            for _, line in ipairs(lines) do
-                if line:match("Agent") or line:match("User") then
-                    has_header = true
-                end
-            end
-            assert.is_false(has_header)
+            assert.equal(0, count_matching_lines("Agent"))
+            assert.equal(0, count_matching_lines("User"))
         end)
 
         it(
@@ -577,25 +567,16 @@ describe("agentic.ui.MessageWriter", function()
                     make_update("thinking...", "agent_thought_chunk")
                 )
 
-                local lines = get_all_lines()
-                local agent_header_found = false
-                for _, line in ipairs(lines) do
-                    if line:match("### .* Agent %- TestAgent") then
-                        agent_header_found = true
-                        break
-                    end
-                end
-                assert.is_true(agent_header_found)
+                assert.equal(
+                    1,
+                    count_matching_lines("### .* Agent %- TestAgent")
+                )
             end
         )
     end)
 
     describe("replay_history_messages", function()
-        local function get_all_lines()
-            return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-        end
-
-        it("replays user and agent messages with headers", function()
+        it("replays messages with correct provider-specific headers", function()
             writer:set_provider_name("Claude")
 
             --- @type agentic.ui.ChatHistory.Message[]
@@ -604,37 +585,6 @@ describe("agentic.ui.MessageWriter", function()
                     type = "user",
                     text = "hello",
                     timestamp = 1000,
-                    provider_name = "Claude",
-                },
-                {
-                    type = "agent",
-                    text = "hi there",
-                    provider_name = "Claude",
-                },
-            }
-
-            writer:replay_history_messages(messages)
-
-            local lines = get_all_lines()
-            local content = table.concat(lines, "\n")
-
-            -- Verify user header and message
-            assert.truthy(content:match("## .* User"))
-            assert.truthy(content:match("hello"))
-
-            -- Verify agent header and message
-            assert.truthy(content:match("### .* Agent %- Claude"))
-            assert.truthy(content:match("hi there"))
-        end)
-
-        it("shows correct provider name per message", function()
-            writer:set_provider_name("Claude")
-
-            --- @type agentic.ui.ChatHistory.Message[]
-            local messages = {
-                {
-                    type = "user",
-                    text = "question from user",
                     provider_name = "Claude",
                 },
                 {
@@ -656,13 +606,12 @@ describe("agentic.ui.MessageWriter", function()
 
             writer:replay_history_messages(messages)
 
-            local lines = get_all_lines()
-            local content = table.concat(lines, "\n")
-
-            -- Both provider headers should appear with correct names
+            local content = get_all_content()
+            assert.truthy(content:match("## .* User"))
+            assert.truthy(content:match("hello"))
             assert.truthy(content:match("### .* Agent %- Claude"))
-            assert.truthy(content:match("### .* Agent %- Gemini"))
             assert.truthy(content:match("from claude"))
+            assert.truthy(content:match("### .* Agent %- Gemini"))
             assert.truthy(content:match("from gemini"))
         end)
 
@@ -680,28 +629,28 @@ describe("agentic.ui.MessageWriter", function()
 
             writer:replay_history_messages(messages)
 
-            -- After replay, provider should be restored
             assert.equal("Claude", writer._provider_name)
         end)
 
-        it("handles thought chunk messages", function()
+        it("handles thought chunk messages with highlighting", function()
             writer:set_provider_name("Claude")
 
-            --- @type agentic.ui.ChatHistory.Message[]
-            local messages = {
+            writer:replay_history_messages({
                 {
                     type = "thought",
                     text = "thinking about this",
                     provider_name = "Claude",
                 },
-            }
+            })
 
-            writer:replay_history_messages(messages)
+            assert.is_true(content_has("🧠 thinking about this"))
 
-            local lines = get_all_lines()
-            local content = table.concat(lines, "\n")
-
-            assert.truthy(content:match("thinking about this"))
+            local extmarks = get_thinking_extmarks()
+            assert.equal(1, #extmarks)
+            local details = extmarks[1][4] --- @type table
+            assert.equal("AgenticThinking", details.hl_group)
+            assert.is_true(details.hl_eol)
+            assert.is_true(details.end_col > 0)
         end)
 
         it("handles tool_call messages", function()
@@ -722,348 +671,8 @@ describe("agentic.ui.MessageWriter", function()
 
             writer:replay_history_messages(messages)
 
-            -- Tool call should be tracked
             assert.is_not_nil(writer.tool_call_blocks["tc-1"])
-
-            -- Tool call content should be rendered in buffer
-            local lines = get_all_lines()
-            local content = table.concat(lines, "\n")
-            assert.truthy(content:match("read"))
-        end)
-    end)
-
-    describe("thinking block highlighting", function()
-        --- @param text string
-        --- @return agentic.acp.SessionUpdateMessage
-        local function make_thought_update(text)
-            return {
-                sessionUpdate = "agent_thought_chunk",
-                content = { type = "text", text = text },
-            }
-        end
-
-        it("clears thinking state on reset_sender_tracking", function()
-            writer:write_message_chunk(make_thought_update("thinking..."))
-            assert.is_not_nil(writer._thinking_extmark_id)
-
-            writer:reset_sender_tracking()
-            assert.is_nil(writer._thinking_extmark_id)
-            assert.is_nil(writer._thinking_start_line)
-            assert.is_nil(writer._thinking_end_line)
-        end)
-
-        it("creates extmark on first thought chunk", function()
-            writer:write_message_chunk(make_thought_update("hello"))
-
-            assert.is_not_nil(writer._thinking_extmark_id)
-            assert.is_not_nil(writer._thinking_start_line)
-
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                vim.api.nvim_create_namespace("agentic_thinking"),
-                0,
-                -1,
-                { details = true }
-            )
-
-            assert.equal(1, #extmarks)
-            local details = extmarks[1][4] --- @type table
-            assert.equal("AgenticThinking", details.hl_group)
-            assert.is_true(details.hl_eol)
-        end)
-
-        it("prepends brain emoji on first thought chunk", function()
-            writer:write_message_chunk(make_thought_update("thinking"))
-
-            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-            local found = false
-            for _, line in ipairs(lines) do
-                if line:find("🧠 thinking") then
-                    found = true
-                    break
-                end
-            end
-
-            assert.is_true(found)
-        end)
-
-        it("does not prepend emoji on subsequent thought chunks", function()
-            writer:write_message_chunk(make_thought_update("first"))
-            writer:write_message_chunk(make_thought_update(" second"))
-
-            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-            local emoji_count = 0
-            for _, line in ipairs(lines) do
-                if line:find("🧠") then
-                    emoji_count = emoji_count + 1
-                end
-            end
-
-            assert.equal(1, emoji_count)
-        end)
-
-        it("updates extmark end_row when thought adds newlines", function()
-            writer:write_message_chunk(make_thought_update("line1"))
-            local initial_end = writer._thinking_end_line
-
-            writer:write_message_chunk(make_thought_update("\nline2"))
-
-            assert.is_true(writer._thinking_end_line > initial_end)
-
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                vim.api.nvim_create_namespace("agentic_thinking"),
-                0,
-                -1,
-                { details = true }
-            )
-
-            assert.equal(1, #extmarks)
-            assert.equal(writer._thinking_end_line, extmarks[1][4].end_row)
-        end)
-
-        it("highlights thought messages during history replay", function()
-            writer:replay_history_messages({
-                {
-                    type = "agent",
-                    text = "hello",
-                    provider_name = "Claude",
-                },
-                {
-                    type = "thought",
-                    text = "let me think\nabout this",
-                    provider_name = "Claude",
-                },
-                {
-                    type = "agent",
-                    text = "done",
-                    provider_name = "Claude",
-                },
-            })
-
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                vim.api.nvim_create_namespace("agentic_thinking"),
-                0,
-                -1,
-                { details = true }
-            )
-
-            assert.equal(1, #extmarks)
-            local details = extmarks[1][4] --- @type table
-            assert.equal("AgenticThinking", details.hl_group)
-            assert.is_true(details.hl_eol)
-        end)
-
-        it("prepends brain emoji in replayed thought messages", function()
-            writer:replay_history_messages({
-                {
-                    type = "thought",
-                    text = "pondering",
-                    provider_name = "Claude",
-                },
-            })
-
-            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-            local found = false
-            for _, line in ipairs(lines) do
-                if line:find("🧠 pondering") then
-                    found = true
-                    break
-                end
-            end
-
-            assert.is_true(found)
-        end)
-
-        it("stops updating extmark when switching to message", function()
-            writer:write_message_chunk(make_thought_update("thinking"))
-            local extmark_id = writer._thinking_extmark_id
-            assert.is_not_nil(extmark_id)
-
-            writer:write_message_chunk(make_message_update("response"))
-
-            assert.is_nil(writer._thinking_extmark_id)
-
-            -- Extmark still exists in buffer (not deleted)
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                vim.api.nvim_create_namespace("agentic_thinking"),
-                0,
-                -1,
-                {}
-            )
-            assert.equal(1, #extmarks)
-        end)
-
-        it("sets end_col to cover the full text on the last line", function()
-            writer:write_message_chunk(
-                make_thought_update("single line thought")
-            )
-
-            local ns = vim.api.nvim_create_namespace("agentic_thinking")
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                0,
-                -1,
-                { details = true }
-            )
-
-            assert.equal(1, #extmarks)
-            local details = extmarks[1][4] --- @type table
-            -- end_col must cover the text, not be 0
-            assert.is_true(details.end_col > 0)
-
-            local end_row = details.end_row
-            local line = vim.api.nvim_buf_get_lines(
-                bufnr,
-                end_row,
-                end_row + 1,
-                false
-            )[1]
-            assert.equal(#line, details.end_col)
-        end)
-
-        it("updates extmark end_col when text appends to same line", function()
-            writer:write_message_chunk(make_thought_update("start"))
-
-            local ns = vim.api.nvim_create_namespace("agentic_thinking")
-            local before = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                0,
-                -1,
-                { details = true }
-            )
-            local end_col_before = before[1][4].end_col
-
-            -- Append to same line (no leading newline)
-            writer:write_message_chunk(make_thought_update(" more text"))
-
-            local after = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                0,
-                -1,
-                { details = true }
-            )
-            local end_col_after = after[1][4].end_col
-
-            assert.is_true(end_col_after > end_col_before)
-        end)
-
-        it(
-            "starts extmark at thought content line, not blank separator after header",
-            function()
-                -- User message sets _last_sender = "user"
-                writer:write_message_chunk({
-                    sessionUpdate = "user_message_chunk",
-                    content = { type = "text", text = "question" },
-                })
-
-                -- Thought triggers agent header (sender change)
-                writer:write_message_chunk(make_thought_update("deep thinking"))
-
-                local ns = vim.api.nvim_create_namespace("agentic_thinking")
-                local extmarks = vim.api.nvim_buf_get_extmarks(
-                    bufnr,
-                    ns,
-                    0,
-                    -1,
-                    { details = true }
-                )
-
-                assert.equal(1, #extmarks)
-                local start_row = extmarks[1][2]
-
-                -- Start line must contain actual thought text, not be blank
-                local start_line_text = vim.api.nvim_buf_get_lines(
-                    bufnr,
-                    start_row,
-                    start_row + 1,
-                    false
-                )[1]
-                assert.truthy(start_line_text:find("🧠"))
-            end
-        )
-
-        it("clears thinking state when tool call block is written", function()
-            writer:write_message_chunk(make_thought_update("thinking..."))
-            assert.is_not_nil(writer._thinking_extmark_id)
-
-            writer:write_tool_call_block(
-                make_tool_call_block("tc-clear-1", "pending")
-            )
-
-            assert.is_nil(writer._thinking_extmark_id)
-            assert.is_nil(writer._thinking_start_line)
-            assert.is_nil(writer._thinking_end_line)
-        end)
-
-        it("clears thinking state when write_message is called", function()
-            writer:write_message_chunk(make_thought_update("thinking..."))
-            assert.is_not_nil(writer._thinking_extmark_id)
-
-            writer:write_message({
-                sessionUpdate = "agent_message_chunk",
-                content = { type = "text", text = "full response" },
-            })
-
-            assert.is_nil(writer._thinking_extmark_id)
-            assert.is_nil(writer._thinking_start_line)
-            assert.is_nil(writer._thinking_end_line)
-        end)
-
-        it("creates a new extmark for thought after tool call block", function()
-            writer:write_message_chunk(make_thought_update("first thought"))
-            local first_extmark_id = writer._thinking_extmark_id
-            assert.is_not_nil(first_extmark_id)
-
-            writer:write_tool_call_block(
-                make_tool_call_block("tc-between-1", "pending")
-            )
-            writer:write_message_chunk(make_thought_update("second thought"))
-
-            assert.is_not_nil(writer._thinking_extmark_id)
-            assert.is_true(writer._thinking_extmark_id ~= first_extmark_id)
-
-            -- Both extmarks should exist in the buffer
-            local ns = vim.api.nvim_create_namespace("agentic_thinking")
-            local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, {})
-            assert.equal(2, #extmarks)
-        end)
-
-        it("replay thought extmark has end_col covering full text", function()
-            writer:replay_history_messages({
-                {
-                    type = "thought",
-                    text = "thinking about this",
-                    provider_name = "Claude",
-                },
-            })
-
-            local ns = vim.api.nvim_create_namespace("agentic_thinking")
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                0,
-                -1,
-                { details = true }
-            )
-
-            assert.equal(1, #extmarks)
-            local details = extmarks[1][4] --- @type table
-            assert.is_true(details.end_col > 0)
-
-            local end_row = details.end_row
-            local line = vim.api.nvim_buf_get_lines(
-                bufnr,
-                end_row,
-                end_row + 1,
-                false
-            )[1]
-            assert.equal(#line, details.end_col)
+            assert.truthy(get_all_content():match("read"))
         end)
 
         it(
@@ -1077,18 +686,10 @@ describe("agentic.ui.MessageWriter", function()
                     },
                 })
 
-                local ns = vim.api.nvim_create_namespace("agentic_thinking")
-                local extmarks = vim.api.nvim_buf_get_extmarks(
-                    bufnr,
-                    ns,
-                    0,
-                    -1,
-                    { details = true }
-                )
-
+                local extmarks = get_thinking_extmarks()
                 assert.equal(1, #extmarks)
-                local details = extmarks[1][4] --- @type table
                 local start_row = extmarks[1][2]
+                local details = extmarks[1][4] --- @type table
                 local end_row = details.end_row
 
                 local start_line_text = vim.api.nvim_buf_get_lines(
@@ -1106,8 +707,149 @@ describe("agentic.ui.MessageWriter", function()
                     false
                 )[1]
                 assert.truthy(end_line_text:find("line two"))
+
+                assert.equal(#end_line_text, details.end_col)
             end
         )
+    end)
+
+    describe("thinking block highlighting", function()
+        it(
+            "creates extmark with correct properties on first thought chunk",
+            function()
+                writer:write_message_chunk(make_thought_update("thinking"))
+
+                assert.is_not_nil(writer._thinking_extmark_id)
+                assert.is_not_nil(writer._thinking_start_line)
+
+                local extmarks = get_thinking_extmarks()
+                assert.equal(1, #extmarks)
+                local details = extmarks[1][4] --- @type table
+                assert.equal("AgenticThinking", details.hl_group)
+                assert.is_true(details.hl_eol)
+                assert.is_true(details.end_col > 0)
+
+                assert.is_true(content_has("🧠 thinking"))
+            end
+        )
+
+        it("does not prepend emoji on subsequent thought chunks", function()
+            writer:write_message_chunk(make_thought_update("first"))
+            writer:write_message_chunk(make_thought_update(" second"))
+
+            assert.equal(1, count_matching_lines("🧠"))
+        end)
+
+        it("updates extmark end_row and end_col as content grows", function()
+            writer:write_message_chunk(make_thought_update("line1"))
+            local initial_end = writer._thinking_end_line
+
+            writer:write_message_chunk(make_thought_update("\nline2"))
+            assert.is_true(writer._thinking_end_line > initial_end)
+
+            local extmarks = get_thinking_extmarks()
+            assert.equal(1, #extmarks)
+            assert.equal(writer._thinking_end_line, extmarks[1][4].end_row)
+
+            writer._thinking_extmark_id = nil
+            writer._thinking_start_line = nil
+            writer._thinking_end_line = nil
+            writer._scroll_scheduled = false
+
+            writer:write_message_chunk(make_thought_update("start"))
+            local before = get_thinking_extmarks()
+            local end_col_before = before[2][4].end_col
+
+            writer:write_message_chunk(make_thought_update(" more text"))
+            local after = get_thinking_extmarks()
+            local end_col_after = after[2][4].end_col
+
+            assert.is_true(end_col_after > end_col_before)
+        end)
+
+        it("stops updating extmark when switching to message", function()
+            writer:write_message_chunk(make_thought_update("thinking"))
+            assert.is_not_nil(writer._thinking_extmark_id)
+
+            writer:write_message_chunk(make_update("response"))
+
+            assert.is_nil(writer._thinking_extmark_id)
+            assert.equal(1, #get_thinking_extmarks())
+        end)
+
+        it(
+            "starts extmark at thought content line, not blank separator after header",
+            function()
+                writer:write_message_chunk({
+                    sessionUpdate = "user_message_chunk",
+                    content = { type = "text", text = "question" },
+                })
+
+                writer:write_message_chunk(make_thought_update("deep thinking"))
+
+                local extmarks = get_thinking_extmarks()
+                assert.equal(1, #extmarks)
+                local start_row = extmarks[1][2]
+
+                local start_line_text = vim.api.nvim_buf_get_lines(
+                    bufnr,
+                    start_row,
+                    start_row + 1,
+                    false
+                )[1]
+                assert.truthy(start_line_text:find("🧠"))
+            end
+        )
+
+        it(
+            "clears thinking state on reset_sender_tracking, write_tool_call_block, and write_message",
+            function()
+                local triggers = {
+                    function()
+                        writer:reset_sender_tracking()
+                    end,
+                    function()
+                        writer:write_tool_call_block(
+                            make_tool_call_block("tc-clear-1", "pending")
+                        )
+                    end,
+                    function()
+                        writer:write_message(make_update("full response"))
+                    end,
+                }
+
+                for _, trigger in ipairs(triggers) do
+                    writer:write_message_chunk(
+                        make_thought_update("thinking...")
+                    )
+                    assert.is_not_nil(writer._thinking_extmark_id)
+
+                    trigger()
+
+                    assert.is_nil(writer._thinking_extmark_id)
+                    assert.is_nil(writer._thinking_start_line)
+                    assert.is_nil(writer._thinking_end_line)
+                end
+            end
+        )
+
+        it("creates a new extmark for thought after tool call block", function()
+            writer:write_message_chunk(make_thought_update("first thought"))
+            local first_extmark_id = writer._thinking_extmark_id
+            assert.is_not_nil(first_extmark_id)
+
+            writer:write_tool_call_block(
+                make_tool_call_block("tc-between-1", "pending")
+            )
+            writer:write_message_chunk(make_thought_update("second thought"))
+
+            assert.is_not_nil(writer._thinking_extmark_id)
+            assert.is_true(writer._thinking_extmark_id ~= first_extmark_id)
+
+            local ns = vim.api.nvim_create_namespace("agentic_thinking")
+            local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, {})
+            assert.equal(2, #extmarks)
+        end)
     end)
 
     describe("tool call block update highlighting", function()
@@ -1123,8 +865,6 @@ describe("agentic.ui.MessageWriter", function()
                     body = { "new output" },
                 })
 
-                -- Highlights must be present immediately after update
-                -- (not deferred via vim.schedule)
                 local ns =
                     vim.api.nvim_create_namespace("agentic_diff_highlights")
                 local extmarks = vim.api.nvim_buf_get_extmarks(
