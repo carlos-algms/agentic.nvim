@@ -86,6 +86,12 @@ end
 --- Resets sender tracking so the next message writes a fresh header
 function MessageWriter:reset_sender_tracking()
     self._last_sender = nil
+    self:_clear_thinking_state()
+end
+
+--- Clears thinking block tracking state.
+--- Called when a non-thought write breaks the thinking flow.
+function MessageWriter:_clear_thinking_state()
     self._thinking_extmark_id = nil
     self._thinking_start_line = nil
     self._thinking_end_line = nil
@@ -186,6 +192,7 @@ function MessageWriter:write_message(update)
         return
     end
 
+    self:_clear_thinking_state()
     self:_auto_scroll(self.bufnr)
     self:_maybe_write_sender_header(update.sessionUpdate)
 
@@ -214,10 +221,8 @@ function MessageWriter:write_message_chunk(update)
     local is_thought = update.sessionUpdate == "agent_thought_chunk"
 
     -- Clear thinking state when leaving a thinking block
-    if not is_thought and self._thinking_extmark_id then
-        self._thinking_extmark_id = nil
-        self._thinking_start_line = nil
-        self._thinking_end_line = nil
+    if not is_thought then
+        self:_clear_thinking_state()
     end
 
     -- Prepend emoji on first thought chunk of a block
@@ -242,7 +247,6 @@ function MessageWriter:write_message_chunk(update)
 
     self._last_message_type = update.sessionUpdate
 
-    --- @cast text string
     self:_with_modifiable_and_notify_change(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
@@ -280,9 +284,19 @@ function MessageWriter:write_message_chunk(update)
         -- Thinking extmark management
         if is_thought then
             local new_end_line = vim.api.nvim_buf_line_count(bufnr) - 1
+            local end_line_text = vim.api.nvim_buf_get_lines(
+                bufnr,
+                new_end_line,
+                new_end_line + 1,
+                false
+            )[1] or ""
 
             if thinking_start then
-                -- First chunk: create extmark
+                -- First chunk: skip blank separator line when header was written
+                if header_written then
+                    thinking_start = thinking_start + 1
+                end
+
                 self._thinking_start_line = thinking_start
                 self._thinking_end_line = new_end_line
                 self._thinking_extmark_id = vim.api.nvim_buf_set_extmark(
@@ -293,12 +307,12 @@ function MessageWriter:write_message_chunk(update)
                     {
                         hl_group = Theme.HL_GROUPS.THINKING,
                         end_row = new_end_line,
-                        end_col = 0,
+                        end_col = #end_line_text,
                         hl_eol = true,
                     }
                 )
-            elseif new_end_line > self._thinking_end_line then
-                -- Subsequent chunk with new lines: update in-place
+            else
+                -- Subsequent chunk: always update to track end position and column
                 self._thinking_end_line = new_end_line
                 vim.api.nvim_buf_set_extmark(
                     bufnr,
@@ -309,12 +323,11 @@ function MessageWriter:write_message_chunk(update)
                         id = self._thinking_extmark_id,
                         hl_group = Theme.HL_GROUPS.THINKING,
                         end_row = new_end_line,
-                        end_col = 0,
+                        end_col = #end_line_text,
                         hl_eol = true,
                     }
                 )
             end
-            -- Same line: no-op, hl_eol covers it
         end
     end)
 end
@@ -389,6 +402,7 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    self:_clear_thinking_state()
     self:_auto_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
 
@@ -557,17 +571,13 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             old_end_row + 1
         )
 
-        vim.schedule(function()
-            if vim.api.nvim_buf_is_valid(bufnr) then
-                self:_apply_block_highlights(
-                    bufnr,
-                    start_row,
-                    new_end_row,
-                    tracker.kind,
-                    highlight_ranges
-                )
-            end
-        end)
+        self:_apply_block_highlights(
+            bufnr,
+            start_row,
+            new_end_row,
+            tracker.kind,
+            highlight_ranges
+        )
 
         vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
             id = tracker.extmark_id,
@@ -911,15 +921,26 @@ function MessageWriter:replay_history_messages(messages)
         elseif msg.type == "agent" then
             self:write_message(ACPPayloads.generate_agent_message(msg.text))
         elseif msg.type == "thought" then
-            local start_line = vim.api.nvim_buf_line_count(self.bufnr) - 1
-            self:write_message({
-                sessionUpdate = "agent_thought_chunk",
-                content = {
-                    type = "text",
-                    text = "🧠 " .. msg.text,
-                },
-            })
-            local end_line = vim.api.nvim_buf_line_count(self.bufnr) - 1
+            self:_maybe_write_sender_header("agent_thought_chunk")
+
+            local text = "🧠 " .. msg.text
+            local lines = vim.split(text, "\n", { plain = true })
+            local start_line
+
+            self:_with_modifiable_and_notify_change(function(bufnr)
+                start_line = vim.api.nvim_buf_line_count(bufnr)
+                self:_append_lines(lines)
+                self:_append_lines({ "" })
+            end)
+
+            local end_line = start_line + #lines - 1
+            local end_line_text = vim.api.nvim_buf_get_lines(
+                self.bufnr,
+                end_line,
+                end_line + 1,
+                false
+            )[1] or ""
+
             vim.api.nvim_buf_set_extmark(
                 self.bufnr,
                 NS_THINKING,
@@ -928,7 +949,7 @@ function MessageWriter:replay_history_messages(messages)
                 {
                     hl_group = Theme.HL_GROUPS.THINKING,
                     end_row = end_line,
-                    end_col = 0,
+                    end_col = #end_line_text,
                     hl_eol = true,
                 }
             )
