@@ -827,14 +827,17 @@ describe("agentic.ui.MessageWriter", function()
                 {
                     type = "agent",
                     text = "hello",
+                    provider_name = "Claude",
                 },
                 {
                     type = "thought",
                     text = "let me think\nabout this",
+                    provider_name = "Claude",
                 },
                 {
                     type = "agent",
                     text = "done",
+                    provider_name = "Claude",
                 },
             })
 
@@ -857,6 +860,7 @@ describe("agentic.ui.MessageWriter", function()
                 {
                     type = "thought",
                     text = "pondering",
+                    provider_name = "Claude",
                 },
             })
 
@@ -1035,6 +1039,7 @@ describe("agentic.ui.MessageWriter", function()
                 {
                     type = "thought",
                     text = "thinking about this",
+                    provider_name = "Claude",
                 },
             })
 
@@ -1068,6 +1073,7 @@ describe("agentic.ui.MessageWriter", function()
                     {
                         type = "thought",
                         text = "line one\nline two",
+                        provider_name = "Claude",
                     },
                 })
 
