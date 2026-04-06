@@ -216,10 +216,10 @@ describe("diff_preview", function()
                 assert.equal(current_bufnr, init_bufnr)
 
                 if vim.api.nvim_buf_is_valid(new_bufnr) then
-                    vim.api.nvim_buf_delete(new_bufnr, { force = true })
+                    pcall(vim.api.nvim_buf_delete, new_bufnr, { force = true })
                 end
                 if vim.api.nvim_buf_is_valid(init_bufnr) then
-                    vim.api.nvim_buf_delete(init_bufnr, { force = true })
+                    pcall(vim.api.nvim_buf_delete, init_bufnr, { force = true })
                 end
             end
         )

@@ -383,7 +383,7 @@ describe("agentic.ui.DiagnosticsList", function()
         after_each(function()
             vim.diagnostic.reset(ns, test_bufnr)
             if vim.api.nvim_buf_is_valid(test_bufnr) then
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+                pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
             end
         end)
 
@@ -452,7 +452,7 @@ describe("agentic.ui.DiagnosticsList", function()
         after_each(function()
             vim.diagnostic.reset(ns, test_bufnr)
             if vim.api.nvim_buf_is_valid(test_bufnr) then
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+                pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
             end
         end)
 

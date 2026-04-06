@@ -208,13 +208,16 @@ end
 --- Some ACP providers stream chunks instead of full messages
 --- @param update agentic.acp.SessionUpdateMessage
 function MessageWriter:write_message_chunk(update)
-    local text = update.content
-        and update.content.type == "text"
-        and update.content.text
-
-    if not text or text == "" then
+    if
+        not update.content
+        or update.content.type ~= "text"
+        or not update.content.text
+        or update.content.text == ""
+    then
         return
     end
+
+    local text = update.content.text
 
     self:_auto_scroll(self.bufnr)
 
@@ -903,8 +906,10 @@ function MessageWriter:replay_history_messages(messages)
                 self:_append_lines({ "" })
             end)
 
-            local end_line = start_line + #lines - 1
-            self:_set_thinking_extmark(start_line, end_line)
+            if start_line then
+                local end_line = start_line + #lines - 1
+                self:_set_thinking_extmark(start_line, end_line)
+            end
         elseif msg.type == "tool_call" then
             self:write_tool_call_block(msg)
         end
