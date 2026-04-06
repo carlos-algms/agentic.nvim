@@ -891,5 +891,253 @@ describe("agentic.ui.MessageWriter", function()
             )
             assert.equal(1, #extmarks)
         end)
+
+        it("sets end_col to cover the full text on the last line", function()
+            writer:write_message_chunk(
+                make_thought_update("single line thought")
+            )
+
+            local ns = vim.api.nvim_create_namespace("agentic_thinking")
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
+
+            assert.equal(1, #extmarks)
+            local details = extmarks[1][4] --- @type table
+            -- end_col must cover the text, not be 0
+            assert.is_true(details.end_col > 0)
+
+            local end_row = details.end_row
+            local line = vim.api.nvim_buf_get_lines(
+                bufnr,
+                end_row,
+                end_row + 1,
+                false
+            )[1]
+            assert.equal(#line, details.end_col)
+        end)
+
+        it("updates extmark end_col when text appends to same line", function()
+            writer:write_message_chunk(make_thought_update("start"))
+
+            local ns = vim.api.nvim_create_namespace("agentic_thinking")
+            local before = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
+            local end_col_before = before[1][4].end_col
+
+            -- Append to same line (no leading newline)
+            writer:write_message_chunk(make_thought_update(" more text"))
+
+            local after = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
+            local end_col_after = after[1][4].end_col
+
+            assert.is_true(end_col_after > end_col_before)
+        end)
+
+        it(
+            "starts extmark at thought content line, not blank separator after header",
+            function()
+                -- User message sets _last_sender = "user"
+                writer:write_message_chunk({
+                    sessionUpdate = "user_message_chunk",
+                    content = { type = "text", text = "question" },
+                })
+
+                -- Thought triggers agent header (sender change)
+                writer:write_message_chunk(make_thought_update("deep thinking"))
+
+                local ns = vim.api.nvim_create_namespace("agentic_thinking")
+                local extmarks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    ns,
+                    0,
+                    -1,
+                    { details = true }
+                )
+
+                assert.equal(1, #extmarks)
+                local start_row = extmarks[1][2]
+
+                -- Start line must contain actual thought text, not be blank
+                local start_line_text = vim.api.nvim_buf_get_lines(
+                    bufnr,
+                    start_row,
+                    start_row + 1,
+                    false
+                )[1]
+                assert.truthy(start_line_text:find("🧠"))
+            end
+        )
+
+        it("clears thinking state when tool call block is written", function()
+            writer:write_message_chunk(make_thought_update("thinking..."))
+            assert.is_not_nil(writer._thinking_extmark_id)
+
+            writer:write_tool_call_block(
+                make_tool_call_block("tc-clear-1", "pending")
+            )
+
+            assert.is_nil(writer._thinking_extmark_id)
+            assert.is_nil(writer._thinking_start_line)
+            assert.is_nil(writer._thinking_end_line)
+        end)
+
+        it("clears thinking state when write_message is called", function()
+            writer:write_message_chunk(make_thought_update("thinking..."))
+            assert.is_not_nil(writer._thinking_extmark_id)
+
+            writer:write_message({
+                sessionUpdate = "agent_message_chunk",
+                content = { type = "text", text = "full response" },
+            })
+
+            assert.is_nil(writer._thinking_extmark_id)
+            assert.is_nil(writer._thinking_start_line)
+            assert.is_nil(writer._thinking_end_line)
+        end)
+
+        it("creates a new extmark for thought after tool call block", function()
+            writer:write_message_chunk(make_thought_update("first thought"))
+            local first_extmark_id = writer._thinking_extmark_id
+            assert.is_not_nil(first_extmark_id)
+
+            writer:write_tool_call_block(
+                make_tool_call_block("tc-between-1", "pending")
+            )
+            writer:write_message_chunk(make_thought_update("second thought"))
+
+            assert.is_not_nil(writer._thinking_extmark_id)
+            assert.is_true(writer._thinking_extmark_id ~= first_extmark_id)
+
+            -- Both extmarks should exist in the buffer
+            local ns = vim.api.nvim_create_namespace("agentic_thinking")
+            local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, {})
+            assert.equal(2, #extmarks)
+        end)
+
+        it("replay thought extmark has end_col covering full text", function()
+            writer:replay_history_messages({
+                {
+                    type = "thought",
+                    text = "thinking about this",
+                },
+            })
+
+            local ns = vim.api.nvim_create_namespace("agentic_thinking")
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
+
+            assert.equal(1, #extmarks)
+            local details = extmarks[1][4] --- @type table
+            assert.is_true(details.end_col > 0)
+
+            local end_row = details.end_row
+            local line = vim.api.nvim_buf_get_lines(
+                bufnr,
+                end_row,
+                end_row + 1,
+                false
+            )[1]
+            assert.equal(#line, details.end_col)
+        end)
+
+        it(
+            "replay thought extmark covers content lines, not trailing blank",
+            function()
+                writer:replay_history_messages({
+                    {
+                        type = "thought",
+                        text = "line one\nline two",
+                    },
+                })
+
+                local ns = vim.api.nvim_create_namespace("agentic_thinking")
+                local extmarks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    ns,
+                    0,
+                    -1,
+                    { details = true }
+                )
+
+                assert.equal(1, #extmarks)
+                local details = extmarks[1][4] --- @type table
+                local start_row = extmarks[1][2]
+                local end_row = details.end_row
+
+                local start_line_text = vim.api.nvim_buf_get_lines(
+                    bufnr,
+                    start_row,
+                    start_row + 1,
+                    false
+                )[1]
+                assert.truthy(start_line_text:find("🧠"))
+
+                local end_line_text = vim.api.nvim_buf_get_lines(
+                    bufnr,
+                    end_row,
+                    end_row + 1,
+                    false
+                )[1]
+                assert.truthy(end_line_text:find("line two"))
+            end
+        )
+    end)
+
+    describe("tool call block update highlighting", function()
+        it(
+            "applies block body highlights synchronously during update",
+            function()
+                local block = make_tool_call_block("sync-hl-1", "pending")
+                writer:write_tool_call_block(block)
+
+                writer:update_tool_call_block({
+                    tool_call_id = "sync-hl-1",
+                    status = "completed",
+                    body = { "new output" },
+                })
+
+                -- Highlights must be present immediately after update
+                -- (not deferred via vim.schedule)
+                local ns =
+                    vim.api.nvim_create_namespace("agentic_diff_highlights")
+                local extmarks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    ns,
+                    0,
+                    -1,
+                    { details = true }
+                )
+
+                local has_comment_hl = false
+                for _, em in ipairs(extmarks) do
+                    if em[4].hl_group == "Comment" then
+                        has_comment_hl = true
+                        break
+                    end
+                end
+                assert.is_true(has_comment_hl)
+            end
+        )
     end)
 end)
