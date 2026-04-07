@@ -124,6 +124,13 @@
 --- @field user string
 --- @field agent string
 
+--- Icons used for message states in the chat widget
+--- @class agentic.UserConfig.MessageIcons
+--- @field thinking string
+--- @field finished string
+--- @field stopped string
+--- @field error string
+
 --- @class agentic.UserConfig.FilePicker
 --- @field enabled boolean
 
@@ -160,6 +167,7 @@
 --- @field diagnostic_icons? agentic.UserConfig.DiagnosticIcons
 --- @field permission_icons? agentic.UserConfig.PermissionIcons
 --- @field chat_icons? agentic.UserConfig.ChatIcons
+--- @field message_icons? agentic.UserConfig.MessageIcons
 --- @field file_picker? agentic.UserConfig.FilePicker
 --- @field image_paste? agentic.UserConfig.ImagePaste
 --- @field auto_scroll? agentic.UserConfig.AutoScroll
@@ -178,6 +186,7 @@
 --- @field diagnostic_icons agentic.UserConfig.DiagnosticIcons
 --- @field permission_icons agentic.UserConfig.PermissionIcons
 --- @field chat_icons agentic.UserConfig.ChatIcons
+--- @field message_icons agentic.UserConfig.MessageIcons
 --- @field file_picker agentic.UserConfig.FilePicker
 --- @field image_paste agentic.UserConfig.ImagePaste
 --- @field auto_scroll agentic.UserConfig.AutoScroll
