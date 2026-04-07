@@ -230,7 +230,7 @@ function MessageWriter:write_message_chunk(update)
 
     -- Prepend emoji on first thought chunk of a block
     if is_thought and not self._thinking_extmark_id then
-        text = "🧠 " .. text
+        text = Config.message_icons.thinking .. " " .. text
     end
 
     local header_written = self:_maybe_write_sender_header(update.sessionUpdate)
@@ -905,7 +905,7 @@ function MessageWriter:replay_history_messages(messages)
         elseif msg.type == "thought" then
             self:_maybe_write_sender_header("agent_thought_chunk")
 
-            local text = "🧠 " .. msg.text
+            local text = Config.message_icons.thinking .. " " .. msg.text
             local lines = vim.split(text, "\n", { plain = true })
             local start_line
 

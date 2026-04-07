@@ -874,6 +874,97 @@ You can customize the icons used for diagnostics in the context panel:
 Default icons use emoji characters (❌, ⚠️, ℹ️, ✨) but you can use any string,
 including Nerd Font icons or plain text.
 
+### Customizing Status Icons
+
+You can customize the icons used to indicate tool call status in the chat:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    status_icons = {
+      pending = "󰔛",
+      in_progress = "󰔛",
+      completed = "✔",
+      failed = "",
+    },
+  },
+}
+```
+
+- `pending`: Tool call awaiting execution
+- `in_progress`: Tool currently executing
+- `completed`: Tool executed successfully
+- `failed`: Tool execution failed
+
+### Customizing Permission Icons
+
+You can customize the icons used in the permission approval workflow:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    permission_icons = {
+      allow_once = "",
+      allow_always = "",
+      reject_once = "",
+      reject_always = "󰜺",
+    },
+  },
+}
+```
+
+- `allow_once`: Allow this execution only
+- `allow_always`: Allow all future executions
+- `reject_once`: Reject this execution only
+- `reject_always`: Reject all future executions
+
+### Customizing Chat Icons
+
+You can customize the icons used to identify user and agent messages in the chat:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    chat_icons = {
+      user = " ",
+      agent = "󱚠 ",
+    },
+  },
+}
+```
+
+- `user`: Icon shown for user messages
+- `agent`: Icon shown for agent/AI messages
+
+### Customizing Message Icons
+
+You can customize the icons used for messages and interaction states:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    message_icons = {
+      thinking = "🧠",
+      finished = "🏁",
+      stopped = "🛑",
+      error = "❌",
+    },
+  },
+}
+```
+
+- `thinking`: Shown when the agent is thinking/reasoning
+- `finished`: Shown when the interaction completes successfully
+- `stopped`: Shown when the user cancels the generation
+- `error`: Shown when the interaction ends with an error
+
+Default icons use emoji characters but you can use any string, including Nerd
+Font icons or plain text.
+
 ## Integration with other Plugins
 
 ### Prompt suggestions with Copilot

@@ -786,19 +786,22 @@ function SessionManager:_handle_input_submit(input_text)
             self.is_generating = false
 
             local finish_message = string.format(
-                "\n### 🏁 %s\n-----",
+                "\n### %s %s\n-----",
+                Config.message_icons.finished,
                 os.date("%Y-%m-%d %H:%M:%S")
             )
 
             if err then
                 finish_message = string.format(
-                    "\n### ❌ Agent finished with error: %s\n%s",
+                    "\n### %s Agent finished with error: %s\n%s",
+                    Config.message_icons.error,
                     vim.inspect(err),
                     finish_message
                 )
             elseif response and response.stopReason == "cancelled" then
                 finish_message = string.format(
-                    "\n### 🛑 Generation stopped by the user request\n%s",
+                    "\n### %s Generation stopped by the user request\n%s",
+                    Config.message_icons.stopped,
                     finish_message
                 )
             end
@@ -1284,7 +1287,8 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             end
 
             local finish_message = string.format(
-                "\n### 🏁 Session restored - %s\n-----",
+                "\n### %s Session restored - %s\n-----",
+                Config.message_icons.finished,
                 os.date("%Y-%m-%d %H:%M:%S")
             )
 

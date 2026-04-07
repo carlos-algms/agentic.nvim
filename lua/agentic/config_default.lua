@@ -377,6 +377,13 @@ local ConfigDefault = {
         agent = "󱚠 ",
     },
 
+    message_icons = {
+        thinking = "🧠",
+        finished = "🏁",
+        stopped = "🛑",
+        error = "❌",
+    },
+
     file_picker = {
         enabled = true,
     },
