@@ -277,8 +277,8 @@ function SessionManager:on_session_ready(callback)
 end
 
 --- Check if a prompt can be submitted to the session.
---- Returns false if session not ready, generating, or
---- restoring. Notifies user of the reason.
+--- Returns false if session not ready or restoring.
+--- Notifies user of the reason.
 --- @return boolean can_submit
 function SessionManager:can_submit_prompt()
     if self._connection_error then
@@ -300,14 +300,6 @@ function SessionManager:can_submit_prompt()
     if self._is_restoring_session then
         Logger.notify(
             "Session is restoring. Please wait...",
-            vim.log.levels.WARN
-        )
-        return false
-    end
-
-    if self.is_generating then
-        Logger.notify(
-            "Agent is still processing. Please wait...",
             vim.log.levels.WARN
         )
         return false
@@ -630,7 +622,7 @@ function SessionManager:_handle_input_submit(input_text)
         return true
     end
 
-    -- Guard: cannot submit if session not ready or generating
+    -- Guard: cannot submit if session not ready
     if not self:can_submit_prompt() then
         return false
     end
