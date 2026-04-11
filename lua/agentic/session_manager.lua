@@ -277,8 +277,8 @@ function SessionManager:on_session_ready(callback)
 end
 
 --- Check if a prompt can be submitted to the session.
---- Returns false if session not ready or restoring.
---- Notifies user of the reason.
+--- Returns false if provider connection failed, session not
+--- initialized, or session is restoring. Notifies user of the reason.
 --- @return boolean can_submit
 function SessionManager:can_submit_prompt()
     if self._connection_error then
@@ -622,7 +622,7 @@ function SessionManager:_handle_input_submit(input_text)
         return true
     end
 
-    -- Guard: cannot submit if session not ready
+    -- Guard: cannot submit if connection failed, session not initialized, or restoring
     if not self:can_submit_prompt() then
         return false
     end
