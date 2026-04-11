@@ -5,17 +5,14 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
 describe("WidgetLayout", function()
-    local original_position
     local notify_stub
 
     before_each(function()
-        original_position = Config.windows.position
         notify_stub = spy.stub(Logger, "notify")
     end)
 
     after_each(function()
         notify_stub:revert()
-        Config.windows.position = original_position
     end)
 
     describe("calculate_width", function()
@@ -148,7 +145,7 @@ describe("WidgetLayout", function()
             })
 
             local win_nrs = { code = winid }
-            WidgetLayout.close_optional_window(win_nrs, "code")
+            WidgetLayout.close_optional_window(win_nrs, "code", "right")
 
             assert.is_false(vim.api.nvim_win_is_valid(winid))
             assert.is_nil(win_nrs.code)
@@ -156,19 +153,17 @@ describe("WidgetLayout", function()
 
         it("should handle invalid windows gracefully", function()
             local win_nrs = { code = 99999 }
-            WidgetLayout.close_optional_window(win_nrs, "code")
+            WidgetLayout.close_optional_window(win_nrs, "code", "right")
             assert.is_nil(win_nrs.code)
         end)
 
         it("should handle nil windows", function()
             local win_nrs = { code = nil }
-            WidgetLayout.close_optional_window(win_nrs, "code")
+            WidgetLayout.close_optional_window(win_nrs, "code", "right")
             assert.is_nil(win_nrs.code)
         end)
 
         it("should restore chat height in bottom layout", function()
-            Config.windows.position = "bottom"
-
             local chat_buf = vim.api.nvim_create_buf(false, true)
             local code_buf = vim.api.nvim_create_buf(false, true)
 
@@ -186,7 +181,7 @@ describe("WidgetLayout", function()
             local before_height = vim.api.nvim_win_get_height(chat_winid)
 
             local win_nrs = { chat = chat_winid, code = code_winid }
-            WidgetLayout.close_optional_window(win_nrs, "code")
+            WidgetLayout.close_optional_window(win_nrs, "code", "bottom")
 
             assert.equal(before_height, vim.api.nvim_win_get_height(chat_winid))
 
@@ -201,6 +196,7 @@ describe("WidgetLayout", function()
                     tab_page_id = 99999,
                     buf_nrs = {},
                     win_nrs = {},
+                    position = "right",
                 })
             end)
             assert.equal(1, notify_stub.call_count)
@@ -213,15 +209,13 @@ describe("WidgetLayout", function()
                     tab_page_id = nil,
                     buf_nrs = {},
                     win_nrs = {},
+                    position = "right",
                 })
             end)
             assert.equal(1, notify_stub.call_count)
         end)
 
         it("should fall back to right for invalid position", function()
-            ---@diagnostic disable-next-line: assign-type-mismatch
-            Config.windows.position = "invalid"
-
             vim.cmd("tabnew")
             local tab_page_id = vim.api.nvim_get_current_tabpage()
 
@@ -240,6 +234,8 @@ describe("WidgetLayout", function()
                     tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    position = "invalid",
                 })
             end)
 

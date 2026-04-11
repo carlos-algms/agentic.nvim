@@ -80,6 +80,7 @@ function ChatWidget:show(opts)
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
+        position = Config.windows.position,
     })
 end
 
@@ -514,7 +515,11 @@ end
 
 --- @param panel_name agentic.ui.ChatWidget.PanelNames
 function ChatWidget:close_optional_window(panel_name)
-    WidgetLayout.close_optional_window(self.win_nrs, panel_name)
+    WidgetLayout.close_optional_window(
+        self.win_nrs,
+        panel_name,
+        Config.windows.position
+    )
 end
 
 --- Filetypes that should be excluded when finding fallback windows

@@ -9,6 +9,7 @@ local Logger = require("agentic.utils.logger")
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field focus_prompt? boolean
+--- @field position agentic.UserConfig.Windows.Position
 
 --- @class agentic.ui.WidgetLayout
 local WidgetLayout = {}
@@ -62,12 +63,13 @@ end
 
 --- @param bufnr integer
 --- @param max_height integer
+--- @param position agentic.UserConfig.Windows.Position
 --- @return integer
-local function calculate_dynamic_height(bufnr, max_height)
+local function calculate_dynamic_height(bufnr, max_height, position)
     max_height = math.max(1, max_height)
     local line_count = vim.api.nvim_buf_line_count(bufnr)
     -- Use 2 in bottom layout to prevent the file list from touching the screen edge
-    local padding = Config.windows.position == "bottom" and 2 or 1
+    local padding = position == "bottom" and 2 or 1
     return math.min(line_count + padding, max_height)
 end
 
@@ -137,12 +139,14 @@ end
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
+--- @param position agentic.UserConfig.Windows.Position
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
     window_name,
     open_win_opts,
-    max_height
+    max_height,
+    position
 )
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
@@ -155,7 +159,7 @@ local function open_or_resize_dynamic_window(
         return
     end
 
-    local height = calculate_dynamic_height(bufnr, max_height)
+    local height = calculate_dynamic_height(bufnr, max_height, position)
 
     if not winid or not vim.api.nvim_win_is_valid(winid) then
         open_win_opts.height = height
@@ -221,7 +225,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
         win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
-    }, Config.windows.code.max_height)
+    }, Config.windows.code.max_height, position)
 
     local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -229,7 +233,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.files.max_height)
+    }, Config.windows.files.max_height, position)
 
     ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -237,7 +241,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.diagnostics.max_height)
+    }, Config.windows.diagnostics.max_height, position)
 
     if Config.windows.todos.display then
         ref_win = is_bottom
@@ -247,7 +251,7 @@ local function show_layout(params, position)
         open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
             win = ref_win,
             split = "below",
-        }, Config.windows.todos.max_height)
+        }, Config.windows.todos.max_height, position)
     end
 
     if should_focus then
@@ -275,7 +279,7 @@ function WidgetLayout.open(params)
         return
     end
 
-    local position = Config.windows.position
+    local position = params.position
 
     if position ~= "right" and position ~= "left" and position ~= "bottom" then
         Logger.notify(
@@ -321,7 +325,8 @@ end
 
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param window_name agentic.ui.ChatWidget.PanelNames
-function WidgetLayout.close_optional_window(win_nrs, window_name)
+--- @param position agentic.UserConfig.Windows.Position
+function WidgetLayout.close_optional_window(win_nrs, window_name, position)
     local winid = win_nrs[window_name]
 
     -- Capture chat height before closing so we can restore it.
@@ -329,7 +334,7 @@ function WidgetLayout.close_optional_window(win_nrs, window_name)
     local chat_winid = win_nrs.chat
     local chat_height = nil
     if
-        Config.windows.position == "bottom"
+        position == "bottom"
         and chat_winid
         and vim.api.nvim_win_is_valid(chat_winid)
     then
