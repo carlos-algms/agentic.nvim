@@ -234,7 +234,7 @@ describe("WidgetLayout", function()
                     tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
-                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    --- @diagnostic disable-next-line: assign-type-mismatch
                     position = "invalid",
                 })
             end)

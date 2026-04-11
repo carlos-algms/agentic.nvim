@@ -36,6 +36,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
+--- @field current_position agentic.UserConfig.Windows.Position
 --- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -46,6 +47,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self = setmetatable({}, self)
 
     self.win_nrs = {}
+    self.current_position = Config.windows.position
 
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
@@ -80,7 +82,7 @@ function ChatWidget:show(opts)
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
-        position = Config.windows.position,
+        position = self.current_position,
     })
 end
 
@@ -99,7 +101,7 @@ function ChatWidget:rotate_layout(layouts)
         )
     end
 
-    local current = Config.windows.position
+    local current = self.current_position
     local next_layout = layouts[1]
 
     for i, layout in ipairs(layouts) do
@@ -112,7 +114,7 @@ function ChatWidget:rotate_layout(layouts)
         end
     end
 
-    Config.windows.position = next_layout
+    self.current_position = next_layout
 
     local previous_mode = vim.fn.mode()
     local previous_buf = vim.api.nvim_get_current_buf()
@@ -518,7 +520,7 @@ function ChatWidget:close_optional_window(panel_name)
     WidgetLayout.close_optional_window(
         self.win_nrs,
         panel_name,
-        Config.windows.position
+        self.current_position
     )
 end
 

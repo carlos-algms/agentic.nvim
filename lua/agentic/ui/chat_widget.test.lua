@@ -462,6 +462,8 @@ describe("agentic.ui.ChatWidget", function()
         local original_position
         local show_stub
         local notify_stub
+        local widget2
+        local show_stub2
 
         before_each(function()
             original_position = Config.windows.position
@@ -478,6 +480,17 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
+            if show_stub2 then
+                show_stub2:revert()
+                show_stub2 = nil
+            end
+            if widget2 then
+                pcall(function()
+                    widget2:destroy()
+                end)
+                widget2 = nil
+            end
+
             show_stub:revert()
             notify_stub:revert()
 
@@ -491,29 +504,25 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         it("uses default layouts when none provided", function()
-            Config.windows.position = "right"
-
             widget:rotate_layout()
 
-            assert.equal("bottom", Config.windows.position)
+            assert.equal("bottom", widget.current_position)
         end)
 
         it("uses default layouts when empty array provided", function()
-            Config.windows.position = "right"
-
             widget:rotate_layout({})
 
-            assert.equal("bottom", Config.windows.position)
+            assert.equal("bottom", widget.current_position)
         end)
 
         it(
             "stays on same layout and warns when only one is provided",
             function()
-                Config.windows.position = "bottom"
+                widget.current_position = "bottom"
 
                 widget:rotate_layout({ "bottom" })
 
-                assert.equal("bottom", Config.windows.position)
+                assert.equal("bottom", widget.current_position)
                 assert.spy(notify_stub).was.called(1)
                 local msg = notify_stub.calls[1][1]
                 assert.is_true(msg:find("Only one layout") ~= nil)
@@ -523,23 +532,22 @@ describe("agentic.ui.ChatWidget", function()
         it("rotates through all layouts in order", function()
             local layouts = { "right", "bottom", "left" }
 
-            Config.windows.position = "right"
             widget:rotate_layout(layouts)
-            assert.equal("bottom", Config.windows.position)
+            assert.equal("bottom", widget.current_position)
 
             widget:rotate_layout(layouts)
-            assert.equal("left", Config.windows.position)
+            assert.equal("left", widget.current_position)
 
             widget:rotate_layout(layouts)
-            assert.equal("right", Config.windows.position)
+            assert.equal("right", widget.current_position)
         end)
 
         it("falls back to first layout when current is not in list", function()
-            Config.windows.position = "bottom"
+            widget.current_position = "bottom"
 
             widget:rotate_layout({ "right", "left" })
 
-            assert.equal("right", Config.windows.position)
+            assert.equal("right", widget.current_position)
         end)
 
         it("calls show with focus_prompt false", function()
@@ -549,6 +557,41 @@ describe("agentic.ui.ChatWidget", function()
             local call_args = show_stub.calls[1]
             -- call_args[1] is self, call_args[2] is the opts table
             assert.equal(false, call_args[2].focus_prompt)
+        end)
+
+        it("does not mutate Config.windows.position", function()
+            widget:rotate_layout()
+
+            assert.equal("right", Config.windows.position)
+            assert.equal("bottom", widget.current_position)
+        end)
+
+        it("two widgets rotate independently", function()
+            local on_submit_spy2 = spy.new(function() end)
+            widget2 = ChatWidget:new(
+                vim.api.nvim_get_current_tabpage(),
+                on_submit_spy2 --[[@as function]]
+            )
+            show_stub2 = spy.stub(widget2, "show")
+
+            -- Both start at "right" (Config default)
+            assert.equal("right", widget.current_position)
+            assert.equal("right", widget2.current_position)
+
+            -- Rotate widget 1
+            widget:rotate_layout({ "right", "bottom", "left" })
+            assert.equal("bottom", widget.current_position)
+            assert.equal("right", widget2.current_position)
+
+            -- Rotate widget 2
+            widget2:rotate_layout({ "right", "bottom", "left" })
+            assert.equal("bottom", widget.current_position)
+            assert.equal("bottom", widget2.current_position)
+
+            -- Rotate widget 1 again
+            widget:rotate_layout({ "right", "bottom", "left" })
+            assert.equal("left", widget.current_position)
+            assert.equal("bottom", widget2.current_position)
         end)
     end)
 end)
