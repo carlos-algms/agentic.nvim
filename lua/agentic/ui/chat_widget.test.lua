@@ -201,6 +201,125 @@ describe("agentic.ui.ChatWidget", function()
                 end
             end)
 
+            describe("sticky windows", function()
+                it("redirects :edit to editor window", function()
+                    widget:show()
+
+                    local chat_win = widget.win_nrs.chat
+
+                    vim.api.nvim_set_current_win(chat_win)
+
+                    local tmpfile = vim.fn.tempname() .. ".lua"
+                    vim.fn.writefile({ "-- test" }, tmpfile)
+
+                    vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
+
+                    vim.uv.sleep(50)
+
+                    -- Chat window does not contain the temp file
+                    -- (guard either restored chat_buf or replaced it with a
+                    -- fresh scratch buffer to keep the window clean)
+                    local buf_in_chat = vim.api.nvim_win_get_buf(chat_win)
+                    local name_in_chat = vim.api.nvim_buf_get_name(buf_in_chat)
+                    local resolved_in_chat = vim.fn.resolve(name_in_chat)
+                    local resolved_tmpfile = vim.fn.resolve(tmpfile)
+                    assert.are_not.equal(resolved_tmpfile, resolved_in_chat)
+
+                    -- The temp file is open in some non-widget window on the same tabpage
+                    local found_in_non_widget = false
+                    local all_wins = vim.api.nvim_tabpage_list_wins(tab_page_id)
+                    local widget_win_ids = {}
+                    for _, wid in pairs(widget.win_nrs) do
+                        if wid then
+                            widget_win_ids[wid] = true
+                        end
+                    end
+                    for _, wid in ipairs(all_wins) do
+                        if not widget_win_ids[wid] then
+                            local buf = vim.api.nvim_win_get_buf(wid)
+                            local name = vim.api.nvim_buf_get_name(buf)
+                            if vim.fn.resolve(name) == resolved_tmpfile then
+                                found_in_non_widget = true
+                            end
+                        end
+                    end
+                    assert.is_true(found_in_non_widget)
+
+                    os.remove(tmpfile)
+                end)
+
+                it(
+                    "does not interfere with normal widget buffer changes",
+                    function()
+                        widget:show()
+
+                        local chat_win = widget.win_nrs.chat
+                        local input_win = widget.win_nrs.input
+                        local chat_buf = widget.buf_nrs.chat
+                        local input_buf = widget.buf_nrs.input
+
+                        -- Set expected buffers in their windows (no-op / idempotent)
+                        vim.api.nvim_win_set_buf(chat_win, chat_buf)
+                        vim.api.nvim_win_set_buf(input_win, input_buf)
+
+                        -- Assert no false-positive redirect
+                        assert.equal(
+                            chat_buf,
+                            vim.api.nvim_win_get_buf(chat_win)
+                        )
+                        assert.equal(
+                            input_buf,
+                            vim.api.nvim_win_get_buf(input_win)
+                        )
+                    end
+                )
+
+                it("guard is cleaned up after destroy", function()
+                    widget:show()
+                    widget:destroy()
+
+                    assert.is_nil(widget._guard_augroup)
+
+                    -- Prevent double-destroy in after_each
+                    widget = nil
+                end)
+
+                it(
+                    "skips floating windows in find_first_non_widget_window",
+                    function()
+                        widget:show()
+
+                        -- Close all non-widget windows on the tabpage
+                        local all_wins =
+                            vim.api.nvim_tabpage_list_wins(tab_page_id)
+                        local widget_win_ids = {}
+                        for _, wid in pairs(widget.win_nrs) do
+                            if wid then
+                                widget_win_ids[wid] = true
+                            end
+                        end
+                        for _, wid in ipairs(all_wins) do
+                            if not widget_win_ids[wid] then
+                                pcall(vim.api.nvim_win_close, wid, true)
+                            end
+                        end
+
+                        -- Create a floating window
+                        local float_buf = vim.api.nvim_create_buf(false, true)
+                        vim.api.nvim_open_win(float_buf, false, {
+                            relative = "editor",
+                            width = 10,
+                            height = 3,
+                            row = 1,
+                            col = 1,
+                        })
+
+                        local result = widget:find_first_non_widget_window()
+                        assert.is_nil(result)
+                    end
+                )
+            end)
+
             it("hide() closes all dynamic windows when they exist", function()
                 for _, name in ipairs({ "files", "code", "todos" }) do
                     fill_buffer(widget, name, { "content" })
