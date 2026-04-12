@@ -147,6 +147,7 @@ Using lazy.nvim: ~
   {
     "carlos-algms/agentic.nvim",
 
+    --- @type agentic.PartialUserConfig
     opts = {
       -- Any ACP-compatible provider works. Built-in:
       -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
