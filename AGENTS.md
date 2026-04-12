@@ -482,6 +482,32 @@ plugin.
    - The new highlight group in the code example
    - A new row in the "Available Highlight Groups" table
 
+#### Vimdoc Help File
+
+The `doc/agentic.txt` file is the Neovim `:help agentic` reference. It is
+**manually written** vimdoc -- not auto-generated.
+
+**IMPORTANT:** When changing any of these files, the vimdoc MUST be updated to
+match:
+
+| Source file                      | Vimdoc section to update            |
+| -------------------------------- | ----------------------------------- |
+| `lua/agentic/init.lua`           | Usage (public API functions)        |
+| `lua/agentic/config_default.lua` | Configuration, Customization        |
+| `lua/agentic/theme.lua`          | Customization (highlight groups)    |
+| `README.md` (install/keymaps)    | Installation, Keymaps, Integrations |
+
+**Format rules:**
+
+- 78-character line width
+- Right-aligned tags: `*agentic-section-name*`
+- Code blocks: `>lua` / `<` (treesitter-aware)
+- Function tags: `*agentic.function_name()*`
+- Cross-references: `|agentic-section|`
+- Modeline (last line): `vim:tw=78:ts=8:ft=help:norl:`
+- After editing, regenerate tags:
+  `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`
+
 ### ACP and providers
 
 Read @lua/agentic/acp/AGENTS.md when working with ACP client,
