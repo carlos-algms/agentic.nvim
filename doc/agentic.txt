@@ -1,0 +1,178 @@
+*agentic.txt*    AI chat interface for Neovim via Agent Client Protocol
+
+                            AGENTIC.NVIM
+
+A Chat interface for AI agents in Neovim that works with any provider
+supporting the Agent Client Protocol (ACP) -- including Claude, Gemini,
+Codex, OpenCode, Cursor Agent, Copilot, Auggie, Mistral Vibe, Cline,
+Goose, and more.
+
+Type |gO| to see the table of contents.
+
+==============================================================================
+CONTENTS                                              *agentic-contents*
+
+  1. Introduction ................... |agentic-introduction|
+  2. Requirements ................... |agentic-requirements|
+  3. Installation ................... |agentic-installation|
+  4. Configuration .................. |agentic-configuration|
+  5. Usage .......................... |agentic-usage|
+  6. Keymaps ........................ |agentic-keymaps|
+  7. Diff Preview ................... |agentic-diff-preview|
+  8. Features ....................... |agentic-features|
+  9. Customization .................. |agentic-customization|
+  10. Integrations .................. |agentic-integrations|
+  11. Health Check .................. |agentic-health-check|
+  12. Debug ......................... |agentic-debug|
+
+==============================================================================
+INTRODUCTION                                      *agentic-introduction*
+
+                                                           *agentic.nvim*
+
+Agentic.nvim brings your AI assistant to Neovim through the Agent Client
+Protocol (ACP). You get the same results and performance as the provider's
+official CLI directly from the terminal.
+
+Agentic.nvim is the interface; your agent is the brain. The plugin uses
+your existing terminal configurations and authentication methods --
+including MCP servers, commands, skills, and sub-agents.
+
+Sessions are interchangeable: start a conversation in Neovim and continue
+it in the terminal, or pick up a terminal session inside Neovim. Your ACP
+provider manages sessions natively, so they are available everywhere.
+
+There are no hidden prompts or magic behind the scenes -- just a chat
+interface, your colors, and your keymaps.
+
+Supported providers:
+  - Claude (claude-agent-acp)
+  - Gemini (gemini-acp)
+  - Codex (codex-acp)
+  - OpenCode (opencode-acp)
+  - Cursor Agent (cursor-acp)
+  - Copilot (copilot-acp)
+  - Augment (auggie-acp)
+  - Mistral Vibe (mistral-vibe-acp)
+  - Cline (cline-acp)
+  - Goose (goose-acp)
+  - ...and any future ACP-compatible provider
+
+==============================================================================
+REQUIREMENTS                                      *agentic-requirements*
+
+- Neovim v0.11.0 or higher
+- An ACP provider CLI installed globally
+
+For security reasons, this plugin does not install or manage binaries.
+You must install the CLI for your chosen provider manually.
+
+Provider install commands (always check official docs):
+
+  claude-agent-acp                              *agentic-install-claude*
+    https://github.com/agentclientprotocol/claude-agent-acp
+    `pnpm add -g @agentclientprotocol/claude-agent-acp`
+    OR `npm i -g @agentclientprotocol/claude-agent-acp`
+    OR download binary from releases:
+    https://github.com/agentclientprotocol/claude-agent-acp/releases
+
+  gemini                                        *agentic-install-gemini*
+    https://github.com/gemini-cli/gemini-cli
+    `pnpm add -g @google/gemini-cli`
+    OR `npm i -g @google/gemini-cli`
+    OR `brew install --cask gemini`
+
+  codex-acp                                      *agentic-install-codex*
+    https://github.com/zed-industries/codex-acp
+    `pnpm add -g @zed-industries/codex-acp`
+    OR `npm i -g @zed-industries/codex-acp`
+    OR download binary from releases:
+    https://github.com/zed-industries/codex-acp/releases
+
+  opencode                                    *agentic-install-opencode*
+    https://github.com/sst/opencode
+    `pnpm add -g opencode-ai`
+    OR `npm i -g opencode-ai`
+    OR `brew install opencode`
+    OR `curl -fsSL https://opencode.ai/install | bash`
+
+  cursor-agent                                  *agentic-install-cursor*
+    https://cursor.com/docs/cli/installation
+    `curl https://cursor.com/install -fsS | bash`
+    OR Windows: `irm 'https://cursor.com/install?win32=true' | iex`
+
+  copilot                                      *agentic-install-copilot*
+    https://github.com/github/copilot-cli
+    `pnpm add -g @github/copilot`
+    OR `npm i -g @github/copilot`
+    OR `brew install copilot-cli`
+    OR `curl -fsSL https://gh.io/copilot-install | bash`
+
+  auggie                                        *agentic-install-auggie*
+    https://docs.augmentcode.com/cli/setup-auggie
+    `pnpm add -g @augmentcode/auggie`
+    OR `npm i -g @augmentcode/auggie`
+
+  mistral-vibe                                *agentic-install-mistral*
+    https://github.com/mistralai/mistral-vibe
+    `curl -LsSf https://mistral.ai/vibe/install.sh | bash`
+    OR `uv tool install mistral-vibe`
+    OR `pip install mistral-vibe`
+    OR download binary from releases:
+    https://github.com/mistralai/mistral-vibe/releases
+
+  cline                                          *agentic-install-cline*
+    https://docs.cline.bot/getting-started/installing-cline
+    `pnpm add -g cline`
+    OR `npm i -g cline`
+
+  goose                                          *agentic-install-goose*
+    https://block.github.io/goose/docs/getting-started/installation
+    `brew install block-goose-cli`
+
+Optional: |img-clip.nvim| for pasting screenshots from the clipboard.
+Drag-and-drop works without it if your terminal supports it.
+
+==============================================================================
+INSTALLATION                                      *agentic-installation*
+
+                                                       *agentic.setup()*
+
+Using lazy.nvim: ~
+>lua
+  {
+    "carlos-algms/agentic.nvim",
+
+    opts = {
+      -- Any ACP-compatible provider works. Built-in:
+      -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
+      -- "opencode-acp" | "cursor-acp" | "copilot-acp"
+      -- "auggie-acp" | "mistral-vibe-acp" | "cline-acp"
+      -- "goose-acp"
+      provider = "claude-agent-acp",
+    },
+
+    keys = {
+      {
+        "<C-\\>",
+        function() require("agentic").toggle() end,
+        mode = { "n", "v", "i" },
+        desc = "Toggle Agentic Chat",
+      },
+      {
+        "<C-'>",
+        function()
+          require("agentic").add_selection_or_file_to_context()
+        end,
+        mode = { "n", "v" },
+        desc = "Add file or selection to context",
+      },
+      {
+        "<C-,>",
+        function() require("agentic").new_session() end,
+        mode = { "n", "v", "i" },
+        desc = "New Agentic Session",
+      },
+    },
+  }
+<
