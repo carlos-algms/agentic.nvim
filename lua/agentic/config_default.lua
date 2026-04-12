@@ -200,6 +200,7 @@
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
 --- @field settings? agentic.PartialUserConfig.Settings
+
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
 --- @field provider agentic.UserConfig.ProviderName
