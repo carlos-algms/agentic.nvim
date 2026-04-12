@@ -176,3 +176,290 @@ Using lazy.nvim: ~
     },
   }
 <
+
+==============================================================================
+CONFIGURATION                                    *agentic-configuration*
+
+The full default configuration with all options is defined in
+`lua/agentic/config_default.lua`. You only need to specify the options
+you want to override.
+
+                                           *agentic-config-provider*
+provider ~
+  Type: `string`
+  Default: `"claude-agent-acp"`
+
+  The ACP provider to use. Built-in providers:
+  `"claude-agent-acp"`, `"claude-acp"`, `"gemini-acp"`, `"codex-acp"`,
+  `"opencode-acp"`, `"cursor-acp"`, `"copilot-acp"`, `"auggie-acp"`,
+  `"mistral-vibe-acp"`, `"cline-acp"`, `"goose-acp"`.
+
+                                      *agentic-config-acp-providers*
+acp_providers ~
+  Type: `table<string, table>`
+  Default: see `config_default.lua`
+
+  Customize built-in providers or add new ACP-compatible providers.
+  Each entry supports: `name`, `command`, `args`, `env`,
+  `default_mode`, `initial_model`.
+
+>lua
+  opts = {
+    acp_providers = {
+      ["claude-agent-acp"] = {
+        env = {
+          ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
+        },
+      },
+      ["my-custom-provider"] = {
+        name = "My Provider",
+        command = "/path/to/my-acp-provider",
+        args = { "--acp" },
+        env = {},
+      },
+    },
+  }
+<
+
+                                          *agentic-config-windows*
+windows ~
+  Type: `table`
+
+  Configure window layout and dimensions.
+
+  `position`           Position of the sidebar: `"right"`, `"left"`,
+                       or `"bottom"`. Default: `"right"`.
+  `width`              Width of the sidebar. String percentage or
+                       number. Default: `"40%"`.
+  `height`             Height when position is `"bottom"`. String
+                       percentage or number. Default: `"30%"`.
+  `stack_width_ratio`  Ratio for stacked panels. Default: `0.4`.
+
+  Sub-panel options (each accepts `win_opts` table):
+
+  `chat.win_opts`          Window options for the chat panel.
+  `input.height`           Prompt input height. Default: `10`.
+  `code.max_height`        Code block max height. Default: `15`.
+  `files.max_height`       File list max height. Default: `10`.
+  `diagnostics.max_height` Diagnostics max height. Default: `10`.
+  `todos.display`          Show todos panel. Default: `true`.
+  `todos.max_height`       Todos max height. Default: `10`.
+
+                                          *agentic-config-settings*
+settings ~
+  Type: `table`
+
+  `move_cursor_to_chat_on_submit`  Automatically move cursor to chat
+                       window after submitting a prompt.
+                       Default: `true`.
+
+                                          *agentic-config-hooks*
+hooks ~
+  Type: `table`
+
+  Callbacks for chat lifecycle events. See |agentic-hooks|.
+
+                                          *agentic-config-headers*
+headers ~
+  Type: `table`
+
+  Customize window headers for each panel. Each header can be a
+  table with `title` and `suffix` fields, or a function that receives
+  header parts and returns a custom string.
+
+>lua
+  opts = {
+    headers = {
+      chat = {
+        title = "My Chat",
+        suffix = "",
+      },
+      prompt = function(parts)
+        return parts.title .. " | custom"
+      end,
+    },
+  }
+<
+
+==============================================================================
+USAGE                                                    *agentic-usage*
+
+All functions are accessed via `require("agentic")`.
+
+                                                      *agentic.toggle()*
+agentic.toggle({opts})
+  Toggle the chat sidebar for the current tabpage.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional fields:
+      `auto_add_to_context`  (boolean)  Add selection/file on open.
+                                        Default: `true`.
+      `focus_prompt`         (boolean)  Move cursor to prompt.
+                                        Default: `true`.
+
+                                                        *agentic.open()*
+agentic.open({opts})
+  Open the chat sidebar. Keeps it open if already visible.
+  Accepts the same {opts} as |agentic.toggle()|.
+
+                                                       *agentic.close()*
+agentic.close()
+  Close the chat sidebar for the current tabpage.
+
+                                               *agentic.add_selection()*
+agentic.add_selection({opts})
+  Add the current visual selection to the chat context and open
+  the sidebar.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional. `focus_prompt` (boolean).
+
+                                                   *agentic.add_file()*
+agentic.add_file({opts})
+  Add the current file to the chat context and open the sidebar.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional. `focus_prompt` (boolean).
+
+                                *agentic.add_selection_or_file_to_context()*
+agentic.add_selection_or_file_to_context({opts})
+  Add the visual selection if active, otherwise the current file.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional. `focus_prompt` (boolean).
+
+                                        *agentic.add_files_to_context()*
+agentic.add_files_to_context({opts})
+  Add a list of file paths or buffer numbers to context.
+
+  Parameters: ~
+    {opts}  (table)  Required fields:
+      `files`         (table)    List of file paths (strings) or
+                                 buffer numbers (integers).
+      `focus_prompt`  (boolean)  Optional. Default: `true`.
+
+>lua
+  require("agentic").add_files_to_context({
+    files = { "src/main.lua", "src/utils.lua" },
+  })
+
+  -- By buffer number
+  require("agentic").add_files_to_context({
+    files = { 1, 5 },
+    focus_prompt = false,
+  })
+<
+
+                                  *agentic.add_current_line_diagnostics()*
+agentic.add_current_line_diagnostics({opts})
+  Add diagnostics at the current cursor line to context.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional. `focus_prompt` (boolean).
+
+                                      *agentic.add_buffer_diagnostics()*
+agentic.add_buffer_diagnostics({opts})
+  Add all diagnostics from the current buffer to context.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional. `focus_prompt` (boolean).
+
+                                                 *agentic.new_session()*
+agentic.new_session({opts})
+  Destroy the current session and start a new one.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional fields:
+      `provider`              (string)   Switch provider for the
+                                         new session.
+      `auto_add_to_context`   (boolean)  Default: `true`.
+
+                                     *agentic.new_session_with_provider()*
+agentic.new_session_with_provider({opts})
+  Show a provider picker, then create a new session with the
+  selected provider.
+
+                                             *agentic.switch_provider()*
+agentic.switch_provider({opts})
+  Switch to a different ACP provider mid-session. Chat history
+  and context are preserved.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional fields:
+      `provider`  (string)  Provider name. If omitted, shows a
+                            picker.
+
+                                             *agentic.stop_generation()*
+agentic.stop_generation()
+  Stop the agent's current generation or tool execution. The
+  session remains active and ready for the next prompt.
+
+                                             *agentic.restore_session()*
+agentic.restore_session()
+  Show the provider's session picker to restore a previous
+  session. Sessions are interchangeable between Neovim and the
+  terminal.
+
+                                              *agentic.rotate_layout()*
+agentic.rotate_layout({layouts})
+  Rotate through window positions (right -> bottom -> left).
+
+  Parameters: ~
+    {layouts}  (table|nil)  List of position strings. Default:
+                            `{ "right", "bottom", "left" }`.
+
+==============================================================================
+KEYMAPS                                                *agentic-keymaps*
+
+These keybindings are automatically set in Agentic buffers:
+
+  Key                    Mode    Description ~
+  <S-Tab>                n/v/i   Switch agent mode
+  <CR>                   n       Submit prompt
+  <C-s>                  n/v/i   Submit prompt
+  <localLeader>p         n       Paste image from clipboard
+  <C-v>                  i       Paste image from clipboard
+  <localLeader>s         n       Switch ACP provider
+  <localLeader>m         n       Switch model
+  q                      n       Close chat widget
+  d                      n/v     Remove file/selection/diagnostic
+  ]c                     n       Next diff hunk
+  [c                     n       Previous diff hunk
+
+                                        *agentic-keymaps-customizing*
+Customizing keymaps ~
+
+Override default keybindings via the `keymaps` config option:
+>lua
+  opts = {
+    keymaps = {
+      widget = {
+        close = "q",
+        change_mode = {
+          { "<S-Tab>", mode = { "i", "n", "v" } },
+        },
+        switch_provider = "<localLeader>s",
+        switch_model = "<localLeader>m",
+      },
+      prompt = {
+        submit = {
+          "<CR>",
+          { "<C-s>", mode = { "n", "v", "i" } },
+        },
+        paste_image = {
+          { "<localLeader>p", mode = { "n" } },
+          { "<C-v>", mode = { "i" } },
+        },
+      },
+      diff_preview = {
+        next_hunk = "]c",
+        prev_hunk = "[c",
+      },
+    },
+  }
+<
+
+Keymap configuration formats:
+  - String: `close = "q"` (normal mode by default)
+  - Array: `submit = { "<CR>", "<C-s>" }` (multiple bindings)
+  - Table with mode: `{ "<C-s>", mode = { "i", "v" } }`
