@@ -542,6 +542,7 @@ local EXCLUDED_FILETYPES = {
     ["DiffviewFiles"] = true,
     ["DiffviewFileHistory"] = true,
     ["fugitive"] = true,
+    ["fugitiveblame"] = true,
     ["gitcommit"] = true,
     ["dashboard"] = true,
     ["alpha"] = true, -- Alpha dashboard
