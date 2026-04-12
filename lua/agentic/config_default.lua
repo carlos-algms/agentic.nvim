@@ -105,6 +105,7 @@
 --- @class agentic.UserConfig.StatusIcons
 --- @field pending string
 --- @field in_progress string
+--- @field completed string
 --- @field failed string
 
 --- Icons used for diagnostics in the context panel
