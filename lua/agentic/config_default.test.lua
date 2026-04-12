@@ -1,5 +1,9 @@
 local assert = require("tests.helpers.assert")
 
+-- These tests exist to force LuaLS type checking and Selene linting on
+-- PartialUserConfig usage. They are NOT testing runtime config behavior --
+-- they validate that the (partial) type annotations allow incomplete
+-- nested tables without triggering type errors or lint warnings.
 describe("config_default", function()
     describe("agentic.PartialUserConfig type", function()
         it("accepts a partial top-level config without warnings", function()
