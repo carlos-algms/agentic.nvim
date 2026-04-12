@@ -241,6 +241,7 @@ tools like `nvm`, `fnm`, etc...
 {
   "carlos-algms/agentic.nvim",
 
+  --- @type agentic.PartialUserConfig
   opts = {
     -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
@@ -313,6 +314,7 @@ by configuring the `acp_providers` property:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     acp_providers = {
       -- Override existing provider (e.g., add API key)
@@ -366,6 +368,7 @@ configure it per provider:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     acp_providers = {
       ["claude-agent-acp"] = {
@@ -388,6 +391,7 @@ default:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     acp_providers = {
       ["claude-agent-acp"] = {
@@ -409,6 +413,7 @@ Configure the widget layout position and sizing:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     windows = {
       position = "right",  -- "right", "left", or "bottom"
@@ -458,6 +463,7 @@ a table configuration or a custom render function.
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     headers = {
       chat = {
@@ -478,6 +484,7 @@ header parts:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     headers = {
       chat = function(parts)
@@ -590,6 +597,7 @@ your setup:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     keymaps = {
       -- Keybindings for ALL buffers in the widget (chat, prompt, code, files)
@@ -656,6 +664,7 @@ before you accept or reject them. You can configure the diff preview layout:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     diff_preview = {
       enabled = true,
@@ -786,6 +795,7 @@ integrating with other plugins.
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
       -- Called when the user submits a prompt
@@ -860,6 +870,7 @@ You can customize the icons used for diagnostics in the context panel:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     diagnostic_icons = {
       error = "❌",    -- Diagnostic severity: error
@@ -881,6 +892,7 @@ You can customize the icons used to indicate tool call status in the chat:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     status_icons = {
       pending = "󰔛",      -- Tool call awaiting execution
@@ -899,6 +911,7 @@ You can customize the icons used in the permission approval workflow:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     permission_icons = {
       allow_once = "",    -- Allow this execution only
@@ -917,6 +930,7 @@ You can customize the icons used to identify user and agent messages in the chat
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     chat_icons = {
       user = " ",    -- Icon shown for user messages
@@ -933,6 +947,7 @@ You can customize the icons used for messages and interaction states:
 ```lua
 {
   "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
   opts = {
     message_icons = {
       thinking = "🧠",   -- Shown when the agent is thinking/reasoning
@@ -1085,6 +1100,7 @@ Enable debug logging to troubleshoot issues:
 ```lua
 {
    "carlos-algms/agentic.nvim",
+    --- @type agentic.PartialUserConfig
     opts = {
       debug = true,
       -- ... rest of your options

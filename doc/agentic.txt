@@ -147,6 +147,7 @@ Using lazy.nvim: ~
   {
     "carlos-algms/agentic.nvim",
 
+    --- @type agentic.PartialUserConfig
     opts = {
       -- Any ACP-compatible provider works. Built-in:
       -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
@@ -237,6 +238,7 @@ acp_providers ~
                    widget to see available models.
 
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     acp_providers = {
       ["claude-agent-acp"] = {
@@ -303,6 +305,7 @@ headers ~
   header parts and returns a custom string.
 
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     headers = {
       chat = {
@@ -467,6 +470,7 @@ Customizing keymaps ~
 
 Override default keybindings via the `keymaps` config option:
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     keymaps = {
       widget = {
@@ -512,6 +516,7 @@ changes before you accept or reject them.
                                         *agentic-config-diff-preview*
 Configuration: ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     diff_preview = {
       enabled = true,
@@ -586,6 +591,7 @@ This reduces time to first response by providing immediate context.
 Event hooks ~
                                                      *agentic-hooks*
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
       on_prompt_submit = function(data)
@@ -641,6 +647,7 @@ can be set via |nvim_set_hl()|):
                                               *agentic-diagnostic-icons*
 Diagnostic icons ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     diagnostic_icons = {
       error = "X",
@@ -654,6 +661,7 @@ Diagnostic icons ~
                                                 *agentic-status-icons*
 Status icons ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     status_icons = {
       pending = "...",
@@ -667,6 +675,7 @@ Status icons ~
                                             *agentic-permission-icons*
 Permission icons ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     permission_icons = {
       allow_once = "y",
@@ -680,6 +689,7 @@ Permission icons ~
                                                   *agentic-chat-icons*
 Chat icons ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     chat_icons = {
       user = " ",
@@ -691,6 +701,7 @@ Chat icons ~
                                                *agentic-message-icons*
 Message icons ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     message_icons = {
       thinking = "...",
@@ -704,6 +715,7 @@ Message icons ~
                                               *agentic-spinner-chars*
 Spinner characters ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     spinner_chars = {
       generating = { ".", "..", "..." },
@@ -717,6 +729,7 @@ Spinner characters ~
                                                *agentic-auto-scroll*
 Auto scroll ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     auto_scroll = {
       threshold = 10,  -- Lines from bottom to trigger
@@ -727,6 +740,7 @@ Auto scroll ~
                                                 *agentic-file-picker-config*
 File picker ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     file_picker = {
       enabled = true,  -- Enable @ file completion
@@ -737,6 +751,7 @@ File picker ~
                                                 *agentic-image-paste*
 Image paste ~
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     image_paste = {
       enabled = true,  -- Enable drag-and-drop
@@ -875,6 +890,7 @@ DEBUG                                                    *agentic-debug*
 
 Enable debug logging:
 >lua
+  --- @type agentic.PartialUserConfig
   opts = {
     debug = true,
   }

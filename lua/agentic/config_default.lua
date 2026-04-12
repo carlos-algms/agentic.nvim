@@ -105,6 +105,7 @@
 --- @class agentic.UserConfig.StatusIcons
 --- @field pending string
 --- @field in_progress string
+--- @field completed string
 --- @field failed string
 
 --- Icons used for diagnostics in the context panel
@@ -155,26 +156,52 @@
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
 
---- All the user config configurable options are optional
---- @class agentic.PartialUserConfig
---- @field debug? boolean Enable printing debug messages which can be read via `:messages`
---- @field provider? agentic.UserConfig.ProviderName
---- @field acp_providers? table<agentic.UserConfig.ProviderName, agentic.acp.ACPProviderConfig|nil>
---- @field windows? agentic.UserConfig.Windows
---- @field keymaps? agentic.UserConfig.Keymaps
---- @field spinner_chars? agentic.UserConfig.SpinnerChars
---- @field status_icons? agentic.UserConfig.StatusIcons
---- @field diagnostic_icons? agentic.UserConfig.DiagnosticIcons
---- @field permission_icons? agentic.UserConfig.PermissionIcons
---- @field chat_icons? agentic.UserConfig.ChatIcons
---- @field message_icons? agentic.UserConfig.MessageIcons
---- @field file_picker? agentic.UserConfig.FilePicker
---- @field image_paste? agentic.UserConfig.ImagePaste
---- @field auto_scroll? agentic.UserConfig.AutoScroll
---- @field diff_preview? agentic.UserConfig.DiffPreview
---- @field hooks? agentic.UserConfig.Hooks
---- @field headers? agentic.UserConfig.Headers
---- @field settings? agentic.UserConfig.Settings
+--- Nested partial types for user config overrides
+--- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
+--- @class (partial) agentic.PartialUserConfig.Windows.Input: agentic.UserConfig.Windows.Input
+--- @class (partial) agentic.PartialUserConfig.Windows.Code: agentic.UserConfig.Windows.Code
+--- @class (partial) agentic.PartialUserConfig.Windows.Files: agentic.UserConfig.Windows.Files
+--- @class (partial) agentic.PartialUserConfig.Windows.Diagnostics: agentic.UserConfig.Windows.Diagnostics
+--- @class (partial) agentic.PartialUserConfig.Windows.Todos: agentic.UserConfig.Windows.Todos
+--- @class (partial) agentic.PartialUserConfig.Keymaps: agentic.UserConfig.Keymaps
+--- @class (partial) agentic.PartialUserConfig.SpinnerChars: agentic.UserConfig.SpinnerChars
+--- @class (partial) agentic.PartialUserConfig.StatusIcons: agentic.UserConfig.StatusIcons
+--- @class (partial) agentic.PartialUserConfig.DiagnosticIcons: agentic.UserConfig.DiagnosticIcons
+--- @class (partial) agentic.PartialUserConfig.PermissionIcons: agentic.UserConfig.PermissionIcons
+--- @class (partial) agentic.PartialUserConfig.ChatIcons: agentic.UserConfig.ChatIcons
+--- @class (partial) agentic.PartialUserConfig.MessageIcons: agentic.UserConfig.MessageIcons
+--- @class (partial) agentic.PartialUserConfig.FilePicker: agentic.UserConfig.FilePicker
+--- @class (partial) agentic.PartialUserConfig.ImagePaste: agentic.UserConfig.ImagePaste
+--- @class (partial) agentic.PartialUserConfig.AutoScroll: agentic.UserConfig.AutoScroll
+--- @class (partial) agentic.PartialUserConfig.DiffPreview: agentic.UserConfig.DiffPreview
+--- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
+
+--- Windows partial with nested type overrides
+--- @class (partial) agentic.PartialUserConfig.Windows: agentic.UserConfig.Windows
+--- @field chat? agentic.PartialUserConfig.Windows.Chat
+--- @field input? agentic.PartialUserConfig.Windows.Input
+--- @field code? agentic.PartialUserConfig.Windows.Code
+--- @field files? agentic.PartialUserConfig.Windows.Files
+--- @field diagnostics? agentic.PartialUserConfig.Windows.Diagnostics
+--- @field todos? agentic.PartialUserConfig.Windows.Todos
+
+--- Top-level partial config -- all UserConfig fields become optional
+--- Nested fields override to use partial variants
+--- @class (partial) agentic.PartialUserConfig: agentic.UserConfig
+--- @field windows? agentic.PartialUserConfig.Windows
+--- @field keymaps? agentic.PartialUserConfig.Keymaps
+--- @field spinner_chars? agentic.PartialUserConfig.SpinnerChars
+--- @field status_icons? agentic.PartialUserConfig.StatusIcons
+--- @field diagnostic_icons? agentic.PartialUserConfig.DiagnosticIcons
+--- @field permission_icons? agentic.PartialUserConfig.PermissionIcons
+--- @field chat_icons? agentic.PartialUserConfig.ChatIcons
+--- @field message_icons? agentic.PartialUserConfig.MessageIcons
+--- @field file_picker? agentic.PartialUserConfig.FilePicker
+--- @field image_paste? agentic.PartialUserConfig.ImagePaste
+--- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
+--- @field diff_preview? agentic.PartialUserConfig.DiffPreview
+--- @field settings? agentic.PartialUserConfig.Settings
+
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
 --- @field provider agentic.UserConfig.ProviderName
