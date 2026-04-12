@@ -41,6 +41,7 @@ agentic-keymaps-customizing	agentic.txt	/*agentic-keymaps-customizing*
 agentic-lualine	agentic.txt	/*agentic-lualine*
 agentic-message-icons	agentic.txt	/*agentic-message-icons*
 agentic-nvim-cmp	agentic.txt	/*agentic-nvim-cmp*
+agentic-permission-approval	agentic.txt	/*agentic-permission-approval*
 agentic-permission-icons	agentic.txt	/*agentic-permission-icons*
 agentic-render-markdown	agentic.txt	/*agentic-render-markdown*
 agentic-requirements	agentic.txt	/*agentic-requirements*

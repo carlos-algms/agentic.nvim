@@ -62,10 +62,14 @@ Supported providers:
 REQUIREMENTS                                      *agentic-requirements*
 
 - Neovim v0.11.0 or higher
-- An ACP provider CLI installed globally
+- An ACP provider CLI (must be in PATH or an absolute path)
 
 For security reasons, this plugin does not install or manage binaries.
-You must install the CLI for your chosen provider manually.
+You must install the CLI for your chosen provider manually. Global
+install is recommended (especially with `pnpm`, which uses a stable
+global path), but any method that puts the binary in PATH works.
+
+Pin your versions! See the security note below each provider.
 
 Provider install commands (always check official docs):
 
@@ -173,6 +177,28 @@ Using lazy.nvim: ~
         mode = { "n", "v", "i" },
         desc = "New Agentic Session",
       },
+      {
+        "<A-i>r",
+        function() require("agentic").restore_session() end,
+        desc = "Agentic Restore session",
+        mode = { "n", "v", "i" },
+      },
+      {
+        "<leader>ad",
+        function()
+          require("agentic").add_current_line_diagnostics()
+        end,
+        desc = "Add current line diagnostic to Agentic",
+        mode = { "n" },
+      },
+      {
+        "<leader>aD",
+        function()
+          require("agentic").add_buffer_diagnostics()
+        end,
+        desc = "Add all buffer diagnostics to Agentic",
+        mode = { "n" },
+      },
     },
   }
 <
@@ -203,10 +229,19 @@ acp_providers ~
   Each entry supports: `name`, `command`, `args`, `env`,
   `default_mode`, `initial_model`.
 
+  `default_mode`   Start every session in this mode (e.g.,
+                   `"bypassPermissions"`). Use <S-Tab> in the
+                   chat widget to see modes your provider offers.
+  `initial_model`  Override the provider's default model (e.g.,
+                   `"haiku"`). Use <localLeader>m in the chat
+                   widget to see available models.
+
 >lua
   opts = {
     acp_providers = {
       ["claude-agent-acp"] = {
+        default_mode = "bypassPermissions",
+        initial_model = "haiku",
         env = {
           ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
         },
@@ -274,7 +309,7 @@ headers ~
         title = "My Chat",
         suffix = "",
       },
-      prompt = function(parts)
+      input = function(parts)
         return parts.title .. " | custom"
       end,
     },
@@ -414,13 +449,14 @@ KEYMAPS                                                *agentic-keymaps*
 These keybindings are automatically set in Agentic buffers:
 
   Key                    Mode    Description ~
-  <S-Tab>                n/v/i   Switch agent mode
+  <S-Tab>                n/v/i   Switch agent mode (if supported)
   <CR>                   n       Submit prompt
   <C-s>                  n/v/i   Submit prompt
+  <Tab>                  i       Accept file completion
   <localLeader>p         n       Paste image from clipboard
   <C-v>                  i       Paste image from clipboard
-  <localLeader>s         n       Switch ACP provider
-  <localLeader>m         n       Switch model
+  <localLeader>s         n       Switch ACP provider (keeps history)
+  <localLeader>m         n       Switch model (keeps history)
   q                      n       Close chat widget
   d                      n/v     Remove file/selection/diagnostic
   ]c                     n       Next diff hunk
@@ -449,6 +485,9 @@ Override default keybindings via the `keymaps` config option:
         paste_image = {
           { "<localLeader>p", mode = { "n" } },
           { "<C-v>", mode = { "i" } },
+        },
+        accept_completion = {
+          { "<Tab>", mode = { "i" } },
         },
       },
       diff_preview = {
@@ -492,6 +531,13 @@ Navigation: use `]c` / `[c` to move between hunks (configurable
 via |agentic-keymaps-customizing|).
 
 Note: changing layout requires restarting Neovim.
+
+                                       *agentic-permission-approval*
+Permission approval ~
+
+When a tool call requires permission, the chat buffer shows approval
+buttons. Press the corresponding number key for quick responses:
+  1 = allow once, 2 = allow always, 3 = reject once, 4 = reject always.
 
 ==============================================================================
 FEATURES                                              *agentic-features*
@@ -796,9 +842,22 @@ Disable blink.cmp in the prompt buffer:
 nvim-cmp ~
 
 Disable nvim-cmp in the prompt buffer:
+
+Option 1 -- filetype-specific: ~
 >lua
   require("cmp").setup.filetype("AgenticInput", {
     sources = {},
+  })
+<
+
+Option 2 -- global enabled function: ~
+>lua
+  require("cmp").setup({
+    enabled = function()
+      return not vim.tbl_contains(
+        { "AgenticInput" }, vim.bo.filetype
+      )
+    end,
   })
 <
 
