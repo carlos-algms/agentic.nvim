@@ -213,3 +213,105 @@ describe("BufferGuard", function()
         end)
     end)
 end)
+
+-- Child process tests for cursor-follow behavior.
+-- vim.schedule callbacks require event loop processing that
+-- can't be safely done in same-process mini.test (vim.wait
+-- escapes pcall, causing silent test skips). Child process
+-- tests use RPC round-trips to flush the event loop.
+local Child = require("tests.helpers.child")
+
+describe("BufferGuard cursor follow (child)", function()
+    local child = Child.new()
+
+    --- Set up widget layout in child: editor_win | chat_win.
+    --- Attaches BufferGuard and focuses the chat window.
+    --- @return integer editor_win
+    --- @return integer chat_win
+    local function setup_widget_in_child()
+        local editor_win = child.api.nvim_get_current_win()
+
+        local chat_buf = child.api.nvim_create_buf(false, true)
+        child.bo[chat_buf].buftype = "nofile"
+
+        local chat_win = child.api.nvim_open_win(chat_buf, true, {
+            split = "right",
+            win = -1,
+        })
+
+        -- vim.w[winid] assignment and BG.attach (which needs a
+        -- callback function) can't cross the RPC boundary.
+        child.lua(
+            [[
+            local BG = require("agentic.ui.buffer_guard")
+            local editor_win, chat_win, chat_buf = ...
+
+            vim.w[chat_win].agentic_bufnr = chat_buf
+
+            BG.attach({
+                tab_page_id = vim.api.nvim_get_current_tabpage(),
+                find_target_window = function()
+                    if vim.api.nvim_win_is_valid(editor_win) then
+                        return editor_win
+                    end
+                end,
+            })
+        ]],
+            { editor_win, chat_win, chat_buf }
+        )
+
+        child.api.nvim_set_current_win(chat_win)
+
+        return editor_win, chat_win
+    end
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it("moves cursor to editor window after foreign buffer redirect", function()
+        local editor_win, chat_win = setup_widget_in_child()
+
+        -- Force a foreign buffer into the widget window
+        local foreign = child.api.nvim_create_buf(true, false)
+        child.api.nvim_win_set_buf(chat_win, foreign)
+
+        -- Flush scheduled cursor-follow callback
+        child.flush()
+        vim.uv.sleep(50)
+
+        -- Cursor should have followed the foreign buffer
+        assert.equal(editor_win, child.api.nvim_get_current_win())
+
+        -- Editor window should have the foreign buffer
+        assert.equal(foreign, child.api.nvim_win_get_buf(editor_win))
+    end)
+
+    it("moves cursor to editor window after :edit in widget window", function()
+        local tmpfile = vim.fn.tempname() .. ".lua"
+        vim.fn.writefile({ "-- test" }, tmpfile)
+
+        local editor_win = setup_widget_in_child()
+
+        -- :edit a file while in the widget window
+        child.cmd("edit " .. child.fn.fnameescape(tmpfile))
+
+        -- Flush scheduled cursor-follow callback
+        child.flush()
+        vim.uv.sleep(50)
+
+        -- Cursor should be in the editor window
+        assert.equal(editor_win, child.api.nvim_get_current_win())
+
+        -- Editor window should display the file
+        local editor_buf = child.api.nvim_win_get_buf(editor_win)
+        local editor_name = child.api.nvim_buf_get_name(editor_buf)
+        assert.equal(vim.fn.resolve(tmpfile), editor_name)
+
+        os.remove(tmpfile)
+    end)
+end)

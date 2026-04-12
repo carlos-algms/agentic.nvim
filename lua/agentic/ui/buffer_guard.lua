@@ -9,6 +9,9 @@ local BufferGuard = {}
 --- @field find_target_window fun(): integer|nil
 
 --- Redirect a foreign buffer out of a widget window.
+--- The cursor follows the buffer to the target window via
+--- vim.schedule — setting current_win inside BufEnter doesn't
+--- stick because Neovim resets the window after the autocmd.
 --- @param foreign_buf integer
 --- @param find_target_window fun(): integer|nil
 local function redirect_foreign(foreign_buf, find_target_window)
@@ -23,10 +26,15 @@ local function redirect_foreign(foreign_buf, find_target_window)
     end
 
     pcall(vim.api.nvim_win_set_buf, target_win, foreign_buf)
-    -- Don't change focus via nvim_set_current_win here — the caller
-    -- (on_buf_enter) runs synchronously during BufEnter, and we want
-    -- the widget window to stay focused until the user explicitly
-    -- navigates away. The redirect just places the buffer.
+
+    -- Move cursor to follow the redirected buffer. Deferred via
+    -- vim.schedule because Neovim resets current_win after
+    -- BufEnter autocmd handlers complete.
+    vim.schedule(function()
+        if vim.api.nvim_win_is_valid(target_win) then
+            pcall(vim.api.nvim_set_current_win, target_win)
+        end
+    end)
 end
 
 --- Core handler: called on BufEnter for every buffer.

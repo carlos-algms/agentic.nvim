@@ -587,6 +587,20 @@ local filetypes = child.lua([[
 
 - Cannot use functions or userdata for child's inputs/outputs
 - Move computations into child process rather than passing complex types
+- **`child.w[winid]` assignment silently fails** — setting window-local variables
+  via integer-keyed `child.w` doesn't work across the RPC boundary (reads back as
+  `vim.NIL`). Use `child.lua` instead:
+
+  ```lua
+  -- ❌ WRONG: Silently fails, value is vim.NIL in child
+  child.w[chat_win].agentic_bufnr = chat_buf
+
+  -- ✅ CORRECT: Set via child.lua
+  child.lua([[
+      local win, buf = ...
+      vim.w[win].my_var = buf
+  ]], { chat_win, chat_buf })
+  ```
 
 #### Waiting for Async Operations in Child Process
 
@@ -638,22 +652,56 @@ Reference:
 
 #### Same-process async pattern
 
-```lua
--- ❌ WRONG: Assertion inside vim.schedule is silently ignored
-it('breaks silently', function()
-  vim.schedule(function()
-    assert.equal('expected', some_result)  -- NEVER runs in pcall
-  end)
-end)
+**🚨 CRITICAL: `vim.uv.sleep()` does NOT flush `vim.schedule` in
+same-process tests**
 
--- ✅ CORRECT: Store result, sleep, assert synchronously
-it('tests async code', function()
+`vim.uv.sleep()` is a blocking sleep that does NOT process the Neovim
+event loop. `vim.schedule` callbacks only run when the main loop
+iterates, which doesn't happen during synchronous Lua execution.
+
+**🚨 CRITICAL: `vim.wait()` in same-process `it()` causes silent
+test skipping**
+
+`vim.wait()` processes the event loop (so `vim.schedule` callbacks
+DO execute), but this can escape mini.test's `pcall` wrapper. The
+test silently disappears — no dot, no failure, no error. The dot
+count will be lower than the `it()` count.
+
+**Rule:** If you need to test code that uses `vim.schedule`, use a
+**child process test** where `child.flush()` + `vim.uv.sleep()` in
+the parent safely flushes the child's event loop via RPC.
+
+```lua
+-- ❌ WRONG: vim.uv.sleep does NOT flush vim.schedule
+it('broken - callback never runs', function()
   local result = nil
   vim.schedule(function()
-    result = some_async_operation()
+    result = 'done'
   end)
-  vim.uv.sleep(10)  -- let scheduled callback execute
-  assert.equal('expected', result)
+  vim.uv.sleep(10)  -- blocks, does NOT process event loop
+  assert.equal('done', result)  -- FAILS: result is still nil
+end)
+
+-- ❌ WRONG: vim.wait flushes events but causes silent test skipping
+it('broken - test silently disappears', function()
+  local result = nil
+  vim.schedule(function()
+    result = 'done'
+  end)
+  vim.wait(100, function() return result ~= nil end)
+  assert.equal('done', result)  -- may pass, but test dot is missing
+end)
+
+-- ✅ CORRECT: Use child process for vim.schedule testing
+it('tests async in child', function()
+  child.lua([[
+    vim.schedule(function()
+      vim.g.test_result = 'done'
+    end)
+  ]])
+  child.flush()
+  vim.uv.sleep(50)
+  assert.equal('done', child.g.test_result)
 end)
 ```
 
