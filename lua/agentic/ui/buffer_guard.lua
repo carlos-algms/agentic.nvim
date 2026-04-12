@@ -10,20 +10,23 @@ local BufferGuard = {}
 
 --- Redirect a foreign buffer out of a widget window.
 --- @param foreign_buf integer
---- @param cb agentic.ui.BufferGuard.Callbacks
-local function redirect_foreign(foreign_buf, cb)
+--- @param find_target_window fun(): integer|nil
+local function redirect_foreign(foreign_buf, find_target_window)
     if not vim.api.nvim_buf_is_valid(foreign_buf) then
         return
     end
 
-    local target_win = cb.find_target_window()
+    local target_win = find_target_window()
     if not target_win then
         Logger.debug("BufferGuard: no target window for redirect")
         return
     end
 
     pcall(vim.api.nvim_win_set_buf, target_win, foreign_buf)
-    pcall(vim.api.nvim_set_current_win, target_win)
+    -- Don't change focus via nvim_set_current_win here — the caller
+    -- (on_buf_enter) runs synchronously during BufEnter, and we want
+    -- the widget window to stay focused until the user explicitly
+    -- navigates away. The redirect just places the buffer.
 end
 
 --- Core handler: called on BufEnter for every buffer.
@@ -51,7 +54,7 @@ local function on_buf_enter(cb)
         -- A completely different buffer entered the widget window.
         -- Restore the widget buffer immediately and redirect.
         vim.api.nvim_win_set_buf(cur_win, expected)
-        redirect_foreign(cur_buf, cb)
+        redirect_foreign(cur_buf, cb.find_target_window)
         return
     end
 
@@ -73,7 +76,7 @@ local function on_buf_enter(cb)
         vim.api.nvim_win_set_buf(cur_win, new_buf)
         vim.w[cur_win].agentic_bufnr = new_buf
         -- Redirect the (now-named) repurposed buffer to the editor
-        redirect_foreign(cur_buf, cb)
+        redirect_foreign(cur_buf, cb.find_target_window)
     end
 end
 
