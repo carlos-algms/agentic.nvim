@@ -463,3 +463,368 @@ Keymap configuration formats:
   - String: `close = "q"` (normal mode by default)
   - Array: `submit = { "<CR>", "<C-s>" }` (multiple bindings)
   - Table with mode: `{ "<C-s>", mode = { "i", "v" } }`
+
+==============================================================================
+DIFF PREVIEW                                      *agentic-diff-preview*
+
+When the agent makes file edits, agentic.nvim shows a preview of the
+changes before you accept or reject them.
+
+                                        *agentic-config-diff-preview*
+Configuration: ~
+>lua
+  opts = {
+    diff_preview = {
+      enabled = true,
+      layout = "split",  -- "split" or "inline"
+      center_on_navigate_hunks = true,
+    },
+  }
+<
+
+  `enabled`                    Enable diff preview. Default: `true`.
+  `layout`                     `"split"` (side-by-side) or `"inline"`
+                               (unified). Default: `"split"`.
+  `center_on_navigate_hunks`   Center view on hunk navigation.
+                               Default: `true`.
+
+Navigation: use `]c` / `[c` to move between hunks (configurable
+via |agentic-keymaps-customizing|).
+
+Note: changing layout requires restarting Neovim.
+
+==============================================================================
+FEATURES                                              *agentic-features*
+
+Slash commands ~
+                                                *agentic-slash-commands*
+Type `/` in the prompt buffer to see available slash commands with
+auto-completion. The `/new` command is always available. Other
+commands are provided by your ACP provider.
+
+File picker ~
+                                                  *agentic-file-picker*
+Type `@` in the prompt to trigger native Neovim completion with
+workspace files. Reference multiple files: `@file1.lua @file2.lua`.
+Uses `rg`, `fd`, `git ls-files`, or Lua globs as fallback.
+
+Image and screenshot support ~
+                                                     *agentic-images*
+Drag-and-drop images into the prompt buffer or paste from clipboard.
+Drag-and-drop works with any terminal that supports it. Clipboard
+paste requires |img-clip.nvim|:
+>lua
+  {
+    "carlos-algms/agentic.nvim",
+    dependencies = {
+      { "hakonharnes/img-clip.nvim", opts = {} },
+    },
+  }
+<
+On Linux, img-clip.nvim requires `xclip` (X11) or `wl-clipboard`
+(Wayland). On macOS, `pngpaste`. Windows needs no extra deps.
+
+Session restoration ~
+                                            *agentic-session-restore*
+Sessions are interchangeable between Neovim and the terminal. Call
+|agentic.restore_session()| to see previous sessions from your
+provider. If the current tab has an active conversation, you will be
+prompted to cancel or clear and restore.
+
+System information ~
+                                             *agentic-system-context*
+The first message of each session automatically includes platform
+info, shell/Neovim version, date, git status, and project root.
+This reduces time to first response by providing immediate context.
+
+Event hooks ~
+                                                     *agentic-hooks*
+>lua
+  opts = {
+    hooks = {
+      on_prompt_submit = function(data)
+        -- data.prompt: string
+        -- data.session_id: string
+        -- data.tab_page_id: number
+      end,
+      on_response_complete = function(data)
+        -- data.session_id: string
+        -- data.tab_page_id: number
+        -- data.success: boolean
+        -- data.error: table|nil
+      end,
+      on_session_update = function(data)
+        -- data.session_id: string
+        -- data.tab_page_id: number
+        -- data.update: table
+      end,
+    },
+  }
+<
+
+==============================================================================
+CUSTOMIZATION                                    *agentic-customization*
+
+                                                *agentic-highlight-groups*
+Highlight groups ~
+
+Agentic.nvim defines custom highlight groups you can override to
+match your colorscheme. If a group already exists when the plugin
+loads, that definition is preserved.
+
+  Group                    Purpose                    Default ~
+  `AgenticDiffDelete`        Deleted lines in diff      Links to DiffDelete
+  `AgenticDiffAdd`           Added lines in diff        Links to DiffAdd
+  `AgenticDiffDeleteWord`    Word-level deletions       bg=#9a3c3c bold
+  `AgenticDiffAddWord`       Word-level additions       bg=#155729 bold
+  `AgenticStatusPending`     Pending tool call status   bg=#5f4d8f
+  `AgenticStatusCompleted`   Completed tool status      bg=#2d5a3d
+  `AgenticStatusFailed`      Failed tool status         bg=#7a2d2d
+  `AgenticCodeBlockFence`    Tool call left border      Links to Directory
+  `AgenticTitle`             Window titles              bg=#2787b0 fg=#000000
+  `AgenticThinking`          Thinking block text        Links to Comment
+
+Spinner highlight groups (not user-overridable in config, but
+can be set via |nvim_set_hl()|):
+
+  `AgenticSpinnerGenerating`   Generating animation   fg=#61afef bold
+  `AgenticSpinnerThinking`     Thinking animation     fg=#c678dd bold
+  `AgenticSpinnerSearching`    Searching animation    fg=#e5c07b bold
+  `AgenticSpinnerBusy`         Busy animation         Links to Comment
+
+                                              *agentic-diagnostic-icons*
+Diagnostic icons ~
+>lua
+  opts = {
+    diagnostic_icons = {
+      error = "X",
+      warn = "!",
+      info = "i",
+      hint = "*",
+    },
+  }
+<
+
+                                                *agentic-status-icons*
+Status icons ~
+>lua
+  opts = {
+    status_icons = {
+      pending = "...",
+      in_progress = "...",
+      completed = "ok",
+      failed = "!",
+    },
+  }
+<
+
+                                            *agentic-permission-icons*
+Permission icons ~
+>lua
+  opts = {
+    permission_icons = {
+      allow_once = "y",
+      allow_always = "Y",
+      reject_once = "n",
+      reject_always = "N",
+    },
+  }
+<
+
+                                                  *agentic-chat-icons*
+Chat icons ~
+>lua
+  opts = {
+    chat_icons = {
+      user = " ",
+      agent = "A ",
+    },
+  }
+<
+
+                                               *agentic-message-icons*
+Message icons ~
+>lua
+  opts = {
+    message_icons = {
+      thinking = "...",
+      finished = "ok",
+      stopped = "X",
+      error = "!",
+    },
+  }
+<
+
+                                              *agentic-spinner-chars*
+Spinner characters ~
+>lua
+  opts = {
+    spinner_chars = {
+      generating = { ".", "..", "..." },
+      thinking = { "?" },
+      searching = { "/" },
+      busy = { "-" },
+    },
+  }
+<
+
+                                               *agentic-auto-scroll*
+Auto scroll ~
+>lua
+  opts = {
+    auto_scroll = {
+      threshold = 10,  -- Lines from bottom to trigger
+    },
+  }
+<
+
+                                                *agentic-file-picker-config*
+File picker ~
+>lua
+  opts = {
+    file_picker = {
+      enabled = true,  -- Enable @ file completion
+    },
+  }
+<
+
+                                                *agentic-image-paste*
+Image paste ~
+>lua
+  opts = {
+    image_paste = {
+      enabled = true,  -- Enable drag-and-drop
+    },
+  }
+<
+
+==============================================================================
+INTEGRATIONS                                      *agentic-integrations*
+
+Agentic defines these buffer filetypes:
+
+  `AgenticChat`          Main chat display (markdown + treesitter)
+  `AgenticInput`         Prompt input
+  `AgenticCode`          Code block display
+  `AgenticFiles`         File list
+  `AgenticDiagnostics`   Diagnostics display
+  `AgenticTodos`         Todos display
+
+                                              *agentic-copilot*
+Copilot ~
+
+To get Copilot suggestions in the prompt buffer:
+
+copilot.vim: ~
+>lua
+  {
+    "github/copilot.vim",
+    init = function()
+      vim.g.copilot_filetypes = {
+        AgenticInput = true,
+      }
+    end,
+  }
+<
+
+copilot.lua: ~
+>lua
+  {
+    "zbirenbaum/copilot.lua",
+    opts = {
+      should_attach = function(bufnr, bufname)
+        if vim.bo[bufnr].filetype == "AgenticInput" then
+          return true
+        end
+        local default =
+          require("copilot.config.should_attach").default
+        return default(bufnr, bufname)
+      end,
+    },
+  }
+<
+
+                                              *agentic-lualine*
+Lualine ~
+
+Disable lualine in Agentic windows to prevent conflicts:
+>lua
+  require("lualine").setup({
+    options = {
+      disabled_filetypes = {
+        statusline = {
+          "AgenticChat", "AgenticInput", "AgenticCode",
+          "AgenticFiles", "AgenticDiagnostics",
+        },
+        winbar = {
+          "AgenticChat", "AgenticInput", "AgenticCode",
+          "AgenticFiles", "AgenticDiagnostics",
+        },
+      },
+    },
+  })
+<
+
+                                          *agentic-render-markdown*
+render-markdown.nvim ~
+
+Add `AgenticChat` to the file types:
+>lua
+  {
+    "MeanderingProgrammer/render-markdown.nvim",
+    opts = {
+      file_types = { "markdown", "md", "AgenticChat" },
+    },
+  }
+<
+
+                                              *agentic-blink-cmp*
+blink.cmp ~
+
+Disable blink.cmp in the prompt buffer:
+>lua
+  require("blink.cmp").setup({
+    enabled = function()
+      return not vim.tbl_contains(
+        { "AgenticInput" }, vim.bo.filetype
+      )
+    end,
+  })
+<
+
+                                              *agentic-nvim-cmp*
+nvim-cmp ~
+
+Disable nvim-cmp in the prompt buffer:
+>lua
+  require("cmp").setup.filetype("AgenticInput", {
+    sources = {},
+  })
+<
+
+==============================================================================
+HEALTH CHECK                                      *agentic-health-check*
+
+Run `:checkhealth agentic` to verify:
+  - Neovim version (>= 0.11.0 required)
+  - Current ACP provider installation
+  - Optional ACP providers availability
+  - Node.js and package managers
+
+==============================================================================
+DEBUG                                                    *agentic-debug*
+
+Enable debug logging:
+>lua
+  opts = {
+    debug = true,
+  }
+<
+
+View debug output with `:messages` (lost after restart).
+
+Persistent ACP message log:
+  `~/.cache/nvim/agentic_debug.log`
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:
