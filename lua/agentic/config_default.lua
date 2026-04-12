@@ -54,7 +54,7 @@
 --- @field diff_preview table<string, string>
 
 --- Window options passed to nvim_set_option_value
---- Overrides default options (wrap, linebreak, winfixbuf, winfixheight)
+--- Overrides default options (wrap, linebreak, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
 --- @class agentic.UserConfig.Windows.Chat

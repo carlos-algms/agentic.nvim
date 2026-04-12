@@ -59,16 +59,19 @@ local function on_buf_enter(cb)
     end
 
     -- Same buffer ID, but check if the widget buffer was repurposed:
-    -- :edit on a nofile buffer loads the file into the same buffer
-    -- (same ID, now with a file name). Detect this and handle it.
-    -- Window-local options (wrap, number, cursorline, etc.)
+    -- A regular (non-nofile) widget buffer can have a file loaded into
+    -- it via :edit (same buffer ID, now with a file path).
+    -- nofile buffers are exempt: they legitimately hold display names
+    -- set via nvim_buf_set_name (e.g. "󰦨 Prompt") without being
+    -- repurposed. Window-local options (wrap, number, cursorline, etc.)
     -- belong to the window, not the buffer — verified via
     -- :h local-options and headless testing. A buffer briefly
     -- displayed in a widget window does NOT carry widget
     -- window options when moved to another window. So we
     -- simply move the buffer as-is.
     local buf_name = vim.api.nvim_buf_get_name(cur_buf)
-    if buf_name ~= "" then
+    local buftype = vim.bo[cur_buf].buftype
+    if buf_name ~= "" and buftype ~= "nofile" then
         -- Widget buffer was repurposed with a file. Create a fresh
         -- scratch buffer to keep the widget window intact.
         local new_buf = vim.api.nvim_create_buf(false, true)

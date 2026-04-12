@@ -1,5 +1,6 @@
 local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local BufferGuard = require("agentic.ui.buffer_guard")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
@@ -38,6 +39,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field current_position agentic.UserConfig.Windows.Position
 --- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
+--- @field _guard_augroup? integer BufferGuard autocmd group ID
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -148,7 +150,7 @@ function ChatWidget:hide()
 
         if not fallback_winid then
             -- Fallback: create a new left window to avoid closing the last window error
-            local created_winid = self:open_left_window()
+            local created_winid = self:open_editor_window()
             if not created_winid then
                 Logger.notify(
                     "Failed to create fallback window; cannot hide widget safely, run `:tabclose` to close the tab instead.",
@@ -184,6 +186,11 @@ end
 --- Deletes all buffers and removes them from memory
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
+    if self._guard_augroup then
+        BufferGuard.detach(self._guard_augroup)
+        self._guard_augroup = nil
+    end
+
     self:hide()
 
     for name, bufnr in pairs(self.buf_nrs) do
@@ -269,18 +276,13 @@ function ChatWidget:_initialize()
 
     self:_bind_keymaps()
 
-    -- I only want to trigger a full close of the chat widget when closing the chat or the input buffers, the others are auxiliary
-    for _, bufnr in ipairs({
-        self.buf_nrs.chat,
-        self.buf_nrs.input,
-    }) do
-        vim.api.nvim_create_autocmd("BufWinLeave", {
-            buffer = bufnr,
-            callback = function()
-                self:hide()
-            end,
-        })
-    end
+    self._guard_augroup = BufferGuard.attach({
+        tab_page_id = self.tab_page_id,
+        find_target_window = function()
+            return self:find_first_non_widget_window()
+                or self:open_editor_window()
+        end,
+    })
 end
 
 function ChatWidget:_bind_keymaps()
@@ -569,10 +571,14 @@ function ChatWidget:find_first_non_widget_window()
 
     for _, winid in ipairs(all_windows) do
         if not widget_win_ids[winid] then
-            local bufnr = vim.api.nvim_win_get_buf(winid)
-            local ft = vim.bo[bufnr].filetype
-            if not EXCLUDED_FILETYPES[ft] then
-                return winid
+            -- Skip floating windows (pickers, popups, etc.)
+            local win_config = vim.api.nvim_win_get_config(winid)
+            if win_config.relative == "" then
+                local bufnr = vim.api.nvim_win_get_buf(winid)
+                local ft = vim.bo[bufnr].filetype
+                if not EXCLUDED_FILETYPES[ft] then
+                    return winid
+                end
             end
         end
     end
@@ -592,32 +598,17 @@ function ChatWidget:_is_widget_buffer(bufnr)
     return false
 end
 
---- Opens a new window on the left side with full height
+--- Opens a new editor window on the opposite side of the widget.
+--- Position-aware: respects the current layout position.
 --- @param bufnr number|nil The buffer to display in the new window
---- @return number|nil winid The newly created window ID or nil on failure
-function ChatWidget:open_left_window(bufnr)
+--- @return number|nil winid The newly created window ID or nil
+function ChatWidget:open_editor_window(bufnr)
     if bufnr == nil then
-        -- Try alternate buffer first, but skip if it's a widget buffer or excluded filetype
-        local alt_bufnr = vim.fn.bufnr("#")
-        if
-            alt_bufnr ~= -1
-            and vim.api.nvim_buf_is_valid(alt_bufnr)
-            and not self:_is_widget_buffer(alt_bufnr)
-        then
-            local ft = vim.bo[alt_bufnr].filetype
-            if not EXCLUDED_FILETYPES[ft] then
-                bufnr = alt_bufnr
-            end
-        end
-    end
-
-    if bufnr == nil then
-        -- Fall back to first oldfile that exists in current directory
+        -- Try first oldfile under current directory
         local oldfiles = vim.v.oldfiles
         local cwd = vim.fn.getcwd()
         if oldfiles and #oldfiles > 0 then
             for _, filepath in ipairs(oldfiles) do
-                -- Check if file exists and is under current working directory
                 if
                     vim.startswith(filepath, cwd)
                     and vim.fn.filereadable(filepath) == 1
@@ -633,23 +624,35 @@ function ChatWidget:open_left_window(bufnr)
         end
     end
 
-    -- Last resort: create new scratch buffer
+    -- Fallback: create new scratch buffer — safer than using
+    -- alternate buffer (#) which could be a widget buffer
     if bufnr == nil then
         bufnr = vim.api.nvim_create_buf(false, true)
     end
 
-    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, true, {
-        split = "left",
-        win = -1,
-    })
+    -- Position-aware split using topleft/botright vim commands.
+    -- These always create full-width/full-height splits
+    -- regardless of which window is current.
+    local split_cmd
+    if self.current_position == "left" then
+        split_cmd = "botright vsplit"
+    elseif self.current_position == "bottom" then
+        split_cmd = "topleft split"
+    else
+        -- "right" or any unknown → full-height left
+        split_cmd = "topleft vsplit"
+    end
 
+    local ok = pcall(function()
+        vim.cmd(split_cmd)
+    end)
     if not ok then
-        Logger.notify(
-            "Failed to open window: " .. tostring(winid),
-            vim.log.levels.WARN
-        )
+        Logger.notify("Failed to create editor window", vim.log.levels.WARN)
         return nil
     end
+
+    local winid = vim.api.nvim_get_current_win()
+    pcall(vim.api.nvim_win_set_buf, winid, bufnr)
 
     return winid
 end

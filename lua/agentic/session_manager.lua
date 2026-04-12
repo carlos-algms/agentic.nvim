@@ -1098,7 +1098,7 @@ function SessionManager:_show_diff_in_buffer(tool_call_id)
         get_winid = function(bufnr)
             local winid = self.widget:find_first_non_widget_window()
             if not winid then
-                return self.widget:open_left_window(bufnr)
+                return self.widget:open_editor_window(bufnr)
             end
             local ok, err = pcall(vim.api.nvim_win_set_buf, winid, bufnr)
 

@@ -92,13 +92,15 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
 
     local winid = vim.api.nvim_open_win(bufnr, enter, config)
 
+    -- Mark this window so BufferGuard knows which buffer belongs here
+    vim.w[winid].agentic_bufnr = bufnr
+
     local window_config = Config.windows[window_name] or {}
     local config_win_opts = window_config.win_opts or {}
 
     local merged_win_opts = vim.tbl_deep_extend("force", {
         wrap = true,
         linebreak = true,
-        winfixbuf = true,
         winfixheight = true,
     }, win_opts or {}, config_win_opts)
 
