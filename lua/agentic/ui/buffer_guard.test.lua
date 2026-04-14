@@ -17,7 +17,7 @@ local function create_widget_setup()
     vim.bo[input_buf].buftype = "nofile"
     vim.bo[input_buf].filetype = "AgenticInput"
 
-    --- @type agentic.ui.ChatWidget.BufNrs
+    --- @type {chat: integer, input: integer}
     local buf_nrs = { chat = chat_buf, input = input_buf }
 
     -- Create widget windows
@@ -109,10 +109,6 @@ describe("BufferGuard", function()
 
         vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
 
-        -- The guard redirects synchronously; sleep is a
-        -- safety margin for any deferred work
-        vim.uv.sleep(50)
-
         -- Editor window should now display the file.
         -- Resolve symlinks before comparing (macOS: /var ->
         -- /private/var); nvim_buf_get_name returns the real path.
@@ -120,6 +116,11 @@ describe("BufferGuard", function()
         local editor_name = vim.api.nvim_buf_get_name(editor_buf)
         local resolved_tmpfile = vim.fn.resolve(tmpfile)
         assert.equal(resolved_tmpfile, editor_name)
+
+        -- Widget window should now hold a fresh replacement buffer
+        local buf_in_chat = vim.api.nvim_win_get_buf(s.wins.chat)
+        assert.are_not.equal(s.bufs.chat, buf_in_chat)
+        assert.equal(buf_in_chat, vim.w[s.wins.chat].agentic_bufnr)
 
         os.remove(tmpfile)
         s.cleanup()
@@ -175,9 +176,6 @@ describe("BufferGuard", function()
         -- Force a foreign buffer in
         local foreign = vim.api.nvim_create_buf(true, false)
         vim.api.nvim_win_set_buf(chat_win, foreign)
-
-        -- Let the scheduled redirect run
-        vim.uv.sleep(50)
 
         -- Widget buffer should be restored
         local buf_in_chat = vim.api.nvim_win_get_buf(chat_win)

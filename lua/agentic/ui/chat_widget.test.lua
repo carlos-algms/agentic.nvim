@@ -214,8 +214,6 @@ describe("agentic.ui.ChatWidget", function()
 
                     vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
 
-                    vim.uv.sleep(50)
-
                     -- Chat window does not contain the temp file
                     -- (guard either restored chat_buf or replaced it with a
                     -- fresh scratch buffer to keep the window clean)
@@ -243,9 +241,8 @@ describe("agentic.ui.ChatWidget", function()
                             end
                         end
                     end
-                    assert.is_true(found_in_non_widget)
-
                     os.remove(tmpfile)
+                    assert.is_true(found_in_non_widget)
                 end)
 
                 it(
@@ -258,15 +255,17 @@ describe("agentic.ui.ChatWidget", function()
                         local chat_buf = widget.buf_nrs.chat
                         local input_buf = widget.buf_nrs.input
 
-                        -- Set expected buffers in their windows (no-op / idempotent)
-                        vim.api.nvim_win_set_buf(chat_win, chat_buf)
-                        vim.api.nvim_win_set_buf(input_win, input_buf)
+                        -- Swap: put input_buf into chat_win (a widget buffer,
+                        -- but the WRONG one for this window).
+                        vim.api.nvim_set_current_win(chat_win)
+                        vim.api.nvim_win_set_buf(chat_win, input_buf)
 
-                        -- Assert no false-positive redirect
+                        -- Guard should have restored the correct buffer
                         assert.equal(
                             chat_buf,
                             vim.api.nvim_win_get_buf(chat_win)
                         )
+                        -- Input window should be unaffected
                         assert.equal(
                             input_buf,
                             vim.api.nvim_win_get_buf(input_win)
@@ -306,16 +305,20 @@ describe("agentic.ui.ChatWidget", function()
 
                         -- Create a floating window
                         local float_buf = vim.api.nvim_create_buf(false, true)
-                        vim.api.nvim_open_win(float_buf, false, {
-                            relative = "editor",
-                            width = 10,
-                            height = 3,
-                            row = 1,
-                            col = 1,
-                        })
+                        local float_win =
+                            vim.api.nvim_open_win(float_buf, false, {
+                                relative = "editor",
+                                width = 10,
+                                height = 3,
+                                row = 1,
+                                col = 1,
+                            })
 
                         local result = widget:find_first_non_widget_window()
                         assert.is_nil(result)
+                        -- Clean up floating window and buffer
+                        vim.api.nvim_win_close(float_win, true)
+                        vim.api.nvim_buf_delete(float_buf, { force = true })
                     end
                 )
             end)

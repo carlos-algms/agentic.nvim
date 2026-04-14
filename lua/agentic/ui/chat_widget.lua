@@ -40,6 +40,8 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field current_position agentic.UserConfig.Windows.Position
 --- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
 --- @field _guard_augroup? integer BufferGuard autocmd group ID
+--- @field _winclosed_augroup? integer WinClosed autocmd group ID
+--- @field _closing? boolean True during programmatic window closes
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -161,7 +163,9 @@ function ChatWidget:hide()
         end
     end
 
+    self._closing = true
     WidgetLayout.close(self.win_nrs)
+    self._closing = false
 end
 
 --- Cleans up all buffers content without destroying them
@@ -189,6 +193,11 @@ function ChatWidget:destroy()
     if self._guard_augroup then
         BufferGuard.detach(self._guard_augroup)
         self._guard_augroup = nil
+    end
+
+    if self._winclosed_augroup then
+        pcall(vim.api.nvim_del_augroup_by_id, self._winclosed_augroup)
+        self._winclosed_augroup = nil
     end
 
     self:hide()
@@ -282,6 +291,46 @@ function ChatWidget:_initialize()
             return self:find_first_non_widget_window()
                 or self:open_editor_window()
         end,
+    })
+
+    -- Track whether we're programmatically closing windows
+    -- to avoid recursive hide() calls
+    self._closing = false
+
+    self._winclosed_augroup = vim.api.nvim_create_augroup(
+        "AgenticWinClosed_" .. tostring(self.tab_page_id),
+        { clear = true }
+    )
+
+    vim.api.nvim_create_autocmd("WinClosed", {
+        group = self._winclosed_augroup,
+        callback = function(ev)
+            if self._closing then
+                return
+            end
+            local closed_winid = tonumber(ev.match)
+            if not closed_winid then
+                return
+            end
+            -- Any widget window closed by the user closes the whole widget,
+            -- except "todos" which can be closed independently.
+            local is_widget_window = false
+            for name, winid in pairs(self.win_nrs) do
+                if name ~= "todos" and winid == closed_winid then
+                    is_widget_window = true
+                    break
+                end
+            end
+
+            if is_widget_window then
+                self._closing = true
+                vim.schedule(function()
+                    self:hide()
+                    self._closing = false
+                end)
+            end
+        end,
+        desc = "Agentic: close widget when user closes a core window",
     })
 end
 

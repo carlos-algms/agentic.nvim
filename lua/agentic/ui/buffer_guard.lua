@@ -59,9 +59,10 @@ local function on_buf_enter(cb)
     local cur_buf = vim.api.nvim_get_current_buf()
 
     if cur_buf ~= expected then
-        -- A completely different buffer entered the widget window.
-        -- Restore the widget buffer immediately and redirect.
-        vim.api.nvim_win_set_buf(cur_win, expected)
+        if not vim.api.nvim_buf_is_valid(expected) then
+            return
+        end
+        pcall(vim.api.nvim_win_set_buf, cur_win, expected)
         redirect_foreign(cur_buf, cb.find_target_window)
         return
     end
@@ -96,7 +97,7 @@ end
 --- @return integer augroup_id Used to detach later
 function BufferGuard.attach(callbacks)
     local augroup = vim.api.nvim_create_augroup(
-        "AgenticBufferGuard_" .. tostring(vim.uv.hrtime()),
+        "AgenticBufferGuard_" .. tostring(callbacks.tab_page_id),
         { clear = true }
     )
 

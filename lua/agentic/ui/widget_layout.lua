@@ -312,15 +312,16 @@ end
 function WidgetLayout.close(win_nrs)
     for name, winid in pairs(win_nrs) do
         win_nrs[name] = nil
-        local ok = pcall(vim.api.nvim_win_close, winid, true)
-        if not ok then
-            Logger.debug(
-                string.format(
-                    "Failed to close window '%s' with id: %d",
-                    name,
-                    winid
-                )
-            )
+        if vim.api.nvim_win_is_valid(winid) then
+            -- Guard: verify the window's tabpage is still valid.
+            -- On Neovim v0.11.5 Linux, tabclose can leave window
+            -- handles in a partially-freed state where
+            -- nvim_win_is_valid() returns true but nvim_win_close()
+            -- segfaults. Checking the tabpage avoids this.
+            local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+            if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
         end
     end
 end
