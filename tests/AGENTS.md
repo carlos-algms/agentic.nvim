@@ -53,9 +53,6 @@ lua/agentic/
 # Run all tests
 make test
 
-# Run with verbose output
-make test-verbose
-
 # Run specific test file
 make test-file FILE=lua/agentic/acp/agent_modes.test.lua
 ```
@@ -685,12 +682,6 @@ assert.is_true(child.b.done)
 ```
 
 ## Debugging Tests
-
-### Verbose Output
-
-```bash
-make test-verbose
-```
 
 ### Debug Specific Test
 
