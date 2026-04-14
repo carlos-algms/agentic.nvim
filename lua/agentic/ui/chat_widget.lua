@@ -201,7 +201,16 @@ function ChatWidget:destroy()
         self._winclosed_augroup = nil
     end
 
-    self:hide()
+    -- During TabClosed, the tabpage is removed from nvim_list_tabpages()
+    -- but nvim_tabpage_is_valid() still returns true. Neovim tears down
+    -- the windows itself; calling nvim_win_close on those handles crashes
+    -- Neovim 0.11.x. Detect this by checking the tabpages list.
+    local tab_closing =
+        not vim.tbl_contains(vim.api.nvim_list_tabpages(), self.tab_page_id)
+
+    if not tab_closing then
+        self:hide()
+    end
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
