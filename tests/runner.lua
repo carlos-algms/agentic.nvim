@@ -26,15 +26,10 @@ local function make_reporter()
 end
 
 --- Run all tests
---- @param opts { verbose?: boolean }|nil
-function M.run(opts)
-    opts = opts or {}
+function M.run()
     run_with_exit(function()
         local MiniTest = require("mini.test")
-        local run_opts = opts.verbose
-                and { execute = { reporter = make_reporter() } }
-            or {}
-        MiniTest.run(run_opts)
+        MiniTest.run({ execute = { reporter = make_reporter() } })
     end)
 end
 

@@ -13,7 +13,7 @@ test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
 
 test-verbose:
-	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run({verbose = true})"
+	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
 
 test-file:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
