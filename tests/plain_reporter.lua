@@ -1,23 +1,13 @@
 -- Plain text reporter for mini.test (no ANSI colors)
--- Uses the same symbols and layout as MiniTest.gen_reporter.stdout
--- but strips all ANSI escape codes for non-interactive terminals and CI.
+-- Same symbols and layout as MiniTest.gen_reporter.stdout but no ANSI codes.
 local M = {}
-
-local ANSI_PATTERN = "\27%[[%d;]*m"
-
---- @param text string
---- @return string stripped
-local function strip_ansi(text)
-    local stripped = text:gsub(ANSI_PATTERN, "")
-    return stripped
-end
 
 --- @param text string|string[]
 local function write(text)
     if type(text) == "table" then
-        io.stdout:write(strip_ansi(table.concat(text, "\n")))
+        io.stdout:write(table.concat(text, "\n"))
     else
-        io.stdout:write(strip_ansi(text))
+        io.stdout:write(text)
     end
     io.flush()
 end
