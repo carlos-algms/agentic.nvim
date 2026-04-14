@@ -707,16 +707,27 @@ function ChatWidget:open_editor_window(bufnr)
         split_cmd = "topleft vsplit"
     end
 
-    local ok = pcall(function()
-        vim.cmd(split_cmd)
-    end)
-    if not ok then
-        Logger.notify("Failed to create editor window", vim.log.levels.WARN)
+    -- Use nvim_win_call to run the split in the widget's tabpage context
+    -- without disturbing the user's focus when they're on another tab.
+    local anchor_win = self.win_nrs.chat or self.win_nrs.input
+    if not anchor_win or not vim.api.nvim_win_is_valid(anchor_win) then
         return nil
     end
 
-    local winid = vim.api.nvim_get_current_win()
-    pcall(vim.api.nvim_win_set_buf, winid, bufnr)
+    --- @type integer|nil
+    local winid
+    local ok = pcall(function()
+        winid = vim.api.nvim_win_call(anchor_win, function()
+            vim.cmd(split_cmd)
+            local new_win = vim.api.nvim_get_current_win()
+            pcall(vim.api.nvim_win_set_buf, new_win, bufnr)
+            return new_win
+        end)
+    end)
+    if not ok or not winid then
+        Logger.notify("Failed to create editor window", vim.log.levels.WARN)
+        return nil
+    end
 
     return winid
 end
