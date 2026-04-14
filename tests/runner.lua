@@ -20,16 +20,16 @@ local function run_with_exit(fn)
     end
 end
 
+--- @return table reporter
+local function make_reporter()
+    return require("tests.plain_reporter").new({})
+end
+
 --- Run all tests
---- @param opts { verbose?: boolean }|nil
-function M.run(opts)
-    opts = opts or {}
+function M.run()
     run_with_exit(function()
         local MiniTest = require("mini.test")
-        local run_opts = opts.verbose
-                and { execute = { reporter = MiniTest.gen_reporter.stdout({}) } }
-            or {}
-        MiniTest.run(run_opts)
+        MiniTest.run({ execute = { reporter = make_reporter() } })
     end)
 end
 
@@ -47,7 +47,7 @@ function M.run_file(file)
     run_with_exit(function()
         local MiniTest = require("mini.test")
         MiniTest.run_file(file, {
-            execute = { reporter = MiniTest.gen_reporter.stdout({}) },
+            execute = { reporter = make_reporter() },
         })
     end)
 end

@@ -12,9 +12,6 @@ LOGDIR  ?= .luals-log
 test:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
 
-test-verbose:
-	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run({verbose = true})"
-
 test-file:
 	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
 
