@@ -42,6 +42,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _guard_augroup? integer BufferGuard autocmd group ID
 --- @field _winclosed_augroup? integer WinClosed autocmd group ID
 --- @field _closing? boolean True during programmatic window closes
+--- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -163,9 +164,9 @@ function ChatWidget:hide()
         end
     end
 
-    self._closing = true
-    WidgetLayout.close(self.win_nrs)
-    self._closing = false
+    self:_avoid_auto_close_cmd(function()
+        WidgetLayout.close(self.win_nrs)
+    end)
 end
 
 --- Cleans up all buffers content without destroying them
@@ -314,20 +315,13 @@ function ChatWidget:_initialize()
             end
             -- Any widget window closed by the user closes the whole widget,
             -- except "todos" which can be closed independently.
-            local is_widget_window = false
-            for name, winid in pairs(self.win_nrs) do
-                if name ~= "todos" and winid == closed_winid then
-                    is_widget_window = true
-                    break
+            for _, winid in pairs(self.win_nrs) do
+                if winid == closed_winid then
+                    vim.schedule(function()
+                        self:hide()
+                    end)
+                    return
                 end
-            end
-
-            if is_widget_window then
-                self._closing = true
-                vim.schedule(function()
-                    self:hide()
-                    self._closing = false
-                end)
             end
         end,
         desc = "Agentic: close widget when user closes a core window",
@@ -568,11 +562,22 @@ end
 
 --- @param panel_name agentic.ui.ChatWidget.PanelNames
 function ChatWidget:close_optional_window(panel_name)
-    WidgetLayout.close_optional_window(
-        self.win_nrs,
-        panel_name,
-        self.current_position
-    )
+    self:_avoid_auto_close_cmd(function()
+        WidgetLayout.close_optional_window(
+            self.win_nrs,
+            panel_name,
+            self.current_position
+        )
+    end)
+end
+
+--- Wraps a window-closing operation with the _closing flag so the
+--- WinClosed autocmd ignores programmatic closes.
+--- @param fn fun()
+function ChatWidget:_avoid_auto_close_cmd(fn)
+    self._closing = true
+    fn()
+    self._closing = false
 end
 
 --- Filetypes that should be excluded when finding fallback windows

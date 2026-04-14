@@ -458,6 +458,106 @@ describe("agentic.ui.ChatWidget", function()
                     )
                 end)
             end)
+
+            describe("WinClosed autocmd", function()
+                -- _closing is set synchronously by the WinClosed handler
+                -- and only reset inside vim.schedule (which doesn't run
+                -- in same-process tests). So _closing == true means the
+                -- handler matched and scheduled hide().
+
+                it(
+                    "close_optional_window does not trigger WinClosed handler",
+                    function()
+                        fill_buffer(widget, "code", { "line1" })
+                        fill_buffer(widget, "files", { "file.lua" })
+
+                        widget:show()
+                        assert.is_not_nil(widget.win_nrs.code)
+                        assert.is_not_nil(widget.win_nrs.files)
+
+                        widget:close_optional_window("code")
+
+                        -- Code window is gone
+                        assert.is_nil(widget.win_nrs.code)
+                        -- WinClosed handler did NOT schedule hide()
+                        assert.is_false(widget._closing)
+                        -- Core windows still exist
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.chat)
+                        )
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.input)
+                        )
+                    end
+                )
+
+                it(
+                    "close_optional_window for files does not trigger WinClosed handler",
+                    function()
+                        fill_buffer(widget, "files", { "file.lua" })
+
+                        widget:show()
+                        assert.is_not_nil(widget.win_nrs.files)
+
+                        widget:close_optional_window("files")
+
+                        assert.is_nil(widget.win_nrs.files)
+                        assert.is_false(widget._closing)
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.chat)
+                        )
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.input)
+                        )
+                    end
+                )
+
+                it(
+                    "close_optional_window for diagnostics does not trigger WinClosed handler",
+                    function()
+                        fill_buffer(
+                            widget,
+                            "diagnostics",
+                            { "diagnostic info" }
+                        )
+
+                        widget:show()
+                        assert.is_not_nil(widget.win_nrs.diagnostics)
+
+                        widget:close_optional_window("diagnostics")
+
+                        assert.is_nil(widget.win_nrs.diagnostics)
+                        assert.is_false(widget._closing)
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.chat)
+                        )
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.input)
+                        )
+                    end
+                )
+
+                it(
+                    "close_optional_window for todos does not trigger WinClosed handler",
+                    function()
+                        fill_buffer(widget, "todos", { "- [ ] task" })
+
+                        widget:show()
+                        assert.is_not_nil(widget.win_nrs.todos)
+
+                        widget:close_optional_window("todos")
+
+                        assert.is_nil(widget.win_nrs.todos)
+                        assert.is_false(widget._closing)
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.chat)
+                        )
+                        assert.is_true(
+                            vim.api.nvim_win_is_valid(widget.win_nrs.input)
+                        )
+                    end
+                )
+            end)
         end)
     end
 
