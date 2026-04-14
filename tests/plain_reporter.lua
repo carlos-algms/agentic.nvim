@@ -29,8 +29,11 @@ function M.new(opts)
         start = inner.start,
         update = inner.update,
         finish = function()
-            inner_finish()
+            local ok, err = pcall(inner_finish)
             rawset(io, "stdout", real_stdout)
+            if not ok then
+                error(err)
+            end
         end,
     }
 
