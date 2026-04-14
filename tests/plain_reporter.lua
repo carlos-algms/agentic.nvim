@@ -9,7 +9,6 @@ local ANSI_PATTERN = "\27%[[%d;]*m"
 --- @return table reporter
 function M.new(opts)
     local MiniTest = require("mini.test")
-    local inner = MiniTest.gen_reporter.stdout(opts or {})
     local real_stdout = io.stdout
 
     local proxy = setmetatable({}, {
@@ -17,25 +16,23 @@ function M.new(opts)
     })
 
     function proxy:write(text)
-        return real_stdout:write(text:gsub(ANSI_PATTERN, ""))
+        return real_stdout:write((text:gsub(ANSI_PATTERN, "")))
     end
 
-    --- @return table reporter
-    local reporter = {}
+    rawset(io, "stdout", proxy)
 
-    reporter.start = function(cases)
-        rawset(io, "stdout", proxy)
-        inner.start(cases)
-    end
+    local inner = MiniTest.gen_reporter.stdout(opts or {})
+    local inner_finish = inner.finish
 
-    reporter.update = function(case_num)
-        inner.update(case_num)
-    end
-
-    reporter.finish = function()
-        inner.finish()
-        rawset(io, "stdout", real_stdout)
-    end
+    --- @type table
+    local reporter = {
+        start = inner.start,
+        update = inner.update,
+        finish = function()
+            inner_finish()
+            rawset(io, "stdout", real_stdout)
+        end,
+    }
 
     return reporter
 end
