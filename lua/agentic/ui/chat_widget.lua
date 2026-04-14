@@ -585,8 +585,11 @@ end
 --- @param fn fun()
 function ChatWidget:_avoid_auto_close_cmd(fn)
     self._closing = true
-    fn()
+    local ok, err = pcall(fn)
     self._closing = false
+    if not ok then
+        Logger.notify(tostring(err), vim.log.levels.ERROR)
+    end
 end
 
 --- Filetypes that should be excluded when finding fallback windows
