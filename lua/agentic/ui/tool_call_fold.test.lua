@@ -209,6 +209,32 @@ describe("agentic.ui.ToolCallFold", function()
 
             vim.api.nvim_win_close(winid, true)
         end)
+
+        it(
+            "does not reset foldlevel on subsequent calls to the same window",
+            function()
+                local winid = vim.api.nvim_open_win(bufnr, false, {
+                    relative = "editor",
+                    row = 0,
+                    col = 0,
+                    width = 40,
+                    height = 20,
+                })
+
+                Fold.setup_window(winid, bufnr)
+                assert.equal(vim.wo[winid].foldlevel, 0)
+
+                -- Simulate a fold being opened by the user (raise foldlevel).
+                vim.wo[winid].foldlevel = 99
+
+                -- Re-applying must NOT reset foldlevel, or the user's opened fold
+                -- would close again on the next chat widget rerender.
+                Fold.setup_window(winid, bufnr)
+                assert.equal(vim.wo[winid].foldlevel, 99)
+
+                vim.api.nvim_win_close(winid, true)
+            end
+        )
     end)
 
     describe("foldtext", function()
