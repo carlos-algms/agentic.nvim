@@ -72,7 +72,7 @@ function MessageWriter:new(bufnr)
     }, self)
 
     Fold.register(bufnr, function()
-        return instance:_get_fold_geometry()
+        return instance:_get_fold_geometry() --- @diagnostic disable-line: invisible
     end)
 
     return instance
