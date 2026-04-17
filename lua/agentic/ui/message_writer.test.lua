@@ -1018,6 +1018,16 @@ describe("agentic.ui.MessageWriter", function()
 
     describe("Fold integration", function()
         local Fold = require("agentic.ui.tool_call_fold")
+        --- @type agentic.UserConfig.Folding|nil
+        local saved_folding
+
+        before_each(function()
+            saved_folding = Config.folding
+        end)
+
+        after_each(function()
+            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+        end)
 
         --- @return integer bufnr, agentic.ui.MessageWriter writer
         local function make_writer()
