@@ -886,4 +886,51 @@ describe("agentic.ui.MessageWriter", function()
             end
         )
     end)
+
+    describe("_get_fold_geometry", function()
+        --- @type agentic.UserConfig.Folding|nil
+        local saved_folding
+
+        before_each(function()
+            saved_folding = Config.folding
+        end)
+
+        after_each(function()
+            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+        end)
+
+        --- @param body_count integer
+        --- @param is_diff boolean
+        local function seed_block(body_count, is_diff)
+            -- Buffer: HEADER + body_count lines + blank footer
+            local lines = { "HEADER" }
+            for i = 1, body_count do
+                table.insert(lines, "b" .. i)
+            end
+            table.insert(lines, "")
+            vim.api.nvim_buf_set_lines(writer.bufnr, 0, -1, false, lines)
+
+            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+            local ext_id = vim.api.nvim_buf_set_extmark(
+                writer.bufnr,
+                NS,
+                0,
+                0,
+                { end_row = body_count + 1, right_gravity = false }
+            )
+            writer.tool_call_blocks["t1"] = {
+                tool_call_id = "t1",
+                extmark_id = ext_id,
+                diff = is_diff and { old = {}, new = {} } or nil,
+            }
+        end
+
+        it("returns empty when folding disabled", function()
+            Config.folding = {
+                tool_calls = { enabled = false, threshold = 10 },
+            }
+            seed_block(50, false)
+            assert.same(writer:_get_fold_geometry(), {})
+        end)
+    end)
 end)
