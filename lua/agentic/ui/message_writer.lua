@@ -71,6 +71,10 @@ function MessageWriter:new(bufnr)
         _is_restoring = false,
     }, self)
 
+    Fold.register(bufnr, function()
+        return instance:_get_fold_geometry()
+    end)
+
     return instance
 end
 
@@ -1195,7 +1199,7 @@ end
 
 --- Clean up the MessageWriter: unregister fold state.
 function MessageWriter:destroy()
-    local _ = Fold
+    Fold.unregister(self.bufnr)
 end
 
 return MessageWriter

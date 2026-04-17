@@ -993,4 +993,59 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_false(geo[1].foldable)
         end)
     end)
+
+    describe("Fold integration", function()
+        it("registers a getter on construction", function()
+            local Fold = require("agentic.ui.tool_call_fold")
+            local test_bufnr = vim.api.nvim_create_buf(false, true)
+            local test_writer =
+                require("agentic.ui.message_writer"):new(test_bufnr)
+
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 0 },
+            }
+
+            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+            vim.api.nvim_buf_set_lines(
+                test_bufnr,
+                0,
+                -1,
+                false,
+                { "H", "b1", "b2", "" }
+            )
+            local ext_id = vim.api.nvim_buf_set_extmark(
+                test_bufnr,
+                NS,
+                0,
+                0,
+                { end_row = 3, right_gravity = false }
+            )
+            test_writer.tool_call_blocks["t1"] =
+                { tool_call_id = "t1", extmark_id = ext_id }
+
+            -- If registration happened, foldexpr can see the block and return 1
+            -- for an interior line (line 2 in 1-indexed).
+            assert.equal(Fold.foldexpr(test_bufnr, 2), 1)
+
+            Fold.unregister(test_bufnr)
+            vim.api.nvim_buf_delete(test_bufnr, { force = true })
+        end)
+
+        it("unregisters on destroy", function()
+            local Fold = require("agentic.ui.tool_call_fold")
+            local test_bufnr = vim.api.nvim_create_buf(false, true)
+            local test_writer =
+                require("agentic.ui.message_writer"):new(test_bufnr)
+
+            test_writer:destroy()
+
+            -- After destroy, foldexpr should not find any getter
+            -- (no crash, returns 0)
+            assert.equal(Fold.foldexpr(test_bufnr, 5), 0)
+
+            if vim.api.nvim_buf_is_valid(test_bufnr) then
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
+        end)
+    end)
 end)
