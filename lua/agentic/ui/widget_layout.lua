@@ -1,6 +1,7 @@
 local Config = require("agentic.config")
 local DefaultConfig = require("agentic.config_default")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local Fold = require("agentic.ui.tool_call_fold")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
 
@@ -204,6 +205,8 @@ local function show_layout(params, position)
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
+
+    Fold.setup_window(win_nrs.chat, buf_nrs.chat)
 
     -- Input window: right splits below chat with height, bottom splits right
     -- of chat with computed stack width
