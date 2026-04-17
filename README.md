@@ -502,6 +502,30 @@ header parts:
 }
 ```
 
+### Folding
+
+Long tool call outputs are automatically folded to keep the chat buffer
+readable. Toggle the master switch or tune the line threshold.
+
+```lua
+--- @type agentic.PartialUserConfig
+opts = {
+  folding = {
+    tool_calls = {
+      enabled = true,
+      threshold = 10,
+    },
+  },
+}
+```
+
+Set `threshold = 0` to always fold every tool call body. Negative values are
+clamped to 0. Set `enabled = false` to disable folding entirely.
+
+The fold hides the body only - the tool call header and completion status
+remain visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle
+individual folds, or `zR`/`zM` to open/close all folds in the chat window.
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands
