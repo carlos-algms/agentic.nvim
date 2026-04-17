@@ -62,7 +62,7 @@ function MessageWriter:new(bufnr)
         error("Invalid buffer number: " .. tostring(bufnr))
     end
 
-    local instance = setmetatable({
+    self = setmetatable({
         bufnr = bufnr,
         tool_call_blocks = {},
         _last_message_type = nil,
@@ -72,10 +72,10 @@ function MessageWriter:new(bufnr)
     }, self)
 
     Fold.register(bufnr, function()
-        return instance:_get_fold_geometry() --- @diagnostic disable-line: invisible
+        return self:_get_fold_geometry()
     end)
 
-    return instance
+    return self
 end
 
 --- @param callback fun()|nil

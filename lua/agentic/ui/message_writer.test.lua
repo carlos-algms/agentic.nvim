@@ -925,81 +925,109 @@ describe("agentic.ui.MessageWriter", function()
             }
         end
 
-        it("returns empty when folding disabled", function()
-            Config.folding = {
-                tool_calls = { enabled = false, threshold = 10 },
-            }
-            seed_block(50, false)
-            assert.same(writer:_get_fold_geometry(), {})
-        end)
+        --- @class FoldGeometryCase
+        --- @field name string
+        --- @field enabled boolean
+        --- @field threshold integer
+        --- @field body_count integer
+        --- @field is_diff boolean
+        --- @field expect_empty? boolean
+        --- @field expect_foldable? boolean
 
-        it("returns foldable=true for interior > threshold", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 10 },
-            }
-            seed_block(11, false)
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_true(geo[1].foldable)
-        end)
+        --- @type FoldGeometryCase[]
+        local cases = {
+            {
+                name = "returns empty when folding disabled",
+                enabled = false,
+                threshold = 10,
+                body_count = 50,
+                is_diff = false,
+                expect_empty = true,
+            },
+            {
+                name = "foldable=true when interior > threshold",
+                enabled = true,
+                threshold = 10,
+                body_count = 11,
+                is_diff = false,
+                expect_foldable = true,
+            },
+            {
+                name = "foldable=false when interior == threshold",
+                enabled = true,
+                threshold = 10,
+                body_count = 10,
+                is_diff = false,
+                expect_foldable = false,
+            },
+            {
+                name = "threshold=0 folds any block with interior >= 1",
+                enabled = true,
+                threshold = 0,
+                body_count = 1,
+                is_diff = false,
+                expect_foldable = true,
+            },
+            {
+                name = "threshold=0 does not fold empty body",
+                enabled = true,
+                threshold = 0,
+                body_count = 0,
+                is_diff = false,
+                expect_foldable = false,
+            },
+            {
+                name = "clamps negative threshold to 0",
+                enabled = true,
+                threshold = -5,
+                body_count = 1,
+                is_diff = false,
+                expect_foldable = true,
+            },
+            {
+                name = "never folds a diff block regardless of size",
+                enabled = true,
+                threshold = 0,
+                body_count = 100,
+                is_diff = true,
+                expect_foldable = false,
+            },
+        }
 
-        it("returns foldable=false for interior <= threshold", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 10 },
-            }
-            seed_block(10, false) -- interior exactly 10
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_false(geo[1].foldable)
-        end)
+        for _, case in ipairs(cases) do
+            it(case.name, function()
+                Config.folding = {
+                    tool_calls = {
+                        enabled = case.enabled,
+                        threshold = case.threshold,
+                    },
+                }
+                seed_block(case.body_count, case.is_diff)
 
-        it("threshold=0 folds any block with interior >= 1", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 0 },
-            }
-            seed_block(1, false)
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_true(geo[1].foldable)
-        end)
+                local geo = writer:_get_fold_geometry()
 
-        it("threshold=0 does not fold empty body (interior=0)", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 0 },
-            }
-            seed_block(0, false)
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_false(geo[1].foldable)
-        end)
-
-        it("clamps negative threshold to 0", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = -5 },
-            }
-            seed_block(1, false)
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_true(geo[1].foldable)
-        end)
-
-        it("never folds a diff block regardless of size", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 0 },
-            }
-            seed_block(100, true) -- is_diff=true
-            local geo = writer:_get_fold_geometry()
-            assert.equal(#geo, 1)
-            assert.is_false(geo[1].foldable)
-        end)
+                if case.expect_empty then
+                    assert.same(geo, {})
+                else
+                    assert.equal(#geo, 1)
+                    assert.equal(geo[1].foldable, case.expect_foldable)
+                end
+            end)
+        end
     end)
 
     describe("Fold integration", function()
+        local Fold = require("agentic.ui.tool_call_fold")
+
+        --- @return integer bufnr, agentic.ui.MessageWriter writer
+        local function make_writer()
+            local b = vim.api.nvim_create_buf(false, true)
+            local w = require("agentic.ui.message_writer"):new(b)
+            return b, w
+        end
+
         it("registers a getter on construction", function()
-            local Fold = require("agentic.ui.tool_call_fold")
-            local test_bufnr = vim.api.nvim_create_buf(false, true)
-            local test_writer =
-                require("agentic.ui.message_writer"):new(test_bufnr)
+            local test_bufnr, test_writer = make_writer()
 
             Config.folding = {
                 tool_calls = { enabled = true, threshold = 0 },
@@ -1023,8 +1051,8 @@ describe("agentic.ui.MessageWriter", function()
             test_writer.tool_call_blocks["t1"] =
                 { tool_call_id = "t1", extmark_id = ext_id }
 
-            -- If registration happened, foldexpr can see the block and return 1
-            -- for an interior line (line 2 in 1-indexed).
+            -- If registration happened, foldexpr returns 1 for an interior
+            -- line (line 2 in 1-indexed).
             assert.equal(Fold.foldexpr(test_bufnr, 2), 1)
 
             Fold.unregister(test_bufnr)
@@ -1032,15 +1060,10 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it("unregisters on destroy", function()
-            local Fold = require("agentic.ui.tool_call_fold")
-            local test_bufnr = vim.api.nvim_create_buf(false, true)
-            local test_writer =
-                require("agentic.ui.message_writer"):new(test_bufnr)
+            local test_bufnr, test_writer = make_writer()
 
             test_writer:destroy()
 
-            -- After destroy, foldexpr should not find any getter
-            -- (no crash, returns 0)
             assert.equal(Fold.foldexpr(test_bufnr, 5), 0)
 
             if vim.api.nvim_buf_is_valid(test_bufnr) then
