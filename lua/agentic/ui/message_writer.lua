@@ -102,6 +102,21 @@ function MessageWriter:_clear_thinking_state()
     self._thinking_end_line = nil
 end
 
+--- Whether a block of this shape would be folded by _get_fold_geometry.
+--- Kept in sync with the threshold/diff logic below.
+--- @private
+--- @param interior integer Number of lines between header and footer
+--- @param is_diff boolean Whether the block is a diff kind
+--- @return boolean
+function MessageWriter:_will_fold(interior, is_diff)
+    local cfg = Config.folding and Config.folding.tool_calls
+    if not cfg or not cfg.enabled or is_diff then
+        return false
+    end
+    local threshold = math.max(0, cfg.threshold or 0)
+    return interior > threshold
+end
+
 --- Projects tool_call_blocks into the geometry format Fold expects.
 --- @private
 --- @return agentic.ui.ToolCallFold.Block[]
@@ -443,7 +458,39 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         local lines, highlight_ranges =
             self:_prepare_block_lines(tool_call_block)
 
-        self:_append_lines(lines)
+        -- Pre-fold: if the block will fold, first append an empty skeleton
+        -- of the same line count and register the extmark + tracker. The
+        -- subsequent set_lines triggers foldexpr with the tracker in place,
+        -- which closes the fold synchronously with the content write -- no
+        -- visible expand then collapse.
+        local will_fold =
+            self:_will_fold(#lines - 2, tool_call_block.diff ~= nil)
+        if will_fold then
+            local skeleton = {}
+            for _ = 1, #lines do
+                table.insert(skeleton, "")
+            end
+            self:_append_lines(skeleton)
+            local skel_end = vim.api.nvim_buf_line_count(bufnr) - 1
+            tool_call_block.extmark_id = vim.api.nvim_buf_set_extmark(
+                bufnr,
+                NS_TOOL_BLOCKS,
+                start_row,
+                0,
+                { end_row = skel_end, right_gravity = false }
+            )
+            self.tool_call_blocks[tool_call_block.tool_call_id] =
+                tool_call_block
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                start_row,
+                skel_end + 1,
+                false,
+                lines
+            )
+        else
+            self:_append_lines(lines)
+        end
 
         local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
 
@@ -466,6 +513,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
 
         tool_call_block.extmark_id =
             vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
+                id = tool_call_block.extmark_id,
                 end_row = end_row,
                 right_gravity = false,
             })
@@ -580,13 +628,51 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
-        vim.api.nvim_buf_set_lines(
-            bufnr,
-            start_row,
-            old_end_row + 1,
-            false,
-            new_lines
-        )
+        -- Pre-fold: if this update transitions the block into foldable,
+        -- resize the buffer to the new line count with an empty skeleton and
+        -- sync the extmark first. The subsequent set_lines runs foldexpr
+        -- with the foldable tracker in place and closes the fold in the same
+        -- edit that places the content -- no visible expand then collapse.
+        local new_interior = #new_lines - 2
+        local old_interior = old_end_row - start_row - 1
+        local is_diff = tracker.diff ~= nil
+        local now_folds = self:_will_fold(new_interior, is_diff)
+        local was_folding = self:_will_fold(old_interior, is_diff)
+        if now_folds and not was_folding then
+            local skeleton = { new_lines[1] }
+            for _ = 1, new_interior do
+                table.insert(skeleton, "")
+            end
+            table.insert(skeleton, new_lines[#new_lines])
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                start_row,
+                old_end_row + 1,
+                false,
+                skeleton
+            )
+            local skel_end = start_row + #skeleton - 1
+            vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
+                id = tracker.extmark_id,
+                end_row = skel_end,
+                right_gravity = false,
+            })
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                start_row,
+                skel_end + 1,
+                false,
+                new_lines
+            )
+        else
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                start_row,
+                old_end_row + 1,
+                false,
+                new_lines
+            )
+        end
 
         local new_end_row = start_row + #new_lines - 1
 
