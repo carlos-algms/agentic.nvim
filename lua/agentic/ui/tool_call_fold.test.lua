@@ -133,4 +133,42 @@ describe("agentic.ui.ToolCallFold", function()
             end
         )
     end)
+
+    describe("register and unregister", function()
+        it("register adds an entry foldexpr can find", function()
+            Fold.register(bufnr, function()
+                return {
+                    { start_row = 0, end_row = 16, foldable = true },
+                }
+            end)
+            assert.equal(Fold.foldexpr(bufnr, 5), 1)
+        end)
+
+        it("unregister removes the entry", function()
+            Fold.register(bufnr, function()
+                return {
+                    { start_row = 0, end_row = 16, foldable = true },
+                }
+            end)
+            Fold.unregister(bufnr)
+            assert.equal(Fold.foldexpr(bufnr, 5), 0)
+        end)
+
+        it("re-register replaces the previous getter", function()
+            Fold.register(bufnr, function()
+                return {
+                    { start_row = 0, end_row = 16, foldable = true },
+                }
+            end)
+            Fold.register(bufnr, function()
+                return {}
+            end)
+            assert.equal(Fold.foldexpr(bufnr, 5), 0)
+        end)
+
+        it("unregister is safe when bufnr not registered", function()
+            Fold.unregister(bufnr) -- no error
+            assert.equal(Fold.foldexpr(bufnr, 1), 0)
+        end)
+    end)
 end)
