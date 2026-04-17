@@ -21,5 +21,21 @@ describe("agentic.ui.ToolCallFold", function()
             assert.equal(Fold.foldexpr(bufnr, 1), 0)
             assert.equal(Fold.foldexpr(bufnr, 10), 0)
         end)
+
+        it("returns 1 for lnum inside a foldable block interior", function()
+            Fold.register(bufnr, function()
+                return {
+                    {
+                        start_row = 0,
+                        end_row = 16,
+                        foldable = true,
+                    },
+                }
+            end)
+            -- Interior is start_row+2..end_row in 1-indexed: lines 2..16
+            assert.equal(Fold.foldexpr(bufnr, 2), 1)
+            assert.equal(Fold.foldexpr(bufnr, 10), 1)
+            assert.equal(Fold.foldexpr(bufnr, 16), 1)
+        end)
     end)
 end)

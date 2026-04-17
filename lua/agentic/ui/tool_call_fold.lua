@@ -18,15 +18,13 @@ local instances_by_buffer = {}
 --- @param bufnr integer
 --- @param getter agentic.ui.ToolCallFold.Getter
 function Fold.register(bufnr, getter)
-    local _ = bufnr
-    local _ = getter
-    local _ = instances_by_buffer
+    instances_by_buffer[bufnr] = { getter = getter }
 end
 
 --- Remove a buffer's getter. Safe to call on an already-unregistered bufnr.
 --- @param bufnr integer
 function Fold.unregister(bufnr)
-    local _ = bufnr
+    instances_by_buffer[bufnr] = nil
 end
 
 --- Foldexpr: called by Neovim for each line. Returns 0 (not foldable) or 1 (foldable).
@@ -35,8 +33,20 @@ end
 --- @param lnum integer 1-indexed line number
 --- @return integer fold_level 0 or 1
 function Fold.foldexpr(bufnr, lnum)
-    local _ = bufnr
-    local _ = lnum
+    local state = instances_by_buffer[bufnr]
+    if not state then
+        return 0
+    end
+    local blocks = state.getter()
+    for _, block in ipairs(blocks) do
+        if
+            block.foldable
+            and lnum >= block.start_row + 2
+            and lnum <= block.end_row
+        then
+            return 1
+        end
+    end
     return 0
 end
 
