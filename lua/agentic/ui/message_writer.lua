@@ -102,7 +102,40 @@ end
 --- @private
 --- @return agentic.ui.ToolCallFold.Block[]
 function MessageWriter:_get_fold_geometry()
-    return {}
+    local cfg = Config.folding and Config.folding.tool_calls
+    if not cfg or not cfg.enabled then
+        return {}
+    end
+    -- Clamp negatives to 0. threshold=0 means always fold (any interior > 0).
+    local threshold = math.max(0, cfg.threshold or 0)
+
+    --- @type agentic.ui.ToolCallFold.Block[]
+    local geometry = {}
+
+    for _, block in pairs(self.tool_call_blocks) do
+        if block.extmark_id then
+            local pos = vim.api.nvim_buf_get_extmark_by_id(
+                self.bufnr,
+                NS_TOOL_BLOCKS,
+                block.extmark_id,
+                { details = true }
+            )
+            if pos and pos[1] and pos[3] and pos[3].end_row then
+                local start_row = pos[1]
+                local end_row = pos[3].end_row
+                local interior = end_row - start_row - 1
+                local is_diff = block.diff ~= nil
+
+                table.insert(geometry, {
+                    start_row = start_row,
+                    end_row = end_row,
+                    foldable = not is_diff and interior > threshold,
+                })
+            end
+        end
+    end
+
+    return geometry
 end
 
 --- Writes a structural message (e.g. welcome banner) without triggering

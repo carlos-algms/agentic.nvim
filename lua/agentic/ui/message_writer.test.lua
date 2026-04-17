@@ -932,5 +932,15 @@ describe("agentic.ui.MessageWriter", function()
             seed_block(50, false)
             assert.same(writer:_get_fold_geometry(), {})
         end)
+
+        it("returns foldable=true for interior > threshold", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 10 },
+            }
+            seed_block(11, false)
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_true(geo[1].foldable)
+        end)
     end)
 end)
