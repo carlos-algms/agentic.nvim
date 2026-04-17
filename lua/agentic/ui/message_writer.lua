@@ -104,7 +104,6 @@ end
 
 --- Returns the fold threshold when folding is enabled, nil otherwise.
 --- Negative thresholds are clamped to 0 (threshold=0 folds any interior > 0).
---- @private
 --- @return integer|nil threshold
 function MessageWriter:_resolve_fold_threshold()
     local cfg = Config.folding and Config.folding.tool_calls
@@ -116,7 +115,6 @@ end
 
 --- Returns a list of `count` empty strings, used to reserve space for a
 --- pre-fold two-step write.
---- @private
 --- @param count integer
 --- @return string[]
 function MessageWriter:_make_skeleton(count)
@@ -129,7 +127,6 @@ end
 
 --- Whether a block of this shape would be folded by _get_fold_geometry.
 --- Kept in sync with the threshold/diff logic below.
---- @private
 --- @param interior integer Number of lines between header and footer
 --- @param is_diff boolean Whether the block is a diff kind
 --- @return boolean
@@ -142,7 +139,6 @@ function MessageWriter:_will_fold(interior, is_diff)
 end
 
 --- Projects tool_call_blocks into the geometry format Fold expects.
---- @private
 --- @return agentic.ui.ToolCallFold.Block[]
 function MessageWriter:_get_fold_geometry()
     --- @type agentic.ui.ToolCallFold.Block[]
