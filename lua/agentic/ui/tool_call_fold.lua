@@ -53,7 +53,8 @@ end
 --- Foldtext: renders collapsed fold text.
 --- @return string
 function Fold.foldtext()
-    return ""
+    local hidden = vim.v.foldend - vim.v.foldstart + 1
+    return string.format("  %d lines hidden (zo open | zc close)", hidden)
 end
 
 --- Apply fold-related window options to the chat window.

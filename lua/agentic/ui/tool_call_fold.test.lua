@@ -134,6 +134,16 @@ describe("agentic.ui.ToolCallFold", function()
         )
     end)
 
+    describe("foldtext", function()
+        it("formats the hidden line count", function()
+            -- Simulate v:foldstart and v:foldend
+            vim.v.foldstart = 3
+            vim.v.foldend = 12
+            local text = Fold.foldtext()
+            assert.equal(text, "  10 lines hidden (zo open | zc close)")
+        end)
+    end)
+
     describe("register and unregister", function()
         it("register adds an entry foldexpr can find", function()
             Fold.register(bufnr, function()
