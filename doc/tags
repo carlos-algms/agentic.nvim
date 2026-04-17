@@ -18,6 +18,7 @@ agentic-diff-preview	agentic.txt	/*agentic-diff-preview*
 agentic-features	agentic.txt	/*agentic-features*
 agentic-file-picker	agentic.txt	/*agentic-file-picker*
 agentic-file-picker-config	agentic.txt	/*agentic-file-picker-config*
+agentic-folding-config	agentic.txt	/*agentic-folding-config*
 agentic-health-check	agentic.txt	/*agentic-health-check*
 agentic-highlight-groups	agentic.txt	/*agentic-highlight-groups*
 agentic-hooks	agentic.txt	/*agentic-hooks*

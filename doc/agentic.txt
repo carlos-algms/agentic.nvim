@@ -759,6 +759,20 @@ Image paste ~
   }
 <
 
+                                                *agentic-folding-config*
+Folding ~
+>lua
+  --- @type agentic.PartialUserConfig
+  opts = {
+    folding = {
+      tool_calls = {
+        enabled = true,  -- Master switch for tool call body folding
+        threshold = 10,  -- Fold when interior exceeds N lines. 0 = always.
+      },
+    },
+  }
+<
+
 ==============================================================================
 INTEGRATIONS                                      *agentic-integrations*
 
