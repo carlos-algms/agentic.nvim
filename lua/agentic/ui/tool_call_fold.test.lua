@@ -181,6 +181,34 @@ describe("agentic.ui.ToolCallFold", function()
                 vim.api.nvim_win_close(winid, true)
             end
         )
+
+        it("does not apply options when folding is disabled", function()
+            Config.folding = {
+                tool_calls = { enabled = false, threshold = 10 },
+            }
+
+            local winid = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 0,
+                col = 0,
+                width = 40,
+                height = 20,
+            })
+
+            Fold.setup_window(winid, bufnr)
+
+            -- Default Neovim values are preserved; our foldmethod/foldexpr are not applied.
+            assert.equal(vim.wo[winid].foldmethod, "manual")
+            assert.is_not.equal(
+                vim.wo[winid].foldexpr,
+                string.format(
+                    "v:lua.require'agentic.ui.tool_call_fold'.foldexpr(%d, v:lnum)",
+                    bufnr
+                )
+            )
+
+            vim.api.nvim_win_close(winid, true)
+        end)
     end)
 
     describe("foldtext", function()
