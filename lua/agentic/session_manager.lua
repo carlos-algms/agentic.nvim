@@ -1022,6 +1022,7 @@ function SessionManager:_cancel_session()
     self.chat_history = ChatHistory:new()
     self.history_to_send = nil
     self.message_writer:reset_sender_tracking()
+    self.message_writer.tool_call_blocks = {}
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -1208,6 +1209,9 @@ end
 function SessionManager:destroy()
     self:_cancel_session()
     self.widget:destroy()
+    if self.message_writer then
+        self.message_writer:destroy()
+    end
 end
 
 --- Load an existing ACP session by ID, subscribing to its updates
