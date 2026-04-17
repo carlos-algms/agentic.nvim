@@ -942,5 +942,55 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal(#geo, 1)
             assert.is_true(geo[1].foldable)
         end)
+
+        it("returns foldable=false for interior <= threshold", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 10 },
+            }
+            seed_block(10, false) -- interior exactly 10
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_false(geo[1].foldable)
+        end)
+
+        it("threshold=0 folds any block with interior >= 1", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 0 },
+            }
+            seed_block(1, false)
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_true(geo[1].foldable)
+        end)
+
+        it("threshold=0 does not fold empty body (interior=0)", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 0 },
+            }
+            seed_block(0, false)
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_false(geo[1].foldable)
+        end)
+
+        it("clamps negative threshold to 0", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = -5 },
+            }
+            seed_block(1, false)
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_true(geo[1].foldable)
+        end)
+
+        it("never folds a diff block regardless of size", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 0 },
+            }
+            seed_block(100, true) -- is_diff=true
+            local geo = writer:_get_fold_geometry()
+            assert.equal(#geo, 1)
+            assert.is_false(geo[1].foldable)
+        end)
     end)
 end)
