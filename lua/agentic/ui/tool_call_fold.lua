@@ -1,3 +1,5 @@
+local Config = require("agentic.config")
+
 --- @class agentic.ui.ToolCallFold.Block
 --- @field start_row integer 0-indexed header row of the block
 --- @field end_row integer 0-indexed footer row of the block (inclusive)
@@ -61,8 +63,28 @@ end
 --- @param winid integer
 --- @param bufnr integer
 function Fold.setup_window(winid, bufnr)
-    local _ = winid
-    local _ = bufnr
+    local cfg = Config.folding and Config.folding.tool_calls
+    if not cfg or not cfg.enabled then
+        return
+    end
+
+    local desired_expr = string.format(
+        "v:lua.require'agentic.ui.tool_call_fold'.foldexpr(%d, v:lnum)",
+        bufnr
+    )
+
+    -- Idempotent: if this window has already been configured by us, skip.
+    -- Reapplying would reset foldlevel=0, re-closing folds the user opened.
+    if vim.wo[winid].foldexpr == desired_expr then
+        return
+    end
+
+    vim.wo[winid].foldmethod = "expr"
+    vim.wo[winid].foldexpr = desired_expr
+    vim.wo[winid].foldlevel = 0
+    vim.wo[winid].foldenable = true
+    vim.wo[winid].foldtext =
+        "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
 end
 
 return Fold

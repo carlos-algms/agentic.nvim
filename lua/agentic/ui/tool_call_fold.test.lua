@@ -134,6 +134,55 @@ describe("agentic.ui.ToolCallFold", function()
         )
     end)
 
+    describe("setup_window", function()
+        local Config = require("agentic.config")
+        --- @type agentic.UserConfig.Folding|nil
+        local saved_folding
+
+        before_each(function()
+            saved_folding = Config.folding
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 10 },
+            }
+        end)
+
+        after_each(function()
+            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+        end)
+
+        it(
+            "applies foldmethod, foldexpr, foldlevel, foldenable, foldtext to the window",
+            function()
+                local winid = vim.api.nvim_open_win(bufnr, false, {
+                    relative = "editor",
+                    row = 0,
+                    col = 0,
+                    width = 40,
+                    height = 20,
+                })
+
+                Fold.setup_window(winid, bufnr)
+
+                assert.equal(vim.wo[winid].foldmethod, "expr")
+                assert.equal(
+                    vim.wo[winid].foldexpr,
+                    string.format(
+                        "v:lua.require'agentic.ui.tool_call_fold'.foldexpr(%d, v:lnum)",
+                        bufnr
+                    )
+                )
+                assert.equal(vim.wo[winid].foldlevel, 0)
+                assert.is_true(vim.wo[winid].foldenable)
+                assert.equal(
+                    vim.wo[winid].foldtext,
+                    "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
+                )
+
+                vim.api.nvim_win_close(winid, true)
+            end
+        )
+    end)
+
     describe("foldtext", function()
         it("formats the hidden line count", function()
             -- Simulate v:foldstart and v:foldend
