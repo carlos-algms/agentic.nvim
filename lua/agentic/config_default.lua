@@ -147,6 +147,15 @@
 --- @field layout "inline" | "split"
 --- @field center_on_navigate_hunks boolean
 
+--- Tool call folding configuration
+--- @class agentic.UserConfig.Folding.ToolCalls
+--- @field enabled boolean Whether to fold tool call bodies.
+--- @field threshold integer Fold when interior exceeds this many lines. 0 always folds. Negative values are clamped to 0.
+
+--- Folding behavior in the chat buffer
+--- @class agentic.UserConfig.Folding
+--- @field tool_calls agentic.UserConfig.Folding.ToolCalls
+
 --- @class agentic.UserConfig.Hooks
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
@@ -174,6 +183,7 @@
 --- @class (partial) agentic.PartialUserConfig.ImagePaste: agentic.UserConfig.ImagePaste
 --- @class (partial) agentic.PartialUserConfig.AutoScroll: agentic.UserConfig.AutoScroll
 --- @class (partial) agentic.PartialUserConfig.DiffPreview: agentic.UserConfig.DiffPreview
+--- @class (partial) agentic.PartialUserConfig.Folding.ToolCalls: agentic.UserConfig.Folding.ToolCalls
 --- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
 
 --- Windows partial with nested type overrides
@@ -184,6 +194,10 @@
 --- @field files? agentic.PartialUserConfig.Windows.Files
 --- @field diagnostics? agentic.PartialUserConfig.Windows.Diagnostics
 --- @field todos? agentic.PartialUserConfig.Windows.Todos
+
+--- Folding partial with nested type overrides
+--- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
+--- @field tool_calls? agentic.PartialUserConfig.Folding.ToolCalls
 
 --- Top-level partial config -- all UserConfig fields become optional
 --- Nested fields override to use partial variants
@@ -200,6 +214,7 @@
 --- @field image_paste? agentic.PartialUserConfig.ImagePaste
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
+--- @field folding? agentic.PartialUserConfig.Folding
 --- @field settings? agentic.PartialUserConfig.Settings
 
 --- @class agentic.UserConfig
@@ -218,6 +233,7 @@
 --- @field image_paste agentic.UserConfig.ImagePaste
 --- @field auto_scroll agentic.UserConfig.AutoScroll
 --- @field diff_preview agentic.UserConfig.DiffPreview
+--- @field folding agentic.UserConfig.Folding
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
@@ -436,6 +452,13 @@ local ConfigDefault = {
         enabled = true,
         layout = "split",
         center_on_navigate_hunks = true,
+    },
+
+    folding = {
+        tool_calls = {
+            enabled = true,
+            threshold = 10,
+        },
     },
 
     hooks = {
