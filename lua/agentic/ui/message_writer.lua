@@ -102,6 +102,31 @@ function MessageWriter:_clear_thinking_state()
     self._thinking_end_line = nil
 end
 
+--- Returns the fold threshold when folding is enabled, nil otherwise.
+--- Negative thresholds are clamped to 0 (threshold=0 folds any interior > 0).
+--- @private
+--- @return integer|nil threshold
+function MessageWriter:_resolve_fold_threshold()
+    local cfg = Config.folding and Config.folding.tool_calls
+    if not cfg or not cfg.enabled then
+        return nil
+    end
+    return math.max(0, cfg.threshold or 0)
+end
+
+--- Returns a list of `count` empty strings, used to reserve space for a
+--- pre-fold two-step write.
+--- @private
+--- @param count integer
+--- @return string[]
+function MessageWriter:_make_skeleton(count)
+    local skeleton = {}
+    for _ = 1, count do
+        table.insert(skeleton, "")
+    end
+    return skeleton
+end
+
 --- Whether a block of this shape would be folded by _get_fold_geometry.
 --- Kept in sync with the threshold/diff logic below.
 --- @private
@@ -109,27 +134,23 @@ end
 --- @param is_diff boolean Whether the block is a diff kind
 --- @return boolean
 function MessageWriter:_will_fold(interior, is_diff)
-    local cfg = Config.folding and Config.folding.tool_calls
-    if not cfg or not cfg.enabled or is_diff then
+    if is_diff then
         return false
     end
-    local threshold = math.max(0, cfg.threshold or 0)
-    return interior > threshold
+    local threshold = self:_resolve_fold_threshold()
+    return threshold ~= nil and interior > threshold
 end
 
 --- Projects tool_call_blocks into the geometry format Fold expects.
 --- @private
 --- @return agentic.ui.ToolCallFold.Block[]
 function MessageWriter:_get_fold_geometry()
-    local cfg = Config.folding and Config.folding.tool_calls
-    if not cfg or not cfg.enabled then
-        return {}
-    end
-    -- Clamp negatives to 0. threshold=0 means always fold (any interior > 0).
-    local threshold = math.max(0, cfg.threshold or 0)
-
     --- @type agentic.ui.ToolCallFold.Block[]
     local geometry = {}
+
+    if self:_resolve_fold_threshold() == nil then
+        return geometry
+    end
 
     for _, block in pairs(self.tool_call_blocks) do
         if block.extmark_id then
@@ -143,12 +164,11 @@ function MessageWriter:_get_fold_geometry()
                 local start_row = pos[1]
                 local end_row = pos[3].end_row
                 local interior = end_row - start_row - 1
-                local is_diff = block.diff ~= nil
 
                 table.insert(geometry, {
                     start_row = start_row,
                     end_row = end_row,
-                    foldable = not is_diff and interior > threshold,
+                    foldable = self:_will_fold(interior, block.diff ~= nil),
                 })
             end
         end
@@ -466,11 +486,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         local will_fold =
             self:_will_fold(#lines - 2, tool_call_block.diff ~= nil)
         if will_fold then
-            local skeleton = {}
-            for _ = 1, #lines do
-                table.insert(skeleton, "")
-            end
-            self:_append_lines(skeleton)
+            self:_append_lines(self:_make_skeleton(#lines))
             local skel_end = vim.api.nvim_buf_line_count(bufnr) - 1
             tool_call_block.extmark_id = vim.api.nvim_buf_set_extmark(
                 bufnr,
@@ -639,11 +655,9 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local now_folds = self:_will_fold(new_interior, is_diff)
         local was_folding = self:_will_fold(old_interior, is_diff)
         if now_folds and not was_folding then
-            local skeleton = { new_lines[1] }
-            for _ = 1, new_interior do
-                table.insert(skeleton, "")
-            end
-            table.insert(skeleton, new_lines[#new_lines])
+            local skeleton = self:_make_skeleton(#new_lines)
+            skeleton[1] = new_lines[1]
+            skeleton[#skeleton] = new_lines[#new_lines]
             vim.api.nvim_buf_set_lines(
                 bufnr,
                 start_row,
