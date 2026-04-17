@@ -4,6 +4,7 @@ local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local DiffPreview = require("agentic.ui.diff_preview")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
+local Fold = require("agentic.ui.tool_call_fold")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
@@ -95,6 +96,13 @@ function MessageWriter:_clear_thinking_state()
     self._thinking_extmark_id = nil
     self._thinking_start_line = nil
     self._thinking_end_line = nil
+end
+
+--- Projects tool_call_blocks into the geometry format Fold expects.
+--- @private
+--- @return agentic.ui.ToolCallFold.Block[]
+function MessageWriter:_get_fold_geometry()
+    return {}
 end
 
 --- Writes a structural message (e.g. welcome banner) without triggering
@@ -1150,6 +1158,11 @@ function MessageWriter:_apply_status_highlights_if_present(
         self:_apply_header_highlight(start_row, status)
         self:_apply_status_footer(end_row, status)
     end
+end
+
+--- Clean up the MessageWriter: unregister fold state.
+function MessageWriter:destroy()
+    local _ = Fold
 end
 
 return MessageWriter
