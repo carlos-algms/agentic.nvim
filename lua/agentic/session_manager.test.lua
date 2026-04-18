@@ -902,6 +902,71 @@ describe("agentic.SessionManager", function()
         )
 
         it(
+            "does not invoke on_file_edit during session restore replay",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local session = make_session({
+                    ["tc-1"] = {
+                        kind = "edit",
+                        status = "in_progress",
+                        file_path = "/tmp/restore-replay.lua",
+                    },
+                })
+                session._is_restoring_session = true
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(0)
+            end
+        )
+
+        it(
+            "invokes on_file_edit with nil bufnr when buffer exists but is not loaded",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local abs_path = vim.fn.fnamemodify(
+                    "./tests/fixtures/unloaded_hook.lua",
+                    ":p"
+                )
+                local test_bufnr = vim.fn.bufadd(abs_path)
+                assert.is_false(vim.api.nvim_buf_is_loaded(test_bufnr))
+
+                local session = make_session({
+                    ["tc-1"] = {
+                        kind = "edit",
+                        status = "in_progress",
+                        file_path = abs_path,
+                    },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(1)
+                local data = hook_spy.calls[1][1]
+                assert.equal(abs_path, data.filepath)
+                assert.is_nil(data.bufnr)
+
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
+        )
+
+        it(
             "does not invoke on_file_edit for non-file-mutating tool calls",
             function()
                 local hook_spy = spy.new(function() end)

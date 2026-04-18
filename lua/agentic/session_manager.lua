@@ -462,14 +462,21 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
             DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
 
+            -- Skip the hook during restore replay: the provider replays
+            -- historical tool calls as "completed" but no write happened now.
             if
-                type(tracker.file_path) == "string"
+                not self._is_restoring_session
+                and type(tracker.file_path) == "string"
                 and tracker.file_path ~= ""
             then
                 local abs_path = FileSystem.to_absolute_path(tracker.file_path)
                 local raw_bufnr = vim.fn.bufnr(abs_path)
                 --- @type number|nil
-                local bufnr = raw_bufnr ~= -1 and raw_bufnr or nil
+                local bufnr = (
+                    raw_bufnr ~= -1 and vim.api.nvim_buf_is_loaded(raw_bufnr)
+                )
+                        and raw_bufnr
+                    or nil
                 --- @type agentic.UserConfig.FileEditData
                 local hook_data = {
                     filepath = abs_path,
