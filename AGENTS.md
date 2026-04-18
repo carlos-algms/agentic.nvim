@@ -359,8 +359,8 @@ how to run them.
 ### 🚨 MANDATORY: Post-Change Validation for Lua Files
 
 **Run validations ONLY after changing `.lua` files.** Do NOT run
-`make validate` when only non-Lua files were changed (markdown,
-openspec, config, etc.) — it's a waste of time.
+`make validate` when only non-Lua files were changed (markdown, config,
+etc.) — it's a waste of time.
 
 ```bash
 make validate
@@ -507,6 +507,35 @@ match:
 - Modeline (last line): `vim:tw=78:ts=8:ft=help:norl:`
 - After editing, regenerate tags:
   `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`
+
+### Git Workflow
+
+- **NEVER commit to `main` directly.** Always use a feature branch.
+- Branch naming: prefix with type (e.g. `feat/`, `fix/`, `chore/`, `docs/`,
+  `refactor/`) followed by a short kebab-case description.
+- If isolation is needed, use a git worktree under `./.worktrees/` — that path
+  is already in `.gitignore`.
+- Never use `--no-verify`, `--no-gpg-sign`, or force-push to `main`.
+
+#### Pull Requests
+
+- **ALWAYS open PRs as draft.** CodeRabbit runs on every push to a non-draft
+  PR and hits rate limits during iteration. Keep the PR as draft while
+  pushing fixes; mark it ready for review only when the branch is stable so
+  CodeRabbit performs a single review pass.
+- Flip from draft to "ready for review" only after self-review and
+  `make validate` pass.
+- PR title must follow Conventional Commits (the repo squashes at merge, so
+  the PR title becomes the commit subject).
+
+### Local-only Artifacts
+
+Some files and directories are meant to stay local and MUST NOT be committed:
+
+- `docs/superpowers/` — Superpowers plans, notes, and scratch work. These are
+  per-developer artifacts, never part of the repository.
+
+If you find yourself staging files in these paths, stop and unstage them.
 
 ### ACP and providers
 

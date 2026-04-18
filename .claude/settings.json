@@ -15,7 +15,6 @@
       "Bash(make test:*)",
       "Bash(make validate:*)",
       "Bash(nvim:*)",
-      "Bash(openspec list:*)",
       "Bash(rg:*)"
     ],
     "deny": [],
