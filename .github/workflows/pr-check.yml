@@ -95,7 +95,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        neovim-version: ['v0.11.5', 'nightly']
+        neovim-version: ['v0.11.5', 'v0.12.1', 'nightly']
 
     steps:
       - uses: actions/checkout@v4
@@ -156,7 +156,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        neovim-version: ['v0.11.5', 'nightly']
+        neovim-version: ['v0.11.5', 'v0.12.1', 'nightly']
 
     steps:
       - uses: actions/checkout@v4
