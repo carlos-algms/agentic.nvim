@@ -42,6 +42,13 @@
 --- @field tab_page_id number The tabpage ID
 --- @field update agentic.acp.SessionUpdateMessage ACP session update details.
 
+--- Data passed to the on_file_edit hook
+--- @class agentic.UserConfig.FileEditData
+--- @field filepath string Absolute path to the edited file
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+--- @field bufnr? number Buffer number if the file is loaded in a buffer
+
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
 --- @field mode string|string[] The mode(s) for this binding
@@ -160,6 +167,7 @@
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
+--- @field on_file_edit? fun(data: agentic.UserConfig.FileEditData): nil
 
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
@@ -465,6 +473,7 @@ local ConfigDefault = {
         on_prompt_submit = nil,
         on_response_complete = nil,
         on_session_update = nil,
+        on_file_edit = nil,
     },
 
     headers = {},

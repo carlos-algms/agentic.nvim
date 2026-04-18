@@ -858,7 +858,20 @@ integrating with other plugins.
               }
             end
           end
-      end
+      end,
+
+      -- Called after Agentic writes to a file (file-mutating tool call completed).
+      -- Note: mutating the file here (e.g. formatters that save) can cause the
+      -- agent to re-read or retry edits on its next action.
+      on_file_edit = function(data)
+        -- data.filepath: string - Absolute path to the edited file
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.bufnr: number|nil - Buffer number if the file is loaded
+        if data.bufnr then
+          vim.lsp.buf.format({ bufnr = data.bufnr, timeout_ms = 5000 })
+        end
+      end,
     }
   }
 }

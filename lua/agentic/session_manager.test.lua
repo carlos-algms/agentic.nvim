@@ -695,15 +695,21 @@ describe("agentic.SessionManager", function()
     end)
 
     describe("on_tool_call_update: buffer reload", function()
+        local Config = require("agentic.config")
+        local DiffPreview = require("agentic.ui.diff_preview")
         --- @type TestStub
         local checktime_stub
         --- @type TestStub
         local schedule_stub
+        --- @type TestStub
+        local cleanup_suggestion_buffer_stub
 
         --- @param tool_call_blocks table<string, table>
         --- @return agentic.SessionManager
         local function make_session(tool_call_blocks)
             return {
+                session_id = "session-1",
+                tab_page_id = 42,
                 message_writer = {
                     update_tool_call_block = function() end,
                     tool_call_blocks = tool_call_blocks,
@@ -729,11 +735,16 @@ describe("agentic.SessionManager", function()
             schedule_stub:invokes(function(fn)
                 fn()
             end)
+            cleanup_suggestion_buffer_stub =
+                spy.stub(DiffPreview, "cleanup_suggestion_buffer")
         end)
 
         after_each(function()
             checktime_stub:revert()
             schedule_stub:revert()
+            cleanup_suggestion_buffer_stub:revert()
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_file_edit = nil
         end)
 
         it("calls checktime for each file-mutating kind", function()
@@ -797,6 +808,124 @@ describe("agentic.SessionManager", function()
             assert.spy(checktime_stub).was.called(0)
             debug_stub:revert()
         end)
+
+        it(
+            "invokes on_file_edit hook for file-mutating tool calls with absolute path and bufnr",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local test_bufnr = vim.api.nvim_create_buf(false, true)
+                local abs_path =
+                    vim.fn.fnamemodify("./tests/fixtures/edit_hook.lua", ":p")
+                vim.api.nvim_buf_set_name(test_bufnr, abs_path)
+
+                local session = make_session({
+                    ["tc-1"] = {
+                        kind = "edit",
+                        status = "in_progress",
+                        file_path = abs_path,
+                    },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(1)
+                local data = hook_spy.calls[1][1]
+                assert.equal(abs_path, data.filepath)
+                assert.equal("session-1", data.session_id)
+                assert.equal(42, data.tab_page_id)
+                assert.equal(test_bufnr, data.bufnr)
+
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
+        )
+
+        it(
+            "invokes on_file_edit with nil bufnr when file is not loaded",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local unloaded_path = "/tmp/agentic-unloaded-"
+                    .. tostring(vim.loop.hrtime())
+
+                local session = make_session({
+                    ["tc-1"] = {
+                        kind = "edit",
+                        status = "in_progress",
+                        file_path = unloaded_path,
+                    },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(1)
+                local data = hook_spy.calls[1][1]
+                assert.equal(unloaded_path, data.filepath)
+                assert.is_nil(data.bufnr)
+            end
+        )
+
+        it(
+            "does not invoke on_file_edit when tracker has no file_path",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local session = make_session({
+                    ["tc-1"] = { kind = "edit", status = "in_progress" },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(0)
+            end
+        )
+
+        it(
+            "does not invoke on_file_edit for non-file-mutating tool calls",
+            function()
+                local hook_spy = spy.new(function() end)
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_file_edit = function(data)
+                    hook_spy(data)
+                end
+
+                local session = make_session({
+                    ["tc-1"] = {
+                        kind = "read",
+                        status = "in_progress",
+                        file_path = "/tmp/foo.lua",
+                    },
+                })
+
+                SessionManager._on_tool_call_update(
+                    session,
+                    { tool_call_id = "tc-1", status = "completed" }
+                )
+
+                assert.spy(hook_spy).was.called(0)
+            end
+        )
     end)
 
     describe("_cancel_session resets is_generating", function()

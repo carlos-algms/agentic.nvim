@@ -610,9 +610,20 @@ Event hooks ~
         -- data.tab_page_id: number
         -- data.update: table
       end,
+      on_file_edit = function(data)
+        -- data.filepath: string (absolute path)
+        -- data.session_id: string
+        -- data.tab_page_id: number
+        -- data.bufnr: number|nil (if file is loaded in a buffer)
+      end,
     },
   }
 <
+Note: mutating the file inside `on_file_edit` (for example
+formatters that save) may cause the agent to re-read or retry
+edits on its next action. Prefer agent-side validation via
+CLAUDE.md / AGENTS.md when possible.
+
 
 ==============================================================================
 CUSTOMIZATION                                    *agentic-customization*

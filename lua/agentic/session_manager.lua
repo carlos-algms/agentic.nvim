@@ -27,7 +27,7 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update"
+--- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
 --- @param data table
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
@@ -459,6 +459,22 @@ function SessionManager:_on_tool_call_update(tool_call_update)
             vim.cmd.checktime()
 
             DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
+
+            if
+                type(tracker.file_path) == "string"
+                and tracker.file_path ~= ""
+            then
+                local abs_path = FileSystem.to_absolute_path(tracker.file_path)
+                local raw_bufnr = vim.fn.bufnr(abs_path)
+                --- @type number|nil
+                local bufnr = raw_bufnr ~= -1 and raw_bufnr or nil
+                P.invoke_hook("on_file_edit", {
+                    filepath = abs_path,
+                    session_id = self.session_id,
+                    tab_page_id = self.tab_page_id,
+                    bufnr = bufnr,
+                })
+            end
         end
     end
 
