@@ -1,184 +1,129 @@
 # Agents Guide
 
 **agentic.nvim** is a Neovim plugin that emulates Cursor AI IDE behavior,
-providing AI-driven code assistance through a chat interface for interactive
-conversations, code generation, and permission approvals.
+providing AI-driven code assistance through a chat interface.
 
-## 🧠 Reasoning Preference
+## Nested instructions
 
-**IMPORTANT:** Prefer retrieval-led reasoning (reading files, searching
-codebase) over pre-training-led reasoning (guessing from memory) for all
-project-specific decisions. Your training data may be outdated, always verify
+Read these before touching the matching area:
+
+- `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions,
+  providers
+- `@tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
+
+## Reasoning Preference
+
+Prefer retrieval-led reasoning (reading files, searching the codebase) over
+pre-training-led reasoning. Training data may be outdated, always verify
 against actual code.
 
-## 🚨 CRITICAL: No Assumptions - Gather Context First
+## CRITICAL: No Assumptions - Gather Context First
 
 **NEVER make assumptions. ALWAYS gather context before decisions or
-suggestions.**
+suggestions.** Read relevant files, search for existing patterns, verify
+types. If you haven't read the relevant code, you don't have enough context.
 
-### Mandatory Context Gathering
+Forbidden phrases: "this probably...", "I assume...", "it should...", "you
+might need to...", "based on similar projects...". Never suggest partial
+implementations expecting the user to fill gaps.
 
-Before implementing, suggesting, or answering:
+## CRITICAL: Multi-Tabpage Architecture
 
-1. **Read relevant files** - Don't guess implementation details
-2. **Search codebase** - Find existing patterns and usage
-3. **Check dependencies** - Understand what relies on what
-4. **Verify types** - Read type definitions, don't assume structure
+**EVERY FEATURE MUST BE MULTI-TAB SAFE.** This plugin supports one session
+instance per tabpage.
 
-### Examples of Forbidden Assumptions
+### Architecture overview
 
-❌ **DON'T:**
+- `SessionRegistry` maps `tab_page_id -> SessionManager`
+- 1 ACP provider instance (single subprocess, shared across tabpages, managed
+  by `AgentInstance`)
+- 1 ACP session ID per tabpage (ACP supports multiple but only one is active
+  per tab)
+- 1 `SessionManager` + 1 `ChatWidget` per tabpage (full UI isolation)
 
-- "This probably uses X pattern"
-- "I assume this field exists"
-- "This likely works like Y"
-- "Based on similar projects..."
-- "it should ..."
+Each tabpage has its own: ACP session ID, chat widget (buffers, windows,
+state), status animation, permission manager, file list, code selection.
 
-✅ **DO:**
-
-- Read files to understand current implementation
-- Search for usage patterns across codebase
-- Verify types and interfaces before using them
-- Build complete context before suggesting solutions
-
-### Incomplete Solutions Are Unacceptable
-
-- Don't suggest partial implementations expecting me to fill gaps
-- Don't provide solutions with "you might need to...", "it should ..."
-  suggestions
-- Don't guess parameter types or return values, read the files and find
-  implementation
-
-**CRITICAL:** If you haven't read the relevant code, you don't have enough
-context to make decisions or suggestions!
-
-## 🚨 CRITICAL: Multi-Tabpage Architecture
-
-**EVERY FEATURE MUST BE MULTI-TAB SAFE** - This plugin supports **one session
-instance per tabpage**.
-
-### Architecture Overview
-
-- **Tabpage instance control:** `SessionRegistry` manages instances via
-  `sessions` table mapping `tab_page_id -> SessionManager`
-- **1 ACP provider instance** (single subprocess per provider) shared across all
-  tabpages (managed by `AgentInstance`)
-- **1 ACP session ID per tabpage** - The ACP protocol supports multiple sessions
-  per instance, but only one session is active at a time per tabpage
-- **1 SessionManager + 1 ChatWidget per tabpage** - Full UI isolation between
-  tabpages
-
-Each tabpage has independent:
-
-- ACP session ID (tracked by the shared provider)
-- Chat widget (buffers, windows, state)
-- Status animation
-- Permission manager
-- File list
-- Code selection
-- All UI state and resources
-
-### Implementation Requirements
-
-When implementing ANY feature:
+### Implementation requirements
 
 - **NEVER use module-level shared state** for per-tabpage runtime data
-  - ❌ `local current_session = nil` (single session for all tabs)
-  - ✅ Store per-tabpage state in tabpage-scoped instances
-  - ✅ Module-level constants OK for truly global config: `local CONFIG = {}`
+  - WRONG: `local current_session = nil` (single for all tabs)
+  - RIGHT: Store in tabpage-scoped instances
+  - Module-level constants OK for truly global config: `local CONFIG = {}`
 
-- **Namespaces are GLOBAL but extmarks are BUFFER-SCOPED**
-  - ✅ `local NS_ID = vim.api.nvim_create_namespace("agentic_animation")` -
-    Module-level OK
-  - ✅ Namespaces can be shared across tabpages safely
-  - **Why:** Extmarks are stored per-buffer, and each tabpage has its own
-    buffers
-  - **Key insight:** `nvim_create_namespace()` is idempotent (same name = same
-    ID globally)
-  - **Clearing extmarks:** Use
+- **Namespaces are GLOBAL, extmarks are BUFFER-SCOPED**
+  - Module-level namespace constants are fine. `nvim_create_namespace()` is
+    idempotent (same name = same ID globally). Isolation comes from buffer
+    separation.
+  - Clear with
     `vim.api.nvim_buf_clear_namespace(bufnr, ns_id, start_line, end_line)`
-  - **Pattern:** Module-level namespace constants are fine - isolation comes
-    from buffer separation
-  - **Example:**
 
-    ```lua
-    -- Module level (shared namespace ID is OK)
-    local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
+  ```lua
+  -- Module level (shared namespace ID is OK)
+  local NS_ANIMATION = vim.api.nvim_create_namespace("agentic_animation")
 
-    -- Instance level (each instance has its own buffer)
-    function Animation:new(bufnr)
-        return { bufnr = bufnr }
-    end
+  function Animation:new(bufnr)
+      return { bufnr = bufnr }
+  end
 
-    -- Operations are buffer-specific using module-level namespace
-    vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, ...)
-    vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
-    ```
+  vim.api.nvim_buf_set_extmark(self.bufnr, NS_ANIMATION, ...)
+  vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
+  ```
 
-- **Highlight groups are GLOBAL** (shared across all tabpages)
-  - ✅ `vim.api.nvim_set_hl(0, "AgenticTitle", {...})` - Defined once in
-    `lua/agentic/theme.lua`
-  - Highlight groups apply globally to all buffers/windows/tabpages
-  - Theme setup runs once during plugin initialization
-  - Use namespaces to control WHERE highlights appear, not to isolate highlight
-    definitions
+- **Highlight groups are GLOBAL** (shared across all tabpages). Defined once
+  in `lua/agentic/theme.lua`. Use namespaces to control WHERE highlights
+  appear, not to isolate definitions.
 
-- **Scoped storage:** Use correct accessor for the use case
+- **Scoped storage:** use the correct accessor
 
-  | Scope   | Accessor         | Purpose          | Use For         | Example                          |
-  | ------- | ---------------- | ---------------- | --------------- | -------------------------------- |
-  | Buffer  | `vim.b[bufnr]`   | Custom variables | User data/state | `vim.b[bufnr].my_state = {}`     |
-  | Buffer  | `vim.bo[bufnr]`  | Built-in options | Neovim settings | `vim.bo[bufnr].filetype = "lua"` |
-  | Window  | `vim.w[winid]`   | Custom variables | User data/state | `vim.w[winid].my_state = {}`     |
-  | Window  | `vim.wo[winid]`  | Built-in options | Neovim settings | `vim.wo[winid].number = true`    |
-  | Tabpage | `vim.t[tabpage]` | Custom variables | User data/state | `vim.t[tabpage].my_state = {}`   |
+  | Scope   | Accessor         | Purpose          | Example                          |
+  | ------- | ---------------- | ---------------- | -------------------------------- |
+  | Buffer  | `vim.b[bufnr]`   | Custom variables | `vim.b[bufnr].my_state = {}`     |
+  | Buffer  | `vim.bo[bufnr]`  | Built-in options | `vim.bo[bufnr].filetype = "lua"` |
+  | Window  | `vim.w[winid]`   | Custom variables | `vim.w[winid].my_state = {}`     |
+  | Window  | `vim.wo[winid]`  | Built-in options | `vim.wo[winid].number = true`    |
+  | Tabpage | `vim.t[tabpage]` | Custom variables | `vim.t[tabpage].my_state = {}`   |
 
-  **Notes:**
-  - `vim.b` stores buffer-local variables (equivalent to Vimscript `b:`
-    variables)
-  - `vim.bo` sets buffer options (equivalent to `:setlocal`)
-  - `vim.w` stores window-local variables (equivalent to Vimscript `w:`
-    variables)
-  - `vim.wo` sets window options
-  - `vim.t` stores tabpage-local variables (equivalent to Vimscript `t:`
-    variables)
-  - State stored in scoped storage is automatically cleaned up when the scope is
-    deleted
-  - Invalid option names in option accessors (`vim.bo`, `vim.wo`) throw errors
+  `vim.b`/`vim.w`/`vim.t` are custom variables (Vimscript `b:`/`w:`/`t:`).
+  `vim.bo`/`vim.wo` are built-in options (`:setlocal`). State is auto-cleaned
+  when scope is deleted. Invalid option names in `vim.bo`/`vim.wo` throw.
 
-- **Get tabpage ID correctly**
-  - In instance methods with `self.tab_page_id`
-  - From buffer: `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`
-  - Current tabpage: `vim.api.nvim_get_current_tabpage()`
+- **Get tabpage ID:** `self.tab_page_id` in instance methods; from buffer:
+  `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`; current:
+  `vim.api.nvim_get_current_tabpage()`.
 
-- **Buffers/windows are tabpage-specific**
-  - Each tabpage manages its own buffers and windows
-  - Never assume buffer/window exists globally
-  - Use `vim.api.nvim_tabpage_*` APIs when needed
+- **Buffers/windows are tabpage-specific.** Never assume global existence.
+  Use `vim.api.nvim_tabpage_*` when needed.
 
-- **Autocommands must be tabpage-aware**
-  - Prefer buffer-local: `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`
-  - Filter by tabpage in global autocommands if necessary
+- **Window creation and validation must be tab-scoped.** When checking if a
+  window exists or creating a new one, scope the lookup to the session's
+  tabpage. Never query windows globally (e.g. `vim.api.nvim_list_wins()`) and
+  assume a hit belongs to the current session. Use
+  `vim.api.nvim_tabpage_list_wins(self.tab_page_id)` and validate that the
+  window's tabpage matches before using it.
 
-- **Keymaps must be buffer-local**
-  - Always use: `BufHelpers.keymap_set(bufnr, "n", "key", fn)`
-  - NEVER use global keymaps that affect all tabpages
+- **Autocommands must be tabpage-aware.** Prefer buffer-local:
+  `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`. Filter by tabpage
+  in global autocommands.
 
-**Important Notes:**
+- **Keymaps must be buffer-local.** Use
+  `BufHelpers.keymap_set(bufnr, "n", "key", fn)`. NEVER use global keymaps.
 
-- 🚨 **NEVER use `vim.notify` directly** - Always use `Logger.notify` to avoid
-  fast context errors
-- ⚠️ Logger only has `debug()`, `debug_to_file()`, and `notify()` methods - no
-  `warn()`, `error()`, or `info()` methods
-- Logger.debug() and Logger.debug_to_file() output is conditional on
-  `Config.debug` setting
+### Logger
+
+- **NEVER use `vim.notify` directly.** Always use `Logger.notify` to avoid
+  fast context errors.
+- Logger only has `debug()`, `debug_to_file()`, and `notify()`. No `warn()`,
+  `error()`, or `info()`. `debug()`/`debug_to_file()` output depends on
+  `Config.debug`.
 
 ## Code Style
 
-### LuaCATS Annotations
+### LuaCATS annotations
 
-Use consistent formatting for LuaCATS annotations with a space after `---`:
+Use a space after `---` for both descriptions and annotations. Use `@private`
+or `@protected` for internal details. Do NOT write meaningful parameter/
+return descriptions unless requested. Group related annotations together.
 
 ```lua
 --- Brief description of the class
@@ -195,132 +140,88 @@ MyClass.__index = MyClass
 function MyClass:new(name, options)
     return setmetatable({ public_field = name }, self)
 end
+```
 
---- Performs an operation and returns success status
---- @return boolean success
-function MyClass:do_something()
-    return true
+#### Return format
+
+`@return {type} return_name description` (type first, then name).
+
+- RIGHT: `@return boolean success Whether the operation succeeded`
+- WRONG: `@return boolean Whether the operation succeeded` (missing name)
+- WRONG: `@return success boolean` (wrong order)
+
+#### Optional types
+
+Format depends on annotation type. See
+[LuaLS issue #2385](https://github.com/LuaLS/lua-language-server/issues/2385)
+for the underlying validator limitation.
+
+**`@param` and `fun()` type declarations - MUST use `type|nil`:**
+
+- RIGHT: `@param winid number|nil`
+- RIGHT: `@param callback fun(result: table|nil)`
+- WRONG: `@param winid? number` (LuaLS does not validate optional syntax)
+- WRONG: `fun(result?: table)` (optional syntax ignored)
+
+**`@field` annotations - Use `variable? type`:**
+
+- RIGHT: `@field _state? string`
+- RIGHT: `@field diff? { all?: boolean }` (inline tables also use `?`)
+- WRONG: `@field _state string|nil` (use `?` here instead)
+- WRONG: `@field _state string?` (`?` goes after variable name, not type)
+
+**`@return`, `@type`, `@alias` - Use explicit `type|nil`:**
+
+- RIGHT: `@return string|nil result`, `@type table<string, number|nil>`,
+  `@alias MyType string|nil`
+- WRONG: trailing `?` on the type (e.g. `string?`, `number?`)
+
+#### Typed variables before return
+
+LuaLS cannot infer types from inline returns of complex types. Use a typed
+intermediate variable:
+
+```lua
+-- Bad: LuaLS cannot infer the return type
+function M.create_block(lines)
+    return {
+        start_line = 1,
+        end_line = #lines,
+        content = lines,
+    }
+end
+
+-- Good: Type annotation enables proper type checking
+--- @return MyModule.Block block
+function M.create_block(lines)
+    --- @type MyModule.Block
+    local block = {
+        start_line = 1,
+        end_line = #lines,
+        content = lines,
+    }
+    return block
 end
 ```
 
-**Guidelines:**
+## Development, Testing and Linting
 
-- Always include a space after `---` for both descriptions and annotations
-- Use `@private` or `@protected` for internal implementation details
-- Do NOT provide meaningful parameter and return descriptions, unless requested
+### Plugin requirements
 
-- **Return annotation format:** Use `@return {type} return_name description`
-  format:
-  - ✅ **CORRECT:** `@return boolean success Whether the operation succeeded`
-  - ✅ **CORRECT:**
-    `@return string|nil result The result if successful, nil otherwise`
-  - ❌ **WRONG:** `@return boolean Whether the operation succeeded` - Missing
-    return name
-  - ❌ **WRONG:** `@return success boolean` - Wrong order (type must come first)
+- Neovim v0.11.0+ (verify APIs match this version or newer)
+- LuaJIT 2.1 (bundled, based on Lua 5.1)
+- Optional: [img-clip.nvim](https://github.com/hakonharnes/img-clip.nvim) for
+  clipboard screenshot pasting (drag-and-drop is a terminal feature, no
+  plugin needed)
 
-- **Optional types:** Format depends on annotation type
+### Lua restrictions
 
-  **`@param` annotations - MUST use explicit `type|nil` union:**
-  - ✅ **CORRECT:** `@param winid number|nil` - Explicit union type required
-  - ✅ **CORRECT:** `@param options table|nil` - Optional parameter
-  - ❌ **WRONG:** `@param winid? number` - LuaLS doesn't properly validate
-    optional syntax
-  - ❌ **WRONG:** `@param winid number?` - Wrong syntax
-  - **Reason:** Due to
-    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385),
-    optional `?` syntax is not properly validated for function parameters, so
-    explicit `|nil` union must be used
-  - **Note:** Function type parameters also use `|nil`:
-    - ✅ **CORRECT:** `@param callback fun(result: table|nil)` - Explicit union
-      required
-    - ❌ **WRONG:** `@param callback fun(result?: table)` - LuaLS doesn't
-      validate this
-
-  **`@field` annotations - Use `variable? type` format:**
-  - ✅ **CORRECT:** `@field _state? string` - `?` goes AFTER the variable name
-  - ✅ **CORRECT:** `@field diff? { all?: boolean }` - Inline table fields also
-    support optional `?`
-  - ❌ **WRONG:** `@field _state string|nil` - Use `variable? type` instead
-  - ❌ **WRONG:** `@field _state string?` - `?` must be after variable name, not
-    type
-
-  **`@return`, `@type`, and `@alias` annotations - Use explicit `type|nil`
-  union:**
-  - ✅ **CORRECT:** `@return string|nil result` - Explicit union type
-  - ✅ **CORRECT:** `@type table<string, number|nil>` - Explicit union type
-  - ✅ **CORRECT:** `@alias MyType string|nil` - Explicit union type
-  - ❌ **WRONG:** `@return string? result` - Do NOT use `?` after type
-  - ❌ **WRONG:** `@type table<string, number?>` - Do NOT use `?` after type
-  - ❌ **WRONG:** `@alias MyType string?` - Do NOT use `?` after type
-  - **Reason:** Makes the optional nature more explicit in type definitions
-
-  **`fun()` type declarations - Use explicit `type|nil` union:**
-  - ✅ **CORRECT:** `fun(result: table|nil)` - Explicit union type (required due
-    to
-    [LuaLS limitation](https://github.com/LuaLS/lua-language-server/issues/2385))
-  - ❌ **WRONG:** `fun(result?: table)` - Optional syntax ignored in `fun()`
-    declarations, luals ignores it and don't run null checks properly
-  - **Note:** `@param` and `@field` annotations can use `variable? type`, but
-    inline `fun()` parameters must use `type|nil`
-
-- **Typed variables before return:** When returning complex types (tables,
-  arrays, custom classes), use a typed intermediate variable instead of
-  returning directly. LuaLS cannot infer types from inline return statements.
-
-  ```lua
-  -- ❌ Bad: LuaLS cannot infer the return type
-  function M.create_block(lines)
-      return {
-          start_line = 1,
-          end_line = #lines,
-          content = lines,
-      }
-  end
-
-  -- ✅ Good: Type annotation enables proper type checking
-  --- @return MyModule.Block block
-  function M.create_block(lines)
-      --- @type MyModule.Block
-      local block = {
-          start_line = 1,
-          end_line = #lines,
-          content = lines,
-      }
-      return block
-  end
-  ```
-
-- Do NOT provide meaningful parameter and return descriptions, unless requested
-- Group related annotations together (class fields, function params, returns)
-
-## Development, Testing & Linting
-
-### Agentic.nvim Plugin Requirements
-
-- Neovim v0.11.0+ (make sure settings, functions, and APIs, specially around
-  `vim.*` are for this version or newer)
-- LuaJIT 2.1 (bundled with Neovim, based on Lua 5.1)
-  - Be ultra careful with lua features and neovim APIs based on version
-- Optional: https://github.com/hakonharnes/img-clip.nvim for Screenshot pasting
-  from the clipboard (drag-and-drop works without it, it's terminal feature, not
-  plugin, neither neovim specific)
-
-#### Lua Language Restrictions
-
-**FORBIDDEN: goto/label syntax** - Selene parser does not support goto/label
-syntax
-
-- ❌ **NEVER use:** `goto label` or `::label::` syntax
-- **Alternative patterns:**
-  - Invert conditions: `if not skip_condition then ... end`
-  - Use elseif chains: `if case1 then ... elseif case2 then ... else ... end`
-  - Extract to functions for early returns
-  - Use continue-like patterns with conditional blocks
-
-**Example refactoring:**
+**FORBIDDEN: `goto`/`::label::` syntax** - Selene parser does not support it.
+Use inverted conditions, `elseif` chains, or extracted functions for early
+returns.
 
 ```lua
--- ❌ Bad: Uses goto (Selene parse error)
+-- Bad: Uses goto (Selene parse error)
 for _, item in ipairs(items) do
     if should_skip(item) then
         goto continue
@@ -329,60 +230,48 @@ for _, item in ipairs(items) do
     ::continue::
 end
 
--- ✅ Good: Inverted condition
+-- Good: Inverted condition
 for _, item in ipairs(items) do
     if not should_skip(item) then
         -- ... process item ...
-    end
-end
-
--- ✅ Good: elseif chain for multiple early exits
-for _, item in ipairs(items) do
-    if condition1(item) then
-        -- handle case 1
-    elseif condition2(item) then
-        -- handle case 2
-    else
-        -- default processing
     end
 end
 ```
 
 ### Testing
 
-When creating, editing, or reviewing tests, always load the tests instructions
-it will contain folder structure, files location, and test framework usage, and
-how to run them.
+#### MANDATORY: TDD Red/Green
 
-**See `@tests/AGENTS.md` for complete testing guide.**
+For bug fixes and behavioral changes, write the failing test BEFORE the fix:
 
-### 🚨 MANDATORY: Post-Change Validation for Lua Files
+1. **Red** - Write a failing test. If the code under test does not exist,
+   first scaffold the module/class/method with stubbed bodies so the test
+   fails on wrong behavior, not on `attempt to call a nil value`.
+2. **Green** - Minimal change to turn the test green.
+3. Run `make validate` to confirm nothing else broke.
 
-**Run validations ONLY after changing `.lua` files.** Do NOT run
-`make validate` when only non-Lua files were changed (markdown, config,
-etc.) — it's a waste of time.
+A test written after the fix is already green proves nothing. Non-negotiable.
+Only exception: pure refactors, formatting, docs - call out explicitly in
+the PR.
+
+**Full workflow, helpers, conventions:** `@tests/AGENTS.md`. ALWAYS read it
+before creating, editing, or reviewing tests. Do not guess conventions from
+other projects (e.g. `assert` is a custom helper, not `luassert`; spies have
+no `:call(n)`; async assertions inside `vim.schedule` are silently dropped).
+
+### MANDATORY: Post-change validation for Lua files
+
+Run `make validate` ONLY when `.lua` files changed. Skip for markdown/config
+changes.
 
 ```bash
 make validate
 ```
 
-This single command runs:
+Runs `format`, `luals`, `selene`, `test` in sequence. Fast (< 5s combined),
+single permission prompt, output redirected to log files automatically.
 
-- `make format` - Format all Lua files
-- `make luals` - Type checking
-- `make selene` - Linting
-- `make test` - All tests
-
-**Why use `make validate`:**
-
-- Validations are fast (< 5 seconds combined)
-- Single permission prompt for all checks
-- Ensures all checks pass together
-- Output redirected to log files automatically
-
-**Output format (exactly 5-6 lines):**
-
-The `make validate` command outputs **only 5-6 short lines** to stdout. Example:
+Output is 5-6 short lines on success. Example:
 
 ```bash
 format: 0 (took 1s) - log: .local/agentic_format_output.log
@@ -392,103 +281,73 @@ test: 0 (took 1s) - log: .local/agentic_test_output.log
 Total: 4s
 ```
 
-Each line shows: `{task}: {exit_code} (took {seconds}s) - log: {log_path}`
+Each line: `{task}: {exit_code} (took {seconds}s) - log: {log_path}`. Exit
+code `0` = success.
 
-- Exit code `0` = success, non-zero = failure
-- Verbose output is written to log files, NOT stdout
+#### FORBIDDEN: Output redirection
 
-**🚨 FORBIDDEN: Output redirection**
-
-- **NEVER redirect `make validate` output** - it's already minimal (5-6 lines)
-- **NEVER use `> file`, `>> file`, `2>&1`, `| tee`, etc.** on `make validate`
-- **NEVER use `head`, `tail`, or pipes** on `make validate` output
-- The command handles its own log file redirection internally
+NEVER redirect `make validate` output - it is already minimal. No `> file`,
+`>> file`, `2>&1`, `| tee`, `| head`, `| tail`. The command handles its own
+log redirection.
 
 ```bash
-# ❌ FORBIDDEN - Don't redirect output
+# FORBIDDEN
 make validate > my_output.log
 make validate 2>&1 | tee output.log
 make validate | head -20
 
-# ✅ CORRECT - Run directly, read the 5-6 lines output
+# CORRECT
 make validate
 ```
 
-**CRITICAL: Log file locations (defined by Makefile):**
+#### Log files (defined by Makefile)
 
-The `make validate` target writes verbose output to these **exact paths** in the
-project root:
+Exact paths in project root (NEVER write to different paths):
 
-- `.local/agentic_format_output.log` - StyLua formatting output
-- `.local/agentic_luals_output.log` - LuaLS type checking output
-- `.local/agentic_selene_output.log` - Selene linting output
-- `.local/agentic_test_output.log` - Test runner output
+- `.local/agentic_format_output.log`
+- `.local/agentic_luals_output.log`
+- `.local/agentic_selene_output.log`
+- `.local/agentic_test_output.log`
 
-**Rules:**
+Only read exit codes from `make validate` output. On failure, read the
+corresponding log file.
 
-- **NEVER create or write to different log file paths** - always use the paths
-  above
-- Only read exit codes from `make validate` output unless there's a failure
-- If any command fails, read the corresponding log file to diagnose the issue
+**Reading log files (on failure only):**
 
-**Reading log files (only when validation fails):**
+- NEVER use the Read tool (floods context with entire file)
+- Use targeted commands:
+  - `tail -n 10 .local/agentic_luals_output.log` (errors usually at end)
+  - `rg "error|warning|fail" .local/agentic_test_output.log` (smart-case)
+  - `grep -i "error" .local/agentic_selene_output.log`
+- If multiple reads needed: `cat .local/agentic_*_output.log` once instead
+  of chunked reads
 
-- **NEVER use Read tool** - floods context with entire file
-- **Use targeted commands instead:**
-  - `tail -n 10 .local/agentic_luals_output.log` - Last 10 lines (errors usually
-    at end)
-  - `rg "error|warning|fail" .local/agentic_test_output.log` - Search for
-    specific patterns (smart-case by default)
-  - `grep -i "error" .local/agentic_selene_output.log` - Search with grep
-    (case-insensitive)
-- Increase line count only if needed for context
-- Read only what's needed to diagnose the issue
-- **If multiple reads needed:** Use `cat .local/agentic_*_output.log` once for
-  entire file instead of reading multiple chunks (avoids loops of reading trying
-  to find info)
+### Make targets
 
-### Type Checking
+- `make luals` - Lua Language Server headless diagnosis (full project type
+  check)
+- `make selene` - Selene linter
+- `make format` - StyLua format all Lua files
+- `make format-file FILE=path/to/file.lua` - Format one file
 
-`make luals` runs Lua Language Server headless diagnosis across all files in the
-project and provides comprehensive type checking.
+More targets: read `Makefile` at project root.
 
-### Available Make targets:
+### Configuration and user-facing docs
 
-- `make luals` - Run Lua Language Server headless diagnosis (type checking) -
-  **Use this for full project type checks**
-- `make selene` - Run Selene linter (Lua linting)
-- `make format` - Format all Lua files with StyLua
-- `make format-file FILE=path/to/file.lua` - Format a specific file
+- `lua/agentic/config_default.lua` - user-configurable options
+- `lua/agentic/theme.lua` - custom highlight groups
 
-**For more targets and implementation details:** Read the `Makefile` at the
-project root
+When adding a new highlight group:
 
-### Configuration & User Facing Documentation
+1. Add name to `Theme.HL_GROUPS` constant
+2. Define default in `Theme.setup()`
+3. Update README.md "Customization (Ricing)" section (code example + table
+   row)
 
-#### Config File Changes
+#### Vimdoc (`doc/agentic.txt`)
 
-The `lua/agentic/config_default.lua` file defines all user-configurable options.
-
-#### Theme & Highlight Groups
-
-The `lua/agentic/theme.lua` file defines all custom highlight groups used by the
-plugin.
-
-**IMPORTANT:** When adding new highlight groups:
-
-1. Add the highlight group name to `Theme.HL_GROUPS` constant
-2. Define the default highlight in `Theme.setup()` function
-3. **Update the README.md** "Customization (Ricing)" section with:
-   - The new highlight group in the code example
-   - A new row in the "Available Highlight Groups" table
-
-#### Vimdoc Help File
-
-The `doc/agentic.txt` file is the Neovim `:help agentic` reference. It is
-**manually written** vimdoc -- not auto-generated.
-
-**IMPORTANT:** When changing any of these files, the vimdoc MUST be updated to
-match:
+Manually written, NOT auto-generated. When changing these files, vimdoc MUST
+be updated:
 
 | Source file                      | Vimdoc section to update            |
 | -------------------------------- | ----------------------------------- |
@@ -497,48 +356,31 @@ match:
 | `lua/agentic/theme.lua`          | Customization (highlight groups)    |
 | `README.md` (install/keymaps)    | Installation, Keymaps, Integrations |
 
-**Format rules:**
+**Format rules:** 78-char width, right-aligned tags `*agentic-section*`,
+code blocks `>lua` / `<`, function tags `*agentic.function_name()*`,
+cross-refs `|agentic-section|`, modeline `vim:tw=78:ts=8:ft=help:norl:`.
+After editing: `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`.
 
-- 78-character line width
-- Right-aligned tags: `*agentic-section-name*`
-- Code blocks: `>lua` / `<` (treesitter-aware)
-- Function tags: `*agentic.function_name()*`
-- Cross-references: `|agentic-section|`
-- Modeline (last line): `vim:tw=78:ts=8:ft=help:norl:`
-- After editing, regenerate tags:
-  `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`
+### Git workflow
 
-### Git Workflow
-
-- **NEVER commit to `main` directly.** Always use a feature branch.
-- Branch naming: prefix with type (e.g. `feat/`, `fix/`, `chore/`, `docs/`,
-  `refactor/`) followed by a short kebab-case description.
-- If isolation is needed, use a git worktree under `./.worktrees/` — that path
-  is already in `.gitignore`.
+- **NEVER commit to `main` directly.** Use a feature branch.
+- Branch names: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/` +
+  kebab-case description.
+- For isolation, use a worktree under `./.worktrees/` (gitignored).
 - Never use `--no-verify`, `--no-gpg-sign`, or force-push to `main`.
 
-#### Pull Requests
+#### Pull requests
 
 - **ALWAYS open PRs as draft.** CodeRabbit runs on every push to a non-draft
-  PR and hits rate limits during iteration. Keep the PR as draft while
-  pushing fixes; mark it ready for review only when the branch is stable so
-  CodeRabbit performs a single review pass.
-- Flip from draft to "ready for review" only after self-review and
-  `make validate` pass.
-- PR title must follow Conventional Commits (the repo squashes at merge, so
-  the PR title becomes the commit subject).
+  PR and hits rate limits during iteration. Flip to "ready for review" only
+  after self-review and `make validate` pass.
+- PR title must follow Conventional Commits (repo squashes at merge, title
+  becomes commit subject).
 
-### Local-only Artifacts
+### Local-only artifacts
 
-Some files and directories are meant to stay local and MUST NOT be committed:
+MUST NOT be committed:
 
-- `docs/superpowers/` — Superpowers plans, notes, and scratch work. These are
-  per-developer artifacts, never part of the repository.
+- `docs/superpowers/` - per-developer plans, notes, scratch work
 
-If you find yourself staging files in these paths, stop and unstage them.
-
-### ACP and providers
-
-Read @lua/agentic/acp/AGENTS.md when working with ACP client,
-permission requests, messages sent and received, tool call flows,
-and formatting on the chat widget, or adding a new ACP provider.
+If you stage files in these paths, stop and unstage.

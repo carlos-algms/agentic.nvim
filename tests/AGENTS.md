@@ -12,6 +12,41 @@
 
 **Previous framework:** Busted with lazy.nvim's (completely removed)
 
+## 🚨 MANDATORY: Test-Driven Development (Red/Green)
+
+**For every bug fix or behavioral change, follow red/green:**
+
+1. **Red:** Write a failing test that reproduces the bug or pins down the
+   expected new behavior. Run it against the CURRENT code and confirm it
+   fails for the right reason — the assertion fails because the code does
+   the wrong thing, NOT because a method or module is missing.
+
+   If the test requires a new function, method, class, or module that
+   doesn't exist yet, FIRST create the skeleton:
+   - Add the class/module file with the right name and `@class` /
+     `setmetatable` boilerplate.
+   - Add the method signature with its LuaCATS annotations
+     (`@param` / `@return`).
+   - Give the body a trivial stub: `return nil`, `return false`,
+     `error("not implemented")`, or a no-op.
+   - Wire up any exports/requires the test needs.
+
+   Then run the test. It should fail on the assertion (wrong output, wrong
+   state) — not on `attempt to call a nil value` or
+   `module 'X' not found`. A "missing symbol" error means the test hasn't
+   actually reached the logic it's supposed to exercise, so it can't prove
+   the logic is wrong.
+
+2. **Green:** Replace the stub with the real implementation, minimal code
+   to turn the test green.
+3. Run the full suite (`make validate`) to confirm nothing else broke.
+
+Do NOT skip step 1. Writing the fix first and the test after it passes
+produces tests that shape themselves around the fix rather than catching
+the original defect — a passing test that never failed proves nothing. If
+you genuinely cannot write a failing test (pure refactor, formatting,
+docs), say so explicitly in the PR description.
+
 ## Test File Organization
 
 **Location:** Co-located with source files in `lua/` directory
