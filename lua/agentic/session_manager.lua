@@ -386,6 +386,12 @@ function SessionManager:_on_session_update(update)
         )
     end
 
+    -- Skip the hook during restore replay: the provider re-emits historical
+    -- updates and users expect hooks to reflect live activity.
+    if self._is_restoring_session then
+        return
+    end
+
     -- This is being done after handling specific updates but one could argue
     -- there should be pre/post hooks for everything.
     --- @type agentic.UserConfig.SessionUpdateData

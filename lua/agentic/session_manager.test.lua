@@ -635,6 +635,84 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_on_session_update: on_session_update hook", function()
+        local Config = require("agentic.config")
+        --- @type TestStub
+        local schedule_stub
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_session_update = nil
+        end)
+
+        --- @return agentic.SessionManager
+        local function make_session()
+            return {
+                session_id = "session-1",
+                tab_page_id = 42,
+                _is_restoring_session = false,
+                todo_list = { render = function() end },
+                message_writer = {
+                    write_restoring_message = function() end,
+                    write_message_chunk = function() end,
+                },
+                chat_history = {
+                    add_message = function() end,
+                    append_agent_text = function() end,
+                },
+                status_animation = { start = function() end },
+                agent = { provider_config = { name = "Test" } },
+                _on_session_update = SessionManager._on_session_update,
+            } --[[@as agentic.SessionManager]]
+        end
+
+        it("fires for regular updates", function()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_session_update = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            session:_on_session_update({
+                sessionUpdate = "agent_message_chunk",
+                content = { type = "text", text = "hello" },
+            })
+
+            assert.spy(hook_spy).was.called(1)
+            local data = hook_spy.calls[1][1]
+            assert.equal("session-1", data.session_id)
+            assert.equal(42, data.tab_page_id)
+            assert.equal("agent_message_chunk", data.update.sessionUpdate)
+        end)
+
+        it("does not fire during session restore replay", function()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_session_update = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            session._is_restoring_session = true
+
+            session:_on_session_update({
+                sessionUpdate = "agent_message_chunk",
+                content = { type = "text", text = "replayed" },
+            })
+
+            assert.spy(hook_spy).was.called(0)
+        end)
+    end)
+
     describe("_on_session_update: user_message_chunk", function()
         --- @type TestSpy
         local write_message_spy
