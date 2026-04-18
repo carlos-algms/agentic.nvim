@@ -28,7 +28,7 @@ local FILE_MUTATING_KINDS = {
 
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
---- @param data table
+--- @param data agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
@@ -388,11 +388,13 @@ function SessionManager:_on_session_update(update)
 
     -- This is being done after handling specific updates but one could argue
     -- there should be pre/post hooks for everything.
-    P.invoke_hook("on_session_update", {
+    --- @type agentic.UserConfig.SessionUpdateData
+    local hook_data = {
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
         update = update,
-    })
+    }
+    P.invoke_hook("on_session_update", hook_data)
 end
 
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
@@ -468,12 +470,14 @@ function SessionManager:_on_tool_call_update(tool_call_update)
                 local raw_bufnr = vim.fn.bufnr(abs_path)
                 --- @type number|nil
                 local bufnr = raw_bufnr ~= -1 and raw_bufnr or nil
-                P.invoke_hook("on_file_edit", {
+                --- @type agentic.UserConfig.FileEditData
+                local hook_data = {
                     filepath = abs_path,
                     session_id = self.session_id,
                     tab_page_id = self.tab_page_id,
                     bufnr = bufnr,
-                })
+                }
+                P.invoke_hook("on_file_edit", hook_data)
             end
         end
     end
@@ -798,11 +802,13 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.status_animation:start("thinking")
 
-    P.invoke_hook("on_prompt_submit", {
+    --- @type agentic.UserConfig.PromptSubmitData
+    local prompt_hook_data = {
         prompt = input_text,
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
-    })
+    }
+    P.invoke_hook("on_prompt_submit", prompt_hook_data)
 
     local session_id = self.session_id
     local tab_page_id = self.tab_page_id
@@ -845,12 +851,14 @@ function SessionManager:_handle_input_submit(input_text)
 
             self.status_animation:stop()
 
-            P.invoke_hook("on_response_complete", {
-                session_id = session_id,
+            --- @type agentic.UserConfig.ResponseCompleteData
+            local response_hook_data = {
+                session_id = session_id --[[@as string]],
                 tab_page_id = tab_page_id,
                 success = err == nil,
                 error = err,
-            })
+            }
+            P.invoke_hook("on_response_complete", response_hook_data)
         end)
     end)
 
