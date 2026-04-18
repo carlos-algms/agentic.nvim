@@ -56,7 +56,10 @@ end
 --- @return string
 function Fold.foldtext()
     local hidden = vim.v.foldend - vim.v.foldstart + 1
-    return string.format("  %d lines hidden (zo open | zc close)", hidden)
+    return string.format(
+        "  %d lines hidden (Fold: `zo` open | `zc` close)",
+        hidden
+    )
 end
 
 --- Apply fold-related window options to the chat window.

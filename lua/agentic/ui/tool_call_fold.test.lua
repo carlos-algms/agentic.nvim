@@ -172,7 +172,7 @@ describe("agentic.ui.ToolCallFold", function()
             vim.v.foldend = 12
             assert.equal(
                 Fold.foldtext(),
-                "  10 lines hidden (zo open | zc close)"
+                "  10 lines hidden (Fold: `zo` open | `zc` close)"
             )
         end)
     end)
