@@ -36,6 +36,9 @@ describe("agentic.ui.MessageWriter", function()
 
     after_each(function()
         Config.auto_scroll = original_auto_scroll --- @diagnostic disable-line: assign-type-mismatch
+        if writer then
+            writer:destroy()
+        end
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
         end
