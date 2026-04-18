@@ -56,7 +56,9 @@ If in doubt, ask first
    ```
 
 2. Make your changes
-3. Run `make validate` (stylua + lua-language-server + selene + tests)
+3. If your changes include `.lua` files, run `make validate` (stylua +
+   lua-language-server + selene + tests). See `AGENTS.md` for the scoping
+   rule.
 
 ## Commit Messages
 
@@ -75,7 +77,8 @@ chore: bump selene to 0.27
 
 ## Using AI Tools on Your PR
 
-Using Ai is fine and expected, however fully vibe coded PRs aren't welcome
+Using AI is allowed and encouraged; however, PRs that are entirely generated
+by AI are not welcome.
 
 Watch out for:
 

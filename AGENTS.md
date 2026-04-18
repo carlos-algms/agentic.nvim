@@ -208,7 +208,7 @@ end
 
 ### Plugin requirements
 
-- Neovim v0.11.0+ (verify APIs match this version or newer)
+- Neovim v0.11.5+ (verify APIs match this version or newer)
 - LuaJIT 2.1 (bundled, based on Lua 5.1)
 - Optional: [img-clip.nvim](https://github.com/hakonharnes/img-clip.nvim) for
   clipboard screenshot pasting (drag-and-drop is a terminal feature, no
