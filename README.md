@@ -544,6 +544,7 @@ individual folds, or `zR`/`zM` to open/close all folds in the chat window.
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
 | `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session      |
+| `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
 | `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
 | `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
 
@@ -593,6 +594,15 @@ require("agentic").add_files_to_context({
   focus_prompt = false,
 })
 ```
+
+`restore_session_by_id(session_id)` accepts a **session_id** argument with the
+ID of the session you want to restore.
+
+```lua
+-- Restore a session by ID
+require("agentic").restore_session_by_id("58e5cf8a-1277-4e43-bc29-10c1246a2c66")
+```
+
 
 ### Built-in Keybindings
 

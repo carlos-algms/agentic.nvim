@@ -438,6 +438,13 @@ agentic.restore_session()
   session. Sessions are interchangeable between Neovim and the
   terminal.
 
+                                             *agentic.restore_session_by_id()*
+agentic.restore_session_by_id({session_id})
+  Restore a previous session by it's ID.
+
+  Parameters: ~
+    {session_id}  (string)  Session ID to restore.
+
                                               *agentic.rotate_layout()*
 agentic.rotate_layout({layouts})
   Rotate through window positions (right -> bottom -> left).

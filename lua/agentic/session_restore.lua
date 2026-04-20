@@ -98,4 +98,51 @@ function SessionRestore.show_picker(current_session)
     end)
 end
 
+--- Restore session by ID
+--- @param current_session agentic.SessionManager
+--- @param session_id string
+function SessionRestore.restore_by_id(current_session, session_id)
+    local cwd = vim.fn.getcwd()
+    current_session.agent:when_ready(function()
+        current_session.agent:list_sessions(cwd, function(result, err)
+            if err or not result then
+                Logger.notify(
+                    "Failed to list sessions: "
+                        .. (err and err.message or "unknown error"),
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            local match = nil
+            for _, s in ipairs(result.sessions or {}) do
+                if s.sessionId == session_id then
+                    match = s
+                    break
+                end
+            end
+
+            if not match then
+                Logger.notify(
+                    "Session not found: " .. session_id,
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            local title = match.title or "(no title)"
+            local date = match.updatedAt
+                    and match.updatedAt:sub(1, 16):gsub("T", " ")
+                or "unknown date"
+
+            vim.schedule(function()
+                with_conflict_check(current_session, function()
+                    current_session:load_acp_session(session_id, title, date)
+                    current_session.widget:show()
+                end)
+            end)
+        end)
+    end)
+end
+
 return SessionRestore
