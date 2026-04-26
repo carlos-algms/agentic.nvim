@@ -355,6 +355,8 @@ by configuring the `acp_providers` property:
   (e.g., `"bypassPermissions"`, `"plan"`)
 - `initial_model` (string, optional) - Default model ID to set on session
   creation (e.g., `"haiku"`)
+- `default_thought_level` (string, optional) - Default thought effort level to
+  apply on session creation (e.g., `"high"`, `"max"` for Claude)
 
 > [!NOTE]  
 > Customizing a provider only requires specifying the fields you want to
@@ -405,6 +407,28 @@ default:
 
 The model will only be set if it's available from the provider. Use
 `<localLeader>m` to see available models for your provider.
+
+#### Setting a Default Thought Effort Level
+
+If you want to start sessions with a specific thought effort level:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
+  opts = {
+    acp_providers = {
+      ["claude-agent-acp"] = {
+        -- Automatically apply this thought effort level on session creation
+        default_thought_level = "high",  -- thought effort level
+      },
+    },
+  },
+}
+```
+
+The thought effort level will only be set if it's available from the provider.
+Use `<localLeader>t` to see available thought effort levels for your provider.
 
 ### Window Layout
 
@@ -619,6 +643,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
 | `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
+| `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -647,6 +672,7 @@ your setup:
         },
         switch_provider = "<localLeader>s",  -- Switch ACP provider
         switch_model = "<localLeader>m",     -- Switch model
+        change_thought_level = "<localLeader>t",  -- Select thought effort level
       },
 
       -- Keybindings for the prompt buffer only

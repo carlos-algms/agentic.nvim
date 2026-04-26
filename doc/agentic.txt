@@ -228,7 +228,7 @@ acp_providers ~
 
   Customize built-in providers or add new ACP-compatible providers.
   Each entry supports: `name`, `command`, `args`, `env`,
-  `default_mode`, `initial_model`.
+  `default_mode`, `initial_model`, `default_thought_level`.
 
   `default_mode`   Start every session in this mode (e.g.,
                    `"bypassPermissions"`). Use <S-Tab> in the
@@ -236,6 +236,13 @@ acp_providers ~
   `initial_model`  Override the provider's default model (e.g.,
                    `"haiku"`). Use <localLeader>m in the chat
                    widget to see available models.
+  `default_thought_level`
+                   Type: `string|nil`. Default thought effort level
+                   value to apply on session creation (e.g. `"high"`,
+                   `"max"` for Claude). If the provider does not
+                   support thought effort level switching or the value
+                   is not in the available options, a warning is shown
+                   and the provider's default is kept.
 
 >lua
   --- @type agentic.PartialUserConfig
@@ -244,6 +251,7 @@ acp_providers ~
       ["claude-agent-acp"] = {
         default_mode = "bypassPermissions",
         initial_model = "haiku",
+        default_thought_level = "high",
         env = {
           ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY"),
         },
@@ -467,6 +475,7 @@ These keybindings are automatically set in Agentic buffers:
   <C-v>                  i       Paste image from clipboard
   <localLeader>s         n       Switch ACP provider (keeps history)
   <localLeader>m         n       Switch model (keeps history)
+  <localLeader>t         n       Select thought effort level (Codex/Claude)
   q                      n       Close chat widget
   d                      n/v     Remove file/selection/diagnostic
   ]c                     n       Next diff hunk
@@ -487,6 +496,7 @@ Override default keybindings via the `keymaps` config option:
         },
         switch_provider = "<localLeader>s",
         switch_model = "<localLeader>m",
+        change_thought_level = "<localLeader>t",
       },
       prompt = {
         submit = {
