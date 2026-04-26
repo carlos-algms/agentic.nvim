@@ -818,6 +818,199 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
     end)
 
+    describe("get_thought_level", function()
+        before_each(function()
+            config_options:set_options({ thought_option })
+        end)
+
+        it("returns the matching option by value", function()
+            local result = config_options:get_thought_level("normal")
+
+            assert.is_not_nil(result)
+            if result then
+                assert.equal("normal", result.value)
+            end
+        end)
+
+        it("returns nil when value is unknown", function()
+            local result = config_options:get_thought_level("nonexistent")
+
+            assert.is_nil(result)
+        end)
+
+        it("returns nil when thought_level is unset", function()
+            config_options:clear()
+
+            local result = config_options:get_thought_level("normal")
+
+            assert.is_nil(result)
+        end)
+    end)
+
+    describe("show_thought_level_selector", function()
+        --- @type TestStub
+        local select_stub
+
+        before_each(function()
+            select_stub = spy.stub(vim.ui, "select")
+        end)
+
+        after_each(function()
+            select_stub:revert()
+        end)
+
+        it("returns false when thought_level is unset", function()
+            local notify_stub =
+                spy.stub(require("agentic.utils.logger"), "notify")
+
+            local result = config_options:show_thought_level_selector(
+                function() end
+            )
+
+            assert.is_false(result)
+            assert.equal(0, select_stub.call_count)
+            assert.equal(1, notify_stub.call_count)
+
+            notify_stub:revert()
+        end)
+
+        it("opens the selector when options are present", function()
+            config_options:set_options({ thought_option })
+
+            local result = config_options:show_thought_level_selector(
+                function() end
+            )
+
+            assert.is_true(result)
+            assert.equal(1, select_stub.call_count)
+        end)
+
+        it("invokes handler with selected value (no is_legacy)", function()
+            --- @type agentic.acp.ConfigOption
+            local multi_thought = {
+                id = "thought-1",
+                category = "thought_level",
+                currentValue = "low",
+                description = "",
+                name = "Thought Level",
+                options = {
+                    { value = "low", name = "Low", description = "" },
+                    { value = "high", name = "High", description = "" },
+                },
+            }
+
+            config_options:set_options({ multi_thought })
+
+            local handler_spy = spy.new(function() end)
+
+            select_stub:invokes(function(items, _opts, on_choice)
+                for _, item in ipairs(items) do
+                    if item.value == "high" then
+                        on_choice(item)
+                        return
+                    end
+                end
+            end)
+
+            config_options:show_thought_level_selector(
+                handler_spy --[[@as function]]
+            )
+
+            assert.equal(1, handler_spy.call_count)
+            local call = handler_spy.calls[1]
+            assert.equal("high", call[1])
+            -- second arg should not exist (no is_legacy)
+            assert.is_nil(call[2])
+        end)
+    end)
+
+    describe("set_initial_thought_level", function()
+        local multi_thought
+        local notify_stub
+
+        before_each(function()
+            multi_thought = {
+                id = "thought-1",
+                category = "thought_level",
+                currentValue = "low",
+                description = "",
+                name = "Thought Level",
+                options = {
+                    { value = "low", name = "Low", description = "" },
+                    { value = "high", name = "High", description = "" },
+                    { value = "max", name = "Max", description = "" },
+                },
+            }
+            config_options:set_options({ multi_thought })
+            notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        it("does nothing when target is nil", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_thought_level(
+                nil,
+                handler --[[@as function]]
+            )
+
+            assert.equal(0, handler.call_count)
+            assert.equal(0, notify_stub.call_count)
+        end)
+
+        it("does nothing when target is empty string", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_thought_level(
+                "",
+                handler --[[@as function]]
+            )
+
+            assert.equal(0, handler.call_count)
+            assert.equal(0, notify_stub.call_count)
+        end)
+
+        it("notifies and skips when target is not a valid option", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_thought_level(
+                "nonexistent",
+                handler --[[@as function]]
+            )
+
+            assert.equal(0, handler.call_count)
+            assert.equal(1, notify_stub.call_count)
+        end)
+
+        it("skips when target equals current value", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_thought_level(
+                "low",
+                handler --[[@as function]]
+            )
+
+            assert.equal(0, handler.call_count)
+            assert.equal(0, notify_stub.call_count)
+        end)
+
+        it("invokes handler when target is valid and different", function()
+            local handler = spy.new(function() end)
+
+            config_options:set_initial_thought_level(
+                "max",
+                handler --[[@as function]]
+            )
+
+            assert.equal(1, handler.call_count)
+            local call = handler.calls[1]
+            assert.equal("max", call[1])
+        end)
+    end)
+
     describe("clear", function()
         it("resets all fields, legacy modes, and legacy models", function()
             config_options:set_options({

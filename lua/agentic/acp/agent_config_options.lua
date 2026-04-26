@@ -254,6 +254,12 @@ function AgentConfigOptions:get_model(model_value)
     return getter(self.model, model_value)
 end
 
+--- @param value string
+--- @return agentic.acp.ConfigOption.Option|nil
+function AgentConfigOptions:get_thought_level(value)
+    return getter(self.thought_level, value)
+end
+
 --- @param handle_mode_change fun(mode: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_mode_selector(handle_mode_change)
@@ -284,6 +290,30 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
     return legacy_shown
 end
 
+--- @param handle_change fun(value: string): any
+--- @return boolean shown
+function AgentConfigOptions:show_thought_level_selector(handle_change)
+    local shown = self:_show_selector(
+        self.thought_level,
+        "Select thought effort level:",
+        function(value, _is_legacy)
+            handle_change(value)
+        end
+    )
+
+    if shown then
+        return true
+    end
+
+    Logger.notify(
+        "This provider does not support thought effort level switching",
+        vim.log.levels.WARN,
+        { title = "Agentic" }
+    )
+
+    return false
+end
+
 --- @param handle_model_change fun(model_id: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_model_selector(handle_model_change)
@@ -312,6 +342,47 @@ function AgentConfigOptions:show_model_selector(handle_model_change)
     end
 
     return legacy_shown
+end
+
+--- @param target_value string|nil
+--- @param handle_change fun(value: string): any
+function AgentConfigOptions:set_initial_thought_level(
+    target_value,
+    handle_change
+)
+    if not target_value or target_value == "" then
+        Logger.debug("not setting initial thought level", target_value)
+        return
+    end
+
+    if self:get_thought_level(target_value) == nil then
+        local current = self.thought_level and self.thought_level.currentValue
+            or "unknown"
+        Logger.notify(
+            string.format(
+                "Configured default_thought_level '%s' not available"
+                    .. " in this provider's thought effort levels."
+                    .. " Using provider's default '%s'",
+                target_value,
+                current
+            ),
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+        return
+    end
+
+    local current_value = self.thought_level and self.thought_level.currentValue
+
+    if target_value == current_value then
+        Logger.debug(
+            "initial thought level already matches current",
+            target_value
+        )
+        return
+    end
+
+    handle_change(target_value)
 end
 
 --- @param target agentic.acp.ConfigOption|nil
