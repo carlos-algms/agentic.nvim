@@ -315,6 +315,14 @@ function Agentic.restore_session()
     end)
 end
 
+--- Restore a session by its ID.
+--- @param session_id string
+function Agentic.restore_session_by_id(session_id)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        SessionRestore.restore_by_id(session, session_id)
+    end)
+end
+
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {

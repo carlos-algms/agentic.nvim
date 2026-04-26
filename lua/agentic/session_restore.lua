@@ -32,46 +32,6 @@ local function with_conflict_check(current_session, on_restore)
     end
 end
 
---- Show ACP session picker
---- @param sessions agentic.acp.SessionInfo[]
---- @param current_session agentic.SessionManager
-local function show_acp_picker(sessions, current_session)
-    local items = {}
-    for _, s in ipairs(sessions) do
-        local date = s.updatedAt and s.updatedAt:sub(1, 16):gsub("T", " ")
-            or "unknown date"
-        local title = s.title or "(no title)"
-        table.insert(items, {
-            display = string.format("%s - %s", date, title),
-            session_id = s.sessionId,
-            title = s.title,
-            updated_at = date,
-        })
-    end
-
-    vim.schedule(function()
-        vim.ui.select(items, {
-            prompt = "Select session to restore:",
-            format_item = function(item)
-                return item.display
-            end,
-        }, function(choice)
-            if not choice then
-                return
-            end
-
-            with_conflict_check(current_session, function()
-                current_session:load_acp_session(
-                    choice.session_id,
-                    choice.title,
-                    choice.updated_at
-                )
-                current_session.widget:show()
-            end)
-        end)
-    end)
-end
-
 --- Show session picker and restore selected session
 --- @param current_session agentic.SessionManager
 function SessionRestore.show_picker(current_session)
@@ -93,7 +53,55 @@ function SessionRestore.show_picker(current_session)
                 return
             end
 
-            show_acp_picker(sessions, current_session)
+            local items = {}
+            for _, s in ipairs(sessions) do
+                local date = s.updatedAt
+                        and s.updatedAt:sub(1, 16):gsub("T", " ")
+                    or "unknown date"
+                local title = s.title or "(no title)"
+                table.insert(items, {
+                    display = string.format("%s - %s", date, title),
+                    session_id = s.sessionId,
+                    title = s.title,
+                    updated_at = date,
+                })
+            end
+
+            vim.schedule(function()
+                vim.ui.select(items, {
+                    prompt = "Select session to restore:",
+                    format_item = function(item)
+                        return item.display
+                    end,
+                }, function(choice)
+                    if not choice then
+                        return
+                    end
+
+                    with_conflict_check(current_session, function()
+                        current_session:load_acp_session(
+                            choice.session_id,
+                            choice.title,
+                            choice.updated_at
+                        )
+                        current_session.widget:show()
+                    end)
+                end)
+            end)
+        end)
+    end)
+end
+
+--- Restore session by ID
+--- @param current_session agentic.SessionManager
+--- @param session_id string
+function SessionRestore.restore_by_id(current_session, session_id)
+    current_session.agent:when_ready(function()
+        vim.schedule(function()
+            with_conflict_check(current_session, function()
+                current_session:load_acp_session(session_id, nil, nil)
+                current_session.widget:show()
+            end)
         end)
     end)
 end

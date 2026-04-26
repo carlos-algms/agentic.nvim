@@ -64,6 +64,7 @@ agentic.new_session_with_provider()	agentic.txt	/*agentic.new_session_with_provi
 agentic.nvim	agentic.txt	/*agentic.nvim*
 agentic.open()	agentic.txt	/*agentic.open()*
 agentic.restore_session()	agentic.txt	/*agentic.restore_session()*
+agentic.restore_session_by_id()	agentic.txt	/*agentic.restore_session_by_id()*
 agentic.rotate_layout()	agentic.txt	/*agentic.rotate_layout()*
 agentic.setup()	agentic.txt	/*agentic.setup()*
 agentic.stop_generation()	agentic.txt	/*agentic.stop_generation()*
