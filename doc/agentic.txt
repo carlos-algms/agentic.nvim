@@ -290,6 +290,14 @@ settings ~
                        window after submitting a prompt.
                        Default: `true`.
 
+                                          *agentic-config-provider-switcher*
+provider_switcher ~
+  Type: `table`
+
+  `hide_unhealthy_providers`  Hide providers whose command is not installed
+                       from the provider switcher UI.
+                       Default: `true`.
+
                                           *agentic-config-hooks*
 hooks ~
   Type: `table`

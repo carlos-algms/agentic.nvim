@@ -169,6 +169,10 @@
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
 --- @field on_file_edit? fun(data: agentic.UserConfig.FileEditData): nil
 
+--- Provider switcher UI behavior
+--- @class agentic.UserConfig.ProviderSwitcher
+--- @field hide_unhealthy_providers boolean Hide providers whose command is not installed
+
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
@@ -193,6 +197,7 @@
 --- @class (partial) agentic.PartialUserConfig.DiffPreview: agentic.UserConfig.DiffPreview
 --- @class (partial) agentic.PartialUserConfig.Folding.ToolCalls: agentic.UserConfig.Folding.ToolCalls
 --- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
+--- @class (partial) agentic.PartialUserConfig.ProviderSwitcher: agentic.UserConfig.ProviderSwitcher
 
 --- Windows partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Windows: agentic.UserConfig.Windows
@@ -224,6 +229,7 @@
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
 --- @field folding? agentic.PartialUserConfig.Folding
 --- @field settings? agentic.PartialUserConfig.Settings
+--- @field provider_switcher? agentic.PartialUserConfig.ProviderSwitcher
 
 --- @class agentic.UserConfig
 --- @field debug boolean Enable printing debug messages which can be read via `:messages`
@@ -245,6 +251,7 @@
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
+--- @field provider_switcher agentic.UserConfig.ProviderSwitcher
 local ConfigDefault = {
     debug = false,
 
@@ -480,6 +487,10 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
+    },
+
+    provider_switcher = {
+        hide_unhealthy_providers = true,
     },
 }
 

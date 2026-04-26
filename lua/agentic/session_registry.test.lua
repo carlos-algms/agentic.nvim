@@ -59,6 +59,9 @@ describe("agentic.SessionRegistry", function()
             ["claude-acp"] = { command = "claude-code-acp" },
             ["gemini-acp"] = { command = "gemini" },
         },
+        provider_switcher = {
+            hide_unhealthy_providers = true,
+        },
     }
 
     default_config_mock = {
@@ -104,6 +107,9 @@ describe("agentic.SessionRegistry", function()
         config_mock.acp_providers = {
             ["claude-acp"] = { command = "claude-code-acp" },
             ["gemini-acp"] = { command = "gemini" },
+        }
+        config_mock.provider_switcher = {
+            hide_unhealthy_providers = true,
         }
         default_config_mock.provider = "claude-acp"
 
@@ -485,6 +491,47 @@ describe("agentic.SessionRegistry", function()
 
             assert.is_true(called)
             assert.is_nil(result)
+        end)
+
+        describe("hide_unhealthy_providers", function()
+            before_each(function()
+                acp_health_mock.get_default_provider_names = function()
+                    return { "claude-acp", "gemini-acp" }
+                end
+                acp_health_mock.is_command_available = function(cmd)
+                    return cmd == "claude-code-acp"
+                end
+            end)
+
+            it(
+                "excludes not-installed providers when hide_unhealthy_providers is true",
+                function()
+                    config_mock.provider_switcher =
+                        { hide_unhealthy_providers = true }
+
+                    SessionRegistry.select_provider(function() end)
+
+                    assert.equal(1, #captured_items)
+                    assert.equal("claude-acp", captured_items[1].name)
+                    assert.is_true(captured_items[1].installed)
+                end
+            )
+
+            it(
+                "includes not-installed providers when hide_unhealthy_providers is false",
+                function()
+                    config_mock.provider_switcher =
+                        { hide_unhealthy_providers = false }
+
+                    SessionRegistry.select_provider(function() end)
+
+                    assert.equal(2, #captured_items)
+                    assert.equal("claude-acp", captured_items[1].name)
+                    assert.is_true(captured_items[1].installed)
+                    assert.equal("gemini-acp", captured_items[2].name)
+                    assert.is_false(captured_items[2].installed)
+                end
+            )
         end)
 
         describe("format_item labels", function()

@@ -106,7 +106,9 @@ function SessionRegistry.select_provider(on_selected)
         end
     end
 
-    vim.list_extend(sorted_providers, not_installed)
+    if not Config.provider_switcher.hide_unhealthy_providers then
+        vim.list_extend(sorted_providers, not_installed)
+    end
 
     vim.ui.select(sorted_providers, {
         prompt = "Select an ACP provider for the new session:",
