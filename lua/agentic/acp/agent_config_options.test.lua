@@ -156,15 +156,18 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.is_not_nil(config_options.thought_level)
             assert.equal("effort", config_options.thought_level.id)
             assert.equal("high", config_options.thought_level.currentValue)
-            assert.equal(5, #config_options.thought_level.options)
+            assert.equal(
+                #effort_option.options,
+                #config_options.thought_level.options
+            )
         end)
 
         describe("with Logger.debug stubbed", function()
-            local Logger = require("agentic.utils.logger")
             --- @type TestStub
             local debug_stub
 
             before_each(function()
+                local Logger = require("agentic.utils.logger")
                 debug_stub = spy.stub(Logger, "debug")
             end)
 

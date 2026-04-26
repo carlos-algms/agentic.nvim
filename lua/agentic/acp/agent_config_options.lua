@@ -79,7 +79,7 @@ function AgentConfigOptions:set_options(configOptions)
         return
     end
 
-    for _i, option in ipairs(configOptions) do
+    for _, option in ipairs(configOptions) do
         -- Guard against malformed input (nil/non-string category): treat as
         -- empty string so the dispatch falls through to the unknown branch
         -- without crashing on `nil:sub(1, 1)`.
