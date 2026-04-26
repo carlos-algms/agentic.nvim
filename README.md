@@ -420,7 +420,7 @@ If you want to start sessions with a specific thought effort level:
     acp_providers = {
       ["claude-agent-acp"] = {
         -- Automatically apply this thought effort level on session creation
-        default_thought_level = "high",  -- thought effort level
+        default_thought_level = "high",
       },
     },
   },
@@ -429,6 +429,12 @@ If you want to start sessions with a specific thought effort level:
 
 The thought effort level will only be set if it's available from the provider.
 Use `<localLeader>t` to see available thought effort levels for your provider.
+
+If the value is not in the model's available options (e.g. you also set
+`initial_model` and the new model doesn't support that level), a warning is
+shown and the provider's default is kept. The thought effort level is applied
+AFTER any `initial_model` change so it validates against the new model's
+options, not the previous model's.
 
 ### Window Layout
 

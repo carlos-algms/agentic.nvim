@@ -475,7 +475,7 @@ These keybindings are automatically set in Agentic buffers:
   <C-v>                  i       Paste image from clipboard
   <localLeader>s         n       Switch ACP provider (keeps history)
   <localLeader>m         n       Switch model (keeps history)
-  <localLeader>t         n       Select thought effort level (Codex/Claude)
+  <localLeader>t         n       Select thought effort level (model-dependent)
   q                      n       Close chat widget
   d                      n/v     Remove file/selection/diagnostic
   ]c                     n       Next diff hunk
