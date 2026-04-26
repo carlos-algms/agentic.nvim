@@ -25,10 +25,10 @@
 
 --- Data passed to the on_create_session_response hook
 --- @class agentic.UserConfig.CreateSessionResponseData
---- @field session_id string|nil
---- @field tab_page_id number
---- @field response agentic.acp.SessionCreationResponse|nil
---- @field err? agentic.acp.ACPError
+--- @field session_id? string Convenience field; equals response.sessionId when response is non-nil, nil if creation failed
+--- @field tab_page_id number The tabpage ID for this session
+--- @field response? agentic.acp.SessionCreationResponse Raw ACP create-session response, nil on error
+--- @field err? agentic.acp.ACPError Error details if session creation failed
 
 --- Data passed to the on_prompt_submit hook
 --- @class agentic.UserConfig.PromptSubmitData

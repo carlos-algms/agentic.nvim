@@ -839,16 +839,25 @@ integrating with other plugins.
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
-      -- Called when a new ACP session is created (or fails to create)
+      -- Called when a new ACP session is created (or fails to create).
+      -- Fires on both success and failure; check `data.err` first.
       on_create_session_response = function(data)
         -- data.session_id: string|nil - The ACP session ID (nil if err is set)
         -- data.tab_page_id: number - The Neovim tabpage ID
-        -- data.response: table|nil - The ACP session creation response (nil if err is set)
+        -- data.response: table|nil - The ACP session creation response
+        --   (nil if err is set)
         -- data.err: table|nil - Error details if session creation failed
-        if data.response then
-          vim.notify("New session: " .. data.response.sessionId)
+        if data.err then
+          vim.notify(
+            "Session failed: " .. vim.inspect(data.err),
+            vim.log.levels.ERROR
+          )
+          return
         end
+        vim.notify("New session: " .. data.response.sessionId)
 
+        -- Reset the agentic_usage tabpage var (set by the on_session_update
+        -- example below) so a new session starts with a clean usage counter.
         if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
           vim.t[data.tab_page_id].agentic_usage = nil
         end

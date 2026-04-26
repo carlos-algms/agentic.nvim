@@ -602,10 +602,12 @@ Event hooks ~
   opts = {
     hooks = {
       on_create_session_response = function(data)
-        -- data.response: table|nil - The ACP session creation response (nil if err is set)
-        -- data.err: table|nil - Error details if session creation failed
-        -- data.session_id: string
-        -- data.tab_page_id: number
+        -- Fires on both success and failure. Check `data.err` first.
+        -- data.session_id: string|nil (nil if err is set)
+        -- data.tab_page_id: number (may be invalid if tab was closed;
+        --   guard with vim.api.nvim_tabpage_is_valid before use)
+        -- data.response: table|nil (nil if err is set)
+        -- data.err: table|nil (nil on success)
       end,
       on_prompt_submit = function(data)
         -- data.prompt: string

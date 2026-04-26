@@ -13,9 +13,14 @@ end_of_line = lf
 [*.md]
 trim_trailing_whitespace = false
 
+# insert_final_newline is safe for file types prettier does not format
 [*.lua]
 indent_size = 4
 insert_final_newline = true
 
+[*.txt]
+insert_final_newline = true
+
 [Makefile]
 indent_style = tab
+insert_final_newline = true
