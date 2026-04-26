@@ -3,6 +3,14 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local List = require("agentic.utils.list")
 
+--- Map non-spec category names to their canonical spec category.
+--- `effort` is sent by Claude ACP (PR #464, merged 2026-04-20) instead of
+--- the spec's `thought_level`. We normalize so a single code path handles
+--- both providers (Codex sends `thought_level`, Claude sends `effort`).
+local CATEGORY_ALIASES = {
+    effort = "thought_level",
+}
+
 --- @class agentic.acp.AgentConfigOptions
 --- @field mode? agentic.acp.ConfigOption
 --- @field model? agentic.acp.ConfigOption
@@ -72,13 +80,19 @@ function AgentConfigOptions:set_options(configOptions)
     end
 
     for _i, option in ipairs(configOptions) do
-        if option.category == "mode" then
+        -- Guard against malformed input (nil/non-string category): treat as
+        -- empty string so the dispatch falls through to the unknown branch
+        -- without crashing on `nil:sub(1, 1)`.
+        local raw = type(option.category) == "string" and option.category or ""
+        local cat = CATEGORY_ALIASES[raw] or raw
+
+        if cat == "mode" then
             self.mode = option
-        elseif option.category == "model" then
+        elseif cat == "model" then
             self.model = option
-        elseif option.category == "thought_level" then
+        elseif cat == "thought_level" then
             self.thought_level = option
-        else
+        elseif cat:sub(1, 1) ~= "_" then
             Logger.debug("Unknown config option", option)
         end
     end

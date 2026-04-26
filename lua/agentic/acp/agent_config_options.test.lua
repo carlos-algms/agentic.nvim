@@ -133,6 +133,70 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             assert.is_nil(config_options.mode)
         end)
+
+        it("treats category 'effort' as alias for 'thought_level'", function()
+            local effort_option = {
+                id = "effort",
+                category = "effort",
+                currentValue = "high",
+                description = "Available effort levels for this model",
+                name = "Effort",
+                options = {
+                    { value = "low", name = "Low", description = "" },
+                    { value = "medium", name = "Medium", description = "" },
+                    { value = "high", name = "High", description = "" },
+                    { value = "xhigh", name = "Xhigh", description = "" },
+                    { value = "max", name = "Max", description = "" },
+                },
+            } --[[@as agentic.acp.ConfigOption]]
+
+            config_options:set_options({ effort_option })
+
+            assert.is_not_nil(config_options.thought_level)
+            assert.equal("effort", config_options.thought_level.id)
+            assert.equal("high", config_options.thought_level.currentValue)
+            assert.equal(5, #config_options.thought_level.options)
+        end)
+
+        describe("with Logger.debug stubbed", function()
+            local Logger = require("agentic.utils.logger")
+            --- @type TestStub
+            local debug_stub
+
+            before_each(function()
+                debug_stub = spy.stub(Logger, "debug")
+            end)
+
+            after_each(function()
+                debug_stub:revert()
+            end)
+
+            it("silently drops categories starting with '_'", function()
+                local custom = vim.tbl_extend("force", mode_option, {
+                    category = "_my_custom_thing",
+                }) --[[@as agentic.acp.ConfigOption]]
+
+                config_options:set_options({ custom })
+
+                assert.equal(0, debug_stub.call_count)
+                assert.is_nil(config_options.mode)
+                assert.is_nil(config_options.model)
+                assert.is_nil(config_options.thought_level)
+            end)
+
+            it("logs debug for unknown non-underscore categories", function()
+                local unknown = vim.tbl_extend("force", mode_option, {
+                    category = "totally_made_up",
+                }) --[[@as agentic.acp.ConfigOption]]
+
+                config_options:set_options({ unknown })
+
+                assert.equal(1, debug_stub.call_count)
+                assert.is_nil(config_options.mode)
+                assert.is_nil(config_options.model)
+                assert.is_nil(config_options.thought_level)
+            end)
+        end)
     end)
 
     describe("get_mode", function()
