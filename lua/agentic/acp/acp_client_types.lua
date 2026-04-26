@@ -181,7 +181,6 @@
 --- | "mode"
 --- | "model"
 --- | "thought_level"
---- | "effort"
 
 --- @class agentic.acp.ConfigOption
 --- @field id string

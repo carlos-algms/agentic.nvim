@@ -135,12 +135,13 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
 
         it("treats category 'effort' as alias for 'thought_level'", function()
-            local effort_option = {
+            --- @type agentic.acp.ConfigOption
+            local effort_option = vim.tbl_extend("force", mode_option, {
                 id = "effort",
                 category = "effort",
                 currentValue = "high",
-                description = "Available effort levels for this model",
                 name = "Effort",
+                description = "Available effort levels for this model",
                 options = {
                     { value = "low", name = "Low", description = "" },
                     { value = "medium", name = "Medium", description = "" },
@@ -148,7 +149,7 @@ describe("agentic.acp.AgentConfigOptions", function()
                     { value = "xhigh", name = "Xhigh", description = "" },
                     { value = "max", name = "Max", description = "" },
                 },
-            } --[[@as agentic.acp.ConfigOption]]
+            }) --[[@as agentic.acp.ConfigOption]]
 
             config_options:set_options({ effort_option })
 
