@@ -212,6 +212,7 @@ describe("config selector", function()
                 _handle_new_config_options = SessionManager._handle_new_config_options,
             }
             set_config_stub = spy.stub(session.agent, "set_config_option")
+            notify_stub:reset()
         end)
 
         after_each(function()
@@ -224,6 +225,14 @@ describe("config selector", function()
                 make_thought_option("claude-effort-cfg", "effort"),
             })
 
+            session:_handle_thought_level_change("max")
+
+            assert.equal(0, set_config_stub.call_count)
+        end)
+
+        it("does nothing when no thought_level option is set", function()
+            -- session_id is set (from before_each), but config_options has
+            -- no thought_level — set_config_option is never called.
             session:_handle_thought_level_change("max")
 
             assert.equal(0, set_config_stub.call_count)
@@ -286,7 +295,6 @@ describe("config selector", function()
             set_config_stub:invokes(function(_self, _sid, _cid, _value, cb)
                 cb(nil, { message = "boom" })
             end)
-            notify_stub:reset()
 
             session:_handle_thought_level_change("max")
 
