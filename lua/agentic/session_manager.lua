@@ -565,7 +565,10 @@ end
 --- @param on_done fun()|nil Called after the agent responds successfully.
 ---  Used by session-creation wiring to chain `default_thought_level` after
 ---  the model change has refreshed the available effort/thought_level
----  options server-side.
+---  options server-side. Without this chain, applying the thought level
+---  before the model response validates against the OLD model's options,
+---  which can silently reject the configured value or warn that a valid
+---  option is unavailable.
 function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
     if not self.session_id then
         return
