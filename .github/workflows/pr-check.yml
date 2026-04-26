@@ -28,6 +28,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 env:
   LUALS_VERSION: 3.16.2
   STYLUA_VERSION: 2.3.1
@@ -104,25 +107,50 @@ jobs:
         id: week
         run: echo "week=$(date +%Y-%W)" >> "$GITHUB_OUTPUT"
 
-      - name: Install system dependencies
-        run: |
-          # Install newer versions of rg and fd for unit tests
-          curl -sL "$(curl -s https://api.github.com/repos/BurntSushi/ripgrep/releases/latest \
-            | grep "browser_download_url.*x86_64-unknown-linux-musl.tar.gz" \
-            | cut -d '"' -f 4 | head -n1)" \
-            | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/rg'
-          chmod +x /usr/local/bin/rg
-
-          echo "[DEBUG] RG version: $(rg --version) from '$(which rg)' \n"
-
-          curl -sL "$(curl -s https://api.github.com/repos/sharkdp/fd/releases/latest | grep "browser_download_url.*fd-.*-x86_64-unknown-linux-gnu\.tar\.gz" | cut -d '"' -f 4)" \
-            | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/fd'
-          chmod +x /usr/local/bin/fd
-
-          echo "[DEBUG] FD version: $(fd --version) from '$(which fd)' \n"
-
       - name: Setup directories
         run: mkdir -p .local/nvim .local/bin
+
+      - name: Cache ripgrep
+        id: cache-rg
+        uses: actions/cache@v4
+        with:
+          path: .local/bin/rg
+          # Weekly rotation - tracks `latest` upstream
+          key: rg-${{ runner.os }}-${{ steps.week.outputs.week }}
+
+      - name: Install ripgrep
+        if: steps.cache-rg.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          url=$(curl -sfL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/BurntSushi/ripgrep/releases/latest \
+            | jq -r '[.assets[] | select(.name | endswith("x86_64-unknown-linux-musl.tar.gz")) | .browser_download_url] | .[0]')
+          curl -sfL "$url" | tar -xz -C .local/bin --strip-components=1 --wildcards '*/rg'
+          chmod +x .local/bin/rg
+
+      - name: Cache fd
+        id: cache-fd
+        uses: actions/cache@v4
+        with:
+          path: .local/bin/fd
+          # Weekly rotation - tracks `latest` upstream
+          key: fd-${{ runner.os }}-${{ steps.week.outputs.week }}
+
+      - name: Install fd
+        if: steps.cache-fd.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          url=$(curl -sfL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/sharkdp/fd/releases/latest \
+            | jq -r '[.assets[] | select(.name | endswith("x86_64-unknown-linux-gnu.tar.gz")) | .browser_download_url] | .[0]')
+          curl -sfL "$url" | tar -xz -C .local/bin --strip-components=1 --wildcards '*/fd'
+          chmod +x .local/bin/fd
 
       - name: Cache Neovim
         id: cache-neovim
