@@ -66,6 +66,20 @@ describe("agentic.acp.AgentConfigOptions", function()
         },
     }
 
+    --- @type agentic.acp.ConfigOption
+    local multi_thought = {
+        id = "thought-multi",
+        category = "thought_level",
+        currentValue = "low",
+        description = "",
+        name = "Thought Level",
+        options = {
+            { value = "low", name = "Low", description = "" },
+            { value = "high", name = "High", description = "" },
+            { value = "max", name = "Max", description = "" },
+        },
+    }
+
     --- @type integer
     local test_bufnr
 
@@ -870,6 +884,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.is_false(result)
             assert.equal(0, select_stub.call_count)
             assert.equal(1, notify_stub.call_count)
+            local notify_call = notify_stub.calls[1]
+            assert.is_true(
+                notify_call[1]:find("thought effort level switching") ~= nil
+            )
+            assert.equal(vim.log.levels.WARN, notify_call[2])
 
             notify_stub:revert()
         end)
@@ -886,19 +905,6 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
 
         it("invokes handler with selected value (no is_legacy)", function()
-            --- @type agentic.acp.ConfigOption
-            local multi_thought = {
-                id = "thought-1",
-                category = "thought_level",
-                currentValue = "low",
-                description = "",
-                name = "Thought Level",
-                options = {
-                    { value = "low", name = "Low", description = "" },
-                    { value = "high", name = "High", description = "" },
-                },
-            }
-
             config_options:set_options({ multi_thought })
 
             local handler_spy = spy.new(function() end)
@@ -919,28 +925,14 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.equal(1, handler_spy.call_count)
             local call = handler_spy.calls[1]
             assert.equal("high", call[1])
-            -- second arg should not exist (no is_legacy)
-            assert.is_nil(call[2])
+            assert.is_false(call[2])
         end)
     end)
 
     describe("set_initial_thought_level", function()
-        local multi_thought
         local notify_stub
 
         before_each(function()
-            multi_thought = {
-                id = "thought-1",
-                category = "thought_level",
-                currentValue = "low",
-                description = "",
-                name = "Thought Level",
-                options = {
-                    { value = "low", name = "Low", description = "" },
-                    { value = "high", name = "High", description = "" },
-                    { value = "max", name = "Max", description = "" },
-                },
-            }
             config_options:set_options({ multi_thought })
             notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
         end)

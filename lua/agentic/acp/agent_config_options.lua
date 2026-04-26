@@ -296,9 +296,7 @@ function AgentConfigOptions:show_thought_level_selector(handle_change)
     local shown = self:_show_selector(
         self.thought_level,
         "Select thought effort level:",
-        function(value, _is_legacy)
-            handle_change(value)
-        end
+        handle_change
     )
 
     if shown then
