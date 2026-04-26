@@ -613,9 +613,55 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
     end
 end
 
+--- Send the newly selected thought level / effort to the agent.
+--- Reads `id` from the stored config option to determine the actual
+--- configId — Claude sends `effort`, Codex sends `thought_level`.
 --- @param value string
 function SessionManager:_handle_thought_level_change(value)
-    Logger.debug("thought level change (not yet implemented)", value)
+    if not self.session_id then
+        return
+    end
+
+    local thought = self.config_options.thought_level
+
+    if not thought then
+        Logger.debug("no thought_level option available")
+        return
+    end
+
+    local request_session_id = self.session_id
+    local config_id = thought.id
+
+    local function callback(result, err)
+        if self.session_id ~= request_session_id then
+            Logger.debug("Stale thought_level change response, ignoring")
+            return
+        end
+
+        if err then
+            Logger.notify(
+                string.format(
+                    "Failed to change thought effort level to '%s': %s",
+                    value,
+                    err.message
+                ),
+                vim.log.levels.ERROR
+            )
+        else
+            if result and result.configOptions then
+                Logger.debug("received result after setting thought_level")
+                self:_handle_new_config_options(result.configOptions)
+            end
+
+            Logger.notify(
+                "Thought effort level changed to: " .. value,
+                vim.log.levels.INFO,
+                { title = "Agentic Thought Effort Level changed" }
+            )
+        end
+    end
+
+    self.agent:set_config_option(self.session_id, config_id, value, callback)
 end
 
 --- Schedule a coalesced re-render of function-based headers.
