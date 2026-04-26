@@ -596,13 +596,15 @@ require("agentic").add_files_to_context({
 ```
 
 `restore_session_by_id(session_id)` accepts a **session_id** argument with the
-ID of the session you want to restore.
+ID of the session you want to restore. Session IDs come from your provider's
+session storage (e.g. provider logs, project metadata, or scripts that track
+them). Unlike `restore_session()`, this does not require the provider to
+support listing sessions.
 
 ```lua
 -- Restore a session by ID
 require("agentic").restore_session_by_id("58e5cf8a-1277-4e43-bc29-10c1246a2c66")
 ```
-
 
 ### Built-in Keybindings
 
@@ -793,6 +795,11 @@ Call `require("agentic").restore_session()` to:
 1. See a list of previous sessions from your provider for the current project
    (including sessions started in the terminal)
 2. Select a session to restore the full conversation history
+
+If you know the session ID, call
+`require("agentic").restore_session_by_id(session_id)` to restore a specific
+session directly. This skips listing sessions, so it also works with providers
+that don't support session listing.
 
 **Conflict handling:**
 

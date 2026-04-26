@@ -315,8 +315,8 @@ function Agentic.restore_session()
     end)
 end
 
--- restore a session by it's ID.
--- @param session_id string: the ID of the session to restore.
+--- Restore a session by its ID.
+--- @param session_id string
 function Agentic.restore_session_by_id(session_id)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
         SessionRestore.restore_by_id(session, session_id)
