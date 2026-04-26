@@ -372,6 +372,7 @@ local ConfigDefault = {
             },
             switch_provider = "<localLeader>s",
             switch_model = "<localLeader>m",
+            change_thought_level = "<localLeader>t",
         },
 
         --- Keys bindings for the prompt buffer

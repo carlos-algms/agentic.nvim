@@ -102,18 +102,25 @@ describe("agentic.acp.AgentConfigOptions", function()
     end)
 
     describe("constructor", function()
-        it("registers keymaps for mode and model on all buffers", function()
-            -- multi_keymap_set is stubbed in before_each; constructor called there
-            -- Each buffer gets 2 keymaps (change_mode + switch_model),
-            -- we pass 1 buffer so expect 2 calls
-            assert.stub(multi_keymap_stub).was.called(2)
+        it(
+            "registers keymaps for mode, model, and thought_level on all buffers",
+            function()
+                -- multi_keymap_set is stubbed in before_each;
+                -- constructor called there. Each buffer gets 3 keymaps
+                -- (change_mode + switch_model + change_thought_level),
+                -- we pass 1 buffer so expect 3 calls
+                assert.stub(multi_keymap_stub).was.called(3)
 
-            local mode_call = multi_keymap_stub.calls[1]
-            assert.equal("function", type(mode_call[3]))
+                local mode_call = multi_keymap_stub.calls[1]
+                assert.equal("function", type(mode_call[3]))
 
-            local model_call = multi_keymap_stub.calls[2]
-            assert.equal("function", type(model_call[3]))
-        end)
+                local model_call = multi_keymap_stub.calls[2]
+                assert.equal("function", type(model_call[3]))
+
+                local thought_call = multi_keymap_stub.calls[3]
+                assert.equal("function", type(thought_call[3]))
+            end
+        )
     end)
 
     describe("set_options", function()

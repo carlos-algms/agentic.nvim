@@ -58,6 +58,15 @@ function AgentConfigOptions:new(buffers, callbacks)
             end,
             { desc = "Agentic: Select Model" }
         )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.change_thought_level,
+            bufnr,
+            function()
+                self:show_thought_level_selector(callbacks.set_thought_level)
+            end,
+            { desc = "Agentic: Select Thought Effort Level" }
+        )
     end
 
     return self
