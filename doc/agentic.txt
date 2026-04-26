@@ -243,6 +243,11 @@ acp_providers ~
                    support thought effort level switching or the value
                    is not in the available options, a warning is shown
                    and the provider's default is kept.
+                   When `initial_model` is also set, the thought
+                   effort level is applied AFTER the model change
+                   completes, so it validates against the new model's
+                   options (some providers, e.g. Claude, expose
+                   different effort levels per model).
 
 >lua
   --- @type agentic.PartialUserConfig

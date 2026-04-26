@@ -364,16 +364,22 @@ function AgentConfigOptions:set_initial_thought_level(
         return
     end
 
+    if not self.thought_level then
+        Logger.debug(
+            "Provider does not support thought effort level;"
+                .. " ignoring default_thought_level",
+            target_value
+        )
+        return
+    end
+
     if self:get_thought_level(target_value) == nil then
-        local current = self.thought_level and self.thought_level.currentValue
-            or "unknown"
         Logger.notify(
             string.format(
-                "Configured default_thought_level '%s' not available"
-                    .. " in this provider's thought effort levels."
+                "Configured default_thought_level '%s' not available."
                     .. " Using provider's default '%s'",
                 target_value,
-                current
+                self.thought_level.currentValue or "unknown"
             ),
             vim.log.levels.WARN,
             { title = "Agentic" }

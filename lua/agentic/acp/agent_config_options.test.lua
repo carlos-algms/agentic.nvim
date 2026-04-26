@@ -822,6 +822,22 @@ describe("agentic.acp.AgentConfigOptions", function()
                 end
             end)
         end
+
+        it(
+            "silently skips (no notify) when provider has no thought_level option",
+            function()
+                config_options:clear()
+                local handler = spy.new(function() end)
+
+                config_options:set_initial_thought_level(
+                    "max",
+                    handler --[[@as function]]
+                )
+
+                assert.equal(0, handler.call_count)
+                assert.equal(0, notify_stub.call_count)
+            end
+        )
     end)
 
     describe("clear", function()
