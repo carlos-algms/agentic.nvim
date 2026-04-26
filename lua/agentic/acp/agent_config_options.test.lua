@@ -75,11 +75,11 @@ describe("agentic.acp.AgentConfigOptions", function()
 
         AgentConfigOptions = require("agentic.acp.agent_config_options")
         test_bufnr = vim.api.nvim_create_buf(false, true)
-        config_options = AgentConfigOptions:new(
-            { chat = test_bufnr },
-            function() end,
-            function() end
-        )
+        config_options = AgentConfigOptions:new({ chat = test_bufnr }, {
+            set_mode = function() end,
+            set_model = function() end,
+            set_thought_level = function() end,
+        })
     end)
 
     after_each(function()
@@ -316,11 +316,11 @@ describe("agentic.acp.AgentConfigOptions", function()
         it(
             "does not crash when no config options and no legacy modes exist",
             function()
-                local fresh = AgentConfigOptions:new(
-                    { chat = test_bufnr },
-                    function() end,
-                    function() end
-                )
+                local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                })
                 local handler = spy.new(function() end)
 
                 assert.has_no_errors(function()
@@ -442,11 +442,11 @@ describe("agentic.acp.AgentConfigOptions", function()
         it(
             "does not crash when no config options and no legacy models exist",
             function()
-                local fresh = AgentConfigOptions:new(
-                    { chat = test_bufnr },
-                    function() end,
-                    function() end
-                )
+                local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                })
                 local handler = spy.new(function() end)
 
                 assert.has_no_errors(function()
@@ -555,11 +555,11 @@ describe("agentic.acp.AgentConfigOptions", function()
         it(
             "falls back to legacy modes and wraps callback with is_legacy=true",
             function()
-                local fresh = AgentConfigOptions:new(
-                    { chat = test_bufnr },
-                    function() end,
-                    function() end
-                )
+                local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                })
                 fresh.legacy_agent_modes:set_modes({
                     availableModes = {
                         {
@@ -595,11 +595,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             local Logger = require("agentic.utils.logger")
             local notify_stub = spy.stub(Logger, "notify")
 
-            local fresh = AgentConfigOptions:new(
-                { chat = test_bufnr },
-                function() end,
-                function() end
-            )
+            local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                set_mode = function() end,
+                set_model = function() end,
+                set_thought_level = function() end,
+            })
             local handler = function() end
 
             assert.is_false(fresh:show_mode_selector(handler))
@@ -670,11 +670,11 @@ describe("agentic.acp.AgentConfigOptions", function()
         it(
             "falls back to legacy models and wraps callback with is_legacy=true",
             function()
-                local fresh = AgentConfigOptions:new(
-                    { chat = test_bufnr },
-                    function() end,
-                    function() end
-                )
+                local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                })
                 fresh.legacy_agent_models:set_models({
                     availableModels = {
                         {
@@ -710,11 +710,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             local Logger = require("agentic.utils.logger")
             local notify_stub = spy.stub(Logger, "notify")
 
-            local fresh = AgentConfigOptions:new(
-                { chat = test_bufnr },
-                function() end,
-                function() end
-            )
+            local fresh = AgentConfigOptions:new({ chat = test_bufnr }, {
+                set_mode = function() end,
+                set_model = function() end,
+                set_thought_level = function() end,
+            })
 
             assert.is_false(fresh:show_model_selector(function() end))
             assert.stub(select_stub).was.called(0)

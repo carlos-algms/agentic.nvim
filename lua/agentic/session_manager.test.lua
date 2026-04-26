@@ -107,11 +107,11 @@ describe("agentic.SessionManager", function()
             local BufHelpers = require("agentic.utils.buf_helpers")
             local keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
 
-            local config_opts = AgentConfigOptions:new(
-                { chat = test_bufnr },
-                function() end,
-                function() end
-            )
+            local config_opts = AgentConfigOptions:new({ chat = test_bufnr }, {
+                set_mode = function() end,
+                set_model = function() end,
+                set_thought_level = function() end,
+            })
 
             keymap_stub:revert()
 

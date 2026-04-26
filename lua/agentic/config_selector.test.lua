@@ -29,11 +29,11 @@ describe("config selector", function()
 
     describe("AgentConfigOptions (modern provider)", function()
         it("marks default model and updates after selection", function()
-            local config = AgentConfigOptions:new(
-                {},
-                function() end,
-                function() end
-            )
+            local config = AgentConfigOptions:new({}, {
+                set_mode = function() end,
+                set_model = function() end,
+                set_thought_level = function() end,
+            })
             ---@diagnostic disable-next-line: missing-fields
             config:set_options({
                 ---@diagnostic disable-next-line: missing-fields
@@ -99,11 +99,11 @@ describe("config selector", function()
             ---@type any
             local session = {
                 session_id = "s1",
-                config_options = AgentConfigOptions:new(
-                    {},
-                    function() end,
-                    function() end
-                ),
+                config_options = AgentConfigOptions:new({}, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                }),
                 agent = {
                     set_model = function(_self, _id, _model, callback)
                         callback({}, nil) -- Success

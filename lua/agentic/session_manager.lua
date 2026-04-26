@@ -172,15 +172,17 @@ function SessionManager:new(tab_page_id)
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
-    self.config_options = AgentConfigOptions:new(
-        self.widget.buf_nrs,
-        function(mode_id, is_legacy)
+    self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
+        set_mode = function(mode_id, is_legacy)
             self:_handle_mode_change(mode_id, is_legacy)
         end,
-        function(model_id, is_legacy)
+        set_model = function(model_id, is_legacy)
             self:_handle_model_change(model_id, is_legacy)
-        end
-    )
+        end,
+        set_thought_level = function(value)
+            self:_handle_thought_level_change(value)
+        end,
+    })
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then
@@ -609,6 +611,11 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
             callback
         )
     end
+end
+
+--- @param value string
+function SessionManager:_handle_thought_level_change(value)
+    Logger.debug("thought level change (not yet implemented)", value)
 end
 
 --- Schedule a coalesced re-render of function-based headers.

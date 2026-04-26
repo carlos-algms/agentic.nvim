@@ -12,11 +12,15 @@ local List = require("agentic.utils.list")
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
+--- @class agentic.acp.AgentConfigOptions.Callbacks
+--- @field set_mode fun(mode_id: string, is_legacy: boolean)
+--- @field set_model fun(model_id: string, is_legacy: boolean)
+--- @field set_thought_level fun(value: string)
+
 --- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
---- @param set_mode_callback fun(mode_id: string, is_legacy: boolean)
---- @param set_model_callback fun(model_id: string, is_legacy: boolean)
+--- @param callbacks agentic.acp.AgentConfigOptions.Callbacks
 --- @return agentic.acp.AgentConfigOptions
-function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
+function AgentConfigOptions:new(buffers, callbacks)
     local AgentModes = require("agentic.acp.agent_modes")
     local AgentModels = require("agentic.acp.agent_models")
 
@@ -33,7 +37,7 @@ function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
             Config.keymaps.widget.change_mode,
             bufnr,
             function()
-                self:show_mode_selector(set_mode_callback)
+                self:show_mode_selector(callbacks.set_mode)
             end,
             { desc = "Agentic: Select Agent Mode" }
         )
@@ -42,7 +46,7 @@ function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
             Config.keymaps.widget.switch_model,
             bufnr,
             function()
-                self:show_model_selector(set_model_callback)
+                self:show_model_selector(callbacks.set_model)
             end,
             { desc = "Agentic: Select Model" }
         )
