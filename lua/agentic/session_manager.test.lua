@@ -1362,4 +1362,105 @@ describe("agentic.SessionManager", function()
             assert.is_nil(session.session_id)
         end)
     end)
+
+    describe("initial thought_level wiring", function()
+        local AgentConfigOptions = require("agentic.acp.agent_config_options")
+
+        --- @type TestStub
+        local get_instance_stub
+        --- @type TestStub
+        local notify_stub
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestStub
+        local health_check_stub
+        --- @type TestStub
+        local set_initial_thought_level_stub
+
+        --- @type fun()[]
+        local schedule_queue = {}
+
+        local function flush_schedule()
+            while #schedule_queue > 0 do
+                local fn = table.remove(schedule_queue, 1)
+                fn()
+            end
+        end
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+            local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
+
+            notify_stub = spy.stub(Logger, "notify")
+            schedule_queue = {}
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                table.insert(schedule_queue, fn)
+            end)
+            health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
+            health_check_stub:returns(true)
+            set_initial_thought_level_stub =
+                spy.stub(AgentConfigOptions, "set_initial_thought_level")
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:invokes(function(provider_name, callback)
+                --- @type agentic.acp.ACPClient
+                local fake = {}
+                fake.state = "ready"
+                fake.provider_config = {
+                    name = provider_name or "Test",
+                    initial_model = nil,
+                    default_mode = nil,
+                    default_thought_level = "max",
+                }
+                fake.agent_info = {}
+                function fake:create_session(_h, cb)
+                    cb({
+                        sessionId = "test-session",
+                        configOptions = nil,
+                        modes = nil,
+                        models = nil,
+                    })
+                end
+                function fake:cancel_session() end
+                if callback then
+                    callback(fake)
+                end
+                return fake
+            end)
+            Config.provider = "TestProvider"
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+            schedule_stub:revert()
+            health_check_stub:revert()
+            get_instance_stub:revert()
+            set_initial_thought_level_stub:revert()
+
+            local SessionRegistry = require("agentic.session_registry")
+            local tab_ids = {}
+            for tab_id, _ in pairs(SessionRegistry.sessions) do
+                table.insert(tab_ids, tab_id)
+            end
+            for _, tab_id in ipairs(tab_ids) do
+                SessionRegistry.destroy_session(tab_id)
+            end
+        end)
+
+        it(
+            "applies default_thought_level when no model change is triggered",
+            function()
+                local tab_page_id = vim.api.nvim_get_current_tabpage()
+                local _session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+                flush_schedule()
+
+                assert.equal(1, set_initial_thought_level_stub.call_count)
+                local call = set_initial_thought_level_stub.calls[1]
+                -- call[1] is self, call[2] is target_value, call[3] is handler
+                assert.equal("max", call[2])
+                assert.equal("function", type(call[3]))
+            end
+        )
+    end)
 end)

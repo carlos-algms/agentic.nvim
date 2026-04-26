@@ -169,10 +169,11 @@ end
 
 --- @param target_model string|nil
 --- @param handle_model_change fun(model: string, is_legacy: boolean|nil): any
+--- @return boolean handler_fired Whether `handle_model_change` was invoked
 function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
     if not target_model or target_model == "" then
         Logger.debug("not setting initial model", target_model)
-        return
+        return false
     end
 
     local is_legacy = false
@@ -201,7 +202,7 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
             vim.log.levels.WARN,
             { title = "Agentic" }
         )
-        return
+        return false
     end
 
     local current_value = is_legacy
@@ -210,10 +211,11 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
 
     if target_model == current_value then
         Logger.debug("initial model already matches current", target_model)
-        return
+        return false
     end
 
     handle_model_change(target_model, is_legacy)
+    return true
 end
 
 --- @param target agentic.acp.ConfigOption|nil

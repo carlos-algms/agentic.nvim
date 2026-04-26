@@ -158,6 +158,89 @@ describe("config selector", function()
 
             assert.same({ "● M1: D1", "  M2: D2" }, second_render)
         end)
+
+        it("invokes on_done after successful model change", function()
+            ---@type any
+            local session = {
+                session_id = "s1",
+                config_options = AgentConfigOptions:new({}, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                }),
+                agent = {
+                    set_config_option = function(
+                        _self,
+                        _sid,
+                        _cid,
+                        _value,
+                        callback
+                    )
+                        callback({ configOptions = {} }, nil) -- success
+                    end,
+                    set_model = function(_self, _sid, _model, callback)
+                        callback({}, nil) -- success
+                    end,
+                },
+                ---@diagnostic disable-next-line: invisible
+                _handle_model_change = SessionManager._handle_model_change,
+                ---@diagnostic disable-next-line: invisible
+                _handle_new_config_options = SessionManager._handle_new_config_options,
+            }
+
+            session.config_options:set_legacy_models({
+                availableModels = {
+                    { modelId = "m1", name = "M1", description = "D1" },
+                },
+                currentModelId = "m1",
+            })
+
+            local on_done_spy = spy.new(function() end)
+            ---@diagnostic disable-next-line: invisible
+            session:_handle_model_change(
+                "m1",
+                true,
+                on_done_spy --[[@as function]]
+            )
+
+            assert.equal(1, on_done_spy.call_count)
+        end)
+
+        it("does NOT invoke on_done when model change errors", function()
+            ---@type any
+            local session = {
+                session_id = "s1",
+                config_options = AgentConfigOptions:new({}, {
+                    set_mode = function() end,
+                    set_model = function() end,
+                    set_thought_level = function() end,
+                }),
+                agent = {
+                    set_model = function(_self, _sid, _model, callback)
+                        callback(nil, { message = "boom" })
+                    end,
+                },
+                ---@diagnostic disable-next-line: invisible
+                _handle_model_change = SessionManager._handle_model_change,
+            }
+
+            session.config_options:set_legacy_models({
+                availableModels = {
+                    { modelId = "m1", name = "M1", description = "D1" },
+                },
+                currentModelId = "m1",
+            })
+
+            local on_done_spy = spy.new(function() end)
+            ---@diagnostic disable-next-line: invisible
+            session:_handle_model_change(
+                "m1",
+                true,
+                on_done_spy --[[@as function]]
+            )
+
+            assert.equal(0, on_done_spy.call_count)
+        end)
     end)
 
     describe("_handle_thought_level_change", function()
