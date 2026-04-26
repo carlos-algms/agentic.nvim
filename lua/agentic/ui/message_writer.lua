@@ -552,6 +552,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
+    self:_auto_scroll(self.bufnr)
+
     -- Some ACP providers don't send the diff on the first tool_call
     local already_has_diff = tracker.diff ~= nil
     local previous_body = tracker.body
