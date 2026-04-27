@@ -490,7 +490,7 @@ local ConfigDefault = {
     },
 
     provider_switcher = {
-        hide_unhealthy_providers = true,
+        hide_unhealthy_providers = false,
     },
 }
 
