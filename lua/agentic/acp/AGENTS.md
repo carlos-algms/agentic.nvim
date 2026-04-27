@@ -106,8 +106,9 @@ Provider sends "tool_call"
   -> MessageWriter:write_tool_call_block(block)
      1. Renders header + body/diff lines to buffer
      2. Creates range extmark (NS_TOOL_BLOCKS) as position anchor
-     3. Creates decoration extmarks (borders, status icon)
-     4. Stores block in tool_call_blocks[id]
+     3. Updates ExtmarkBlock cache (statuscolumn border glyphs)
+     4. Applies status icon overlay extmark
+     5. Stores block in tool_call_blocks[id]
 ```
 
 **Phase 2 — `tool_call_update` (one or more)**
@@ -122,9 +123,10 @@ Provider sends "tool_call_update"
      2. Deep-merges via tbl_deep_extend("force", tracker, partial)
      3. Appends body (if both old and new exist and differ)
      4. Locates block position via range extmark
-     5. Diff already rendered: refresh decorations + status only
+     5. Diff already rendered: refresh status only
         (content frozen to prevent flicker)
      6. Diff is NEW: replace buffer lines, re-render everything
+     7. Updates ExtmarkBlock cache (statuscolumn border glyphs)
 ```
 
 **Phase 3 — final `tool_call_update` with terminal status**
@@ -140,13 +142,18 @@ Same as Phase 2, but status = "completed" | "failed"
 - **Updates are partial:** Only send what changed. MessageWriter merges onto the
   existing tracker via `tbl_deep_extend`.
 - **Diffs are immutable after first render:** Once a diff is written to the
-  buffer, content is frozen. Only status/decorations refresh on subsequent
-  updates.
+  buffer, content is frozen. Only status refreshes on subsequent updates.
 - **Body accumulates:** Multiple updates with different body content get
   concatenated with `---` dividers, not replaced.
 - **Extmarks as position anchors:** Range extmark in `NS_TOOL_BLOCKS`
   auto-adjusts when buffer content shifts. Single source of truth for block
   position.
+- **Borders via statuscolumn:** Border glyphs (╭─, │, ╰─) render via a
+  `statuscolumn` function on the chat window, not inline virtual text.
+  `ExtmarkBlock` maintains a per-buffer sorted cache of block ranges (read from
+  `NS_TOOL_BLOCKS` extmarks) and uses binary search per screen line. The
+  statuscolumn evaluates per screen line including soft-wrap continuations, so
+  borders repeat correctly on wrapped lines.
 
 ## Provider quirk handling
 

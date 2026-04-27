@@ -119,6 +119,17 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
         winfixheight = true,
     }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
 
+    if window_name == "chat" then
+        merged_win_opts.statuscolumn =
+            "%{%v:lua.require'agentic.utils.extmark_block'.statuscolumn()%}"
+        local whl = merged_win_opts.winhighlight or ""
+        if whl ~= "" then
+            whl = whl .. ","
+        end
+        merged_win_opts.winhighlight = whl
+            .. "SignColumn:Normal,FoldColumn:Normal,LineNr:Normal,StatusColumn:Normal"
+    end
+
     for name, value in pairs(merged_win_opts) do
         vim.api.nvim_set_option_value(name, value, { win = winid })
     end

@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local BufferGuard = require("agentic.ui.buffer_guard")
 local DiffPreview = require("agentic.ui.diff_preview")
+local ExtmarkBlock = require("agentic.utils.extmark_block")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
@@ -206,6 +207,9 @@ function ChatWidget:clear()
                 )
             end
         end)
+        if name == "chat" then
+            ExtmarkBlock.clear_cache(bufnr)
+        end
     end
 end
 
@@ -236,6 +240,9 @@ function ChatWidget:destroy()
     self:_close_hidden_chat_window()
 
     for name, bufnr in pairs(self.buf_nrs) do
+        if name == "chat" then
+            ExtmarkBlock.clear_cache(bufnr)
+        end
         self.buf_nrs[name] = nil
         local ok = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         if not ok then
