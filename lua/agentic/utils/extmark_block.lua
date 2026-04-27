@@ -10,6 +10,7 @@ local ExtmarkBlock = {}
 
 --- Per-buffer cache of block ranges for statuscolumn rendering.
 --- Maps bufnr -> sorted array of {start_row, end_row}.
+--- @protected
 --- @type table<integer, {start_row: integer, end_row: integer}[]>
 ExtmarkBlock._block_cache = {}
 
@@ -26,9 +27,6 @@ function ExtmarkBlock.update_cache(bufnr, ns_id)
             end_row = m[4].end_row,
         }
     end
-    table.sort(ranges, function(a, b)
-        return a.start_row < b.start_row
-    end)
     ExtmarkBlock._block_cache[bufnr] = ranges
 end
 
@@ -68,11 +66,11 @@ local BLANK = "  "
 --- Compute the glyph for a given line within a set of block ranges.
 --- @param ranges {start_row: integer, end_row: integer}[]
 --- @param lnum integer 0-indexed buffer line
---- @param virtnum integer 0 = first screen line, >0 = continuation
+--- @param virtnum integer 0 = first screen line, >0 = continuation, <0 = virt_lines
 --- @return string
 function ExtmarkBlock.glyph(ranges, lnum, virtnum)
     local r = find_block(ranges, lnum)
-    if not r then
+    if not r or virtnum < 0 then
         return BLANK
     end
 

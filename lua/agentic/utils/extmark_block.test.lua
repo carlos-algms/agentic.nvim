@@ -1,5 +1,7 @@
 local assert = require("tests.helpers.assert")
 
+--- @diagnostic disable: invisible
+
 describe("extmark_block", function()
     local ExtmarkBlock = require("agentic.utils.extmark_block")
 
@@ -76,6 +78,12 @@ describe("extmark_block", function()
                 assert.equal(pipe, glyph(ranges, 12, 1))
                 assert.equal(pipe, glyph(ranges, 12, 2))
             end)
+
+            it("returns blank for virt_lines (virtnum < 0)", function()
+                assert.equal(blank, glyph(ranges, 12, -1))
+                assert.equal(blank, glyph(ranges, 10, -1))
+                assert.equal(blank, glyph(ranges, 15, -1))
+            end)
         end)
 
         describe("multiple blocks", function()
@@ -108,7 +116,7 @@ describe("extmark_block", function()
     end)
 
     describe("update_cache", function()
-        it("populates sorted ranges from extmarks", function()
+        it("populates ranges from extmarks", function()
             local buf = vim.api.nvim_create_buf(false, true)
             vim.api.nvim_buf_set_lines(
                 buf,
