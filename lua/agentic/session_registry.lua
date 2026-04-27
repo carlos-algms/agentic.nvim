@@ -108,6 +108,11 @@ function SessionRegistry.select_provider(on_selected)
 
     if not Config.provider_switcher.hide_unhealthy_providers then
         vim.list_extend(sorted_providers, not_installed)
+    elseif #sorted_providers == 0 then
+        Logger.notify(
+            "No healthy providers found. Showing unavailable providers."
+        )
+        vim.list_extend(sorted_providers, not_installed)
     end
 
     vim.ui.select(sorted_providers, {
