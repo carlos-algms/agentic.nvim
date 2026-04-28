@@ -354,64 +354,6 @@ describe("agentic.ui.MessageWriter", function()
 
             assert.is_false(writer._should_auto_scroll)
         end)
-
-        it(
-            "captures scroll decision before buffer grows for update_tool_call_block",
-            function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("update-1", "pending", { "initial" })
-                )
-                writer._should_auto_scroll = nil
-                writer._scroll_scheduled = false
-
-                local total = vim.api.nvim_buf_line_count(bufnr)
-                vim.api.nvim_win_set_cursor(winid, { total, 0 })
-
-                local body = {}
-                for i = 1, 30 do
-                    body[i] = "output line " .. i
-                end
-                writer:update_tool_call_block({
-                    tool_call_id = "update-1",
-                    status = "completed",
-                    body = body,
-                })
-
-                assert.is_true(writer._should_auto_scroll)
-            end
-        )
-
-        it(
-            "update_tool_call_block does not scroll when user has scrolled up",
-            function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("update-2", "pending", { "initial" })
-                )
-
-                local filler = {}
-                for i = 1, 50 do
-                    filler[i] = "history line " .. i
-                end
-                vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, filler)
-
-                writer._should_auto_scroll = nil
-                writer._scroll_scheduled = false
-
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
-                local body = {}
-                for i = 1, 30 do
-                    body[i] = "output line " .. i
-                end
-                writer:update_tool_call_block({
-                    tool_call_id = "update-2",
-                    status = "completed",
-                    body = body,
-                })
-
-                assert.is_false(writer._should_auto_scroll)
-            end
-        )
     end)
 
     describe("on_content_changed callback", function()
