@@ -269,7 +269,7 @@ function MessageWriter:write_message(update)
     end
 
     self:_clear_thinking_state()
-    self:_auto_scroll(self.bufnr)
+    self:_capture_scroll(self.bufnr)
     self:_maybe_write_sender_header(update.sessionUpdate)
 
     local lines = vim.split(text, "\n", { plain = true })
@@ -278,6 +278,8 @@ function MessageWriter:write_message(update)
         self:_append_lines(lines)
         self:_append_lines({ "" })
     end)
+
+    self:_apply_scroll(self.bufnr)
 end
 
 --- Appends message chunks to the last line and column in the chat buffer
@@ -295,7 +297,7 @@ function MessageWriter:write_message_chunk(update)
 
     local text = update.content.text
 
-    self:_auto_scroll(self.bufnr)
+    self:_capture_scroll(self.bufnr)
 
     local is_thought = update.sessionUpdate == "agent_thought_chunk"
 
@@ -388,6 +390,8 @@ function MessageWriter:write_message_chunk(update)
             )
         end
     end)
+
+    self:_apply_scroll(self.bufnr)
 end
 
 --- @param lines string[]
@@ -429,39 +433,152 @@ function MessageWriter:_check_auto_scroll(bufnr)
     return distance_from_bottom <= threshold
 end
 
---- @param bufnr integer Buffer number to scroll
-function MessageWriter:_auto_scroll(bufnr)
+-- TEMP DEBUG: scroll/fold race investigation. Remove once root cause is
+-- identified. Writes to ~/.cache/nvim/agentic_scroll_debug.log so it does
+-- not pollute the main agentic_debug.log file.
+local _SCROLL_DEBUG_PATH = vim.fn.stdpath("cache")
+    .. "/agentic_scroll_debug.log"
+local _scroll_debug_seq = 0
+
+local function _scroll_debug(tag, data)
+    _scroll_debug_seq = _scroll_debug_seq + 1
+    local file = io.open(_SCROLL_DEBUG_PATH, "a")
+    if not file then
+        return
+    end
+    file:write(
+        string.format(
+            "[%s] #%d %s %s\n",
+            os.date("%H:%M:%S"),
+            _scroll_debug_seq,
+            tag,
+            vim.inspect(data, { newline = " ", indent = "" })
+        )
+    )
+    file:close()
+end
+
+local function _scroll_debug_snapshot(bufnr)
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return nil
+    end
+    local v
+    vim.api.nvim_win_call(wins[1], function()
+        v = vim.fn.winsaveview()
+    end)
+    if not v then
+        return nil
+    end
+    return {
+        cursor = v.lnum,
+        topline = v.topline,
+        buf_lines = vim.api.nvim_buf_line_count(bufnr),
+    }
+end
+
+--- Captures the auto-scroll decision based on cursor distance from bottom.
+--- Should be called BEFORE buffer mutation. Sticky: stays true until
+--- _apply_scroll runs.
+--- @param bufnr integer
+function MessageWriter:_capture_scroll(bufnr)
     if self._should_auto_scroll ~= true then
         self._should_auto_scroll = self:_check_auto_scroll(bufnr)
     end
+    local caller = debug.getinfo(2, "Sl")
+    local caller_loc = string.format(
+        "%s:%d",
+        (caller.source or ""):match("([^/]+%.lua)$") or "?",
+        caller.currentline or 0
+    )
+    _scroll_debug("capture", {
+        from = caller_loc,
+        decision = self._should_auto_scroll == true,
+    })
+end
 
-    if self._scroll_scheduled then
+--- Applies the captured scroll decision synchronously by running G0zb in
+--- the chat window. Should be called AFTER buffer mutation, in the same
+--- Lua tick. noautocmd suppresses immediate autocmds (CursorMoved /
+--- WinScrolled fire deferred at safe state, unaffected).
+--- @param bufnr integer
+function MessageWriter:_apply_scroll(bufnr)
+    if self._should_auto_scroll ~= true then
+        self._should_auto_scroll = nil
         return
     end
-    self._scroll_scheduled = true
 
-    vim.schedule(function()
-        self._scroll_scheduled = false
-
-        if vim.api.nvim_buf_is_valid(bufnr) then
-            if self._should_auto_scroll then
-                local wins = vim.fn.win_findbuf(bufnr)
-                if #wins > 0 then
-                    vim.api.nvim_win_call(wins[1], function()
-                        vim.cmd("normal! G0zb")
-                    end)
-                end
-            end
-        end
-
+    if not vim.api.nvim_buf_is_valid(bufnr) then
         self._should_auto_scroll = nil
+        return
+    end
+
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        self._should_auto_scroll = nil
+        return
+    end
+    local winid = wins[1]
+
+    vim.api.nvim_win_call(winid, function()
+        local before = vim.fn.winsaveview()
+        local total = vim.api.nvim_buf_line_count(bufnr)
+        _scroll_debug("pre_zb", {
+            cursor = before.lnum,
+            topline = before.topline,
+            buf_lines = total,
+            foldclosed_last = vim.fn.foldclosed(total),
+            win_height = vim.api.nvim_win_get_height(winid),
+        })
+
+        vim.cmd("noautocmd normal! G0zb")
+
+        local after = vim.fn.winsaveview()
+        _scroll_debug("post_zb", {
+            cursor = after.lnum,
+            topline = after.topline,
+        })
+
+        local seq_at_post = _scroll_debug_seq
+        local augroup = vim.api.nvim_create_augroup(
+            "AgenticScrollDebug_" .. seq_at_post,
+            { clear = true }
+        )
+        vim.api.nvim_create_autocmd("SafeState", {
+            group = augroup,
+            once = true,
+            callback = function()
+                if not vim.api.nvim_win_is_valid(winid) then
+                    return
+                end
+                vim.api.nvim_win_call(winid, function()
+                    local v = vim.fn.winsaveview()
+                    _scroll_debug("post_redraw_for_#" .. seq_at_post, {
+                        cursor = v.lnum,
+                        topline = v.topline,
+                        shifted = v.topline ~= after.topline,
+                        delta = v.topline - after.topline,
+                    })
+                end)
+            end,
+        })
     end)
+
+    self._should_auto_scroll = nil
+end
+
+--- Legacy entry point. Now equivalent to _capture_scroll - kept so existing
+--- call sites continue to compile during the migration. Remove after all
+--- callers move to capture/apply pair.
+--- @param bufnr integer
+function MessageWriter:_auto_scroll(bufnr)
+    self:_capture_scroll(bufnr)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
     self:_clear_thinking_state()
-    self:_auto_scroll(self.bufnr)
+    self:_capture_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
 
     self:_with_modifiable_and_notify_change(function(bufnr)
@@ -537,6 +654,8 @@ function MessageWriter:write_tool_call_block(tool_call_block)
 
         self:_append_lines({ "", "" })
     end)
+
+    self:_apply_scroll(self.bufnr)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
@@ -551,6 +670,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         return
     end
+
+    self:_capture_scroll(self.bufnr)
 
     -- Some ACP providers don't send the diff on the first tool_call
     local already_has_diff = tracker.diff ~= nil
@@ -650,6 +771,16 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local is_diff = tracker.diff ~= nil
         local now_folds = self:_will_fold(new_interior, is_diff)
         local was_folding = self:_will_fold(old_interior, is_diff)
+
+        _scroll_debug("update_set_lines:pre", {
+            snap = _scroll_debug_snapshot(self.bufnr),
+            start_row = start_row,
+            old_end_row = old_end_row,
+            new_line_count = #new_lines,
+            now_folds = now_folds,
+            was_folding = was_folding,
+        })
+
         if now_folds and not was_folding then
             local skeleton = self:_make_skeleton(#new_lines)
             skeleton[1] = new_lines[1]
@@ -684,6 +815,10 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             )
         end
 
+        _scroll_debug("update_set_lines:post", {
+            snap = _scroll_debug_snapshot(self.bufnr),
+        })
+
         local new_end_row = start_row + #new_lines - 1
 
         pcall(
@@ -717,6 +852,8 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             tracker.status
         )
     end)
+
+    self:_apply_scroll(self.bufnr)
 end
 
 --- Build the header line string for a tool call block
@@ -963,11 +1100,13 @@ function MessageWriter:display_permission_buttons(tool_call_id, options)
 
     local button_start_row = line_count
 
-    self:_auto_scroll(self.bufnr)
+    self:_capture_scroll(self.bufnr)
 
     BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines(lines_to_append)
     end)
+
+    self:_apply_scroll(self.bufnr)
 
     local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
 
