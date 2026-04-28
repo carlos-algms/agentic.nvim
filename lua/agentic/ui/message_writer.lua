@@ -429,69 +429,8 @@ function MessageWriter:_check_auto_scroll(bufnr)
     return distance_from_bottom <= threshold
 end
 
--- TEMP DEBUG: scroll/fold race investigation. Remove once root cause is
--- identified. Writes to ~/.cache/nvim/agentic_scroll_debug.log so it does
--- not pollute the main agentic_debug.log file.
-local _SCROLL_DEBUG_PATH = vim.fn.stdpath("cache")
-    .. "/agentic_scroll_debug.log"
-local _scroll_debug_seq = 0
-
-local function _scroll_debug(tag, data)
-    _scroll_debug_seq = _scroll_debug_seq + 1
-    local file = io.open(_SCROLL_DEBUG_PATH, "a")
-    if not file then
-        return
-    end
-    file:write(
-        string.format(
-            "[%s] #%d %s %s\n",
-            os.date("%H:%M:%S"),
-            _scroll_debug_seq,
-            tag,
-            vim.inspect(data, { newline = " ", indent = "" })
-        )
-    )
-    file:close()
-end
-
---- Captures cursor + topline of the (first) window showing `bufnr`.
---- Returns nil if no such window.
---- @param bufnr integer
---- @return { cursor: integer, topline: integer, buf_lines: integer }|nil
-local function _scroll_debug_snapshot(bufnr)
-    local wins = vim.fn.win_findbuf(bufnr)
-    if #wins == 0 then
-        return nil
-    end
-    local winid = wins[1]
-    local v
-    vim.api.nvim_win_call(winid, function()
-        v = vim.fn.winsaveview()
-    end)
-    if not v then
-        return nil
-    end
-    return {
-        cursor = v.lnum,
-        topline = v.topline,
-        buf_lines = vim.api.nvim_buf_line_count(bufnr),
-    }
-end
-
 --- @param bufnr integer Buffer number to scroll
 function MessageWriter:_auto_scroll(bufnr)
-    local caller = debug.getinfo(2, "Sl")
-    local caller_loc = string.format(
-        "%s:%d",
-        (caller.source or ""):match("([^/]+%.lua)$") or "?",
-        caller.currentline or 0
-    )
-    _scroll_debug("call", {
-        from = caller_loc,
-        already_true = self._should_auto_scroll == true,
-        scheduled = self._scroll_scheduled == true,
-    })
-
     if self._should_auto_scroll ~= true then
         self._should_auto_scroll = self:_check_auto_scroll(bufnr)
     end
@@ -508,54 +447,8 @@ function MessageWriter:_auto_scroll(bufnr)
             if self._should_auto_scroll then
                 local wins = vim.fn.win_findbuf(bufnr)
                 if #wins > 0 then
-                    local winid = wins[1]
-                    vim.api.nvim_win_call(winid, function()
-                        local before = vim.fn.winsaveview()
-                        local total = vim.api.nvim_buf_line_count(bufnr)
-                        local fc_last = vim.fn.foldclosed(total)
-                        _scroll_debug("pre_zb", {
-                            cursor = before.lnum,
-                            topline = before.topline,
-                            buf_lines = total,
-                            foldclosed_last = fc_last,
-                            win_height = vim.api.nvim_win_get_height(winid),
-                        })
-
+                    vim.api.nvim_win_call(wins[1], function()
                         vim.cmd("normal! G0zb")
-
-                        local after = vim.fn.winsaveview()
-                        _scroll_debug("post_zb", {
-                            cursor = after.lnum,
-                            topline = after.topline,
-                        })
-
-                        local seq_at_post = _scroll_debug_seq
-                        local augroup = vim.api.nvim_create_augroup(
-                            "AgenticScrollDebug_" .. seq_at_post,
-                            { clear = true }
-                        )
-                        vim.api.nvim_create_autocmd("SafeState", {
-                            group = augroup,
-                            once = true,
-                            callback = function()
-                                if not vim.api.nvim_win_is_valid(winid) then
-                                    return
-                                end
-                                vim.api.nvim_win_call(winid, function()
-                                    local v = vim.fn.winsaveview()
-                                    _scroll_debug(
-                                        "post_redraw_for_#" .. seq_at_post,
-                                        {
-                                            cursor = v.lnum,
-                                            topline = v.topline,
-                                            shifted = v.topline
-                                                ~= after.topline,
-                                            delta = v.topline - after.topline,
-                                        }
-                                    )
-                                end)
-                            end,
-                        })
                     end)
                 end
             end
@@ -757,16 +650,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local is_diff = tracker.diff ~= nil
         local now_folds = self:_will_fold(new_interior, is_diff)
         local was_folding = self:_will_fold(old_interior, is_diff)
-        local _dbg_pre = _scroll_debug_snapshot(self.bufnr)
-        _scroll_debug("update_set_lines:pre", {
-            snap = _dbg_pre,
-            start_row = start_row,
-            old_end_row = old_end_row,
-            new_line_count = #new_lines,
-            now_folds = now_folds,
-            was_folding = was_folding,
-        })
-
         if now_folds and not was_folding then
             local skeleton = self:_make_skeleton(#new_lines)
             skeleton[1] = new_lines[1]
@@ -800,10 +683,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 new_lines
             )
         end
-
-        _scroll_debug("update_set_lines:post", {
-            snap = _scroll_debug_snapshot(self.bufnr),
-        })
 
         local new_end_row = start_row + #new_lines - 1
 
