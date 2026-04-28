@@ -45,6 +45,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
+--- @field _needs_fold_recompute? boolean
 --- @field _on_content_changed? fun()
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
@@ -433,50 +434,6 @@ function MessageWriter:_check_auto_scroll(bufnr)
     return distance_from_bottom <= threshold
 end
 
--- TEMP DEBUG: scroll/fold race investigation. Remove once root cause is
--- identified. Writes to ~/.cache/nvim/agentic_scroll_debug.log so it does
--- not pollute the main agentic_debug.log file.
-local _SCROLL_DEBUG_PATH = vim.fn.stdpath("cache")
-    .. "/agentic_scroll_debug.log"
-local _scroll_debug_seq = 0
-
-local function _scroll_debug(tag, data)
-    _scroll_debug_seq = _scroll_debug_seq + 1
-    local file = io.open(_SCROLL_DEBUG_PATH, "a")
-    if not file then
-        return
-    end
-    file:write(
-        string.format(
-            "[%s] #%d %s %s\n",
-            os.date("%H:%M:%S"),
-            _scroll_debug_seq,
-            tag,
-            vim.inspect(data, { newline = " ", indent = "" })
-        )
-    )
-    file:close()
-end
-
-local function _scroll_debug_snapshot(bufnr)
-    local wins = vim.fn.win_findbuf(bufnr)
-    if #wins == 0 then
-        return nil
-    end
-    local v
-    vim.api.nvim_win_call(wins[1], function()
-        v = vim.fn.winsaveview()
-    end)
-    if not v then
-        return nil
-    end
-    return {
-        cursor = v.lnum,
-        topline = v.topline,
-        buf_lines = vim.api.nvim_buf_line_count(bufnr),
-    }
-end
-
 --- Captures the auto-scroll decision based on cursor distance from bottom.
 --- Should be called BEFORE buffer mutation. Sticky: stays true until
 --- _apply_scroll runs.
@@ -485,16 +442,6 @@ function MessageWriter:_capture_scroll(bufnr)
     if self._should_auto_scroll ~= true then
         self._should_auto_scroll = self:_check_auto_scroll(bufnr)
     end
-    local caller = debug.getinfo(2, "Sl")
-    local caller_loc = string.format(
-        "%s:%d",
-        (caller.source or ""):match("([^/]+%.lua)$") or "?",
-        caller.currentline or 0
-    )
-    _scroll_debug("capture", {
-        from = caller_loc,
-        decision = self._should_auto_scroll == true,
-    })
 end
 
 --- Applies the captured scroll decision synchronously by running G0zb in
@@ -503,6 +450,9 @@ end
 --- WinScrolled fire deferred at safe state, unaffected).
 --- @param bufnr integer
 function MessageWriter:_apply_scroll(bufnr)
+    local needs_fold_recompute = self._needs_fold_recompute == true
+    self._needs_fold_recompute = nil
+
     if self._should_auto_scroll ~= true then
         self._should_auto_scroll = nil
         return
@@ -521,58 +471,20 @@ function MessageWriter:_apply_scroll(bufnr)
     local winid = wins[1]
 
     vim.api.nvim_win_call(winid, function()
-        local before = vim.fn.winsaveview()
-        local total = vim.api.nvim_buf_line_count(bufnr)
-        _scroll_debug("pre_zb", {
-            cursor = before.lnum,
-            topline = before.topline,
-            buf_lines = total,
-            foldclosed_last = vim.fn.foldclosed(total),
-            win_height = vim.api.nvim_win_get_height(winid),
-        })
-
+        if needs_fold_recompute then
+            -- Force synchronous foldexpr recompute. Without this, the
+            -- new block's fold cache is stale at zb time, so zb's
+            -- screen-row math runs against unfolded content and lands
+            -- on the wrong topline. Vim materializes the fold ~10ms
+            -- later and auto-scrolls -- the visible flicker.
+            -- Side effect: zX re-applies foldlevel, closing any folds
+            -- the user manually opened in this window.
+            vim.cmd("noautocmd normal! zX")
+        end
         vim.cmd("noautocmd normal! G0zb")
-
-        local after = vim.fn.winsaveview()
-        _scroll_debug("post_zb", {
-            cursor = after.lnum,
-            topline = after.topline,
-        })
-
-        local seq_at_post = _scroll_debug_seq
-        local augroup = vim.api.nvim_create_augroup(
-            "AgenticScrollDebug_" .. seq_at_post,
-            { clear = true }
-        )
-        vim.api.nvim_create_autocmd("SafeState", {
-            group = augroup,
-            once = true,
-            callback = function()
-                if not vim.api.nvim_win_is_valid(winid) then
-                    return
-                end
-                vim.api.nvim_win_call(winid, function()
-                    local v = vim.fn.winsaveview()
-                    _scroll_debug("post_redraw_for_#" .. seq_at_post, {
-                        cursor = v.lnum,
-                        topline = v.topline,
-                        shifted = v.topline ~= after.topline,
-                        delta = v.topline - after.topline,
-                    })
-                end)
-            end,
-        })
     end)
 
     self._should_auto_scroll = nil
-end
-
---- Legacy entry point. Now equivalent to _capture_scroll - kept so existing
---- call sites continue to compile during the migration. Remove after all
---- callers move to capture/apply pair.
---- @param bufnr integer
-function MessageWriter:_auto_scroll(bufnr)
-    self:_capture_scroll(bufnr)
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
@@ -772,16 +684,15 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local now_folds = self:_will_fold(new_interior, is_diff)
         local was_folding = self:_will_fold(old_interior, is_diff)
 
-        _scroll_debug("update_set_lines:pre", {
-            snap = _scroll_debug_snapshot(self.bufnr),
-            start_row = start_row,
-            old_end_row = old_end_row,
-            new_line_count = #new_lines,
-            now_folds = now_folds,
-            was_folding = was_folding,
-        })
-
         if now_folds and not was_folding then
+            -- First time this block becomes foldable. Vim's foldexpr
+            -- cache is not synchronously evaluated for the new range
+            -- by set_lines, so signal _apply_scroll to run `zX` before
+            -- zb. zX is the only command that forces synchronous
+            -- foldexpr recompute. Side effect: re-applies foldlevel
+            -- (closes manually-opened folds elsewhere in the window).
+            -- Acceptable: user can re-open with zo.
+            self._needs_fold_recompute = true
             local skeleton = self:_make_skeleton(#new_lines)
             skeleton[1] = new_lines[1]
             skeleton[#skeleton] = new_lines[#new_lines]
@@ -814,10 +725,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 new_lines
             )
         end
-
-        _scroll_debug("update_set_lines:post", {
-            snap = _scroll_debug_snapshot(self.bufnr),
-        })
 
         local new_end_row = start_row + #new_lines - 1
 

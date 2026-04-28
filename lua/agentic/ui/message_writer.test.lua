@@ -913,5 +913,154 @@ describe("agentic.ui.MessageWriter", function()
                 vim.api.nvim_buf_delete(test_bufnr, { force = true })
             end
         end)
+
+        it(
+            "runs zX before zb when a tool call block crosses the fold threshold",
+            function()
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+                Config.auto_scroll = { threshold = 10 }
+
+                Fold.setup_window(winid, bufnr)
+                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                writer:write_tool_call_block({
+                    tool_call_id = "fold-zx",
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "short" },
+                })
+
+                local cmd_spy = spy.on(vim, "cmd")
+
+                writer:update_tool_call_block({
+                    tool_call_id = "fold-zx",
+                    status = "completed",
+                    body = {
+                        "L1",
+                        "L2",
+                        "L3",
+                        "L4",
+                        "L5",
+                        "L6",
+                        "L7",
+                        "L8",
+                        "L9",
+                        "L10",
+                    },
+                })
+
+                local saw_zX = false
+                for _, call in ipairs(cmd_spy.calls) do
+                    if
+                        type(call[1]) == "string"
+                        and call[1]:find("zX", 1, true)
+                    then
+                        saw_zX = true
+                        break
+                    end
+                end
+                cmd_spy:revert()
+
+                assert.is_true(saw_zX)
+            end
+        )
+
+        it(
+            "does not run zX when block stays below the fold threshold",
+            function()
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+                Config.auto_scroll = { threshold = 10 }
+
+                Fold.setup_window(winid, bufnr)
+                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                writer:write_tool_call_block({
+                    tool_call_id = "no-fold",
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "L1", "L2", "L3" },
+                })
+
+                local cmd_spy = spy.on(vim, "cmd")
+
+                writer:update_tool_call_block({
+                    tool_call_id = "no-fold",
+                    status = "completed",
+                    body = { "L1", "L2", "L3" },
+                })
+
+                local saw_zX = false
+                for _, call in ipairs(cmd_spy.calls) do
+                    if
+                        type(call[1]) == "string"
+                        and call[1]:find("zX", 1, true)
+                    then
+                        saw_zX = true
+                        break
+                    end
+                end
+                cmd_spy:revert()
+
+                assert.is_false(saw_zX)
+            end
+        )
+
+        it("closes the fold for the newly-foldable block", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 5 },
+            }
+            Config.auto_scroll = { threshold = 10 }
+
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+            writer:write_tool_call_block({
+                tool_call_id = "fold-mat",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "short" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "fold-mat",
+                status = "completed",
+                body = {
+                    "L1",
+                    "L2",
+                    "L3",
+                    "L4",
+                    "L5",
+                    "L6",
+                    "L7",
+                    "L8",
+                    "L9",
+                    "L10",
+                },
+            })
+
+            local tracker = writer.tool_call_blocks["fold-mat"]
+            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+            local pos = vim.api.nvim_buf_get_extmark_by_id(
+                bufnr,
+                NS,
+                tracker.extmark_id,
+                { details = true }
+            )
+            local interior_lnum = pos[1] + 2
+
+            vim.api.nvim_win_call(winid, function()
+                assert.is_true(vim.fn.foldclosed(interior_lnum) ~= -1)
+            end)
+        end)
     end)
 end)
