@@ -531,11 +531,7 @@ function MessageWriter:_apply_scroll(bufnr)
             win_height = vim.api.nvim_win_get_height(winid),
         })
 
-        -- G$zb: jump to last buffer line, last column (so on wrapped lines
-        -- cursor sits on the last screen row, not the first), then anchor
-        -- that screen row at window bottom. With G0zb, cursor on a long
-        -- wrapped line ended up many screen rows above the window bottom.
-        vim.cmd("noautocmd normal! G$zb")
+        vim.cmd("noautocmd normal! G0zb")
 
         local after = vim.fn.winsaveview()
         _scroll_debug("post_zb", {
