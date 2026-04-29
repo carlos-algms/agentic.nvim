@@ -503,6 +503,32 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(get_all_content():match("read"))
         end)
 
+        it("formats unformatted single-line JSON body on replay", function()
+            writer:set_provider_name("Claude")
+
+            local long_value = string.rep("v", 100)
+            local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+            --- @type agentic.ui.ChatHistory.Message[]
+            local messages = {
+                {
+                    type = "tool_call",
+                    tool_call_id = "tc-json",
+                    kind = "fetch",
+                    argument = "MCP",
+                    status = "completed",
+                    body = { json_text },
+                    provider_name = "Claude",
+                },
+            }
+
+            writer:replay_history_messages(messages)
+
+            local tracker = writer.tool_call_blocks["tc-json"]
+            assert.is_not_nil(tracker)
+            assert.is_true(#tracker.body > 1)
+        end)
+
         it(
             "replay thought extmark covers content lines, not trailing blank",
             function()
@@ -677,6 +703,68 @@ describe("agentic.ui.MessageWriter", function()
             local ns = vim.api.nvim_create_namespace("agentic_thinking")
             local extmarks = vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, {})
             assert.equal(2, #extmarks)
+        end)
+    end)
+
+    describe("tool call body JSON formatting", function()
+        it("formats single-line JSON body when writing the block", function()
+            local long_value = string.rep("v", 100)
+            local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+            local block =
+                make_tool_call_block("json-1", "completed", { json_text })
+            writer:write_tool_call_block(block)
+
+            local tracker = writer.tool_call_blocks["json-1"]
+            assert.is_not_nil(tracker)
+            assert.is_true(#tracker.body > 1)
+        end)
+
+        it(
+            "leaves placeholder text untouched and formats only JSON segments on update",
+            function()
+                local placeholder = "I'm going to fetch this"
+                local long_value = string.rep("v", 100)
+                local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+                local block = make_tool_call_block(
+                    "json-stream",
+                    "in_progress",
+                    { placeholder }
+                )
+                writer:write_tool_call_block(block)
+
+                writer:update_tool_call_block({
+                    tool_call_id = "json-stream",
+                    status = "completed",
+                    body = { json_text },
+                })
+
+                local tracker = writer.tool_call_blocks["json-stream"]
+                assert.is_not_nil(tracker)
+                assert.equal(placeholder, tracker.body[1])
+
+                local separator_idx
+                for i, line in ipairs(tracker.body) do
+                    if line == "---" then
+                        separator_idx = i
+                        break
+                    end
+                end
+                assert.is_not_nil(separator_idx)
+                assert.is_true(#tracker.body - separator_idx > 1)
+            end
+        )
+
+        it("leaves malformed JSON unchanged", function()
+            local malformed = "{" .. string.rep("not valid json ", 10) .. "}"
+
+            local block =
+                make_tool_call_block("json-bad", "completed", { malformed })
+            writer:write_tool_call_block(block)
+
+            local tracker = writer.tool_call_blocks["json-bad"]
+            assert.same({ malformed }, tracker.body)
         end)
     end)
 

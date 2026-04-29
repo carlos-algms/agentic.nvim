@@ -5,6 +5,7 @@ local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local DiffPreview = require("agentic.ui.diff_preview")
 local ExtmarkBlock = require("agentic.utils.extmark_block")
 local Fold = require("agentic.ui.tool_call_fold")
+local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
@@ -394,6 +395,10 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    if tool_call_block.body then
+        tool_call_block.body = JsonFormat.format_lines(tool_call_block.body)
+    end
+
     self:_clear_thinking_state()
     self:_capture_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
@@ -464,6 +469,10 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         )
 
         return
+    end
+
+    if tool_call_block.body then
+        tool_call_block.body = JsonFormat.format_lines(tool_call_block.body)
     end
 
     self:_capture_scroll(self.bufnr)
