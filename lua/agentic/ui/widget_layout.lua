@@ -293,6 +293,46 @@ local function show_layout(params, position)
     end
 end
 
+--- Opens a hidden floating window on the chat buffer. This window
+--- exists ONLY while the widget is hidden. It holds the chat buffer
+--- so `Fold.close_range` can create folds in response to streaming
+--- tool-call updates that arrive while no visible chat window
+--- exists.
+---
+--- The chat buffer is `bufhidden=hide`, so its manual folds are
+--- snapshotted on window close and replayed on the next window that
+--- opens it. This helper guarantees there is always at least one
+--- window holding the buffer, so the snapshot pipeline never sees a
+--- gap.
+---
+--- Caller is responsible for closing this window before opening the
+--- visible chat window. Having two windows on the same buffer
+--- concurrently breaks the per-buffer fold-state inheritance.
+--- @param bufnr integer Chat buffer
+--- @return integer winid
+function WidgetLayout.open_hidden_chat_window(bufnr)
+    local winid = vim.api.nvim_open_win(bufnr, false, {
+        relative = "editor",
+        row = 0,
+        col = 0,
+        width = 1,
+        height = 1,
+        hide = true,
+        focusable = false,
+        noautocmd = true,
+    })
+
+    vim.w[winid].agentic_bufnr = bufnr
+
+    for name, value in pairs(PANEL_WINDOW_OPTS) do
+        vim.api.nvim_set_option_value(name, value, { win = winid })
+    end
+
+    Fold.setup_window(winid, bufnr)
+
+    return winid
+end
+
 --- @param params agentic.ui.WidgetLayout.Params
 function WidgetLayout.open(params)
     if
