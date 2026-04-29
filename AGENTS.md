@@ -9,15 +9,18 @@ Read these before touching the matching area:
 
 - `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions,
   providers
-- `@lua/agentic/ui/AGENTS.md` - chat buffer, auto-scroll, folding,
-  anchor pads
+- `@lua/agentic/ui/AGENTS.md` - chat UI: topology, lifecycle contracts
+  (open/close/destroy), MessageWriter state machines, tool-call block
+  layout, folding, auto-scroll, permission reanchor, traps
 - `@tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
 
-## Reasoning Preference
+## Anti-staleness rules for AGENTS.md files
 
-Prefer retrieval-led reasoning (reading files, searching the codebase) over
-pre-training-led reasoning. Training data may be outdated, always verify
-against actual code.
+- Cite **module + symbol**, never line numbers.
+- No code blocks > 3 lines. Signatures only.
+- Every "why" must reference an observable failure (flicker, crash, lost
+  fold). If the failure is gone, delete the rule.
+- New rule = new test. Reference the test by name.
 
 ## CRITICAL: No Assumptions - Gather Context First
 
@@ -113,11 +116,27 @@ state), status animation, permission manager, file list, code selection.
 
 ### Logger
 
-- **NEVER use `vim.notify` directly.** Always use `Logger.notify` to avoid
-  fast context errors.
+- **FORBIDDEN: `vim.notify` directly.** Use `Logger.notify`. Direct calls
+  raise fast-context errors when fired from libuv callbacks or
+  `vim.schedule` boundaries.
 - Logger only has `debug()`, `debug_to_file()`, and `notify()`. No `warn()`,
   `error()`, or `info()`. `debug()`/`debug_to_file()` output depends on
   `Config.debug`.
+
+### Common traps (project-wide)
+
+Subsystem-specific traps live in nested `AGENTS.md`. These apply
+everywhere:
+
+- **FORBIDDEN: `vim.notify`** -> use `Logger.notify` (fast-context errors).
+- **FORBIDDEN: `goto` / `::label::`** -> Selene parser does not parse it.
+  Use inverted conditions or `elseif` chains. See "Lua restrictions"
+  below for example.
+- **FORBIDDEN: module-level mutable state for per-tab data** -> store on
+  per-tab instances. See "Multi-Tabpage Architecture" below.
+- **FORBIDDEN: global keymaps** -> use `BufHelpers.keymap_set(bufnr, ...)`.
+- **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** ->
+  use `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
 
 ## Code Style
 
