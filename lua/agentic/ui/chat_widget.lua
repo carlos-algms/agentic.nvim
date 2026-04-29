@@ -43,6 +43,10 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _winclosed_augroup? integer WinClosed autocmd group ID
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
+--- Holds the chat buffer while the widget is hidden so manual folds
+--- have a window target. Swapped with the visible chat window on
+--- show()/hide(); never coexists with it.
+--- @field _hidden_chat_winid? integer
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -292,6 +296,9 @@ end
 
 function ChatWidget:_initialize()
     self.buf_nrs = self:_create_buf_nrs()
+
+    self._hidden_chat_winid =
+        WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 
     self:_bind_keymaps()
 

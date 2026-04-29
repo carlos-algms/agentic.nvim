@@ -816,4 +816,47 @@ describe("agentic.ui.ChatWidget", function()
             assert.equal("bottom", widget2.current_position)
         end)
     end)
+
+    describe("hidden chat window lifecycle", function()
+        local widget
+        local tab_page_id
+
+        before_each(function()
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local on_submit_spy = spy.new(function() end)
+            widget =
+                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "opens a hidden float on the chat buffer at construction time",
+            function()
+                assert.is_not_nil(widget._hidden_chat_winid)
+                assert.is_true(
+                    vim.api.nvim_win_is_valid(widget._hidden_chat_winid)
+                )
+                assert.equal(
+                    vim.api.nvim_win_get_buf(widget._hidden_chat_winid),
+                    widget.buf_nrs.chat
+                )
+                local cfg =
+                    vim.api.nvim_win_get_config(widget._hidden_chat_winid)
+                assert.is_true(cfg.hide)
+            end
+        )
+    end)
 end)
