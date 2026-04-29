@@ -74,6 +74,30 @@ local function calculate_dynamic_height(bufnr, max_height, position)
     return math.min(line_count + padding, max_height)
 end
 
+--- Window-local options applied to every panel window. Replaces the
+--- previous `style = "minimal"` flag on `nvim_open_win`. We avoid
+--- `style = "minimal"` because it corrupts the buffer's manual-fold
+--- storage on window close: folds set in a minimal-style window are
+--- lost when the buffer is reopened in a new window. Setting these
+--- options manually has the same visual outcome (no number column, no
+--- sign column, no eob `~` markers) without the fold-storage side
+--- effect. `cursorline` is intentionally NOT set so the user's global
+--- preference can leak through.
+--- @type table<string, any>
+local PANEL_WINDOW_OPTS = {
+    number = false,
+    relativenumber = false,
+    cursorcolumn = false,
+    foldcolumn = "0",
+    spell = false,
+    list = false,
+    signcolumn = "no",
+    colorcolumn = "",
+    statuscolumn = "",
+    fillchars = "eob: ,fold: ",
+    winhighlight = "EndOfBuffer:",
+}
+
 --- @param bufnr integer
 --- @param enter boolean
 --- @param opts vim.api.keyset.win_config
@@ -86,7 +110,6 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
         split = "right",
         win = -1,
         noautocmd = true,
-        style = "minimal",
     }
 
     local config = vim.tbl_deep_extend("force", default_opts, opts)
@@ -103,7 +126,7 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
         wrap = true,
         linebreak = true,
         winfixheight = true,
-    }, win_opts or {}, config_win_opts)
+    }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
 
     for name, value in pairs(merged_win_opts) do
         vim.api.nvim_set_option_value(name, value, { win = winid })

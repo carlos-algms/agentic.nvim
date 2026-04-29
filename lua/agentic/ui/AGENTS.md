@@ -83,12 +83,31 @@ between the anchors.
 | `:redraw`                                | White flashes from full-UI re-render. |
 | `winrestview({topline=...})` before `zb` | `zb` recomputes from cursor anyway.   |
 
-## Idempotency markers
+## Imperative fold ownership
 
-`Fold.setup_window` runs every time the chat window is created. Marker is
-**`foldtext`**, not `foldmethod` -- Neovim's default `foldmethod` is
-already `"manual"`, so checking it matches unconfigured windows. The
-custom `foldtext` value is unique to our module.
+`Fold.setup_window` runs after every chat-window open
+(`widget_layout.lua` `show_layout`). User's global fold options must
+never leak in.
+
+`foldmethod` and `foldlevel` are guarded by equality checks: **assigning
+a window option triggers Vim's set-handler even when the value is
+unchanged.** `foldlevel = 0` re-closes folds the user opened with `zo`;
+`foldmethod = "manual"` would delete folds if a prior flip put it on a
+non-manual value (`:help fold-manual`). `foldenable` and `foldtext`
+have no such side effect, set unconditionally.
+
+## No `style="minimal"` on panel windows
+
+`widget_layout.lua` uses explicit `PANEL_WINDOW_OPTS` instead of
+`style="minimal"`.
+
+`style="minimal"` stores an empty fold map in the buffer's last-window
+memory on close, wiping manual folds across reopens. Undocumented; the
+docs only mention UI options. Without `style="minimal"` folds survive.
+
+`PANEL_WINDOW_OPTS` covers the visible bits (no number, no signcolumn,
+no `~` past EOF, no fold-fill `·`). `cursorline` is omitted so the
+user's preference leaks through.
 
 ## scrolloff
 

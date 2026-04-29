@@ -250,5 +250,81 @@ describe("WidgetLayout", function()
                 vim.cmd("tabclose")
             end)
         end)
+
+        it("preserves chat manual folds across close + reopen", function()
+            -- Regression guard: `style="minimal"` on `nvim_open_win`
+            -- corrupts the buffer's manual-fold storage when the window
+            -- closes, wiping folds across reopens. We must NOT use it.
+            local saved_folding = Config.folding
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 5 },
+            }
+
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local chat_buf = vim.api.nvim_create_buf(false, true)
+            vim.bo[chat_buf].buftype = "nofile"
+            vim.bo[chat_buf].bufhidden = "hide"
+            vim.api.nvim_buf_set_lines(
+                chat_buf,
+                0,
+                -1,
+                false,
+                vim.fn["repeat"]({ "L" }, 60)
+            )
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = chat_buf,
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            local Fold = require("agentic.ui.tool_call_fold")
+            Fold.close_range(chat_buf, 10, 25)
+            Fold.close_range(chat_buf, 35, 50)
+
+            local first_chat_win = win_nrs.chat
+            vim.api.nvim_win_call(first_chat_win, function()
+                assert.equal(vim.fn.foldclosed(15), 10)
+                assert.equal(vim.fn.foldclosed(40), 35)
+            end)
+
+            WidgetLayout.close(win_nrs)
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            assert.is_not_nil(win_nrs.chat)
+            vim.api.nvim_win_call(win_nrs.chat, function()
+                assert.equal(vim.fn.foldclosed(15), 10)
+                assert.equal(vim.fn.foldclosedend(15), 25)
+                assert.equal(vim.fn.foldclosed(35), 35)
+                assert.equal(vim.fn.foldclosedend(35), 50)
+            end)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+        end)
     end)
 end)

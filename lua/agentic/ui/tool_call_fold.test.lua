@@ -102,15 +102,99 @@ describe("agentic.ui.ToolCallFold", function()
             )
         end)
 
-        it(
-            "does not reset foldlevel on subsequent calls (idempotent)",
-            function()
-                Fold.setup_window(winid, bufnr)
-                assert.equal(vim.wo[winid].foldlevel, 0)
+        it("restores foldlevel and foldenable when drifted", function()
+            Fold.setup_window(winid, bufnr)
+            assert.equal(vim.wo[winid].foldlevel, 0)
 
-                vim.wo[winid].foldlevel = 99
+            vim.wo[winid].foldlevel = 99
+            vim.wo[winid].foldenable = false
+            Fold.setup_window(winid, bufnr)
+            assert.equal(vim.wo[winid].foldlevel, 0)
+            assert.is_true(vim.wo[winid].foldenable)
+        end)
+
+        it("preserves manually-opened folds across repeated calls", function()
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                0,
+                -1,
+                false,
+                vim.fn["repeat"]({ "L" }, 30)
+            )
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_win_call(winid, function()
+                vim.cmd("silent! 5,15fold")
+                vim.cmd("normal! 10G")
+                vim.cmd("normal! zo")
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+        end)
+
+        it("preserves fold ranges across window close + reopen", function()
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                0,
+                -1,
+                false,
+                vim.fn["repeat"]({ "L" }, 60)
+            )
+            Fold.setup_window(winid, bufnr)
+            Fold.close_range(bufnr, 5, 15)
+            Fold.close_range(bufnr, 25, 35)
+            Fold.close_range(bufnr, 45, 55)
+
+            -- Buffer's last-window memory snapshots fold state when the
+            -- window closes; the next window opening the buffer must
+            -- restore the same ranges. This is what bufhidden=hide
+            -- relies on for chat-panel hide/show cycles.
+            vim.api.nvim_win_close(winid, true)
+            winid = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 0,
+                col = 0,
+                width = 40,
+                height = 20,
+            })
+            Fold.setup_window(winid, bufnr)
+
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), 5)
+                assert.equal(vim.fn.foldclosed(30), 25)
+                assert.equal(vim.fn.foldclosed(50), 45)
+                assert.equal(vim.fn.foldclosedend(10), 15)
+                assert.equal(vim.fn.foldclosedend(30), 35)
+                assert.equal(vim.fn.foldclosedend(50), 55)
+            end)
+        end)
+
+        it(
+            "preserves folds when user has non-manual foldmethod global",
+            function()
+                local saved_global = vim.go.foldmethod
+                vim.go.foldmethod = "indent"
+
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    vim.fn["repeat"]({ "    L" }, 30)
+                )
                 Fold.setup_window(winid, bufnr)
-                assert.equal(vim.wo[winid].foldlevel, 99)
+                Fold.close_range(bufnr, 5, 15)
+
+                vim.api.nvim_win_call(winid, function()
+                    assert.equal(vim.fn.foldclosed(10), 5)
+                    assert.equal(vim.fn.foldclosedend(10), 15)
+                end)
+                assert.equal(vim.wo[winid].foldmethod, "manual")
+
+                vim.go.foldmethod = saved_global
             end
         )
     end)

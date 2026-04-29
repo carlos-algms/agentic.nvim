@@ -43,20 +43,28 @@ end
 local FOLDTEXT_EXPR = "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
 
 --- Configure the chat window for manual tool-call folding. Idempotent.
+--- Reasserts every option on each call. Must be invoked after every
+--- `nvim_open_win`/`nvim_win_set_buf` for the chat buffer so we own the
+--- window's fold state regardless of the user's global defaults.
+---
+--- `foldmethod` and `foldlevel` are guarded by equality checks because
+--- assigning them (even to their current value) triggers Vim to
+--- re-evaluate fold state: `foldmethod` would delete manual folds when
+--- transitioning through a non-manual value, and `foldlevel` would
+--- force-close any fold the user opened with `zo`. The guards make the
+--- assignments true no-ops when nothing has changed.
 --- @param winid integer
 --- @param _bufnr integer
 function Fold.setup_window(winid, _bufnr)
     if Fold.threshold() == nil then
         return
     end
-    -- Idempotency marker: our `foldtext` is unique per call site, so a
-    -- match means we have already configured this window. `foldmethod`
-    -- defaults to "manual" globally, so we cannot use it as a marker.
-    if vim.wo[winid].foldtext == FOLDTEXT_EXPR then
-        return
+    if vim.wo[winid].foldmethod ~= "manual" then
+        vim.wo[winid].foldmethod = "manual"
     end
-    vim.wo[winid].foldmethod = "manual"
-    vim.wo[winid].foldlevel = 0
+    if vim.wo[winid].foldlevel ~= 0 then
+        vim.wo[winid].foldlevel = 0
+    end
     vim.wo[winid].foldenable = true
     vim.wo[winid].foldtext = FOLDTEXT_EXPR
 end
