@@ -20,7 +20,7 @@ Contracts and traps for `chat_widget`, `widget_layout`, `message_writer`,
 SessionManager (per tab)
 └── ChatWidget (per tab)  owns buffers + windows + autocmds
     ├── WidgetLayout      open/close/resize panels, applies PANEL_WINDOW_OPTS
-    ├── HiddenChatFloat   1x1 hidden float holding chat buffer while hidden
+    ├── HiddenChatFloat   hidden float holding chat buffer while widget hidden
     ├── BufferGuard       redirects foreign buffers out of widget windows
     ├── WindowDecoration  winbar + buf names, headers in vim.t[tab]
     ├── DiffPreview       inline/split diff in real file buf (not chat)
@@ -64,13 +64,18 @@ SessionManager (per tab)
   opens the widget the first time work because of this.
 - `show` closes it before `WidgetLayout.open`. Two windows on the
   chat buffer concurrently break per-buffer fold-state inheritance.
-- `hide` reopens it after `WidgetLayout.close`. Folds created while
-  the widget is hidden land in this window and survive to the next
-  `show`.
+- `hide` closes any existing float before reopening, then reopens
+  after `WidgetLayout.close`. Skipping the close-first step leaks
+  the previous winid. Folds created while hidden land here and
+  survive to the next `show`.
 - `destroy` closes it after `hide` (when applicable) so buffer
   deletion never races a still-attached float.
-- Test invariant: `hidden chat window lifecycle` group in
-  `chat_widget.test.lua`.
+- `open_hidden_chat_window` returns `integer|nil`. On failure the
+  widget still works, just without fold state preservation across
+  hide/show. Callers must handle nil.
+- Test invariants: `hidden chat window lifecycle` group in
+  `chat_widget.test.lua`, including
+  `does not leak a hidden float across hide() calls`.
 
 ### Close (`ChatWidget:hide` -> `WidgetLayout.close`)
 
@@ -194,6 +199,13 @@ Range-clear endpoints are inclusive (`end_row + 1`).
 - `foldmethod = manual`. Foldexpr fails for live mid-stream transitions:
   cache is lazy, `zb` lands on wrong topline before recompute, ~10 ms
   later `WinScrolled` jumps the viewport -> flicker.
+- Folds survive widget hide/show because Neovim snapshots fold state
+  per (window, buffer) on close and replays it on the next window
+  that displays the buffer (`fold.txt:647-652`). Two concurrent
+  windows on the same buffer race the snapshot — only one wins. The
+  hidden chat float exists to keep exactly one window on the chat
+  buffer at all times (visible chat window OR hidden float, never
+  both, never neither).
 - The only synchronous foldexpr recompute is `zX`, O(N buffer lines),
   resets manual fold state (closes folds the user opened with `zo`).
 - `Fold.close_range` runs once per block when interior crosses
@@ -271,6 +283,11 @@ See `PermissionManager:_process_next` and `_reanchor_permission_prompt`.
     close the hidden chat float before opening the visible chat
     window, and only reopen the float after the visible chat window
     is closed.
+- Reopening the hidden chat float without closing the previous one
+  - Overwrites `_hidden_chat_winid` and leaks the prior window.
+    `hide` must call `_close_hidden_chat_window` before assigning a
+    new winid. Test: `does not leak a hidden float across hide()
+    calls`.
 
 ## Test invariants
 
