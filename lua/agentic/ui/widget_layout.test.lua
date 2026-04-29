@@ -335,8 +335,9 @@ describe("WidgetLayout", function()
             vim.bo[chat_buf].bufhidden = "hide"
 
             local winid = WidgetLayout.open_hidden_chat_window(chat_buf)
-
             assert.is_not_nil(winid)
+            ---@cast winid integer
+
             assert.is_true(vim.api.nvim_win_is_valid(winid))
 
             local cfg = vim.api.nvim_win_get_config(winid)
@@ -391,6 +392,9 @@ describe("WidgetLayout", function()
 
                 local hidden_winid =
                     WidgetLayout.open_hidden_chat_window(chat_buf)
+                assert.is_not_nil(hidden_winid)
+                ---@cast hidden_winid integer
+
                 local Fold = require("agentic.ui.tool_call_fold")
                 Fold.close_range(chat_buf, 5, 15)
 

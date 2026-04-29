@@ -308,19 +308,36 @@ end
 --- Caller is responsible for closing this window before opening the
 --- visible chat window. Having two windows on the same buffer
 --- concurrently breaks the per-buffer fold-state inheritance.
+---
+--- Returns nil when the float cannot be created (e.g. user has a
+--- `winbar` set and is on a Neovim version where 1-row floats fail
+--- with E36). Callers must handle nil; the widget still works, just
+--- without fold-state preservation across hide/show.
 --- @param bufnr integer Chat buffer
---- @return integer winid
+--- @return integer|nil winid
 function WidgetLayout.open_hidden_chat_window(bufnr)
-    local winid = vim.api.nvim_open_win(bufnr, false, {
+    -- height=2 (not 1) sidesteps Neovim issue #19464 where a 1-row
+    -- float fails with E36 when the source window has a `winbar`
+    -- set. Clearing `winbar` on the float after creation handles
+    -- the same case for older Neovim versions where the inherited
+    -- winbar would still consume the only row.
+    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
         relative = "editor",
         row = 0,
         col = 0,
         width = 1,
-        height = 1,
+        height = 2,
         hide = true,
         focusable = false,
         noautocmd = true,
     })
+
+    if not ok or type(winid) ~= "number" then
+        Logger.debug("open_hidden_chat_window failed: " .. tostring(winid))
+        return nil
+    end
+
+    vim.wo[winid].winbar = ""
 
     vim.w[winid].agentic_bufnr = bufnr
 
