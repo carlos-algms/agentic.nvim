@@ -9,6 +9,8 @@ Read these before touching the matching area:
 
 - `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions,
   providers
+- `@lua/agentic/ui/AGENTS.md` - chat buffer, auto-scroll, folding,
+  anchor pads
 - `@tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
 
 ## Reasoning Preference
