@@ -17,6 +17,7 @@ Contracts and traps for `chat_widget`, `widget_layout`, `message_writer`,
 SessionManager (per tab)
 └── ChatWidget (per tab)  owns buffers + windows + autocmds
     ├── WidgetLayout      open/close/resize panels, applies PANEL_WINDOW_OPTS
+    ├── HiddenChatFloat   1x1 hidden float holding chat buffer while hidden
     ├── BufferGuard       redirects foreign buffers out of widget windows
     ├── WindowDecoration  winbar + buf names, headers in vim.t[tab]
     ├── DiffPreview       inline/split diff in real file buf (not chat)
@@ -39,6 +40,7 @@ SessionManager (per tab)
 | Active diff preview bufnr | DiffPreview       | `vim.t[tab]._agentic_diff_preview_bufnr` |
 | Tool-call block range     | MessageWriter     | extmark in `NS_TOOL_BLOCKS` keyed by id  |
 | Permission queue + anchor | PermissionManager | instance fields                          |
+| Hidden chat fold-state holder | ChatWidget    | `ChatWidget._hidden_chat_winid`          |
 
 ## Lifecycle contracts
 
@@ -51,6 +53,21 @@ SessionManager (per tab)
   `BufferGuard` depends on this.
 - Empty `code/files/diagnostics/todos` panels self-close in
   `open_or_resize_dynamic_window`.
+
+### Hidden chat float (`ChatWidget._hidden_chat_winid`)
+
+- `_initialize` opens it via `WidgetLayout.open_hidden_chat_window`
+  once the chat buffer exists. Folds streamed in before the user
+  opens the widget the first time work because of this.
+- `show` closes it before `WidgetLayout.open`. Two windows on the
+  chat buffer concurrently break per-buffer fold-state inheritance.
+- `hide` reopens it after `WidgetLayout.close`. Folds created while
+  the widget is hidden land in this window and survive to the next
+  `show`.
+- `destroy` closes it after `hide` (when applicable) so buffer
+  deletion never races a still-attached float.
+- Test invariant: `hidden chat window lifecycle` group in
+  `chat_widget.test.lua`.
 
 ### Close (`ChatWidget:hide` -> `WidgetLayout.close`)
 
@@ -246,6 +263,11 @@ See `PermissionManager:_process_next` and `_reanchor_permission_prompt`.
   - Fast-context errors. Use `Logger.notify`.
 - Module-level mutable state for per-tab data
   - Cross-tab leakage. See root `AGENTS.md`.
+- Two windows holding the chat buffer concurrently
+  - Breaks the per-buffer manual-fold snapshot pipeline. Always
+    close the hidden chat float before opening the visible chat
+    window, and only reopen the float after the visible chat window
+    is closed.
 
 ## Test invariants
 
