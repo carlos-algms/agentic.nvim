@@ -90,7 +90,14 @@ end
 function ChatWidget:_close_hidden_chat_window()
     local winid = self._hidden_chat_winid
     self._hidden_chat_winid = nil
-    if winid and vim.api.nvim_win_is_valid(winid) then
+    if not winid or not vim.api.nvim_win_is_valid(winid) then
+        return
+    end
+    -- Same tabpage guard as `WidgetLayout.close`: on Neovim v0.11.5
+    -- Linux, post-tabclose handles can return valid from
+    -- `nvim_win_is_valid` but segfault on close.
+    local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+    if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
         pcall(vim.api.nvim_win_close, winid, true)
     end
 end
