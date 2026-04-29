@@ -194,6 +194,10 @@ function ChatWidget:hide()
         WidgetLayout.close(self.win_nrs)
     end)
 
+    -- Close any pre-existing float (e.g. from a prior hide that was
+    -- not followed by a show) before opening a new one. Otherwise
+    -- the previous winid is overwritten and leaks.
+    self:_close_hidden_chat_window()
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 end

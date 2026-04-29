@@ -934,5 +934,19 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_false(vim.api.nvim_win_is_valid(hidden))
             assert.is_nil(widget_ref._hidden_chat_winid)
         end)
+
+        it("does not leak a hidden float across hide() calls", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            local first_hidden = widget._hidden_chat_winid
+            assert.is_not_nil(first_hidden)
+
+            widget:hide()
+
+            assert.is_false(vim.api.nvim_win_is_valid(first_hidden))
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
+        end)
     end)
 end)
