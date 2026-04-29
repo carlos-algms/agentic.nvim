@@ -316,17 +316,17 @@ end
 --- @param bufnr integer Chat buffer
 --- @return integer|nil winid
 function WidgetLayout.open_hidden_chat_window(bufnr)
-    -- height=2 (not 1) sidesteps Neovim issue #19464 where a 1-row
-    -- float fails with E36 when the source window has a `winbar`
-    -- set. Clearing `winbar` on the float after creation handles
-    -- the same case for older Neovim versions where the inherited
-    -- winbar would still consume the only row.
+    -- 80x20 is generous on purpose: the float is `hide=true`, so
+    -- dimensions are invisible to the user and cost nothing. Larger
+    -- dimensions stay clear of Neovim layout edge cases (e.g. E36
+    -- when a 1-row float interacts with inherited `winbar` on older
+    -- Neovim versions, see issue #19464).
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
         relative = "editor",
         row = 0,
         col = 0,
-        width = 1,
-        height = 2,
+        width = 80,
+        height = 20,
         hide = true,
         focusable = false,
         noautocmd = true,
