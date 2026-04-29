@@ -82,9 +82,24 @@ function ChatWidget:is_cursor_in_widget()
     return self:_is_widget_buffer(vim.api.nvim_get_current_buf())
 end
 
+--- Closes the hidden chat window if it exists. The hidden float
+--- holds the chat buffer while the widget is hidden. It must be
+--- closed before opening any visible chat window to avoid two
+--- windows on the same buffer (which breaks per-buffer fold-state
+--- inheritance).
+function ChatWidget:_close_hidden_chat_window()
+    local winid = self._hidden_chat_winid
+    self._hidden_chat_winid = nil
+    if winid and vim.api.nvim_win_is_valid(winid) then
+        pcall(vim.api.nvim_win_close, winid, true)
+    end
+end
+
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:show(opts)
     opts = opts or {}
+
+    self:_close_hidden_chat_window()
 
     WidgetLayout.open({
         tab_page_id = self.tab_page_id,

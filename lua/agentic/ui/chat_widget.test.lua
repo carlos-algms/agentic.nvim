@@ -858,5 +858,17 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_true(cfg.hide)
             end
         )
+
+        it("closes hidden chat window before opening visible widget", function()
+            local hidden = widget._hidden_chat_winid
+            assert.is_true(vim.api.nvim_win_is_valid(hidden))
+
+            widget:show({ focus_prompt = false })
+
+            assert.is_false(vim.api.nvim_win_is_valid(hidden))
+            assert.is_nil(widget._hidden_chat_winid)
+            assert.is_not_nil(widget.win_nrs.chat)
+            assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.chat))
+        end)
     end)
 end)
