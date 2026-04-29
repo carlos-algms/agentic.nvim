@@ -38,6 +38,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field status? agentic.acp.ToolCallStatus
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
+--- @field has_fold? boolean True after the manual fold has been created (see #210 follow-up)
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -45,7 +46,6 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
---- @field _needs_fold_recompute? boolean
 --- @field _on_content_changed? fun()
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
@@ -72,10 +72,6 @@ function MessageWriter:new(bufnr)
         _is_restoring = false,
     }, self)
 
-    Fold.register(bufnr, function()
-        return self:_get_fold_geometry()
-    end)
-
     return self
 end
 
@@ -101,77 +97,6 @@ function MessageWriter:_clear_thinking_state()
     self._thinking_extmark_id = nil
     self._thinking_start_line = nil
     self._thinking_end_line = nil
-end
-
---- Returns the fold threshold when folding is enabled, nil otherwise.
---- Negative thresholds are clamped to 0 (threshold=0 folds any interior > 0).
---- @return integer|nil threshold
-function MessageWriter:_resolve_fold_threshold()
-    local cfg = Config.folding and Config.folding.tool_calls
-    if not cfg or not cfg.enabled then
-        return nil
-    end
-    return math.max(0, cfg.threshold or 0)
-end
-
---- Returns a list of `count` empty strings, used to reserve space for a
---- pre-fold two-step write.
---- @param count integer
---- @return string[]
-function MessageWriter:_make_skeleton(count)
-    local skeleton = {}
-    for _ = 1, count do
-        table.insert(skeleton, "")
-    end
-    return skeleton
-end
-
---- Whether a block of this shape would be folded by _get_fold_geometry.
---- Kept in sync with the threshold/diff logic below.
---- @param interior integer Number of lines between header and footer
---- @param is_diff boolean Whether the block is a diff kind
---- @return boolean
-function MessageWriter:_will_fold(interior, is_diff)
-    if is_diff then
-        return false
-    end
-    local threshold = self:_resolve_fold_threshold()
-    return threshold ~= nil and interior > threshold
-end
-
---- Projects tool_call_blocks into the geometry format Fold expects.
---- @return agentic.ui.ToolCallFold.Block[]
-function MessageWriter:_get_fold_geometry()
-    --- @type agentic.ui.ToolCallFold.Block[]
-    local geometry = {}
-
-    if self:_resolve_fold_threshold() == nil then
-        return geometry
-    end
-
-    for _, block in pairs(self.tool_call_blocks) do
-        if block.extmark_id then
-            local pos = vim.api.nvim_buf_get_extmark_by_id(
-                self.bufnr,
-                NS_TOOL_BLOCKS,
-                block.extmark_id,
-                { details = true }
-            )
-            if pos and pos[1] and pos[3] and pos[3].end_row then
-                local start_row = pos[1]
-                local end_row = pos[3].end_row
-                local interior = end_row - start_row - 1
-
-                table.insert(geometry, {
-                    start_row = start_row,
-                    end_row = end_row,
-                    foldable = self:_will_fold(interior, block.diff ~= nil),
-                })
-            end
-        end
-    end
-
-    return geometry
 end
 
 --- Writes a structural message (e.g. welcome banner) without triggering
@@ -450,9 +375,6 @@ end
 --- WinScrolled fire deferred at safe state, unaffected).
 --- @param bufnr integer
 function MessageWriter:_apply_scroll(bufnr)
-    local needs_fold_recompute = self._needs_fold_recompute == true
-    self._needs_fold_recompute = nil
-
     if self._should_auto_scroll ~= true then
         self._should_auto_scroll = nil
         return
@@ -471,16 +393,6 @@ function MessageWriter:_apply_scroll(bufnr)
     local winid = wins[1]
 
     vim.api.nvim_win_call(winid, function()
-        if needs_fold_recompute then
-            -- Force synchronous foldexpr recompute. Without this, the
-            -- new block's fold cache is stale at zb time, so zb's
-            -- screen-row math runs against unfolded content and lands
-            -- on the wrong topline. Vim materializes the fold ~10ms
-            -- later and auto-scrolls -- the visible flicker.
-            -- Side effect: zX re-applies foldlevel, closing any folds
-            -- the user manually opened in this window.
-            vim.cmd("noautocmd normal! zX")
-        end
         vim.cmd("noautocmd normal! G0zb")
     end)
 
@@ -503,35 +415,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         local lines, highlight_ranges =
             self:_prepare_block_lines(tool_call_block)
 
-        -- Pre-fold: if the block will fold, first append an empty skeleton
-        -- of the same line count and register the extmark + tracker. The
-        -- subsequent set_lines triggers foldexpr with the tracker in place,
-        -- which closes the fold synchronously with the content write -- no
-        -- visible expand then collapse.
-        local will_fold =
-            self:_will_fold(#lines - 2, tool_call_block.diff ~= nil)
-        if will_fold then
-            self:_append_lines(self:_make_skeleton(#lines))
-            local skel_end = vim.api.nvim_buf_line_count(bufnr) - 1
-            tool_call_block.extmark_id = vim.api.nvim_buf_set_extmark(
-                bufnr,
-                NS_TOOL_BLOCKS,
-                start_row,
-                0,
-                { end_row = skel_end, right_gravity = false }
-            )
-            self.tool_call_blocks[tool_call_block.tool_call_id] =
-                tool_call_block
-            vim.api.nvim_buf_set_lines(
-                bufnr,
-                start_row,
-                skel_end + 1,
-                false,
-                lines
-            )
-        else
-            self:_append_lines(lines)
-        end
+        self:_append_lines(lines)
 
         local end_row = vim.api.nvim_buf_line_count(bufnr) - 1
 
@@ -563,6 +447,16 @@ function MessageWriter:write_tool_call_block(tool_call_block)
 
         self:_apply_header_highlight(start_row, tool_call_block.status)
         self:_apply_status_footer(end_row, tool_call_block.status)
+
+        -- Manual fold over [top_pad..bottom_pad] (1-indexed inclusive).
+        -- Only the first time the block crosses the threshold; afterwards
+        -- subsequent body replacements between the anchor pads keep the
+        -- fold intact automatically.
+        local interior = #lines - 4
+        if Fold.should_fold(interior, tool_call_block.diff ~= nil) then
+            Fold.close_range(bufnr, start_row + 2, end_row)
+            tool_call_block.has_fold = true
+        end
 
         self:_append_lines({ "", "" })
     end)
@@ -633,6 +527,18 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     end
 
     self:_with_modifiable_and_notify_change(function(bufnr)
+        -- Refresh the header line so an updated kind/argument (e.g. the
+        -- agent replacing a placeholder title with the real command)
+        -- becomes visible. The header sits at start_row, outside the
+        -- fold range, so this never disturbs an existing manual fold.
+        vim.api.nvim_buf_set_lines(
+            bufnr,
+            start_row,
+            start_row + 1,
+            false,
+            { self:_build_header_line(tracker) }
+        )
+
         -- Diff blocks don't change after the initial render
         -- only update status highlights - don't replace content
         if already_has_diff then
@@ -643,16 +549,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 })
                 return false
             end
-
-            -- Re-write header line so updated kind/argument are visible
-            local header = self:_build_header_line(tracker)
-            vim.api.nvim_buf_set_lines(
-                bufnr,
-                start_row,
-                start_row + 1,
-                false,
-                { header }
-            )
 
             self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
             tracker.decoration_extmark_ids =
@@ -673,58 +569,18 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
-        -- Pre-fold: if this update transitions the block into foldable,
-        -- resize the buffer to the new line count with an empty skeleton and
-        -- sync the extmark first. The subsequent set_lines runs foldexpr
-        -- with the foldable tracker in place and closes the fold in the same
-        -- edit that places the content -- no visible expand then collapse.
-        local new_interior = #new_lines - 2
-        local old_interior = old_end_row - start_row - 1
-        local is_diff = tracker.diff ~= nil
-        local now_folds = self:_will_fold(new_interior, is_diff)
-        local was_folding = self:_will_fold(old_interior, is_diff)
-
-        if now_folds and not was_folding then
-            -- First time this block becomes foldable. Vim's foldexpr
-            -- cache is not synchronously evaluated for the new range
-            -- by set_lines, so signal _apply_scroll to run `zX` before
-            -- zb. zX is the only command that forces synchronous
-            -- foldexpr recompute. Side effect: re-applies foldlevel
-            -- (closes manually-opened folds elsewhere in the window).
-            -- Acceptable: user can re-open with zo.
-            self._needs_fold_recompute = true
-            local skeleton = self:_make_skeleton(#new_lines)
-            skeleton[1] = new_lines[1]
-            skeleton[#skeleton] = new_lines[#new_lines]
-            vim.api.nvim_buf_set_lines(
-                bufnr,
-                start_row,
-                old_end_row + 1,
-                false,
-                skeleton
-            )
-            local skel_end = start_row + #skeleton - 1
-            vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
-                id = tracker.extmark_id,
-                end_row = skel_end,
-                right_gravity = false,
-            })
-            vim.api.nvim_buf_set_lines(
-                bufnr,
-                start_row,
-                skel_end + 1,
-                false,
-                new_lines
-            )
-        else
-            vim.api.nvim_buf_set_lines(
-                bufnr,
-                start_row,
-                old_end_row + 1,
-                false,
-                new_lines
-            )
-        end
+        -- Replace ONLY the body, between the anchor pads. The top_pad
+        -- (row start_row + 1) and bottom_pad (row old_end_row - 1)
+        -- stay put, so any pre-existing manual fold over the block
+        -- survives the replacement (see #210 follow-up).
+        local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
+        vim.api.nvim_buf_set_lines(
+            bufnr,
+            start_row + 2,
+            old_end_row - 1,
+            false,
+            body_lines
+        )
 
         local new_end_row = start_row + #new_lines - 1
 
@@ -733,7 +589,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             bufnr,
             NS_DIFF_HIGHLIGHTS,
             start_row,
-            old_end_row + 1
+            new_end_row + 1
         )
 
         self:_apply_block_highlights(
@@ -758,6 +614,18 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             new_end_row,
             tracker.status
         )
+
+        -- Create the manual fold the first time the body grows past the
+        -- threshold. Subsequent body replacements stay between the
+        -- anchor pads, so the fold survives without recreation.
+        local interior = #new_lines - 4
+        if
+            not tracker.has_fold
+            and Fold.should_fold(interior, tracker.diff ~= nil)
+        then
+            Fold.close_range(bufnr, start_row + 2, new_end_row)
+            tracker.has_fold = true
+        end
     end)
 
     self:_apply_scroll(self.bufnr)
@@ -783,8 +651,13 @@ end
 function MessageWriter:_prepare_block_lines(tool_call_block)
     local kind = tool_call_block.kind
 
+    -- Layout: [header, top_pad, body..., bottom_pad, trailing].
+    -- The two empty pad lines anchor the manual fold so body
+    -- replacements via set_lines stay between the anchors and
+    -- never destroy the fold structure (see #210 follow-up).
     local lines = {
         self:_build_header_line(tool_call_block),
+        "",
     }
 
     --- @type agentic.ui.MessageWriter.HighlightRange[]
@@ -910,6 +783,8 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         end
     end
 
+    -- bottom_pad (manual fold anchor), then trailing empty line.
+    table.insert(lines, "")
     table.insert(lines, "")
 
     return lines, highlight_ranges
@@ -1339,9 +1214,8 @@ function MessageWriter:_apply_status_highlights_if_present(
     end
 end
 
---- Clean up the MessageWriter: unregister fold state.
-function MessageWriter:destroy()
-    Fold.unregister(self.bufnr)
-end
+--- Clean up the MessageWriter. Currently a no-op kept for symmetry
+--- with construction; future cleanup hooks should land here.
+function MessageWriter:destroy() end
 
 return MessageWriter
