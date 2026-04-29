@@ -234,6 +234,8 @@ function ChatWidget:destroy()
         self:hide()
     end
 
+    self:_close_hidden_chat_window()
+
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
         local ok = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })

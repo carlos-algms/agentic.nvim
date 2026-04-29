@@ -922,5 +922,17 @@ describe("agentic.ui.ChatWidget", function()
                 Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
             end
         )
+
+        it("tears down the hidden chat window on destroy", function()
+            local widget_ref = widget
+            local hidden = widget._hidden_chat_winid
+            assert.is_true(vim.api.nvim_win_is_valid(hidden))
+
+            widget:destroy()
+            widget = nil
+
+            assert.is_false(vim.api.nvim_win_is_valid(hidden))
+            assert.is_nil(widget_ref._hidden_chat_winid)
+        end)
     end)
 end)
