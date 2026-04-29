@@ -74,15 +74,6 @@ local function calculate_dynamic_height(bufnr, max_height, position)
     return math.min(line_count + padding, max_height)
 end
 
---- Window-local options applied to every panel window. Replaces the
---- previous `style = "minimal"` flag on `nvim_open_win`. We avoid
---- `style = "minimal"` because it corrupts the buffer's manual-fold
---- storage on window close: folds set in a minimal-style window are
---- lost when the buffer is reopened in a new window. Setting these
---- options manually has the same visual outcome (no number column, no
---- sign column, no eob `~` markers) without the fold-storage side
---- effect. `cursorline` is intentionally NOT set so the user's global
---- preference can leak through.
 --- @type table<string, any>
 local PANEL_WINDOW_OPTS = {
     number = false,
@@ -293,34 +284,9 @@ local function show_layout(params, position)
     end
 end
 
---- Opens a hidden floating window on the chat buffer. This window
---- exists ONLY while the widget is hidden. It holds the chat buffer
---- so `Fold.close_range` can create folds in response to streaming
---- tool-call updates that arrive while no visible chat window
---- exists.
----
---- The chat buffer is `bufhidden=hide`, so its manual folds are
---- snapshotted on window close and replayed on the next window that
---- opens it. This helper guarantees there is always at least one
---- window holding the buffer, so the snapshot pipeline never sees a
---- gap.
----
---- Caller is responsible for closing this window before opening the
---- visible chat window. Having two windows on the same buffer
---- concurrently breaks the per-buffer fold-state inheritance.
----
---- Returns nil when the float cannot be created (e.g. user has a
---- `winbar` set and is on a Neovim version where 1-row floats fail
---- with E36). Callers must handle nil; the widget still works, just
---- without fold-state preservation across hide/show.
 --- @param bufnr integer Chat buffer
---- @return integer|nil winid
+--- @return integer|nil winid nil on failure (graceful degradation)
 function WidgetLayout.open_hidden_chat_window(bufnr)
-    -- 80x20 is generous on purpose: the float is `hide=true`, so
-    -- dimensions are invisible to the user and cost nothing. Larger
-    -- dimensions stay clear of Neovim layout edge cases (e.g. E36
-    -- when a 1-row float interacts with inherited `winbar` on older
-    -- Neovim versions, see issue #19464).
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
         relative = "editor",
         row = 0,

@@ -4,12 +4,8 @@ local Child = require("tests.helpers.child")
 describe("Open and Close Chat Widget", function()
     local child = Child:new()
 
-    --- Gets sorted filetypes for all visible windows in the given
-    --- tabpage. Hidden floats (e.g. ChatWidget._hidden_chat_winid)
-    --- are excluded since they are implementation detail and have no
-    --- visible presence to the user.
     --- @param tabpage number
-    --- @return string[]
+    --- @return string[] sorted filetypes (hidden floats excluded)
     local function get_tabpage_filetypes(tabpage)
         local winids = child.api.nvim_tabpage_list_wins(tabpage)
         local filetypes = {}

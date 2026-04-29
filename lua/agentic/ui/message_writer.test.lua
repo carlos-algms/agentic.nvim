@@ -766,7 +766,6 @@ describe("agentic.ui.MessageWriter", function()
                     body = { "short" },
                 })
 
-                -- Block is below threshold initially, so no fold yet.
                 local _, top_pad_row = block_layout("fold-mat")
                 vim.api.nvim_win_call(winid, function()
                     assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
@@ -815,7 +814,6 @@ describe("agentic.ui.MessageWriter", function()
                 vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
-                -- Single write with body large enough to trigger fold on creation.
                 writer:write_tool_call_block({
                     tool_call_id = "fold-on-write",
                     status = "completed",

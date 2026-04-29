@@ -148,10 +148,6 @@ describe("agentic.ui.ToolCallFold", function()
             Fold.close_range(bufnr, 25, 35)
             Fold.close_range(bufnr, 45, 55)
 
-            -- Buffer's last-window memory snapshots fold state when the
-            -- window closes; the next window opening the buffer must
-            -- restore the same ranges. This is what bufhidden=hide
-            -- relies on for chat-panel hide/show cycles.
             vim.api.nvim_win_close(winid, true)
             winid = vim.api.nvim_open_win(bufnr, false, {
                 relative = "editor",
@@ -239,7 +235,6 @@ describe("agentic.ui.ToolCallFold", function()
             local hidden_buf = vim.api.nvim_create_buf(false, true)
             vim.api.nvim_buf_set_lines(hidden_buf, 0, -1, false, { "a", "b" })
 
-            -- Should not throw
             assert.has_no_errors(function()
                 Fold.close_range(hidden_buf, 1, 2)
             end)

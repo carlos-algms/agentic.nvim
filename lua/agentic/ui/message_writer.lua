@@ -38,7 +38,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field status? agentic.acp.ToolCallStatus
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
---- @field has_fold? boolean True after the manual fold has been created (see #210 follow-up)
+--- @field has_fold? boolean
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -359,9 +359,6 @@ function MessageWriter:_check_auto_scroll(bufnr)
     return distance_from_bottom <= threshold
 end
 
---- Captures the auto-scroll decision based on cursor distance from bottom.
---- Should be called BEFORE buffer mutation. Sticky: stays true until
---- _apply_scroll runs.
 --- @param bufnr integer
 function MessageWriter:_capture_scroll(bufnr)
     if self._should_auto_scroll ~= true then
@@ -369,10 +366,6 @@ function MessageWriter:_capture_scroll(bufnr)
     end
 end
 
---- Applies the captured scroll decision synchronously by running G0zb in
---- the chat window. Should be called AFTER buffer mutation, in the same
---- Lua tick. noautocmd suppresses immediate autocmds (CursorMoved /
---- WinScrolled fire deferred at safe state, unaffected).
 --- @param bufnr integer
 function MessageWriter:_apply_scroll(bufnr)
     if self._should_auto_scroll ~= true then
@@ -448,10 +441,6 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self:_apply_header_highlight(start_row, tool_call_block.status)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
-        -- Manual fold over [top_pad..bottom_pad] (1-indexed inclusive).
-        -- Only the first time the block crosses the threshold; afterwards
-        -- subsequent body replacements between the anchor pads keep the
-        -- fold intact automatically.
         local interior = #lines - 4
         if Fold.should_fold(interior, tool_call_block.diff ~= nil) then
             Fold.close_range(bufnr, start_row + 2, end_row)
@@ -527,10 +516,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
     end
 
     self:_with_modifiable_and_notify_change(function(bufnr)
-        -- Refresh the header line so an updated kind/argument (e.g. the
-        -- agent replacing a placeholder title with the real command)
-        -- becomes visible. The header sits at start_row, outside the
-        -- fold range, so this never disturbs an existing manual fold.
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row,
@@ -569,10 +554,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
-        -- Replace ONLY the body, between the anchor pads. The top_pad
-        -- (row start_row + 1) and bottom_pad (row old_end_row - 1)
-        -- stay put, so any pre-existing manual fold over the block
-        -- survives the replacement (see #210 follow-up).
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
         vim.api.nvim_buf_set_lines(
             bufnr,
@@ -615,9 +596,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             tracker.status
         )
 
-        -- Create the manual fold the first time the body grows past the
-        -- threshold. Subsequent body replacements stay between the
-        -- anchor pads, so the fold survives without recreation.
         local interior = #new_lines - 4
         if
             not tracker.has_fold
@@ -651,10 +629,6 @@ end
 function MessageWriter:_prepare_block_lines(tool_call_block)
     local kind = tool_call_block.kind
 
-    -- Layout: [header, top_pad, body..., bottom_pad, trailing].
-    -- The two empty pad lines anchor the manual fold so body
-    -- replacements via set_lines stay between the anchors and
-    -- never destroy the fold structure (see #210 follow-up).
     local lines = {
         self:_build_header_line(tool_call_block),
         "",
@@ -783,7 +757,6 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         end
     end
 
-    -- bottom_pad (manual fold anchor), then trailing empty line.
     table.insert(lines, "")
     table.insert(lines, "")
 
@@ -1214,8 +1187,6 @@ function MessageWriter:_apply_status_highlights_if_present(
     end
 end
 
---- Clean up the MessageWriter. Currently a no-op kept for symmetry
---- with construction; future cleanup hooks should land here.
 function MessageWriter:destroy() end
 
 return MessageWriter

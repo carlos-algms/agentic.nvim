@@ -252,9 +252,6 @@ describe("WidgetLayout", function()
         end)
 
         it("preserves chat manual folds across close + reopen", function()
-            -- Regression guard: `style="minimal"` on `nvim_open_win`
-            -- corrupts the buffer's manual-fold storage when the window
-            -- closes, wiping folds across reopens. We must NOT use it.
             local saved_folding = Config.folding
             Config.folding = {
                 tool_calls = { enabled = true, threshold = 5 },

@@ -43,9 +43,6 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _winclosed_augroup? integer WinClosed autocmd group ID
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
---- Holds the chat buffer while the widget is hidden so manual folds
---- have a window target. Swapped with the visible chat window on
---- show()/hide(); never coexists with it.
 --- @field _hidden_chat_winid? integer
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -82,20 +79,13 @@ function ChatWidget:is_cursor_in_widget()
     return self:_is_widget_buffer(vim.api.nvim_get_current_buf())
 end
 
---- Closes the hidden chat window if it exists. The hidden float
---- holds the chat buffer while the widget is hidden. It must be
---- closed before opening any visible chat window to avoid two
---- windows on the same buffer (which breaks per-buffer fold-state
---- inheritance).
 function ChatWidget:_close_hidden_chat_window()
     local winid = self._hidden_chat_winid
     self._hidden_chat_winid = nil
     if not winid or not vim.api.nvim_win_is_valid(winid) then
         return
     end
-    -- Same tabpage guard as `WidgetLayout.close`: on Neovim v0.11.5
-    -- Linux, post-tabclose handles can return valid from
-    -- `nvim_win_is_valid` but segfault on close.
+    -- 0.11.5 Linux post-tabclose segfault, see WidgetLayout.close.
     local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
     if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
         pcall(vim.api.nvim_win_close, winid, true)
@@ -194,9 +184,7 @@ function ChatWidget:hide()
         WidgetLayout.close(self.win_nrs)
     end)
 
-    -- Close any pre-existing float (e.g. from a prior hide that was
-    -- not followed by a show) before opening a new one. Otherwise
-    -- the previous winid is overwritten and leaks.
+    -- Close prior float before reopen to avoid leaking the winid.
     self:_close_hidden_chat_window()
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
