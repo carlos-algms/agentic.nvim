@@ -870,5 +870,57 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_not_nil(widget.win_nrs.chat)
             assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.chat))
         end)
+
+        it("opens hidden chat window after hiding visible widget", function()
+            widget:show({ focus_prompt = false })
+            assert.is_nil(widget._hidden_chat_winid)
+
+            widget:hide()
+
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
+            assert.equal(
+                vim.api.nvim_win_get_buf(widget._hidden_chat_winid),
+                widget.buf_nrs.chat
+            )
+        end)
+
+        it(
+            "preserves manual folds across hide/show via hidden chat window",
+            function()
+                local Fold = require("agentic.ui.tool_call_fold")
+
+                local saved_folding = Config.folding
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+
+                vim.bo[widget.buf_nrs.chat].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.chat,
+                    0,
+                    -1,
+                    false,
+                    vim.fn["repeat"]({ "L" }, 60)
+                )
+
+                widget:show({ focus_prompt = false })
+                Fold.close_range(widget.buf_nrs.chat, 10, 25)
+                widget:hide()
+
+                Fold.close_range(widget.buf_nrs.chat, 35, 50)
+
+                widget:show({ focus_prompt = false })
+                local chat_win = widget.win_nrs.chat
+                vim.api.nvim_win_call(chat_win, function()
+                    assert.equal(vim.fn.foldclosed(15), 10)
+                    assert.equal(vim.fn.foldclosedend(15), 25)
+                    assert.equal(vim.fn.foldclosed(40), 35)
+                    assert.equal(vim.fn.foldclosedend(40), 50)
+                end)
+
+                Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+            end
+        )
     end)
 end)

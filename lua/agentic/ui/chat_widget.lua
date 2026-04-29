@@ -186,6 +186,9 @@ function ChatWidget:hide()
     self:_avoid_auto_close_cmd(function()
         WidgetLayout.close(self.win_nrs)
     end)
+
+    self._hidden_chat_winid =
+        WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 end
 
 --- Cleans up all buffers content without destroying them
