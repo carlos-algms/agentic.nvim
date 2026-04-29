@@ -6,9 +6,12 @@ Contracts and traps for `chat_widget`, `widget_layout`, `message_writer`,
 ## Anti-staleness rules for this doc
 
 - Cite module + symbol, never line numbers.
-- No code blocks > 3 lines. Signatures only.
-- Every "why" must reference an observable failure (flicker, crash, lost
-  fold). If the failure is gone, delete the rule.
+- Code blocks are for diagrams, signatures, and pattern sketches only.
+  Never paste implementation; that drifts and goes stale. Topology
+  trees, columnar layouts, and decision trees are fine at any length
+  as long as they describe shape, not behavior.
+- Every "why" must reference an observable failure (flicker, crash,
+  lost fold). If the failure is gone, delete the rule.
 - New rule = new test. Reference the test by name.
 
 ## Topology

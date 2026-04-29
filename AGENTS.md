@@ -17,9 +17,11 @@ Read these before touching the matching area:
 ## Anti-staleness rules for AGENTS.md files
 
 - Cite **module + symbol**, never line numbers.
-- No code blocks > 3 lines. Signatures only.
-- Every "why" must reference an observable failure (flicker, crash, lost
-  fold). If the failure is gone, delete the rule.
+- Don't paste real implementation. Code blocks are for teaching
+  examples (right vs. wrong patterns), signatures, and diagrams.
+  Implementation drifts; teaching examples don't.
+- Every "why" must reference an observable failure (flicker, crash,
+  lost fold). If the failure is gone, delete the rule.
 - New rule = new test. Reference the test by name.
 
 ## CRITICAL: No Assumptions - Gather Context First
