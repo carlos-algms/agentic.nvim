@@ -323,9 +323,6 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
         vim.api.nvim_set_option_value(name, value, { win = winid })
     end
 
-    vim.wo[winid].statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR
-    vim.wo[winid].winhighlight = CHAT_GUTTER_WINHIGHLIGHT
-
     Fold.setup_window(winid, bufnr)
 
     return winid
