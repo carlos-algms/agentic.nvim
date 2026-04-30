@@ -92,12 +92,12 @@ local PANEL_WINDOW_OPTS = {
 
 --- @param bufnr integer
 --- @param enter boolean
---- @param opts table
+--- @param opts vim.api.keyset.win_config
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param win_opts table<string, any>
 --- @return integer
 local function open_win(bufnr, enter, opts, window_name, win_opts)
-    --- @type table
+    --- @type vim.api.keyset.win_config
     local default_opts = {
         split = "right",
         win = -1,
@@ -130,7 +130,7 @@ end
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
---- @param open_opts table
+--- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
 --- @return integer
 local function get_or_create_window(
@@ -155,7 +155,7 @@ end
 --- @param buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param window_name agentic.ui.ChatWidget.PanelNames
---- @param open_win_opts table
+--- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
 local function open_or_resize_dynamic_window(
@@ -203,7 +203,7 @@ local function show_layout(params, position)
     local split_direction = is_bottom and "below"
         or (position == "left" and "left" or "right")
 
-    --- @type table
+    --- @type vim.api.keyset.win_config
     local chat_opts = {
         win = -1,
         split = split_direction,
@@ -218,7 +218,8 @@ local function show_layout(params, position)
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
         scrolloff = 4,
         statuscolumn = ToolBlockBorder.statuscolumn_expr(),
-        winhighlight = PANEL_WINDOW_OPTS.winhighlight .. ",StatusColumn:Normal",
+        winhighlight = PANEL_WINDOW_OPTS.winhighlight
+            .. ",SignColumn:Normal,FoldColumn:Normal,LineNr:Normal,StatusColumn:Normal",
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
@@ -227,7 +228,7 @@ local function show_layout(params, position)
 
     -- Input window: right splits below chat with height, bottom splits right
     -- of chat with computed stack width
-    --- @type table
+    --- @type vim.api.keyset.win_config
     local input_opts = { win = win_nrs.chat, fixed = true }
     if is_bottom then
         local chat_width = vim.api.nvim_win_get_width(win_nrs.chat)
@@ -320,7 +321,8 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
     )
     vim.api.nvim_set_option_value(
         "winhighlight",
-        PANEL_WINDOW_OPTS.winhighlight .. ",StatusColumn:Normal",
+        PANEL_WINDOW_OPTS.winhighlight
+            .. ",SignColumn:Normal,FoldColumn:Normal,LineNr:Normal,StatusColumn:Normal",
         { win = winid }
     )
 
