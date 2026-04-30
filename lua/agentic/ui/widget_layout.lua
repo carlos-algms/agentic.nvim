@@ -218,6 +218,7 @@ local function show_layout(params, position)
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
         scrolloff = 4,
         statuscolumn = ToolBlockBorder.statuscolumn_expr(),
+        winhighlight = PANEL_WINDOW_OPTS.winhighlight .. ",StatusColumn:Normal",
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
@@ -315,6 +316,11 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
     vim.api.nvim_set_option_value(
         "statuscolumn",
         ToolBlockBorder.statuscolumn_expr(),
+        { win = winid }
+    )
+    vim.api.nvim_set_option_value(
+        "winhighlight",
+        PANEL_WINDOW_OPTS.winhighlight .. ",StatusColumn:Normal",
         { win = winid }
     )
 

@@ -360,6 +360,15 @@ describe("WidgetLayout", function()
                 )
                 assert.equal("", vim.wo[win_nrs.input].statuscolumn)
 
+                assert.is_not_nil(
+                    string.find(
+                        vim.wo[win_nrs.chat].winhighlight,
+                        "StatusColumn:Normal",
+                        1,
+                        true
+                    )
+                )
+
                 WidgetLayout.close(win_nrs)
                 pcall(function()
                     vim.cmd("tabclose")
