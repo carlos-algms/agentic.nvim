@@ -19,7 +19,10 @@ local STATUSCOLUMN_EXPR =
 --- @field end_row integer
 
 --- @class agentic.ui.ToolBlockBorder
-local ToolBlockBorder = {}
+local ToolBlockBorder = {
+    NS_TOOL_BLOCKS = NS_TOOL_BLOCKS,
+    STATUSCOLUMN_EXPR = STATUSCOLUMN_EXPR,
+}
 
 --- @return integer|nil bufnr
 local function statuscolumn_bufnr()
@@ -138,11 +141,5 @@ function ToolBlockBorder.statuscolumn()
     end
     return BLANK
 end
-
-ToolBlockBorder.GLYPHS = GLYPHS
-ToolBlockBorder.BLANK = BLANK
-ToolBlockBorder.HL_GROUP = Theme.HL_GROUPS.CODE_BLOCK_FENCE
-ToolBlockBorder.NS_TOOL_BLOCKS = NS_TOOL_BLOCKS
-ToolBlockBorder.STATUSCOLUMN_EXPR = STATUSCOLUMN_EXPR
 
 return ToolBlockBorder

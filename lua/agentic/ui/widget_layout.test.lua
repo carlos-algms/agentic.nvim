@@ -363,7 +363,7 @@ describe("WidgetLayout", function()
                 assert.is_not_nil(
                     string.find(
                         vim.wo[win_nrs.chat].winhighlight,
-                        "StatusColumn:Normal",
+                        "LineNr:Normal",
                         1,
                         true
                     )

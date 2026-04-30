@@ -75,10 +75,19 @@ local function calculate_dynamic_height(bufnr, max_height, position)
     return math.min(line_count + padding, max_height)
 end
 
+-- Make the gutter (where statuscolumn renders) blend into the chat
+-- background regardless of colorscheme. Each themable column highlight
+-- group is mapped to Normal.
+local CHAT_GUTTER_WINHIGHLIGHT = "EndOfBuffer:"
+    .. ",LineNr:Normal,CursorLineNr:Normal"
+    .. ",SignColumn:Normal,CursorLineSign:Normal"
+    .. ",FoldColumn:Normal,CursorLineFold:Normal"
+
 --- @type table<string, any>
 local PANEL_WINDOW_OPTS = {
     number = false,
     relativenumber = false,
+    cursorline = false,
     cursorcolumn = false,
     foldcolumn = "0",
     spell = false,
@@ -218,8 +227,7 @@ local function show_layout(params, position)
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
         scrolloff = 4,
         statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR,
-        winhighlight = PANEL_WINDOW_OPTS.winhighlight
-            .. ",SignColumn:Normal,FoldColumn:Normal,LineNr:Normal,StatusColumn:Normal",
+        winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
@@ -314,17 +322,9 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
     for name, value in pairs(PANEL_WINDOW_OPTS) do
         vim.api.nvim_set_option_value(name, value, { win = winid })
     end
-    vim.api.nvim_set_option_value(
-        "statuscolumn",
-        ToolBlockBorder.STATUSCOLUMN_EXPR,
-        { win = winid }
-    )
-    vim.api.nvim_set_option_value(
-        "winhighlight",
-        PANEL_WINDOW_OPTS.winhighlight
-            .. ",SignColumn:Normal,FoldColumn:Normal,LineNr:Normal,StatusColumn:Normal",
-        { win = winid }
-    )
+
+    vim.wo[winid].statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR
+    vim.wo[winid].winhighlight = CHAT_GUTTER_WINHIGHLIGHT
 
     Fold.setup_window(winid, bufnr)
 
