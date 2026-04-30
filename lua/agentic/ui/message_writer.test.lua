@@ -126,7 +126,7 @@ describe("agentic.ui.MessageWriter", function()
 
     local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
-    --- @return vim.api.keyset.get_extmark_item[]
+    --- @return table[]
     local function get_thinking_extmarks()
         return vim.api.nvim_buf_get_extmarks(
             bufnr,

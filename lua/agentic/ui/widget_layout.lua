@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local DefaultConfig = require("agentic.config_default")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Fold = require("agentic.ui.tool_call_fold")
+local ToolBlockBorder = require("agentic.ui.tool_block_border")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
 
@@ -91,12 +92,12 @@ local PANEL_WINDOW_OPTS = {
 
 --- @param bufnr integer
 --- @param enter boolean
---- @param opts vim.api.keyset.win_config
+--- @param opts table
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param win_opts table<string, any>
 --- @return integer
 local function open_win(bufnr, enter, opts, window_name, win_opts)
-    --- @type vim.api.keyset.win_config
+    --- @type table
     local default_opts = {
         split = "right",
         win = -1,
@@ -129,7 +130,7 @@ end
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
---- @param open_opts vim.api.keyset.win_config
+--- @param open_opts table
 --- @param win_opts table<string, any>
 --- @return integer
 local function get_or_create_window(
@@ -154,7 +155,7 @@ end
 --- @param buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param window_name agentic.ui.ChatWidget.PanelNames
---- @param open_win_opts vim.api.keyset.win_config
+--- @param open_win_opts table
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
 local function open_or_resize_dynamic_window(
@@ -202,7 +203,7 @@ local function show_layout(params, position)
     local split_direction = is_bottom and "below"
         or (position == "left" and "left" or "right")
 
-    --- @type vim.api.keyset.win_config
+    --- @type table
     local chat_opts = {
         win = -1,
         split = split_direction,
@@ -216,6 +217,7 @@ local function show_layout(params, position)
 
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
         scrolloff = 4,
+        statuscolumn = ToolBlockBorder.statuscolumn_expr(),
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
@@ -224,7 +226,7 @@ local function show_layout(params, position)
 
     -- Input window: right splits below chat with height, bottom splits right
     -- of chat with computed stack width
-    --- @type vim.api.keyset.win_config
+    --- @type table
     local input_opts = { win = win_nrs.chat, fixed = true }
     if is_bottom then
         local chat_width = vim.api.nvim_win_get_width(win_nrs.chat)
@@ -310,6 +312,11 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
     for name, value in pairs(PANEL_WINDOW_OPTS) do
         vim.api.nvim_set_option_value(name, value, { win = winid })
     end
+    vim.api.nvim_set_option_value(
+        "statuscolumn",
+        ToolBlockBorder.statuscolumn_expr(),
+        { win = winid }
+    )
 
     Fold.setup_window(winid, bufnr)
 

@@ -3,14 +3,12 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
 local DiffPreview = require("agentic.ui.diff_preview")
-local ExtmarkBlock = require("agentic.utils.extmark_block")
 local Fold = require("agentic.ui.tool_call_fold")
 local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
 local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
-local NS_DECORATIONS = vim.api.nvim_create_namespace("agentic_tool_decorations")
 local NS_PERMISSION_BUTTONS =
     vim.api.nvim_create_namespace("agentic_permission_buttons")
 local NS_DIFF_HIGHLIGHTS =
@@ -35,7 +33,6 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field argument? string
 --- @field file_path? string
 --- @field extmark_id? integer Range extmark spanning the block
---- @field decoration_extmark_ids? integer[] IDs of decoration extmarks from ExtmarkBlock
 --- @field status? agentic.acp.ToolCallStatus
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
@@ -425,15 +422,6 @@ function MessageWriter:write_tool_call_block(tool_call_block)
             highlight_ranges
         )
 
-        tool_call_block.decoration_extmark_ids =
-            ExtmarkBlock.render_block(bufnr, NS_DECORATIONS, {
-                header_line = start_row,
-                body_start = start_row + 1,
-                body_end = end_row - 1,
-                footer_line = end_row,
-                hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
-            })
-
         tool_call_block.extmark_id =
             vim.api.nvim_buf_set_extmark(bufnr, NS_TOOL_BLOCKS, start_row, 0, {
                 id = tool_call_block.extmark_id,
@@ -544,10 +532,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
                 return false
             end
 
-            self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
-            tracker.decoration_extmark_ids =
-                self:_render_decorations(start_row, old_end_row)
-
             self:_clear_status_namespace(start_row, old_end_row)
             self:_apply_status_highlights_if_present(
                 start_row,
@@ -558,7 +542,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             return false
         end
 
-        self:_clear_decoration_extmarks(tracker.decoration_extmark_ids)
         self:_clear_status_namespace(start_row, old_end_row)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
@@ -595,9 +578,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             end_row = new_end_row,
             right_gravity = false,
         })
-
-        tracker.decoration_extmark_ids =
-            self:_render_decorations(start_row, new_end_row)
 
         self:_apply_status_highlights_if_present(
             start_row,
@@ -1144,30 +1124,6 @@ function MessageWriter:_set_thinking_extmark(start_line, end_line, id)
             hl_eol = true,
         }
     )
-end
-
---- @param ids integer[]|nil
-function MessageWriter:_clear_decoration_extmarks(ids)
-    if not ids then
-        return
-    end
-
-    for _, id in ipairs(ids) do
-        pcall(vim.api.nvim_buf_del_extmark, self.bufnr, NS_DECORATIONS, id)
-    end
-end
-
---- @param start_row integer
---- @param end_row integer
---- @return integer[] decoration_extmark_ids
-function MessageWriter:_render_decorations(start_row, end_row)
-    return ExtmarkBlock.render_block(self.bufnr, NS_DECORATIONS, {
-        header_line = start_row,
-        body_start = start_row + 1,
-        body_end = end_row - 1,
-        footer_line = end_row,
-        hl_group = Theme.HL_GROUPS.CODE_BLOCK_FENCE,
-    })
 end
 
 --- @param start_row integer

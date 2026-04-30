@@ -3,16 +3,22 @@ local spy = require("tests.helpers.spy")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local ToolBlockBorder = require("agentic.ui.tool_block_border")
 
 describe("WidgetLayout", function()
     local notify_stub
+    local saved_chat_win_opts
 
     before_each(function()
         notify_stub = spy.stub(Logger, "notify")
+        saved_chat_win_opts = nil
     end)
 
     after_each(function()
         notify_stub:revert()
+        if saved_chat_win_opts then
+            Config.windows.chat.win_opts = saved_chat_win_opts
+        end
     end)
 
     describe("calculate_width", function()
@@ -322,6 +328,79 @@ describe("WidgetLayout", function()
                 vim.cmd("tabclose")
             end)
             Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+        end)
+
+        it(
+            "applies the tool block statuscolumn only to the chat window",
+            function()
+                vim.cmd("tabnew")
+                local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+                local win_nrs = {}
+                local buf_nrs = {
+                    chat = vim.api.nvim_create_buf(false, true),
+                    input = vim.api.nvim_create_buf(false, true),
+                    code = vim.api.nvim_create_buf(false, true),
+                    files = vim.api.nvim_create_buf(false, true),
+                    diagnostics = vim.api.nvim_create_buf(false, true),
+                    todos = vim.api.nvim_create_buf(false, true),
+                }
+
+                WidgetLayout.open({
+                    tab_page_id = tab_page_id,
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
+                    position = "right",
+                    focus_prompt = false,
+                })
+
+                assert.equal(
+                    ToolBlockBorder.statuscolumn_expr(),
+                    vim.wo[win_nrs.chat].statuscolumn
+                )
+                assert.equal("", vim.wo[win_nrs.input].statuscolumn)
+
+                WidgetLayout.close(win_nrs)
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+            end
+        )
+
+        it("honors a user-provided chat statuscolumn option", function()
+            saved_chat_win_opts = vim.deepcopy(Config.windows.chat.win_opts)
+            Config.windows.chat.win_opts =
+                vim.tbl_deep_extend("force", saved_chat_win_opts or {}, {
+                    statuscolumn = "USER",
+                })
+
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            assert.equal("USER", vim.wo[win_nrs.chat].statuscolumn)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
         end)
     end)
 

@@ -29,7 +29,7 @@ SessionManager (per tab)
         ├── ToolCallFold        manual folds, anchor pads
         ├── ToolCallDiff        diff extraction + minimization
         ├── DiffHighlighter     line/word hl on chat buffer
-        ├── ExtmarkBlock        ╭ │ ╰ fence glyphs
+        ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via chat statuscolumn
         └── PermissionManager   queues + reanchors permission prompts
 ```
 
@@ -183,9 +183,9 @@ row N    "" trailing      footer, status virt_text
 
 ```text
 tracker missing       ─▶ debug-log, return
-already_has_diff      ─▶ refresh header + status + decorations only
+already_has_diff      ─▶ refresh header + status only
 otherwise             ─▶ rewrite body between anchors,
-                         re-apply highlights + decorations,
+                         re-apply highlights + range anchor,
                          create fold if interior crosses threshold
 ```
 
