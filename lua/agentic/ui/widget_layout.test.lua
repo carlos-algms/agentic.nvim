@@ -355,7 +355,7 @@ describe("WidgetLayout", function()
                 })
 
                 assert.equal(
-                    ToolBlockBorder.statuscolumn_expr(),
+                    ToolBlockBorder.STATUSCOLUMN_EXPR,
                     vim.wo[win_nrs.chat].statuscolumn
                 )
                 assert.equal("", vim.wo[win_nrs.input].statuscolumn)

@@ -11,17 +11,15 @@ local GLYPHS = {
 
 local BLANK = " "
 
+local STATUSCOLUMN_EXPR =
+    "%!v:lua.require'agentic.ui.tool_block_border'.statuscolumn()"
+
 --- @class agentic.ui.ToolBlockBorder.Range
 --- @field start_row integer
 --- @field end_row integer
 
 --- @class agentic.ui.ToolBlockBorder
 local ToolBlockBorder = {}
-
---- @return string expr
-function ToolBlockBorder.statuscolumn_expr()
-    return "%!v:lua.require'agentic.ui.tool_block_border'.statuscolumn()"
-end
 
 --- @return integer|nil bufnr
 local function statuscolumn_bufnr()
@@ -145,5 +143,6 @@ ToolBlockBorder.GLYPHS = GLYPHS
 ToolBlockBorder.BLANK = BLANK
 ToolBlockBorder.HL_GROUP = Theme.HL_GROUPS.CODE_BLOCK_FENCE
 ToolBlockBorder.NS_TOOL_BLOCKS = NS_TOOL_BLOCKS
+ToolBlockBorder.STATUSCOLUMN_EXPR = STATUSCOLUMN_EXPR
 
 return ToolBlockBorder
