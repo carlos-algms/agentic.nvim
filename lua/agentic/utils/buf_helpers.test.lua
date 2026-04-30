@@ -99,6 +99,57 @@ describe("BufHelpers", function()
         )
     end)
 
+    describe("keymap_set", function()
+        --- @type TestStub
+        local keymap_set_stub
+        --- @type TestStub
+        local has_stub
+
+        before_each(function()
+            keymap_set_stub = spy.stub(vim.keymap, "set")
+            has_stub = spy.stub(vim.fn, "has")
+        end)
+
+        after_each(function()
+            keymap_set_stub:revert()
+            has_stub:revert()
+        end)
+
+        -- Regression: 0.12.0-dev nightlies built before neovim#38360 (the
+        -- `buffer` -> `buf` rename) report `has('nvim-0.12') == 1` but
+        -- reject `buf` with `invalid key: buf`. Gate on 0.12.1, the first
+        -- stable that ships `buf`.
+        it("uses `buffer` opt on Neovim < 0.12.1", function()
+            has_stub:invokes(function(feature)
+                return feature == "nvim-0.12.1" and 0 or 1
+            end)
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.keymap_set(bufnr, "n", "x", function() end)
+
+            local opts = keymap_set_stub.calls[1][4]
+            assert.equal(bufnr, opts.buffer)
+            assert.is_nil(opts.buf)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+
+        it("uses `buf` opt on Neovim >= 0.12.1", function()
+            has_stub:invokes(function(feature)
+                return feature == "nvim-0.12.1" and 1 or 0
+            end)
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.keymap_set(bufnr, "n", "x", function() end)
+
+            local opts = keymap_set_stub.calls[1][4]
+            assert.equal(bufnr, opts.buf)
+            assert.is_nil(opts.buffer)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+    end)
+
     describe("is_buffer_empty", function()
         it("should return true for buffer with single empty line", function()
             local bufnr = vim.api.nvim_create_buf(false, true)
