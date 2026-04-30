@@ -9,7 +9,7 @@ local GLYPHS = {
     VERTICAL = "│",
 }
 
-local BLANK = "  "
+local BLANK = " "
 
 --- @class agentic.ui.ToolBlockBorder.Range
 --- @field start_row integer
@@ -102,18 +102,18 @@ function ToolBlockBorder.glyph_for_line(bufnr, row, virtnum)
     end
 
     if virtnum > 0 then
-        return GLYPHS.VERTICAL .. " "
+        return GLYPHS.VERTICAL
     end
 
     if row == range.start_row then
-        return GLYPHS.TOP_LEFT .. GLYPHS.HORIZONTAL
+        return GLYPHS.TOP_LEFT
     end
 
     if row == range.end_row then
-        return GLYPHS.BOTTOM_LEFT .. GLYPHS.HORIZONTAL
+        return GLYPHS.BOTTOM_LEFT
     end
 
-    return GLYPHS.VERTICAL .. " "
+    return GLYPHS.VERTICAL
 end
 
 --- @return string text
