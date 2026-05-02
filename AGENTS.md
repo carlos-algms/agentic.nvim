@@ -7,31 +7,50 @@ providing AI-driven code assistance through a chat interface.
 
 Read these before touching the matching area:
 
-- `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions,
-  providers
+- `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions, providers
 - `@lua/agentic/ui/AGENTS.md` - chat UI: topology, lifecycle contracts
-  (open/close/destroy), MessageWriter state machines, tool-call block
-  layout, folding, auto-scroll, permission reanchor, traps
+  (open/close/destroy), MessageWriter state machines, tool-call block layout,
+  folding, auto-scroll, permission reanchor, traps
 - `@tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
+
+## Architectural decisions (ADRs) — optional read
+
+`docs/architectural-decisions/` stores Architecture Decision
+Records (ADRs). One file per subject. Filename convention:
+`NNN-short-slug.md`, so "ADR 2" means
+`docs/architectural-decisions/002-*.md`.
+
+Each ADR records why a current rule exists: option taken,
+alternatives rejected, changelog of how it evolved.
+
+Read an ADR only when:
+
+- A current rule looks arbitrary and you want to push back.
+- You are about to propose rewriting a subsystem.
+- A reviewer asks "why didn't we do X?".
+
+Do NOT read the whole folder. List filenames first, or Grep the topic.
+
+Nested `AGENTS.md` files point to specific ADRs by number when the rationale is
+non-obvious.
 
 ## Anti-staleness rules for AGENTS.md files
 
 - Cite **module + symbol**, never line numbers.
-- Don't paste real implementation. Code blocks are for teaching
-  examples (right vs. wrong patterns), signatures, and diagrams.
-  Implementation drifts; teaching examples don't.
-- Every "why" must reference an observable failure (flicker, crash,
-  lost fold). If the failure is gone, delete the rule.
-- New rule = new test. Reference the test by name.
+- Don't paste real implementation. Code blocks are for teaching examples (right
+  vs. wrong patterns), signatures, and diagrams. Implementation drifts; teaching
+  examples don't.
+- Every "why" must reference an observable failure (flicker, crash, lost fold).
+  If the failure is gone, delete the rule.
 
 ## CRITICAL: No Assumptions - Gather Context First
 
 **NEVER make assumptions. ALWAYS gather context before decisions or
-suggestions.** Read relevant files, search for existing patterns, verify
-types. If you haven't read the relevant code, you don't have enough context.
+suggestions.** Read relevant files, search for existing patterns, verify types.
+If you haven't read the relevant code, you don't have enough context.
 
-Forbidden phrases: "this probably...", "I assume...", "it should...", "you
-might need to...", "based on similar projects...". Never suggest partial
+Forbidden phrases: "this probably...", "I assume...", "it should...", "you might
+need to...", "based on similar projects...". Never suggest partial
 implementations expecting the user to fill gaps.
 
 ## CRITICAL: Multi-Tabpage Architecture
@@ -42,14 +61,14 @@ instance per tabpage.
 ### Architecture overview
 
 - `SessionRegistry` maps `tab_page_id -> SessionManager`
-- 1 ACP provider instance (single subprocess, shared across tabpages, managed
-  by `AgentInstance`)
-- 1 ACP session ID per tabpage (ACP supports multiple but only one is active
-  per tab)
+- 1 ACP provider instance (single subprocess, shared across tabpages, managed by
+  `AgentInstance`)
+- 1 ACP session ID per tabpage (ACP supports multiple but only one is active per
+  tab)
 - 1 `SessionManager` + 1 `ChatWidget` per tabpage (full UI isolation)
 
-Each tabpage has its own: ACP session ID, chat widget (buffers, windows,
-state), status animation, permission manager, file list, code selection.
+Each tabpage has its own: ACP session ID, chat widget (buffers, windows, state),
+status animation, permission manager, file list, code selection.
 
 ### Implementation requirements
 
@@ -77,9 +96,9 @@ state), status animation, permission manager, file list, code selection.
   vim.api.nvim_buf_clear_namespace(self.bufnr, NS_ANIMATION, 0, -1)
   ```
 
-- **Highlight groups are GLOBAL** (shared across all tabpages). Defined once
-  in `lua/agentic/theme.lua`. Use namespaces to control WHERE highlights
-  appear, not to isolate definitions.
+- **Highlight groups are GLOBAL** (shared across all tabpages). Defined once in
+  `lua/agentic/theme.lua`. Use namespaces to control WHERE highlights appear,
+  not to isolate definitions.
 
 - **Scoped storage:** use the correct accessor
 
@@ -99,8 +118,8 @@ state), status animation, permission manager, file list, code selection.
   `vim.api.nvim_win_get_tabpage(vim.fn.bufwinid(bufnr))`; current:
   `vim.api.nvim_get_current_tabpage()`.
 
-- **Buffers/windows are tabpage-specific.** Never assume global existence.
-  Use `vim.api.nvim_tabpage_*` when needed.
+- **Buffers/windows are tabpage-specific.** Never assume global existence. Use
+  `vim.api.nvim_tabpage_*` when needed.
 
 - **Window creation and validation must be tab-scoped.** When checking if a
   window exists or creating a new one, scope the lookup to the session's
@@ -110,43 +129,42 @@ state), status animation, permission manager, file list, code selection.
   window's tabpage matches before using it.
 
 - **Autocommands must be tabpage-aware.** Prefer buffer-local:
-  `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`. Filter by tabpage
-  in global autocommands.
+  `vim.api.nvim_create_autocmd(..., { buffer = bufnr })`. Filter by tabpage in
+  global autocommands.
 
 - **Keymaps must be buffer-local.** Use
   `BufHelpers.keymap_set(bufnr, "n", "key", fn)`. NEVER use global keymaps.
 
 ### Logger
 
-- **FORBIDDEN: `vim.notify` directly.** Use `Logger.notify`. Direct calls
-  raise fast-context errors when fired from libuv callbacks or
-  `vim.schedule` boundaries.
+- **FORBIDDEN: `vim.notify` directly.** Use `Logger.notify`. Direct calls raise
+  fast-context errors when fired from libuv callbacks or `vim.schedule`
+  boundaries.
 - Logger only has `debug()`, `debug_to_file()`, and `notify()`. No `warn()`,
   `error()`, or `info()`. `debug()`/`debug_to_file()` output depends on
   `Config.debug`.
 
 ### Common traps (project-wide)
 
-Subsystem-specific traps live in nested `AGENTS.md`. These apply
-everywhere:
+Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 
 - **FORBIDDEN: `vim.notify`** -> use `Logger.notify` (fast-context errors).
-- **FORBIDDEN: `goto` / `::label::`** -> Selene parser does not parse it.
-  Use inverted conditions or `elseif` chains. See "Lua restrictions"
-  below for example.
-- **FORBIDDEN: module-level mutable state for per-tab data** -> store on
-  per-tab instances. See "Multi-Tabpage Architecture" below.
+- **FORBIDDEN: `goto` / `::label::`** -> Selene parser does not parse it. Use
+  inverted conditions or `elseif` chains. See "Lua restrictions" below for
+  example.
+- **FORBIDDEN: module-level mutable state for per-tab data** -> store on per-tab
+  instances. See "Multi-Tabpage Architecture" below.
 - **FORBIDDEN: global keymaps** -> use `BufHelpers.keymap_set(bufnr, ...)`.
-- **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** ->
-  use `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
+- **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
+  `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
 
 ## Code Style
 
 ### LuaCATS annotations
 
-Use a space after `---` for both descriptions and annotations. Use `@private`
-or `@protected` for internal details. Do NOT write meaningful parameter/
-return descriptions unless requested. Group related annotations together.
+Use a space after `---` for both descriptions and annotations. Use `@private` or
+`@protected` for internal details. Do NOT write meaningful parameter/ return
+descriptions unless requested. Group related annotations together.
 
 ```lua
 --- Brief description of the class
@@ -234,8 +252,8 @@ end
 - Neovim v0.11.5+ (verify APIs match this version or newer)
 - LuaJIT 2.1 (bundled, based on Lua 5.1)
 - Optional: [img-clip.nvim](https://github.com/hakonharnes/img-clip.nvim) for
-  clipboard screenshot pasting (drag-and-drop is a terminal feature, no
-  plugin needed)
+  clipboard screenshot pasting (drag-and-drop is a terminal feature, no plugin
+  needed)
 
 ### Lua restrictions
 
@@ -267,20 +285,20 @@ end
 
 For bug fixes and behavioral changes, write the failing test BEFORE the fix:
 
-1. **Red** - Write a failing test. If the code under test does not exist,
-   first scaffold the module/class/method with stubbed bodies so the test
-   fails on wrong behavior, not on `attempt to call a nil value`.
+1. **Red** - Write a failing test. If the code under test does not exist, first
+   scaffold the module/class/method with stubbed bodies so the test fails on
+   wrong behavior, not on `attempt to call a nil value`.
 2. **Green** - Minimal change to turn the test green.
 3. Run `make validate` to confirm nothing else broke.
 
 A test written after the fix is already green proves nothing. Non-negotiable.
-Only exception: pure refactors, formatting, docs - call out explicitly in
-the PR.
+Only exception: pure refactors, formatting, docs - call out explicitly in the
+PR.
 
 **Full workflow, helpers, conventions:** `@tests/AGENTS.md`. ALWAYS read it
 before creating, editing, or reviewing tests. Do not guess conventions from
-other projects (e.g. `assert` is a custom helper, not `luassert`; spies have
-no `:call(n)`; async assertions inside `vim.schedule` are silently dropped).
+other projects (e.g. `assert` is a custom helper, not `luassert`; spies have no
+`:call(n)`; async assertions inside `vim.schedule` are silently dropped).
 
 ### MANDATORY: Post-change validation for Lua files
 
@@ -304,14 +322,14 @@ test: 0 (took 1s) - log: .local/agentic_test_output.log
 Total: 4s
 ```
 
-Each line: `{task}: {exit_code} (took {seconds}s) - log: {log_path}`. Exit
-code `0` = success.
+Each line: `{task}: {exit_code} (took {seconds}s) - log: {log_path}`. Exit code
+`0` = success.
 
 #### FORBIDDEN: Output redirection
 
 NEVER redirect `make validate` output - it is already minimal. No `> file`,
-`>> file`, `2>&1`, `| tee`, `| head`, `| tail`. The command handles its own
-log redirection.
+`>> file`, `2>&1`, `| tee`, `| head`, `| tail`. The command handles its own log
+redirection.
 
 ```bash
 # FORBIDDEN
@@ -342,8 +360,8 @@ corresponding log file.
   - `tail -n 10 .local/agentic_luals_output.log` (errors usually at end)
   - `rg "error|warning|fail" .local/agentic_test_output.log` (smart-case)
   - `grep -i "error" .local/agentic_selene_output.log`
-- If multiple reads needed: `cat .local/agentic_*_output.log` once instead
-  of chunked reads
+- If multiple reads needed: `cat .local/agentic_*_output.log` once instead of
+  chunked reads
 
 ### Make targets
 
@@ -364,13 +382,12 @@ When adding a new highlight group:
 
 1. Add name to `Theme.HL_GROUPS` constant
 2. Define default in `Theme.setup()`
-3. Update README.md "Customization (Ricing)" section (code example + table
-   row)
+3. Update README.md "Customization (Ricing)" section (code example + table row)
 
 #### Vimdoc (`doc/agentic.txt`)
 
-Manually written, NOT auto-generated. When changing these files, vimdoc MUST
-be updated:
+Manually written, NOT auto-generated. When changing these files, vimdoc MUST be
+updated:
 
 | Source file                      | Vimdoc section to update            |
 | -------------------------------- | ----------------------------------- |
@@ -379,24 +396,24 @@ be updated:
 | `lua/agentic/theme.lua`          | Customization (highlight groups)    |
 | `README.md` (install/keymaps)    | Installation, Keymaps, Integrations |
 
-**Format rules:** 78-char width, right-aligned tags `*agentic-section*`,
-code blocks `>lua` / `<`, function tags `*agentic.function_name()*`,
-cross-refs `|agentic-section|`, modeline `vim:tw=78:ts=8:ft=help:norl:`.
-After editing: `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`.
+**Format rules:** 78-char width, right-aligned tags `*agentic-section*`, code
+blocks `>lua` / `<`, function tags `*agentic.function_name()*`, cross-refs
+`|agentic-section|`, modeline `vim:tw=78:ts=8:ft=help:norl:`. After editing:
+`timeout 5 nvim --headless -c "helptags doc/" -c "quit"`.
 
 ### Git workflow
 
 - **NEVER commit to `main` directly.** Use a feature branch.
-- Branch names: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/` +
-  kebab-case description.
+- Branch names: `feat/`, `fix/`, `chore/`, `docs/`, `refactor/` + kebab-case
+  description.
 - For isolation, use a worktree under `./.worktrees/` (gitignored).
 - Never use `--no-verify`, `--no-gpg-sign`, or force-push to `main`.
 
 #### Pull requests
 
-- **ALWAYS open PRs as draft.** CodeRabbit runs on every push to a non-draft
-  PR and hits rate limits during iteration. Flip to "ready for review" only
-  after self-review and `make validate` pass.
+- **ALWAYS open PRs as draft.** CodeRabbit runs on every push to a non-draft PR
+  and hits rate limits during iteration. Flip to "ready for review" only after
+  self-review and `make validate` pass.
 - PR title must follow Conventional Commits (repo squashes at merge, title
   becomes commit subject).
 
