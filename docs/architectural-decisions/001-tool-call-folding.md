@@ -21,26 +21,22 @@ body crossed the fold threshold for the first time. Two interacting causes:
    flicker.
 
 Secondary problem: with manual folds, fold state vanished on widget hide. Neovim
-snapshots fold state per `(window, buffer)` on close (`:help fold.txt:647-652`).
+snapshots fold state per `(window, buffer)` on close (see `:help fold-reload`).
 With no window holding the chat buffer while hidden, no snapshot, flat buffer on
 next `show`.
 
 ## Current decision
 
-`foldmethod=manual` plus anchor pads. Every tool-call block:
+`foldmethod=manual` plus anchor pads. Block layout (header + anchor pads +
+body + trailing) is documented in `lua/agentic/ui/AGENTS.md` "Tool-call block
+layout".
 
-```text
-header              not folded, rewritten on every update
-"" top_pad          empty anchor
-... body ...        replaced on every update
-"" bottom_pad       empty anchor
-"" trailing
-```
-
-Body updates replace lines strictly between the anchors. The fold (created once
-via `:N,Nfold` when interior crosses threshold) survives because Vim grows
-manual folds on inserts inside their range. Replacing the entire range would
-destroy it; the anchors prevent that.
+Body updates replace lines strictly between the anchors; header is rewritten on
+every update too, outside the fold. The fold is created once by
+`Fold.close_range`, gated by `tracker.has_fold` in
+`MessageWriter:update_tool_call_block`. Vim grows manual folds on inserts inside
+their range; replacing the whole range destroys the fold, which is why the
+anchors are unconditional.
 
 Auto-scroll runs synchronously: `_capture_scroll` pre-mutation, `_apply_scroll`
 (`G0zb` via `nvim_win_call`) post-mutation, same tick. No `vim.schedule` between
@@ -55,8 +51,12 @@ across hide/show.
 
 - O(1) per fold transition instead of O(N).
 - ~300 lines of foldexpr machinery removed.
-- Anchor pads are unconditional. `update_tool_call_block` slices body at fixed
-  offsets `[3, #lines-2]`. Drop the pads and folds die on body replacement.
+- The per-block row contract (header / top_pad / body / bottom_pad / trailing,
+  pads MUST be `""`) is the layout invariant — see `lua/agentic/ui/AGENTS.md`
+  "Tool-call block layout".
+- Anchor pads are unconditional. `MessageWriter:update_tool_call_block` slices
+  body at fixed offsets `[3, #lines-2]`. Drop the pads and folds die on body
+  replacement.
 - Header rewritten unconditionally because providers send placeholder titles
   before the real one. Header lives outside the fold so this is cheap.
 - `Fold.setup_window` must run after every chat-window open with equality guards
@@ -64,27 +64,25 @@ across hide/show.
   unguarded `foldlevel = 0` re-closes user-opened folds.
 - `style = "minimal"` on panel windows wipes manual folds across reopens (empty
   fold map in last-window memory). Use `PANEL_WINDOW_OPTS`.
-- `_hidden_chat_winid` must never be reassigned without closing the previous
-  one. `hide` calls `_close_hidden_chat_window` before assigning a new winid.
 - `open_hidden_chat_window` returns `integer|nil`. On failure the widget still
   works, just without fold preservation. Callers must handle nil.
 
 ## Rejected / superseded alternatives
 
-| Option                                    | Reason rejected                                                                                               |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `foldmethod=expr` (initial impl, dc33d56) | Lazy cache + `zb` race produced viewport flicker on every body that crossed the threshold.                    |
-| `foldexpr` + `zX` to force recompute      | Only synchronous recompute. O(N) per transition; resets `foldlevel=0` and closes user-opened folds elsewhere. |
-| `vim.fn.foldlevel(L)` / `foldclosed(L)`   | Passive cache reads. Do not trigger eval. Verified empirically.                                               |
-| `vim.wo.foldexpr = vim.wo.foldexpr`       | Invalidates cached entries only; new uncached lines stay unfolded.                                            |
-| `:[start],[end] foldclose`                | No-op until foldexpr ran for the range.                                                                       |
-| `zn` then `zN`                            | Toggles `foldenable`. No recompute.                                                                           |
-| `:redraw`                                 | Full-UI re-render flash; no recompute.                                                                        |
-| `winrestview({topline=...})` before `zb`  | `zb` recomputes from cursor and overwrites the restore.                                                       |
-| Re-create folds on `show` from extmarks   | O(N) per show. Loses user-opened (`zo`) state.                                                                |
-| Persist fold state to disk                | Folds are session state, wrong layer.                                                                         |
-| Two windows always (visible + float)      | Snapshot race: only one wins; user-side folds get overwritten.                                                |
-| No hidden float, accept fold loss on hide | User-visible regression on long conversations.                                                                |
+| Option                                                                             | Reason rejected                                                                                               |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `foldmethod=expr` (initial impl, dc33d56)                                          | Lazy cache + `zb` race produced viewport flicker on every body that crossed the threshold.                    |
+| `foldexpr` + `zX` to force recompute                                               | Only synchronous recompute. O(N) per transition; resets `foldlevel=0` and closes user-opened folds elsewhere. |
+| `vim.fn.foldlevel(L)` / `foldclosed(L)`                                            | Passive cache reads. Do not trigger eval. Verified empirically.                                               |
+| Self-reassign `foldexpr` to invalidate cache (`vim.wo.foldexpr = vim.wo.foldexpr`) | Invalidates cached entries only; new uncached lines stay unfolded.                                            |
+| `:[start],[end] foldclose`                                                         | No-op until foldexpr ran for the range.                                                                       |
+| `zn` then `zN`                                                                     | Toggles `foldenable`. No recompute.                                                                           |
+| `:redraw`                                                                          | Full-UI re-render flash; no recompute.                                                                        |
+| `winrestview({topline=...})` before `zb`                                           | `zb` recomputes from cursor and overwrites the restore.                                                       |
+| Re-create folds on `show` from extmarks                                            | O(N) per show. Loses user-opened (`zo`) state.                                                                |
+| Persist fold state to disk                                                         | Folds are session state, wrong layer.                                                                         |
+| Two windows always (visible + float)                                               | Snapshot race: only one wins; user-side folds get overwritten.                                                |
+| No hidden float, accept fold loss on hide                                          | User-visible regression on long conversations.                                                                |
 
 How avante and codecompanion sidestep this:
 

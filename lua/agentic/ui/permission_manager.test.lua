@@ -135,7 +135,7 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_true(has_buf_keymap("n", "2"))
         end)
 
-        it("does not trigger recursive on_content_changed", function()
+        it("does not trigger recursive _on_permission_reanchor", function()
             local notify_spy = spy.on(writer, "_notify_permission_reanchor")
 
             pm:add_request(
@@ -153,18 +153,21 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("callback lifecycle", function()
-        it("_complete_request clears the content changed callback", function()
-            pm:add_request(
-                make_request("tc-3"),
-                spy.new(function() end) --[[@as function]]
-            )
+        it(
+            "_complete_request clears the permission reanchor callback",
+            function()
+                pm:add_request(
+                    make_request("tc-3"),
+                    spy.new(function() end) --[[@as function]]
+                )
 
-            pm:_complete_request("allow-once")
+                pm:_complete_request("allow-once")
 
-            assert.is_nil(writer._on_permission_reanchor)
-        end)
+                assert.is_nil(writer._on_permission_reanchor)
+            end
+        )
 
-        it("clear() clears the content changed callback", function()
+        it("clear() clears the permission reanchor callback", function()
             pm:add_request(
                 make_request("tc-4"),
                 spy.new(function() end) --[[@as function]]

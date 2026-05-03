@@ -181,7 +181,7 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
-    describe("on_content_changed callback", function()
+    describe("permission_reanchor callback", function()
         --- @type TestStub
         local schedule_stub
 

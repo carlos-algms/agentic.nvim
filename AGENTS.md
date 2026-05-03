@@ -15,24 +15,23 @@ Read these before touching the matching area:
 
 ## Architectural decisions (ADRs) — optional read
 
-`docs/architectural-decisions/` stores Architecture Decision
-Records (ADRs). One file per subject. Filename convention:
-`NNN-short-slug.md`, so "ADR 2" means
+`docs/architectural-decisions/` stores Architecture Decision Records (ADRs). One
+file per subject. Filename convention: `NNN-short-slug.md`, so "ADR 2" means
 `docs/architectural-decisions/002-*.md`.
 
-Each ADR records why a current rule exists: option taken,
-alternatives rejected, changelog of how it evolved.
+Each ADR records why a current rule exists: option taken, alternatives rejected,
+changelog of how it evolved.
 
-Read an ADR only when:
+Do NOT pre-read ADRs. Pull one only when:
 
-- A current rule looks arbitrary and you want to push back.
-- You are about to propose rewriting a subsystem.
+- A rule in `AGENTS.md` is unclear, contested, or looks arbitrary.
+- You are about to propose rewriting a subsystem an ADR covers.
 - A reviewer asks "why didn't we do X?".
 
 Do NOT read the whole folder. List filenames first, or Grep the topic.
 
 Nested `AGENTS.md` files point to specific ADRs by number when the rationale is
-non-obvious.
+non-obvious. Citation format: `ADR NNN` (zero-padded, no brackets, no dash).
 
 ## Anti-staleness rules for AGENTS.md files
 
@@ -42,6 +41,9 @@ non-obvious.
   examples don't.
 - Every "why" must reference an observable failure (flicker, crash, lost fold).
   If the failure is gone, delete the rule.
+- New "FORBIDDEN" / "MUST" rule about runtime behavior = new test that fails
+  without the rule. Reference the test by name in the rule body. Pure-style
+  rules (formatting, naming, docs) are exempt.
 
 ## CRITICAL: No Assumptions - Gather Context First
 
@@ -141,15 +143,28 @@ status animation, permission manager, file list, code selection.
 chain inherits the chain's guarantees. Direct access to deeper modules bypasses
 them.
 
-Dispatch path:
+Every public entry in `init.lua` calls
+`SessionRegistry.get_session_for_tab_page(tab_id_or_nil, callback)`. The
+callback is the only safe place to touch session/widget state.
 
-```text
-init.lua (public)
-  -> SessionRegistry.get_session_for_tab_page(nil)
-     -> SessionManager (per tab, created on demand)
-        -> ChatWidget
-           -> WidgetLayout
+```lua
+SessionRegistry.get_session_for_tab_page(nil, function(session)
+    session.widget:show()
+end)
 ```
+
+Guarantees inside the callback:
+
+- Tabpage and session resolved against the requested tab.
+- Callback wrapped in `pcall`; errors get notified, not raised.
+
+Outside the callback:
+
+- Bare-return form (no callback) may return `nil` when no ACP provider is
+  configured.
+- Past a `vim.schedule` boundary, re-enter via the callback form with
+  `self.tab_page_id` (or check `nvim_tabpage_is_valid(self.tab_page_id)`). The
+  `nil` form resolves to whatever tab is current then, not the original.
 
 Cleanup path:
 
@@ -157,19 +172,7 @@ Cleanup path:
 TabClosed autocmd
   -> SessionRegistry.destroy_session(tab_page_id)
      -> SessionManager:destroy
-        -> ChatWidget:destroy
 ```
-
-Guarantees:
-
-- Tabpage resolved. `get_session_for_tab_page(nil)` resolves to the current
-  tabpage. Every downstream call runs against that tab.
-- Session resolved. The registry creates the `SessionManager` on demand and
-  caches it. Downstream code never sees a missing session.
-
-`vim.schedule` boundary: anything past `vim.schedule` cannot assume the
-original tabpage is still current. Re-resolve via `SessionRegistry` or check
-`nvim_tabpage_is_valid(self.tab_page_id)` before touching widget state.
 
 ### Logger
 

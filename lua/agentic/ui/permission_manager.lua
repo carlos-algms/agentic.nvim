@@ -20,7 +20,7 @@ local PERMISSION_KIND_PRIORITY = {
 --- @field queue table[] Queue of pending requests {toolCallId, request, callback}
 --- @field current_request? agentic.ui.PermissionManager.PermissionRequest Currently displayed request with button positions
 --- @field keymap_info table[] Keymap info for cleanup {mode, lhs}
---- @field _reanchoring boolean Guard flag to prevent recursive on_content_changed during reanchor
+--- @field _reanchoring boolean Guard flag to prevent recursive _on_permission_reanchor during reanchor
 local PermissionManager = {}
 PermissionManager.__index = PermissionManager
 

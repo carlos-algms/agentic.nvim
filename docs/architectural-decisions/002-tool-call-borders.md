@@ -3,37 +3,38 @@
 - Status: accepted
 - Last updated: 2026-04-30
 - Commits: 8ff45f2, d3cd47a, 1f3cde6
-- Related: PR #215, issues #196 #211, neovim/neovim#35341
+- Related: PR #215, issue #196, issue #211, neovim/neovim#35341
 
 ## Context
 
 Border glyphs `╭ │ ╰` delimit each tool-call block. With `wrap=on` (chat needs
 it), `inline` virt_text only renders on the first screen line of a buffer line;
-soft-wrap continuations have no border, breaking the visual enclosure. Issue
-#196.
+soft-wrap continuations have no border, breaking the visual enclosure (see issue
+#196).
 
 ## Current decision
 
 Render borders via `'statuscolumn'` on the chat window. Statuscolumn evaluates
 per screen line including soft-wrap continuations.
 
-`ToolBlockBorder.statuscolumn`:
+`ToolBlockBorder.statuscolumn` is the window-option entry point; glyph selection
+lives in `glyph_for_line`, range lookup in `block_range_at_row`
+(`NS_TOOL_BLOCKS` range extmark, O(log N)).
 
-- Reads `NS_TOOL_BLOCKS` range extmarks via
-  `nvim_buf_get_extmarks(... overlap=true, limit=1)`. O(log N).
-- `virtnum > 0` → `│` (continuation). `virtnum == 0` and row matches `start_row`
-  → `╭`, `end_row` → `╰`, else `│`.
-- One window option override (`statuscolumn`); `style=minimal` covers the rest.
+- Column setup lives in `WidgetLayout.PANEL_WINDOW_OPTS`, NOT `style="minimal"`
+  — `style="minimal"` is forbidden on panel windows (wipes manual folds across
+  reopens, see `lua/agentic/ui/AGENTS.md` Traps).
 - Window-local. No interference with user statuscolumn plugins.
 - No cache. Stateless. Write cost zero.
 
 ## Consequences
 
-- Performance (10371 lines / 272 blocks / 58 visible rows): 754 ns/call, 0.044
-  ms/redraw. ~1-2 ms/sec under heavy streaming.
+- O(log N) range-extmark lookup per visible line; redraw cost scales with
+  visible lines, not buffer size. No cache, no per-line state.
 - User `chat.win_opts.statuscolumn`/`winhighlight` wins via `tbl_deep_extend`.
-- Themable column highlight groups mapped to `Normal` so the gutter blends with
-  the chat background. `cursorline=false`.
+- Gutter blending lives in `WidgetLayout.CHAT_GUTTER_WINHIGHLIGHT` (column
+  groups → `Normal`). Glyph color is `Theme.HL_GROUPS.CODE_BLOCK_FENCE` — that's
+  the group users override.
 - 1-cell glyph width.
 
 ## Rejected / superseded alternatives
@@ -46,13 +47,12 @@ per screen line including soft-wrap continuations.
 | Sign column                                                            | No soft-wrap repeat. Conflicts with gitsigns/diagnostics. Per-line sign bookkeeping.                                                                                                             |
 | `statuscolumn` + `signcolumn=yes:1` + `winhighlight=SignColumn:Normal` | Intermediate attempt to seam gutter bg. Extra width on some setups. Redundant under `style=minimal`.                                                                                             |
 | `'showbreak'`                                                          | Window-wide, can't vary per block.                                                                                                                                                               |
-| Lua cache of block ranges                                              | O(N²) per session. Range extmarks already give O(log N).                                                                                                                                         |
+| Lua cache of block ranges                                              | Range extmarks already give O(log N) lookups; a parallel cache adds redundant write cost on every block update without saving reads.                                                             |
 
 ## Changelog
 
-| Date       | Commit        | Change                                                       |
-| ---------- | ------------- | ------------------------------------------------------------ |
-| 2025-11-13 | 8ff45f2       | Initial: per-line virt_text extmarks, `overlay`.             |
-| 2025-11-13 | d3cd47a       | Switch to `inline` to drop hardcoded buffer padding.         |
-| 2026-04-30 | 1f3cde6       | Replace per-line extmarks with `'statuscolumn'` + range ext. |
-| 2026-05-02 | (uncommitted) | Delete dead `lua/agentic/utils/extmark_block.lua`.           |
+| Date       | Commit  | Change                                                       |
+| ---------- | ------- | ------------------------------------------------------------ |
+| 2025-11-13 | 8ff45f2 | Initial: per-line virt_text extmarks, `overlay`.             |
+| 2025-11-13 | d3cd47a | Switch to `inline` to drop hardcoded buffer padding.         |
+| 2026-04-30 | 1f3cde6 | Replace per-line extmarks with `'statuscolumn'` + range ext. |
