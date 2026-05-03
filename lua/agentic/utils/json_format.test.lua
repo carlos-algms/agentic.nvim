@@ -116,5 +116,15 @@ describe("JsonFormat", function()
             assert.equal("Here is the response:", result[1])
             assert.equal("{", result[2])
         end)
+
+        it("is idempotent on already-formatted bodies", function()
+            local long_value = string.rep("v", 100)
+            local input = { '{"key":"' .. long_value .. '","x":1}' }
+
+            local once = JsonFormat.format_lines(input)
+            local twice = JsonFormat.format_lines(once)
+
+            assert.same(once, twice)
+        end)
     end)
 end)
