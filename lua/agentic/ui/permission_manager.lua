@@ -86,7 +86,7 @@ function PermissionManager:_process_next()
 
     self:_setup_keymaps(option_mapping)
 
-    self.message_writer:set_on_content_changed(function()
+    self.message_writer:set_permission_reanchor_callback(function()
         self:_reanchor_permission_prompt()
     end)
 end
@@ -165,7 +165,7 @@ function PermissionManager:_complete_request(option_id)
     )
 
     self:_remove_keymaps()
-    self.message_writer:set_on_content_changed(nil)
+    self.message_writer:set_permission_reanchor_callback(nil)
     current.callback(option_id)
 
     self.current_request = nil
@@ -180,7 +180,7 @@ function PermissionManager:clear()
             self.current_request.button_end_row
         )
         self:_remove_keymaps()
-        self.message_writer:set_on_content_changed(nil)
+        self.message_writer:set_permission_reanchor_callback(nil)
 
         pcall(self.current_request.callback, nil)
         self.current_request = nil

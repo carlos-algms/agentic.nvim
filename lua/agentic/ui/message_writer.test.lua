@@ -193,21 +193,28 @@ describe("agentic.ui.MessageWriter", function()
             schedule_stub:revert()
         end)
 
-        it("stores and fires callback via set_on_content_changed", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
+        it(
+            "stores and fires callback via set_permission_reanchor_callback",
+            function()
+                local callback_spy = spy.new(function() end)
+                writer:set_permission_reanchor_callback(
+                    callback_spy --[[@as function]]
+                )
 
-            writer:_notify_content_changed()
+                writer:_notify_permission_reanchor()
 
-            assert.spy(callback_spy).was.called(1)
-        end)
+                assert.spy(callback_spy).was.called(1)
+            end
+        )
 
         it("clears callback when set to nil", function()
             local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
-            writer:set_on_content_changed(nil)
+            writer:set_permission_reanchor_callback(
+                callback_spy --[[@as function]]
+            )
+            writer:set_permission_reanchor_callback(nil)
 
-            writer:_notify_content_changed()
+            writer:_notify_permission_reanchor()
 
             assert.spy(callback_spy).was.called(0)
         end)
@@ -219,7 +226,9 @@ describe("agentic.ui.MessageWriter", function()
                 writer:write_tool_call_block(block)
 
                 local callback_spy = spy.new(function() end)
-                writer:set_on_content_changed(callback_spy --[[@as function]])
+                writer:set_permission_reanchor_callback(
+                    callback_spy --[[@as function]]
+                )
 
                 writer:write_message(make_update("hello"))
                 writer:write_message_chunk(make_update("chunk"))
@@ -238,7 +247,9 @@ describe("agentic.ui.MessageWriter", function()
 
         it("does not fire callback when content is empty", function()
             local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
+            writer:set_permission_reanchor_callback(
+                callback_spy --[[@as function]]
+            )
 
             writer:write_message(make_update(""))
             writer:write_message_chunk(make_update(""))

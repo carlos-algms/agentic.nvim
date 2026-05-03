@@ -54,7 +54,7 @@ describe("agentic.ui.PermissionManager", function()
             { "new tool call output line 1", "new tool call output line 2" }
         )
         vim.bo[bufnr].modifiable = false
-        writer:_notify_content_changed()
+        writer:_notify_permission_reanchor()
     end
 
     --- @param mode string
@@ -136,7 +136,7 @@ describe("agentic.ui.PermissionManager", function()
         end)
 
         it("does not trigger recursive on_content_changed", function()
-            local notify_spy = spy.on(writer, "_notify_content_changed")
+            local notify_spy = spy.on(writer, "_notify_permission_reanchor")
 
             pm:add_request(
                 make_request("tc-2"),
@@ -144,7 +144,7 @@ describe("agentic.ui.PermissionManager", function()
             )
 
             notify_spy:reset()
-            writer:_notify_content_changed()
+            writer:_notify_permission_reanchor()
 
             assert.equal(1, notify_spy.call_count)
 
@@ -161,7 +161,7 @@ describe("agentic.ui.PermissionManager", function()
 
             pm:_complete_request("allow-once")
 
-            assert.is_nil(writer._on_content_changed)
+            assert.is_nil(writer._on_permission_reanchor)
         end)
 
         it("clear() clears the content changed callback", function()
@@ -172,7 +172,7 @@ describe("agentic.ui.PermissionManager", function()
 
             pm:clear()
 
-            assert.is_nil(writer._on_content_changed)
+            assert.is_nil(writer._on_permission_reanchor)
         end)
     end)
 

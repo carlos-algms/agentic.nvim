@@ -135,6 +135,42 @@ status animation, permission manager, file list, code selection.
 - **Keymaps must be buffer-local.** Use
   `BufHelpers.keymap_set(bufnr, "n", "key", fn)`. NEVER use global keymaps.
 
+## Public API and call chain
+
+`lua/agentic/init.lua` is the public surface. Anything reached through the call
+chain inherits the chain's guarantees. Direct access to deeper modules bypasses
+them.
+
+Dispatch path:
+
+```text
+init.lua (public)
+  -> SessionRegistry.get_session_for_tab_page(nil)
+     -> SessionManager (per tab, created on demand)
+        -> ChatWidget
+           -> WidgetLayout
+```
+
+Cleanup path:
+
+```text
+TabClosed autocmd
+  -> SessionRegistry.destroy_session(tab_page_id)
+     -> SessionManager:destroy
+        -> ChatWidget:destroy
+```
+
+Guarantees:
+
+- Tabpage resolved. `get_session_for_tab_page(nil)` resolves to the current
+  tabpage. Every downstream call runs against that tab.
+- Session resolved. The registry creates the `SessionManager` on demand and
+  caches it. Downstream code never sees a missing session.
+
+`vim.schedule` boundary: anything past `vim.schedule` cannot assume the
+original tabpage is still current. Re-resolve via `SessionRegistry` or check
+`nvim_tabpage_is_valid(self.tab_page_id)` before touching widget state.
+
 ### Logger
 
 - **FORBIDDEN: `vim.notify` directly.** Use `Logger.notify`. Direct calls raise

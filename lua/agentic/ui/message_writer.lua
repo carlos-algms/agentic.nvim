@@ -44,7 +44,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
---- @field _on_content_changed? fun()
+--- @field _on_permission_reanchor? fun()
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
 --- @field _is_restoring boolean
@@ -74,8 +74,8 @@ function MessageWriter:new(bufnr)
 end
 
 --- @param callback fun()|nil
-function MessageWriter:set_on_content_changed(callback)
-    self._on_content_changed = callback
+function MessageWriter:set_permission_reanchor_callback(callback)
+    self._on_permission_reanchor = callback
 end
 
 --- @param name string
@@ -108,20 +108,20 @@ function MessageWriter:write_structural_message(update)
     self._last_sender = saved
 end
 
-function MessageWriter:_notify_content_changed()
-    if self._on_content_changed then
-        self._on_content_changed()
+function MessageWriter:_notify_permission_reanchor()
+    if self._on_permission_reanchor then
+        self._on_permission_reanchor()
     end
 end
 
---- Wraps BufHelpers.with_modifiable and fires _notify_content_changed after.
+--- Wraps BufHelpers.with_modifiable and fires _notify_permission_reanchor after.
 --- The callback may return false to suppress the notification (e.g. on early-return without edits).
 --- with_modifiable returns false for invalid buffers, which also suppresses notification.
 --- @param fn fun(bufnr: integer): boolean|nil
-function MessageWriter:_with_modifiable_and_notify_change(fn)
+function MessageWriter:_with_modifiable_and_notify_permission_reanchor(fn)
     local result = BufHelpers.with_modifiable(self.bufnr, fn)
     if result ~= false then
-        self:_notify_content_changed()
+        self:_notify_permission_reanchor()
     end
 end
 
@@ -166,7 +166,7 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
         header = string.format("### %s Agent - %s", icon, name)
     end
 
-    self:_with_modifiable_and_notify_change(function()
+    self:_with_modifiable_and_notify_permission_reanchor(function()
         self:_append_lines({ "", header, "" })
     end)
 
@@ -198,7 +198,7 @@ function MessageWriter:write_message(update)
 
     local lines = vim.split(text, "\n", { plain = true })
 
-    self:_with_modifiable_and_notify_change(function()
+    self:_with_modifiable_and_notify_permission_reanchor(function()
         self:_append_lines(lines)
         self:_append_lines({ "" })
     end)
@@ -260,7 +260,7 @@ function MessageWriter:write_message_chunk(update)
 
     self._last_message_type = update.sessionUpdate
 
-    self:_with_modifiable_and_notify_change(function(bufnr)
+    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
         -- Capture start line before writing for new thinking blocks
@@ -400,7 +400,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     self:_capture_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
 
-    self:_with_modifiable_and_notify_change(function(bufnr)
+    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
         local kind = tool_call_block.kind
 
         -- Always add a leading blank line for spacing the previous message chunk
@@ -512,7 +512,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
-    self:_with_modifiable_and_notify_change(function(bufnr)
+    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row,
@@ -933,7 +933,7 @@ function MessageWriter:replay_history_messages(messages)
             local lines = vim.split(text, "\n", { plain = true })
             local start_line
 
-            self:_with_modifiable_and_notify_change(function(bufnr)
+            self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
                 start_line = vim.api.nvim_buf_line_count(bufnr)
                 self:_append_lines(lines)
                 self:_append_lines({ "" })
