@@ -172,25 +172,35 @@ function M.format_line(line)
     return pretty(decoded)
 end
 
---- Format a body (array of buffer lines). Only formats when the body
---- is a single line that parses as JSON. Multi-line bodies and short
---- lines pass through untouched.
----
 --- Idempotent: re-running on already-formatted bodies returns the same
 --- shape because the pretty-printer is deterministic.
 --- @param lines string[]
 --- @return string[] formatted
 function M.format_lines(lines)
-    if type(lines) ~= "table" or #lines ~= 1 then
+    if type(lines) ~= "table" or #lines == 0 then
         return lines
     end
 
-    local formatted = M.format_line(lines[1])
-    if formatted == lines[1] then
+    local out = {}
+    local changed = false
+
+    for _, line in ipairs(lines) do
+        local formatted = M.format_line(line)
+        if formatted == line then
+            table.insert(out, line)
+        else
+            changed = true
+            for _, sub in ipairs(vim.split(formatted, "\n")) do
+                table.insert(out, sub)
+            end
+        end
+    end
+
+    if not changed then
         return lines
     end
 
-    return vim.split(formatted, "\n")
+    return out
 end
 
 return M

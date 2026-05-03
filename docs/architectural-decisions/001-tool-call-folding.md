@@ -45,7 +45,15 @@ the two.
 A hidden chat float (`ChatWidget._hidden_chat_winid`) keeps exactly one window
 on the chat buffer at all times — visible chat window OR hidden float, never
 both, never neither — so the fold-state snapshot pipeline is uninterrupted
-across hide/show.
+across hide/show. The hidden float matches the visible chat window's width
+(`Config.windows.width`), `wrap`/`linebreak`, and statuscolumn so screen-row
+measurements (`nvim_win_text_height`) agree across hidden and visible states.
+
+`Fold.should_fold` decides folding by **screen rows**, not buffer lines.
+Counts wrapped rows via `nvim_win_text_height` against whichever window holds
+the chat buffer. A single very long line that wraps past the threshold folds
+even though it's one buffer line — relevant for huge tool outputs (Defuddle,
+`curl`-piped-to-`python`) that arrive as one mega-line.
 
 ## Consequences
 
@@ -94,11 +102,12 @@ Our case (live transitions on growing blocks) is the harder variant.
 
 ## Changelog
 
-| Date       | Commit  | Change                                             |
-| ---------- | ------- | -------------------------------------------------- |
-| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.          |
-| 2026-04-29 | 28cb6ff | Migrate to manual + anchor pads + sync scroll.     |
-| 2026-04-29 | 28cb6ff | Add hidden chat float for fold-state preservation. |
+| Date       | Commit  | Change                                                                 |
+| ---------- | ------- | ---------------------------------------------------------------------- |
+| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.                              |
+| 2026-04-29 | 28cb6ff | Migrate to manual + anchor pads + sync scroll.                         |
+| 2026-04-29 | 28cb6ff | Add hidden chat float for fold-state preservation.                     |
+| 2026-05-03 | -       | Switch fold decision to screen rows via `nvim_win_text_height`; sync hidden float dimensions/wrap with config. |
 
 ## Sources
 

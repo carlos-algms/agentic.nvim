@@ -808,7 +808,7 @@ Folding ~
     folding = {
       tool_calls = {
         enabled = true,  -- Master switch for tool call body folding
-        threshold = 10,  -- Fold when interior exceeds N lines. 0 = always.
+        threshold = 10,  -- Fold when interior wraps to more than N screen rows. 0 = always.
       },
     },
   }

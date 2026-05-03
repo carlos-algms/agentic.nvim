@@ -164,7 +164,7 @@
 --- Tool call folding configuration
 --- @class agentic.UserConfig.Folding.ToolCalls
 --- @field enabled boolean Whether to fold tool call bodies.
---- @field threshold integer Fold when interior exceeds this many lines. 0 always folds. Negative values are clamped to 0.
+--- @field threshold integer Fold when the interior occupies more than this many wrapped screen rows. 0 always folds. Negative values are clamped to 0.
 
 --- Folding behavior in the chat buffer
 --- @class agentic.UserConfig.Folding

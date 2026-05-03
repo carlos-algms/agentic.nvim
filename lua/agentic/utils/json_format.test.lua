@@ -88,5 +88,33 @@ describe("JsonFormat", function()
             local input = { "I'm going to fetch this" }
             assert.same(input, JsonFormat.format_lines(input))
         end)
+
+        it(
+            "pretty-prints a JSON line wrapped in a markdown code fence",
+            function()
+                local long_value = string.rep("v", 100)
+                local json_text = '{"key":"' .. long_value .. '","x":1}'
+                local input = { "```console", json_text, "```" }
+
+                local result = JsonFormat.format_lines(input)
+
+                assert.is_true(#result > 3)
+                assert.equal("```console", result[1])
+                assert.equal("```", result[#result])
+                assert.equal("{", result[2])
+            end
+        )
+
+        it("pretty-prints a JSON line that follows a prose line", function()
+            local long_value = string.rep("v", 100)
+            local json_text = '{"key":"' .. long_value .. '","x":1}'
+            local input = { "Here is the response:", json_text }
+
+            local result = JsonFormat.format_lines(input)
+
+            assert.is_true(#result > 2)
+            assert.equal("Here is the response:", result[1])
+            assert.equal("{", result[2])
+        end)
     end)
 end)

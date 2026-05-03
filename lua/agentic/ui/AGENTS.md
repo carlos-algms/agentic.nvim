@@ -193,8 +193,10 @@ change.
 
 - Fold survives window close + reopen —
   `tool_call_fold.test.lua::setup_window::"preserves fold ranges across window close + reopen"`.
-- Fold creation gated by interior > threshold —
-  `tool_call_fold.test.lua::should_fold::"folds when interior > threshold"`.
+- Fold creation gated by screen-row count > threshold —
+  `tool_call_fold.test.lua::should_fold::"folds when screen-row count exceeds threshold"`.
+- Fold counts wrapped rows, not buffer lines (one mega-line still folds) —
+  `tool_call_fold.test.lua::should_fold::"folds a single buffer line that wraps past the threshold"`.
 - Permission reanchor preserves keymaps + button position —
   `permission_manager.test.lua::reanchor permission prompt::"moves buttons to buffer bottom and preserves keymaps"`.
 - Permission reanchor does not double-blank across cycles —

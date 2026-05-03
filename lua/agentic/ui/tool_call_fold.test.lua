@@ -56,23 +56,81 @@ describe("agentic.ui.ToolCallFold", function()
     end)
 
     describe("should_fold", function()
-        it("folds when interior > threshold", function()
-            assert.is_true(Fold.should_fold(6, false))
+        --- @param lines string[]
+        local function fill(lines)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+        end
+
+        it("folds when screen-row count exceeds threshold", function()
+            local six = {}
+            for i = 1, 6 do
+                six[i] = "L" .. i
+            end
+            fill(six)
+            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
         end)
 
-        it("does not fold when interior == threshold", function()
-            assert.is_false(Fold.should_fold(5, false))
+        it("tips over to fold at the screen-row threshold boundary", function()
+            local five = {}
+            for i = 1, 5 do
+                five[i] = "L" .. i
+            end
+            fill(five)
+            assert.is_false(Fold.should_fold(bufnr, 0, 4, false))
+
+            fill({ "L1", "L2", "L3", "L4", "L5", "L6" })
+            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
         end)
+
+        it(
+            "folds a single buffer line that wraps past the threshold",
+            function()
+                fill({ string.rep("x", 240) })
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
+
+        it(
+            "does not fold a short single line, but does fold once it wraps far enough",
+            function()
+                fill({ "short" })
+                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+
+                fill({ string.rep("x", 240) })
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
 
         it("never folds diff blocks regardless of size", function()
-            assert.is_false(Fold.should_fold(100, true))
+            fill({ string.rep("x", 1000) })
+            assert.is_false(Fold.should_fold(bufnr, 0, 0, true))
         end)
 
-        it("returns false when folding is disabled", function()
-            Config.folding = {
-                tool_calls = { enabled = false, threshold = 5 },
-            }
-            assert.is_false(Fold.should_fold(100, false))
+        it(
+            "returns false when folding is disabled, even for huge content",
+            function()
+                fill({ string.rep("x", 1000) })
+                -- sanity: with folding ON this content would fold
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+
+                Config.folding = {
+                    tool_calls = { enabled = false, threshold = 5 },
+                }
+                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
+
+        it("returns false when no window is attached to the buffer", function()
+            local hidden_buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(
+                hidden_buf,
+                0,
+                -1,
+                false,
+                { string.rep("x", 1000) }
+            )
+            assert.is_false(Fold.should_fold(hidden_buf, 0, 0, false))
+            vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
     end)
 

@@ -434,8 +434,16 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self:_apply_header_highlight(start_row, tool_call_block.status)
         self:_apply_status_footer(end_row, tool_call_block.status)
 
-        local interior = #lines - 4
-        if Fold.should_fold(interior, tool_call_block.diff ~= nil) then
+        local body_start = start_row + 2
+        local body_end = end_row - 2
+        if
+            Fold.should_fold(
+                bufnr,
+                body_start,
+                body_end,
+                tool_call_block.diff ~= nil
+            )
+        then
             Fold.close_range(bufnr, start_row + 2, end_row)
             tool_call_block.has_fold = true
         end
@@ -585,10 +593,14 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             tracker.status
         )
 
-        local interior = #new_lines - 4
         if
             not tracker.has_fold
-            and Fold.should_fold(interior, tracker.diff ~= nil)
+            and Fold.should_fold(
+                bufnr,
+                start_row + 2,
+                new_end_row - 2,
+                tracker.diff ~= nil
+            )
         then
             Fold.close_range(bufnr, start_row + 2, new_end_row)
             tracker.has_fold = true

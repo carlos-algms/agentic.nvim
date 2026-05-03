@@ -12,15 +12,37 @@ function Fold.threshold()
     return math.max(0, cfg.threshold or 0)
 end
 
---- @param interior integer body lines (excludes header, pads, footer)
---- @param is_diff boolean diff blocks are never folded
+--- @param bufnr integer
+--- @param start_row integer 0-indexed inclusive
+--- @param end_row integer 0-indexed inclusive
+--- @param is_diff boolean
 --- @return boolean
-function Fold.should_fold(interior, is_diff)
+function Fold.should_fold(bufnr, start_row, end_row, is_diff)
     if is_diff then
         return false
     end
     local threshold = Fold.threshold()
-    return threshold ~= nil and interior > threshold
+    if threshold == nil then
+        return false
+    end
+    if start_row > end_row then
+        return false
+    end
+
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return false
+    end
+
+    local ok, result = pcall(vim.api.nvim_win_text_height, wins[1], {
+        start_row = start_row,
+        end_row = end_row,
+    })
+    if not ok or type(result) ~= "table" then
+        return false
+    end
+
+    return result.all > threshold
 end
 
 --- @return string
