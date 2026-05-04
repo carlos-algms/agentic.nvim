@@ -62,9 +62,6 @@ function Fold.setup_window(winid, _bufnr)
     if Fold.threshold() == nil then
         return
     end
-    -- Use vim.wo[winid][0] (`:setlocal`) to keep these options scoped
-    -- to (winid, current buffer) only. See widget_layout.apply_panel_window_opts
-    -- for the leak this avoids.
     if vim.wo[winid].foldmethod ~= "manual" then
         vim.wo[winid][0].foldmethod = "manual"
     end

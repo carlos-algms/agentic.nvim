@@ -116,14 +116,6 @@ local function apply_panel_window_opts(winid, bufnr, window_name, win_opts)
         winfixheight = true,
     }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
 
-    -- Use vim.wo[winid][0] (`:setlocal` semantics) so panel options
-    -- are stored against (winid, widget_buf) only. With `:set`-style
-    -- writes (e.g. nvim_set_option_value scope-defaulted, or
-    -- vim.wo[winid] without [0]), Neovim records the panel values in
-    -- the per-buffer option memory of any buffer that briefly cohabits
-    -- this window, leaking them to the buffer's next host window.
-    -- Regression: buffer_guard.test.lua "does not leak widget window
-    -- options to the editor window after redirect".
     for name, value in pairs(merged_win_opts) do
         vim.wo[winid][0][name] = value
     end
