@@ -1,6 +1,7 @@
 -- lua/agentic/ui/buffer_guard.test.lua
 local assert = require("tests.helpers.assert")
 local BufferGuard = require("agentic.ui.buffer_guard")
+local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- Helper: create a minimal widget-like setup in a fresh tab
 --- @return table state { tab, bufs, wins, augroup, cleanup }
@@ -210,6 +211,124 @@ describe("BufferGuard", function()
             vim.cmd("tabclose!")
         end)
     end)
+
+    it(
+        "does not leak widget window options to the editor window after redirect",
+        function()
+            -- Widget windows hold panel-styled options (no number column,
+            -- no signcolumn, custom winhighlight, etc.). When a foreign
+            -- buffer briefly cohabits a widget window before being
+            -- redirected, those window-local options must not follow the
+            -- buffer to its target window.
+            --
+            -- Forces non-default global options so a leak from PANEL
+            -- defaults is observable as a divergence on the editor window.
+            local saved = {
+                number = vim.o.number,
+                signcolumn = vim.o.signcolumn,
+                cursorline = vim.o.cursorline,
+                list = vim.o.list,
+            }
+            vim.o.number = true
+            vim.o.signcolumn = "yes"
+            vim.o.cursorline = true
+            vim.o.list = true
+
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            -- Editor window in this tab is the one created by :tabnew
+            local editor_win = vim.api.nvim_get_current_win()
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            -- Snapshot editor window options BEFORE any cohabit cycle
+            local editor_before = {
+                number = vim.wo[editor_win].number,
+                signcolumn = vim.wo[editor_win].signcolumn,
+                cursorline = vim.wo[editor_win].cursorline,
+                list = vim.wo[editor_win].list,
+                winhighlight = vim.wo[editor_win].winhighlight,
+                statuscolumn = vim.wo[editor_win].statuscolumn,
+                fillchars = vim.wo[editor_win].fillchars,
+                scrolloff = vim.wo[editor_win].scrolloff,
+                foldcolumn = vim.wo[editor_win].foldcolumn,
+            }
+
+            local augroup = BufferGuard.attach({
+                tab_page_id = tab_page_id,
+                find_target_window = function()
+                    if vim.api.nvim_win_is_valid(editor_win) then
+                        return editor_win
+                    end
+                    return nil
+                end,
+            })
+
+            -- Force a foreign buffer into the chat widget window. This
+            -- triggers BufEnter inside the widget and, in turn, a
+            -- redirect to the editor window via BufferGuard.
+            vim.api.nvim_set_current_win(win_nrs.chat)
+            local foreign = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_buf_set_name(foreign, vim.fn.tempname() .. "_leak.txt")
+            vim.api.nvim_win_set_buf(win_nrs.chat, foreign)
+
+            -- Editor window should now hold the foreign buffer with its
+            -- ORIGINAL options intact, not panel-styled.
+            assert.equal(foreign, vim.api.nvim_win_get_buf(editor_win))
+            assert.equal(editor_before.number, vim.wo[editor_win].number)
+            assert.equal(
+                editor_before.signcolumn,
+                vim.wo[editor_win].signcolumn
+            )
+            assert.equal(
+                editor_before.cursorline,
+                vim.wo[editor_win].cursorline
+            )
+            assert.equal(editor_before.list, vim.wo[editor_win].list)
+            assert.equal(
+                editor_before.winhighlight,
+                vim.wo[editor_win].winhighlight
+            )
+            assert.equal(
+                editor_before.statuscolumn,
+                vim.wo[editor_win].statuscolumn
+            )
+            assert.equal(editor_before.fillchars, vim.wo[editor_win].fillchars)
+            assert.equal(editor_before.scrolloff, vim.wo[editor_win].scrolloff)
+            assert.equal(
+                editor_before.foldcolumn,
+                vim.wo[editor_win].foldcolumn
+            )
+
+            BufferGuard.detach(augroup)
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose!")
+            end)
+
+            vim.o.number = saved.number
+            vim.o.signcolumn = saved.signcolumn
+            vim.o.cursorline = saved.cursorline
+            vim.o.list = saved.list
+        end
+    )
 end)
 
 -- Child process tests for cursor-follow behavior.

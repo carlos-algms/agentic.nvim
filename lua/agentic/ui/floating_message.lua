@@ -46,8 +46,8 @@ function M.show(opts)
         footer_pos = "right",
     })
 
-    vim.wo[win].wrap = true
-    vim.wo[win].linebreak = true
+    vim.wo[win][0].wrap = true
+    vim.wo[win][0].linebreak = true
 
     BufHelpers.keymap_set(buf, "n", "q", function()
         vim.cmd.close()
