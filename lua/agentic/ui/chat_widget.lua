@@ -43,6 +43,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _winclosed_augroup? integer WinClosed autocmd group ID
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
+--- @field _hidden_chat_winid? integer
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -78,9 +79,24 @@ function ChatWidget:is_cursor_in_widget()
     return self:_is_widget_buffer(vim.api.nvim_get_current_buf())
 end
 
+function ChatWidget:_close_hidden_chat_window()
+    local winid = self._hidden_chat_winid
+    self._hidden_chat_winid = nil
+    if not winid or not vim.api.nvim_win_is_valid(winid) then
+        return
+    end
+    -- 0.11.5 Linux post-tabclose segfault, see WidgetLayout.close.
+    local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+    if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
+        pcall(vim.api.nvim_win_close, winid, true)
+    end
+end
+
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function ChatWidget:show(opts)
     opts = opts or {}
+
+    self:_close_hidden_chat_window()
 
     WidgetLayout.open({
         tab_page_id = self.tab_page_id,
@@ -167,6 +183,11 @@ function ChatWidget:hide()
     self:_avoid_auto_close_cmd(function()
         WidgetLayout.close(self.win_nrs)
     end)
+
+    -- Close prior float before reopen to avoid leaking the winid.
+    self:_close_hidden_chat_window()
+    self._hidden_chat_winid =
+        WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 end
 
 --- Cleans up all buffers content without destroying them
@@ -211,6 +232,8 @@ function ChatWidget:destroy()
     if not tab_closing then
         self:hide()
     end
+
+    self:_close_hidden_chat_window()
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
@@ -292,6 +315,9 @@ end
 
 function ChatWidget:_initialize()
     self.buf_nrs = self:_create_buf_nrs()
+
+    self._hidden_chat_winid =
+        WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 
     self:_bind_keymaps()
 

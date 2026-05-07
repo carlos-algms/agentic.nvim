@@ -1,58 +1,50 @@
 local Config = require("agentic.config")
 
---- @class agentic.ui.ToolCallFold.Block
---- @field start_row integer 0-indexed header row of the block
---- @field end_row integer 0-indexed footer row of the block (inclusive)
---- @field foldable boolean Whether this block should be folded
-
---- @alias agentic.ui.ToolCallFold.Getter fun(): agentic.ui.ToolCallFold.Block[]
-
 --- @class agentic.ui.ToolCallFold
 local Fold = {}
 
---- Strong table: bufnr -> { getter = agentic.ui.ToolCallFold.Getter }
---- Strong because the getter closure has no other referent.
---- Must be cleaned up via unregister().
---- @type table<integer, { getter: agentic.ui.ToolCallFold.Getter }>
-local instances_by_buffer = {}
-
---- Register a getter for a buffer. Called once per MessageWriter instance.
---- @param bufnr integer
---- @param getter agentic.ui.ToolCallFold.Getter
-function Fold.register(bufnr, getter)
-    instances_by_buffer[bufnr] = { getter = getter }
-end
-
---- Remove a buffer's getter. Safe to call on an already-unregistered bufnr.
---- @param bufnr integer
-function Fold.unregister(bufnr)
-    instances_by_buffer[bufnr] = nil
-end
-
---- Foldexpr: called by Neovim for each line. Returns 0 (not foldable) or 1 (foldable).
---- Not a method - dispatched via v:lua, which cannot invoke instance methods.
---- @param bufnr integer
---- @param lnum integer 1-indexed line number
---- @return integer fold_level 0 or 1
-function Fold.foldexpr(bufnr, lnum)
-    local state = instances_by_buffer[bufnr]
-    if not state then
-        return 0
+--- @return integer|nil threshold nil when folding is disabled
+function Fold.threshold()
+    local cfg = Config.folding and Config.folding.tool_calls
+    if not cfg or not cfg.enabled then
+        return nil
     end
-    local blocks = state.getter()
-    for _, block in ipairs(blocks) do
-        if
-            block.foldable
-            and lnum >= block.start_row + 2
-            and lnum <= block.end_row
-        then
-            return 1
-        end
-    end
-    return 0
+    return math.max(0, cfg.threshold or 0)
 end
 
---- Foldtext: renders collapsed fold text.
+--- @param bufnr integer
+--- @param start_row integer 0-indexed inclusive
+--- @param end_row integer 0-indexed inclusive
+--- @param is_diff boolean
+--- @return boolean
+function Fold.should_fold(bufnr, start_row, end_row, is_diff)
+    if is_diff then
+        return false
+    end
+    local threshold = Fold.threshold()
+    if threshold == nil then
+        return false
+    end
+    if start_row > end_row then
+        return false
+    end
+
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return false
+    end
+
+    local ok, result = pcall(vim.api.nvim_win_text_height, wins[1], {
+        start_row = start_row,
+        end_row = end_row,
+    })
+    if not ok or type(result) ~= "table" then
+        return false
+    end
+
+    return result.all > threshold
+end
+
 --- @return string
 function Fold.foldtext()
     local hidden = vim.v.foldend - vim.v.foldstart + 1
@@ -62,32 +54,43 @@ function Fold.foldtext()
     )
 end
 
---- Apply fold-related window options to the chat window.
+local FOLDTEXT_EXPR = "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
+
 --- @param winid integer
---- @param bufnr integer
-function Fold.setup_window(winid, bufnr)
-    local cfg = Config.folding and Config.folding.tool_calls
-    if not cfg or not cfg.enabled then
+--- @param _bufnr integer
+function Fold.setup_window(winid, _bufnr)
+    if Fold.threshold() == nil then
         return
     end
-
-    local desired_expr = string.format(
-        "v:lua.require'agentic.ui.tool_call_fold'.foldexpr(%d, v:lnum)",
-        bufnr
-    )
-
-    -- Idempotent: if this window has already been configured by us, skip.
-    -- Reapplying would reset foldlevel=0, re-closing folds the user opened.
-    if vim.wo[winid].foldexpr == desired_expr then
-        return
+    if vim.wo[winid].foldmethod ~= "manual" then
+        vim.wo[winid].foldmethod = "manual"
     end
-
-    vim.wo[winid].foldmethod = "expr"
-    vim.wo[winid].foldexpr = desired_expr
-    vim.wo[winid].foldlevel = 0
+    if vim.wo[winid].foldlevel ~= 0 then
+        vim.wo[winid].foldlevel = 0
+    end
     vim.wo[winid].foldenable = true
-    vim.wo[winid].foldtext =
-        "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
+    vim.wo[winid].foldtext = FOLDTEXT_EXPR
+end
+
+--- @param bufnr integer
+--- @param start_lnum integer 1-indexed inclusive
+--- @param end_lnum integer 1-indexed inclusive
+function Fold.close_range(bufnr, start_lnum, end_lnum)
+    if Fold.threshold() == nil then
+        return
+    end
+    if start_lnum > end_lnum then
+        return
+    end
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return
+    end
+    vim.api.nvim_win_call(wins[1], function()
+        vim.cmd(
+            string.format("silent! noautocmd %d,%dfold", start_lnum, end_lnum)
+        )
+    end)
 end
 
 return Fold

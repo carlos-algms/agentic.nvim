@@ -23,6 +23,13 @@
 ---
 --- @alias agentic.UserConfig.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts|agentic.UserConfig.HeaderRenderFn|nil>
 
+--- Data passed to the on_create_session_response hook
+--- @class agentic.UserConfig.CreateSessionResponseData
+--- @field session_id? string Convenience field; equals response.sessionId when response is non-nil, nil if creation failed
+--- @field tab_page_id number The tabpage ID for this session
+--- @field response? agentic.acp.SessionCreationResponse Raw ACP create-session response, nil on error
+--- @field err? agentic.acp.ACPError Error details if session creation failed
+
 --- Data passed to the on_prompt_submit hook
 --- @class agentic.UserConfig.PromptSubmitData
 --- @field prompt string The user's prompt text
@@ -157,13 +164,14 @@
 --- Tool call folding configuration
 --- @class agentic.UserConfig.Folding.ToolCalls
 --- @field enabled boolean Whether to fold tool call bodies.
---- @field threshold integer Fold when interior exceeds this many lines. 0 always folds. Negative values are clamped to 0.
+--- @field threshold integer Fold when the interior occupies more than this many wrapped screen rows. 0 always folds. Negative values are clamped to 0.
 
 --- Folding behavior in the chat buffer
 --- @class agentic.UserConfig.Folding
 --- @field tool_calls agentic.UserConfig.Folding.ToolCalls
 
 --- @class agentic.UserConfig.Hooks
+--- @field on_create_session_response? fun(data: agentic.UserConfig.CreateSessionResponseData): nil
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
@@ -371,6 +379,7 @@ local ConfigDefault = {
             },
             switch_provider = "<localLeader>s",
             switch_model = "<localLeader>m",
+            change_thought_level = "<localLeader>t",
         },
 
         --- Keys bindings for the prompt buffer
@@ -477,6 +486,7 @@ local ConfigDefault = {
     },
 
     hooks = {
+        on_create_session_response = nil,
         on_prompt_submit = nil,
         on_response_complete = nil,
         on_session_update = nil,

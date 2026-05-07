@@ -816,4 +816,137 @@ describe("agentic.ui.ChatWidget", function()
             assert.equal("bottom", widget2.current_position)
         end)
     end)
+
+    describe("hidden chat window lifecycle", function()
+        local widget
+        local tab_page_id
+
+        before_each(function()
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local on_submit_spy = spy.new(function() end)
+            widget =
+                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "opens a hidden float on the chat buffer at construction time",
+            function()
+                assert.is_not_nil(widget._hidden_chat_winid)
+                assert.is_true(
+                    vim.api.nvim_win_is_valid(widget._hidden_chat_winid)
+                )
+                assert.equal(
+                    vim.api.nvim_win_get_buf(widget._hidden_chat_winid),
+                    widget.buf_nrs.chat
+                )
+                local cfg =
+                    vim.api.nvim_win_get_config(widget._hidden_chat_winid)
+                assert.is_true(cfg.hide)
+            end
+        )
+
+        it("closes hidden chat window before opening visible widget", function()
+            local hidden = widget._hidden_chat_winid
+            assert.is_true(vim.api.nvim_win_is_valid(hidden))
+
+            widget:show({ focus_prompt = false })
+
+            assert.is_false(vim.api.nvim_win_is_valid(hidden))
+            assert.is_nil(widget._hidden_chat_winid)
+            assert.is_not_nil(widget.win_nrs.chat)
+            assert.is_true(vim.api.nvim_win_is_valid(widget.win_nrs.chat))
+        end)
+
+        it("opens hidden chat window after hiding visible widget", function()
+            widget:show({ focus_prompt = false })
+            assert.is_nil(widget._hidden_chat_winid)
+
+            widget:hide()
+
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
+            assert.equal(
+                vim.api.nvim_win_get_buf(widget._hidden_chat_winid),
+                widget.buf_nrs.chat
+            )
+        end)
+
+        it(
+            "preserves manual folds across hide/show via hidden chat window",
+            function()
+                local Fold = require("agentic.ui.tool_call_fold")
+
+                local saved_folding = Config.folding
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+
+                vim.bo[widget.buf_nrs.chat].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    widget.buf_nrs.chat,
+                    0,
+                    -1,
+                    false,
+                    vim.fn["repeat"]({ "L" }, 60)
+                )
+
+                widget:show({ focus_prompt = false })
+                Fold.close_range(widget.buf_nrs.chat, 10, 25)
+                widget:hide()
+
+                Fold.close_range(widget.buf_nrs.chat, 35, 50)
+
+                widget:show({ focus_prompt = false })
+                local chat_win = widget.win_nrs.chat
+                vim.api.nvim_win_call(chat_win, function()
+                    assert.equal(vim.fn.foldclosed(15), 10)
+                    assert.equal(vim.fn.foldclosedend(15), 25)
+                    assert.equal(vim.fn.foldclosed(40), 35)
+                    assert.equal(vim.fn.foldclosedend(40), 50)
+                end)
+
+                Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+            end
+        )
+
+        it("tears down the hidden chat window on destroy", function()
+            local widget_ref = widget
+            local hidden = widget._hidden_chat_winid
+            assert.is_true(vim.api.nvim_win_is_valid(hidden))
+
+            widget:destroy()
+            widget = nil
+
+            assert.is_false(vim.api.nvim_win_is_valid(hidden))
+            assert.is_nil(widget_ref._hidden_chat_winid)
+        end)
+
+        it("does not leak a hidden float across hide() calls", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            local first_hidden = widget._hidden_chat_winid
+            assert.is_not_nil(first_hidden)
+
+            widget:hide()
+
+            assert.is_false(vim.api.nvim_win_is_valid(first_hidden))
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
+        end)
+    end)
 end)

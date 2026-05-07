@@ -3,6 +3,14 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local List = require("agentic.utils.list")
 
+--- Map non-spec category names to their canonical spec category.
+--- `effort` is sent by Claude ACP (PR #464, merged 2026-04-20) instead of
+--- the spec's `thought_level`. We normalize so a single code path handles
+--- both providers (Codex sends `thought_level`, Claude sends `effort`).
+local CATEGORY_ALIASES = {
+    effort = "thought_level",
+}
+
 --- @class agentic.acp.AgentConfigOptions
 --- @field mode? agentic.acp.ConfigOption
 --- @field model? agentic.acp.ConfigOption
@@ -12,11 +20,15 @@ local List = require("agentic.utils.list")
 local AgentConfigOptions = {}
 AgentConfigOptions.__index = AgentConfigOptions
 
+--- @class agentic.acp.AgentConfigOptions.Callbacks
+--- @field set_mode fun(mode_id: string, is_legacy: boolean)
+--- @field set_model fun(model_id: string, is_legacy: boolean)
+--- @field set_thought_level fun(value: string)
+
 --- @param buffers agentic.ui.ChatWidget.BufNrs Same buffers as ChatWidget instance
---- @param set_mode_callback fun(mode_id: string, is_legacy: boolean)
---- @param set_model_callback fun(model_id: string, is_legacy: boolean)
+--- @param callbacks agentic.acp.AgentConfigOptions.Callbacks
 --- @return agentic.acp.AgentConfigOptions
-function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
+function AgentConfigOptions:new(buffers, callbacks)
     local AgentModes = require("agentic.acp.agent_modes")
     local AgentModels = require("agentic.acp.agent_models")
 
@@ -33,7 +45,7 @@ function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
             Config.keymaps.widget.change_mode,
             bufnr,
             function()
-                self:show_mode_selector(set_mode_callback)
+                self:show_mode_selector(callbacks.set_mode)
             end,
             { desc = "Agentic: Select Agent Mode" }
         )
@@ -42,9 +54,18 @@ function AgentConfigOptions:new(buffers, set_mode_callback, set_model_callback)
             Config.keymaps.widget.switch_model,
             bufnr,
             function()
-                self:show_model_selector(set_model_callback)
+                self:show_model_selector(callbacks.set_model)
             end,
             { desc = "Agentic: Select Model" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.change_thought_level,
+            bufnr,
+            function()
+                self:show_thought_level_selector(callbacks.set_thought_level)
+            end,
+            { desc = "Agentic: Select Thought Effort Level" }
         )
     end
 
@@ -67,14 +88,20 @@ function AgentConfigOptions:set_options(configOptions)
         return
     end
 
-    for _i, option in ipairs(configOptions) do
-        if option.category == "mode" then
+    for _, option in ipairs(configOptions) do
+        -- Guard against malformed input (nil/non-string category): treat as
+        -- empty string so the dispatch falls through to the unknown branch
+        -- without crashing on `nil:sub(1, 1)`.
+        local raw = type(option.category) == "string" and option.category or ""
+        local cat = CATEGORY_ALIASES[raw] or raw
+
+        if cat == "mode" then
             self.mode = option
-        elseif option.category == "model" then
+        elseif cat == "model" then
             self.model = option
-        elseif option.category == "thought_level" then
+        elseif cat == "thought_level" then
             self.thought_level = option
-        else
+        elseif cat:sub(1, 1) ~= "_" then
             Logger.debug("Unknown config option", option)
         end
     end
@@ -142,10 +169,11 @@ end
 
 --- @param target_model string|nil
 --- @param handle_model_change fun(model: string, is_legacy: boolean|nil): any
+--- @return boolean handler_fired Whether `handle_model_change` was invoked
 function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
     if not target_model or target_model == "" then
         Logger.debug("not setting initial model", target_model)
-        return
+        return false
     end
 
     local is_legacy = false
@@ -174,7 +202,7 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
             vim.log.levels.WARN,
             { title = "Agentic" }
         )
-        return
+        return false
     end
 
     local current_value = is_legacy
@@ -183,10 +211,11 @@ function AgentConfigOptions:set_initial_model(target_model, handle_model_change)
 
     if target_model == current_value then
         Logger.debug("initial model already matches current", target_model)
-        return
+        return false
     end
 
     handle_model_change(target_model, is_legacy)
+    return true
 end
 
 --- @param target agentic.acp.ConfigOption|nil
@@ -236,6 +265,12 @@ function AgentConfigOptions:get_model(model_value)
     return getter(self.model, model_value)
 end
 
+--- @param value string
+--- @return agentic.acp.ConfigOption.Option|nil
+function AgentConfigOptions:get_thought_level(value)
+    return getter(self.thought_level, value)
+end
+
 --- @param handle_mode_change fun(mode: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_mode_selector(handle_mode_change)
@@ -266,6 +301,28 @@ function AgentConfigOptions:show_mode_selector(handle_mode_change)
     return legacy_shown
 end
 
+--- @param handle_change fun(value: string): any
+--- @return boolean shown
+function AgentConfigOptions:show_thought_level_selector(handle_change)
+    local shown = self:_show_selector(
+        self.thought_level,
+        "Select thought effort level:",
+        handle_change
+    )
+
+    if shown then
+        return true
+    end
+
+    Logger.notify(
+        "This provider does not support thought effort level switching",
+        vim.log.levels.WARN,
+        { title = "Agentic" }
+    )
+
+    return false
+end
+
 --- @param handle_model_change fun(model_id: string, is_legacy: boolean): any
 --- @return boolean shown
 function AgentConfigOptions:show_model_selector(handle_model_change)
@@ -294,6 +351,53 @@ function AgentConfigOptions:show_model_selector(handle_model_change)
     end
 
     return legacy_shown
+end
+
+--- @param target_value string|nil
+--- @param handle_change fun(value: string): any
+function AgentConfigOptions:set_initial_thought_level(
+    target_value,
+    handle_change
+)
+    if not target_value or target_value == "" then
+        Logger.debug("not setting initial thought level", target_value)
+        return
+    end
+
+    if not self.thought_level then
+        Logger.debug(
+            "Provider does not support thought effort level;"
+                .. " ignoring default_thought_level",
+            target_value
+        )
+        return
+    end
+
+    if self:get_thought_level(target_value) == nil then
+        Logger.notify(
+            string.format(
+                "Configured default_thought_level '%s' not available."
+                    .. " Using provider's default '%s'",
+                target_value,
+                self.thought_level.currentValue or "unknown"
+            ),
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+        return
+    end
+
+    local current_value = self.thought_level and self.thought_level.currentValue
+
+    if target_value == current_value then
+        Logger.debug(
+            "initial thought level already matches current",
+            target_value
+        )
+        return
+    end
+
+    handle_change(target_value)
 end
 
 --- @param target agentic.acp.ConfigOption|nil

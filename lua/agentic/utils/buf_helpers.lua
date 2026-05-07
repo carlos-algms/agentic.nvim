@@ -65,11 +65,12 @@ end
 --- @param opts vim.keymap.set.Opts|nil
 function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     opts = opts or {}
-    -- Neovim 0.12 renamed `buffer` to `buf` in vim.keymap.set opts
-    -- (see :h vim.keymap.set and :h deprecated — "buffer" renamed to "buf").
-    -- `buffer` will be removed in 0.15, so use `buf` on 0.12+ and `buffer` on older.
+    -- `buffer` was renamed to `buf` in neovim#38360, shipped in 0.12.0 final.
+    -- Gate on 0.12.1 to skip 0.12.0-dev nightlies built before the rename
+    -- (they answer `has('nvim-0.12') == 1` but reject `buf`).
+    -- `buffer` is removed in 0.15.
     --- @diagnostic disable: inject-field
-    if vim.fn.has("nvim-0.12") == 1 then
+    if vim.fn.has("nvim-0.12.1") == 1 then
         opts.buf = bufnr
     else
         opts.buffer = bufnr

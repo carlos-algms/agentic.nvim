@@ -181,129 +181,7 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
-    describe("_auto_scroll", function()
-        it("evaluates _check_auto_scroll eagerly on first call", function()
-            local check_scroll_spy = spy.on(writer, "_check_auto_scroll")
-            writer:_auto_scroll(bufnr)
-
-            assert.equal(1, check_scroll_spy.call_count)
-            check_scroll_spy:revert()
-        end)
-
-        it("coalesces multiple calls into a single scheduled scroll", function()
-            setup_buffer(20, 20)
-
-            writer:_auto_scroll(bufnr)
-            assert.is_true(writer._scroll_scheduled)
-
-            local check_spy = spy.on(writer, "_check_auto_scroll")
-            writer:_auto_scroll(bufnr)
-            writer:_auto_scroll(bufnr)
-
-            assert.equal(0, check_spy.call_count)
-            check_spy:revert()
-        end)
-    end)
-
-    describe("_should_auto_scroll sticky field", function()
-        it(
-            "remains true after buffer growth despite cursor exceeding threshold",
-            function()
-                setup_buffer(20, 20)
-                writer:_auto_scroll(bufnr)
-                assert.is_true(writer._should_auto_scroll)
-
-                local lines = {}
-                for i = 1, 30 do
-                    lines[i] = "tool output " .. i
-                end
-                vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, lines)
-
-                local check_spy = spy.on(writer, "_check_auto_scroll")
-                writer:_auto_scroll(bufnr)
-                assert.is_true(writer._should_auto_scroll)
-                assert.equal(0, check_spy.call_count)
-                check_spy:revert()
-            end
-        )
-
-        it(
-            "scheduled callback resets field and moves cursor to last line",
-            function()
-                local schedule_stub = spy.stub(vim, "schedule")
-                schedule_stub:invokes(function(fn)
-                    fn()
-                end)
-
-                setup_buffer(50, 1)
-                writer._should_auto_scroll = true
-                writer:_auto_scroll(bufnr)
-
-                assert.is_nil(writer._should_auto_scroll)
-                assert.equal(50, vim.api.nvim_win_get_cursor(winid)[1])
-
-                schedule_stub:revert()
-            end
-        )
-
-        it(
-            "scheduled callback scrolls when user is on a different tabpage",
-            function()
-                local schedule_stub = spy.stub(vim, "schedule")
-                schedule_stub:invokes(function(fn)
-                    fn()
-                end)
-
-                setup_buffer(20, 20)
-
-                local new_lines = {}
-                for i = 1, 30 do
-                    new_lines[i] = "streamed line " .. i
-                end
-                vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, new_lines)
-
-                vim.cmd("tabnew")
-                local tab2 = vim.api.nvim_get_current_tabpage()
-
-                writer._should_auto_scroll = true
-                writer:_auto_scroll(bufnr)
-
-                assert.equal(50, vim.api.nvim_win_get_cursor(winid)[1])
-
-                vim.api.nvim_set_current_tabpage(tab2)
-                vim.cmd("tabclose")
-
-                schedule_stub:revert()
-            end
-        )
-
-        it(
-            "after reset, re-evaluates and returns false when user scrolled up",
-            function()
-                local schedule_stub = spy.stub(vim, "schedule")
-                schedule_stub:invokes(function(fn)
-                    fn()
-                end)
-
-                setup_buffer(50, 50)
-                writer:_auto_scroll(bufnr)
-                assert.is_nil(writer._should_auto_scroll)
-                assert.is_false(writer._scroll_scheduled)
-
-                schedule_stub:revert()
-
-                schedule_stub = spy.stub(vim, "schedule")
-
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-                writer:_auto_scroll(bufnr)
-                assert.is_false(writer._should_auto_scroll)
-
-                schedule_stub:revert()
-            end
-        )
-    end)
-
-    describe("auto-scroll with public write methods", function()
+    describe("permission_reanchor callback", function()
         --- @type TestStub
         local schedule_stub
 
@@ -316,73 +194,27 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it(
-            "captures scroll decision before buffer grows for write_message and write_tool_call_block",
+            "stores and fires callback via set_permission_reanchor_callback",
             function()
-                setup_buffer(10, 10)
+                local callback_spy = spy.new(function() end)
+                writer:set_permission_reanchor_callback(
+                    callback_spy --[[@as function]]
+                )
 
-                local long_text = {}
-                for i = 1, 50 do
-                    long_text[i] = "message line " .. i
-                end
-                writer:write_message(make_update(table.concat(long_text, "\n")))
-                assert.is_true(writer._should_auto_scroll)
+                writer:_notify_permission_reanchor()
 
-                writer._should_auto_scroll = nil
-                writer._scroll_scheduled = false
-                setup_buffer(10, 10)
-
-                local body = {}
-                for i = 1, 15 do
-                    body[i] = "file" .. i .. ".lua"
-                end
-                writer:write_tool_call_block({
-                    tool_call_id = "test-1",
-                    status = "pending",
-                    kind = "execute",
-                    argument = "ls -la",
-                    body = body,
-                })
-                assert.is_true(writer._should_auto_scroll)
-                assert.is_true(vim.api.nvim_buf_line_count(bufnr) > 20)
+                assert.spy(callback_spy).was.called(1)
             end
         )
-
-        it("write_message does not scroll when user has scrolled up", function()
-            setup_buffer(50, 1)
-
-            writer:write_message(make_update("new content\nmore content"))
-
-            assert.is_false(writer._should_auto_scroll)
-        end)
-    end)
-
-    describe("on_content_changed callback", function()
-        --- @type TestStub
-        local schedule_stub
-
-        before_each(function()
-            schedule_stub = spy.stub(vim, "schedule")
-        end)
-
-        after_each(function()
-            schedule_stub:revert()
-        end)
-
-        it("stores and fires callback via set_on_content_changed", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
-
-            writer:_notify_content_changed()
-
-            assert.spy(callback_spy).was.called(1)
-        end)
 
         it("clears callback when set to nil", function()
             local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
-            writer:set_on_content_changed(nil)
+            writer:set_permission_reanchor_callback(
+                callback_spy --[[@as function]]
+            )
+            writer:set_permission_reanchor_callback(nil)
 
-            writer:_notify_content_changed()
+            writer:_notify_permission_reanchor()
 
             assert.spy(callback_spy).was.called(0)
         end)
@@ -394,7 +226,9 @@ describe("agentic.ui.MessageWriter", function()
                 writer:write_tool_call_block(block)
 
                 local callback_spy = spy.new(function() end)
-                writer:set_on_content_changed(callback_spy --[[@as function]])
+                writer:set_permission_reanchor_callback(
+                    callback_spy --[[@as function]]
+                )
 
                 writer:write_message(make_update("hello"))
                 writer:write_message_chunk(make_update("chunk"))
@@ -413,7 +247,9 @@ describe("agentic.ui.MessageWriter", function()
 
         it("does not fire callback when content is empty", function()
             local callback_spy = spy.new(function() end)
-            writer:set_on_content_changed(callback_spy --[[@as function]])
+            writer:set_permission_reanchor_callback(
+                callback_spy --[[@as function]]
+            )
 
             writer:write_message(make_update(""))
             writer:write_message_chunk(make_update(""))
@@ -678,6 +514,32 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(get_all_content():match("read"))
         end)
 
+        it("formats unformatted single-line JSON body on replay", function()
+            writer:set_provider_name("Claude")
+
+            local long_value = string.rep("v", 100)
+            local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+            --- @type agentic.ui.ChatHistory.Message[]
+            local messages = {
+                {
+                    type = "tool_call",
+                    tool_call_id = "tc-json",
+                    kind = "fetch",
+                    argument = "MCP",
+                    status = "completed",
+                    body = { json_text },
+                    provider_name = "Claude",
+                },
+            }
+
+            writer:replay_history_messages(messages)
+
+            local tracker = writer.tool_call_blocks["tc-json"]
+            assert.is_not_nil(tracker)
+            assert.is_true(#tracker.body > 1)
+        end)
+
         it(
             "replay thought extmark covers content lines, not trailing blank",
             function()
@@ -855,6 +717,68 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
+    describe("tool call body JSON formatting", function()
+        it("formats single-line JSON body when writing the block", function()
+            local long_value = string.rep("v", 100)
+            local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+            local block =
+                make_tool_call_block("json-1", "completed", { json_text })
+            writer:write_tool_call_block(block)
+
+            local tracker = writer.tool_call_blocks["json-1"]
+            assert.is_not_nil(tracker)
+            assert.is_true(#tracker.body > 1)
+        end)
+
+        it(
+            "leaves placeholder text untouched and formats only JSON segments on update",
+            function()
+                local placeholder = "I'm going to fetch this"
+                local long_value = string.rep("v", 100)
+                local json_text = '{"key":"' .. long_value .. '","x":42}'
+
+                local block = make_tool_call_block(
+                    "json-stream",
+                    "in_progress",
+                    { placeholder }
+                )
+                writer:write_tool_call_block(block)
+
+                writer:update_tool_call_block({
+                    tool_call_id = "json-stream",
+                    status = "completed",
+                    body = { json_text },
+                })
+
+                local tracker = writer.tool_call_blocks["json-stream"]
+                assert.is_not_nil(tracker)
+                assert.equal(placeholder, tracker.body[1])
+
+                local separator_idx
+                for i, line in ipairs(tracker.body) do
+                    if line == "---" then
+                        separator_idx = i
+                        break
+                    end
+                end
+                assert.is_not_nil(separator_idx)
+                assert.is_true(#tracker.body - separator_idx > 1)
+            end
+        )
+
+        it("leaves malformed JSON unchanged", function()
+            local malformed = "{" .. string.rep("not valid json ", 10) .. "}"
+
+            local block =
+                make_tool_call_block("json-bad", "completed", { malformed })
+            writer:write_tool_call_block(block)
+
+            local tracker = writer.tool_call_blocks["json-bad"]
+            assert.same({ malformed }, tracker.body)
+        end)
+    end)
+
     describe("tool call block update highlighting", function()
         it(
             "applies block body highlights synchronously during update",
@@ -890,135 +814,6 @@ describe("agentic.ui.MessageWriter", function()
         )
     end)
 
-    describe("_get_fold_geometry", function()
-        --- @type agentic.UserConfig.Folding|nil
-        local saved_folding
-
-        before_each(function()
-            saved_folding = Config.folding
-        end)
-
-        after_each(function()
-            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
-        end)
-
-        --- @param body_count integer
-        --- @param is_diff boolean
-        local function seed_block(body_count, is_diff)
-            -- Buffer: HEADER + body_count lines + blank footer
-            local lines = { "HEADER" }
-            for i = 1, body_count do
-                table.insert(lines, "b" .. i)
-            end
-            table.insert(lines, "")
-            vim.api.nvim_buf_set_lines(writer.bufnr, 0, -1, false, lines)
-
-            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
-            local ext_id = vim.api.nvim_buf_set_extmark(
-                writer.bufnr,
-                NS,
-                0,
-                0,
-                { end_row = body_count + 1, right_gravity = false }
-            )
-            writer.tool_call_blocks["t1"] = {
-                tool_call_id = "t1",
-                extmark_id = ext_id,
-                diff = is_diff and { old = {}, new = {} } or nil,
-            }
-        end
-
-        --- @class FoldGeometryCase
-        --- @field name string
-        --- @field enabled boolean
-        --- @field threshold integer
-        --- @field body_count integer
-        --- @field is_diff boolean
-        --- @field expect_empty? boolean
-        --- @field expect_foldable? boolean
-
-        --- @type FoldGeometryCase[]
-        local cases = {
-            {
-                name = "returns empty when folding disabled",
-                enabled = false,
-                threshold = 10,
-                body_count = 50,
-                is_diff = false,
-                expect_empty = true,
-            },
-            {
-                name = "foldable=true when interior > threshold",
-                enabled = true,
-                threshold = 10,
-                body_count = 11,
-                is_diff = false,
-                expect_foldable = true,
-            },
-            {
-                name = "foldable=false when interior == threshold",
-                enabled = true,
-                threshold = 10,
-                body_count = 10,
-                is_diff = false,
-                expect_foldable = false,
-            },
-            {
-                name = "threshold=0 folds any block with interior >= 1",
-                enabled = true,
-                threshold = 0,
-                body_count = 1,
-                is_diff = false,
-                expect_foldable = true,
-            },
-            {
-                name = "threshold=0 does not fold empty body",
-                enabled = true,
-                threshold = 0,
-                body_count = 0,
-                is_diff = false,
-                expect_foldable = false,
-            },
-            {
-                name = "clamps negative threshold to 0",
-                enabled = true,
-                threshold = -5,
-                body_count = 1,
-                is_diff = false,
-                expect_foldable = true,
-            },
-            {
-                name = "never folds a diff block regardless of size",
-                enabled = true,
-                threshold = 0,
-                body_count = 100,
-                is_diff = true,
-                expect_foldable = false,
-            },
-        }
-
-        for _, case in ipairs(cases) do
-            it(case.name, function()
-                Config.folding = {
-                    tool_calls = {
-                        enabled = case.enabled,
-                        threshold = case.threshold,
-                    },
-                }
-                seed_block(case.body_count, case.is_diff)
-
-                local geo = writer:_get_fold_geometry()
-
-                if case.expect_empty then
-                    assert.same(geo, {})
-                else
-                    assert.equal(#geo, 1)
-                    assert.equal(geo[1].foldable, case.expect_foldable)
-                end
-            end)
-        end
-    end)
-
     describe("Fold integration", function()
         local Fold = require("agentic.ui.tool_call_fold")
         --- @type agentic.UserConfig.Folding|nil
@@ -1032,56 +827,185 @@ describe("agentic.ui.MessageWriter", function()
             Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
         end)
 
-        --- @return integer bufnr, agentic.ui.MessageWriter writer
-        local function make_writer()
-            local b = vim.api.nvim_create_buf(false, true)
-            local w = require("agentic.ui.message_writer"):new(b)
-            return b, w
+        --- Read the buffer rows for a block and return its layout slots.
+        --- @param tool_call_id string
+        --- @return integer start_row, integer top_pad_row, integer bottom_pad_row, integer end_row
+        local function block_layout(tool_call_id)
+            local tracker = writer.tool_call_blocks[tool_call_id]
+            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+            local pos = vim.api.nvim_buf_get_extmark_by_id(
+                bufnr,
+                NS,
+                tracker.extmark_id,
+                { details = true }
+            )
+            local start_row = pos[1]
+            --- @type integer
+            local end_row = pos[3].end_row
+            return start_row, start_row + 1, end_row - 1, end_row
         end
 
-        it("registers a getter on construction", function()
-            local test_bufnr, test_writer = make_writer()
+        it(
+            "closes a manual fold when update_tool_call_block crosses the fold threshold",
+            function()
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+                Config.auto_scroll = { threshold = 10 }
 
+                Fold.setup_window(winid, bufnr)
+                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                writer:write_tool_call_block({
+                    tool_call_id = "fold-mat",
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "short" },
+                })
+
+                local _, top_pad_row = block_layout("fold-mat")
+                vim.api.nvim_win_call(winid, function()
+                    assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
+                end)
+
+                writer:update_tool_call_block({
+                    tool_call_id = "fold-mat",
+                    status = "completed",
+                    body = {
+                        "L1",
+                        "L2",
+                        "L3",
+                        "L4",
+                        "L5",
+                        "L6",
+                        "L7",
+                        "L8",
+                        "L9",
+                        "L10",
+                    },
+                })
+
+                local _, new_top_pad_row, new_bottom_pad_row =
+                    block_layout("fold-mat")
+                vim.api.nvim_win_call(winid, function()
+                    local fold_start = vim.fn.foldclosed(new_top_pad_row + 1)
+                    local fold_end = vim.fn.foldclosedend(new_top_pad_row + 1)
+                    assert.equal(fold_start, new_top_pad_row + 1)
+                    assert.equal(fold_end, new_bottom_pad_row + 1)
+                end)
+
+                local tracker = writer.tool_call_blocks["fold-mat"]
+                assert.is_true(tracker.has_fold == true)
+            end
+        )
+
+        it(
+            "closes a manual fold when write_tool_call_block crosses the fold threshold",
+            function()
+                Config.folding = {
+                    tool_calls = { enabled = true, threshold = 5 },
+                }
+                Config.auto_scroll = { threshold = 10 }
+
+                Fold.setup_window(winid, bufnr)
+                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                writer:write_tool_call_block({
+                    tool_call_id = "fold-on-write",
+                    status = "completed",
+                    kind = "execute",
+                    argument = "ls",
+                    body = {
+                        "L1",
+                        "L2",
+                        "L3",
+                        "L4",
+                        "L5",
+                        "L6",
+                        "L7",
+                        "L8",
+                        "L9",
+                        "L10",
+                    },
+                })
+
+                local _, top_pad_row, bottom_pad_row =
+                    block_layout("fold-on-write")
+                vim.api.nvim_win_call(winid, function()
+                    assert.equal(
+                        vim.fn.foldclosed(top_pad_row + 1),
+                        top_pad_row + 1
+                    )
+                    assert.equal(
+                        vim.fn.foldclosedend(top_pad_row + 1),
+                        bottom_pad_row + 1
+                    )
+                end)
+
+                local tracker = writer.tool_call_blocks["fold-on-write"]
+                assert.is_true(tracker.has_fold == true)
+            end
+        )
+
+        it("does not create a fold when block stays below threshold", function()
             Config.folding = {
-                tool_calls = { enabled = true, threshold = 0 },
+                tool_calls = { enabled = true, threshold = 5 },
             }
+            Config.auto_scroll = { threshold = 10 }
 
-            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
-            vim.api.nvim_buf_set_lines(
-                test_bufnr,
-                0,
-                -1,
-                false,
-                { "H", "b1", "b2", "" }
-            )
-            local ext_id = vim.api.nvim_buf_set_extmark(
-                test_bufnr,
-                NS,
-                0,
-                0,
-                { end_row = 3, right_gravity = false }
-            )
-            test_writer.tool_call_blocks["t1"] =
-                { tool_call_id = "t1", extmark_id = ext_id }
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
-            -- If registration happened, foldexpr returns 1 for an interior
-            -- line (line 2 in 1-indexed).
-            assert.equal(Fold.foldexpr(test_bufnr, 2), 1)
+            writer:write_tool_call_block({
+                tool_call_id = "no-fold",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "L1", "L2", "L3" },
+            })
 
-            Fold.unregister(test_bufnr)
-            vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            local tracker = writer.tool_call_blocks["no-fold"]
+            assert.is_nil(tracker.has_fold)
+
+            local _, top_pad_row = block_layout("no-fold")
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
+            end)
         end)
 
-        it("unregisters on destroy", function()
-            local test_bufnr, test_writer = make_writer()
+        it("emits anchor pad lines around the body in every block", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = 5 },
+            }
+            Config.auto_scroll = { threshold = 10 }
 
-            test_writer:destroy()
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
 
-            assert.equal(Fold.foldexpr(test_bufnr, 5), 0)
+            writer:write_tool_call_block({
+                tool_call_id = "anchors",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "B1", "B2" },
+            })
 
-            if vim.api.nvim_buf_is_valid(test_bufnr) then
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
-            end
+            local start_row, top_pad_row, bottom_pad_row, end_row =
+                block_layout("anchors")
+            local lines =
+                vim.api.nvim_buf_get_lines(bufnr, start_row, end_row + 1, false)
+            -- Layout: header, top_pad, B1, B2, bottom_pad, trailing
+            assert.equal(#lines, 6)
+            assert.equal(lines[2], "")
+            assert.equal(lines[3], "B1")
+            assert.equal(lines[4], "B2")
+            assert.equal(lines[5], "")
+            assert.equal(top_pad_row, start_row + 1)
+            assert.equal(bottom_pad_row, end_row - 1)
         end)
     end)
 end)

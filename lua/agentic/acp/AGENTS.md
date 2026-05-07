@@ -106,7 +106,8 @@ Provider sends "tool_call"
   -> MessageWriter:write_tool_call_block(block)
      1. Renders header + body/diff lines to buffer
      2. Creates range extmark (NS_TOOL_BLOCKS) as position anchor
-     3. Creates decoration extmarks (borders, status icon)
+     3. Statuscolumn reads the range extmark for borders; status footer
+        extmark renders the status icon
      4. Stores block in tool_call_blocks[id]
 ```
 
@@ -122,7 +123,7 @@ Provider sends "tool_call_update"
      2. Deep-merges via tbl_deep_extend("force", tracker, partial)
      3. Appends body (if both old and new exist and differ)
      4. Locates block position via range extmark
-     5. Diff already rendered: refresh decorations + status only
+     5. Diff already rendered: refresh header + status only
         (content frozen to prevent flicker)
      6. Diff is NEW: replace buffer lines, re-render everything
 ```
@@ -140,8 +141,7 @@ Same as Phase 2, but status = "completed" | "failed"
 - **Updates are partial:** Only send what changed. MessageWriter merges onto the
   existing tracker via `tbl_deep_extend`.
 - **Diffs are immutable after first render:** Once a diff is written to the
-  buffer, content is frozen. Only status/decorations refresh on subsequent
-  updates.
+  buffer, content is frozen. Only header/status refresh on subsequent updates.
 - **Body accumulates:** Multiple updates with different body content get
   concatenated with `---` dividers, not replaced.
 - **Extmarks as position anchors:** Range extmark in `NS_TOOL_BLOCKS`

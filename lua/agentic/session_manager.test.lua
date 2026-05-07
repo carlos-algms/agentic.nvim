@@ -107,11 +107,11 @@ describe("agentic.SessionManager", function()
             local BufHelpers = require("agentic.utils.buf_helpers")
             local keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
 
-            local config_opts = AgentConfigOptions:new(
-                { chat = test_bufnr },
-                function() end,
-                function() end
-            )
+            local config_opts = AgentConfigOptions:new({ chat = test_bufnr }, {
+                set_mode = function() end,
+                set_model = function() end,
+                set_thought_level = function() end,
+            })
 
             keymap_stub:revert()
 
@@ -1237,5 +1237,230 @@ describe("agentic.SessionManager", function()
             -- Finish message must NOT be written for stale session
             assert.spy(write_message_spy).was.called(0)
         end)
+    end)
+
+    describe("new_session: on_create_session_response hook", function()
+        local Config = require("agentic.config")
+        --- @type TestStub
+        local schedule_stub
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+        end)
+
+        --- Build a session mock with just enough surface for the error path.
+        --- new_session calls self:_cancel_session and self:_build_handlers
+        --- before agent:create_session. Both are stubbed to no-ops so the
+        --- test focuses on the hook invocation. The error path returns
+        --- immediately after the hook, so success-path collaborators are
+        --- not needed.
+        --- @return agentic.SessionManager
+        local function make_session()
+            return {
+                tab_page_id = 99,
+                session_id = nil,
+                status_animation = {
+                    start = function() end,
+                    stop = function() end,
+                },
+                _cancel_session = function() end,
+                _build_handlers = function()
+                    return {}
+                end,
+                new_session = SessionManager.new_session,
+                agent = {
+                    provider_config = { name = "Test" },
+                },
+            } --[[@as agentic.SessionManager]]
+        end
+
+        --- Stub agent:create_session to fire its callback synchronously
+        --- with the given response/err pair.
+        --- @param session agentic.SessionManager
+        --- @param response agentic.acp.SessionCreationResponse|nil
+        --- @param err agentic.acp.ACPError|nil
+        local function fake_create_session(session, response, err)
+            session.agent.create_session = function(_self, _handlers, callback)
+                callback(response, err)
+            end
+        end
+
+        after_each(function()
+            schedule_stub:revert()
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_create_session_response = nil
+        end)
+
+        it("fires on error with err set and response nil", function()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_create_session_response = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            local err = { code = -32000, message = "boom" }
+            fake_create_session(
+                session,
+                nil,
+                err --[[@as agentic.acp.ACPError]]
+            )
+
+            SessionManager.new_session(session)
+
+            assert.spy(hook_spy).was.called(1)
+            local data = hook_spy.calls[1][1]
+            assert.is_nil(data.session_id)
+            assert.equal(99, data.tab_page_id)
+            assert.is_nil(data.response)
+            assert.equal(err, data.err)
+            assert.is_nil(session.session_id)
+        end)
+
+        it("does not fire when no hook is configured", function()
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_create_session_response = nil
+
+            local session = make_session()
+            fake_create_session(session, nil, {
+                code = -32000,
+                message = "boom",
+            } --[[@as agentic.acp.ACPError]])
+
+            assert.has_no_errors(function()
+                SessionManager.new_session(session)
+            end)
+        end)
+
+        it("fires before the early return on error", function()
+            -- Verifies the contract: hook receives err, then session_id is
+            -- cleared. If the hook fired AFTER the early return, it would
+            -- never run on the error path.
+            local hook_call_order = {}
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_create_session_response = function(data)
+                table.insert(hook_call_order, {
+                    err = data.err,
+                    session_id_at_fire = data.session_id,
+                })
+            end
+
+            local session = make_session()
+            session.session_id = "stale-id"
+            fake_create_session(session, nil, {
+                code = -32000,
+                message = "boom",
+            } --[[@as agentic.acp.ACPError]])
+
+            SessionManager.new_session(session)
+
+            assert.equal(1, #hook_call_order)
+            assert.is_not_nil(hook_call_order[1].err)
+            assert.is_nil(session.session_id)
+        end)
+    end)
+
+    describe("initial thought_level wiring", function()
+        local AgentConfigOptions = require("agentic.acp.agent_config_options")
+
+        --- @type TestStub
+        local get_instance_stub
+        --- @type TestStub
+        local notify_stub
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestStub
+        local health_check_stub
+        --- @type TestStub
+        local set_initial_thought_level_stub
+
+        --- @type fun()[]
+        local schedule_queue = {}
+
+        local function flush_schedule()
+            while #schedule_queue > 0 do
+                local fn = table.remove(schedule_queue, 1)
+                fn()
+            end
+        end
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+            local ACPHealth = require("agentic.acp.acp_health")
+            local Config = require("agentic.config")
+
+            notify_stub = spy.stub(Logger, "notify")
+            schedule_queue = {}
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                table.insert(schedule_queue, fn)
+            end)
+            health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
+            health_check_stub:returns(true)
+            set_initial_thought_level_stub =
+                spy.stub(AgentConfigOptions, "set_initial_thought_level")
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:invokes(function(provider_name, callback)
+                --- @type agentic.acp.ACPClient
+                local fake = {}
+                fake.state = "ready"
+                fake.provider_config = {
+                    name = provider_name or "Test",
+                    initial_model = nil,
+                    default_mode = nil,
+                    default_thought_level = "max",
+                }
+                fake.agent_info = {}
+                function fake:create_session(_h, cb)
+                    cb({
+                        sessionId = "test-session",
+                        configOptions = nil,
+                        modes = nil,
+                        models = nil,
+                    })
+                end
+                function fake:cancel_session() end
+                if callback then
+                    callback(fake)
+                end
+                return fake
+            end)
+            Config.provider = "TestProvider"
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+            schedule_stub:revert()
+            health_check_stub:revert()
+            get_instance_stub:revert()
+            set_initial_thought_level_stub:revert()
+
+            local SessionRegistry = require("agentic.session_registry")
+            local tab_ids = {}
+            for tab_id, _ in pairs(SessionRegistry.sessions) do
+                table.insert(tab_ids, tab_id)
+            end
+            for _, tab_id in ipairs(tab_ids) do
+                SessionRegistry.destroy_session(tab_id)
+            end
+        end)
+
+        it(
+            "applies default_thought_level when no model change is triggered",
+            function()
+                local tab_page_id = vim.api.nvim_get_current_tabpage()
+                local _session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+                flush_schedule()
+
+                assert.equal(1, set_initial_thought_level_stub.call_count)
+                local call = set_initial_thought_level_stub.calls[1]
+                -- call[1] is self, call[2] is target_value, call[3] is handler
+                assert.equal("max", call[2])
+                assert.equal("function", type(call[3]))
+            end
+        )
     end)
 end)

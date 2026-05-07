@@ -54,7 +54,7 @@ describe("agentic.ui.PermissionManager", function()
             { "new tool call output line 1", "new tool call output line 2" }
         )
         vim.bo[bufnr].modifiable = false
-        writer:_notify_content_changed()
+        writer:_notify_permission_reanchor()
     end
 
     --- @param mode string
@@ -135,8 +135,8 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_true(has_buf_keymap("n", "2"))
         end)
 
-        it("does not trigger recursive on_content_changed", function()
-            local notify_spy = spy.on(writer, "_notify_content_changed")
+        it("does not trigger recursive _on_permission_reanchor", function()
+            local notify_spy = spy.on(writer, "_notify_permission_reanchor")
 
             pm:add_request(
                 make_request("tc-2"),
@@ -144,7 +144,7 @@ describe("agentic.ui.PermissionManager", function()
             )
 
             notify_spy:reset()
-            writer:_notify_content_changed()
+            writer:_notify_permission_reanchor()
 
             assert.equal(1, notify_spy.call_count)
 
@@ -153,18 +153,21 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("callback lifecycle", function()
-        it("_complete_request clears the content changed callback", function()
-            pm:add_request(
-                make_request("tc-3"),
-                spy.new(function() end) --[[@as function]]
-            )
+        it(
+            "_complete_request clears the permission reanchor callback",
+            function()
+                pm:add_request(
+                    make_request("tc-3"),
+                    spy.new(function() end) --[[@as function]]
+                )
 
-            pm:_complete_request("allow-once")
+                pm:_complete_request("allow-once")
 
-            assert.is_nil(writer._on_content_changed)
-        end)
+                assert.is_nil(writer._on_permission_reanchor)
+            end
+        )
 
-        it("clear() clears the content changed callback", function()
+        it("clear() clears the permission reanchor callback", function()
             pm:add_request(
                 make_request("tc-4"),
                 spy.new(function() end) --[[@as function]]
@@ -172,7 +175,7 @@ describe("agentic.ui.PermissionManager", function()
 
             pm:clear()
 
-            assert.is_nil(writer._on_content_changed)
+            assert.is_nil(writer._on_permission_reanchor)
         end)
     end)
 

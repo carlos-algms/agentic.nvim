@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local DefaultConfig = require("agentic.config_default")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Fold = require("agentic.ui.tool_call_fold")
+local ToolBlockBorder = require("agentic.ui.tool_block_border")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
 
@@ -74,6 +75,52 @@ local function calculate_dynamic_height(bufnr, max_height, position)
     return math.min(line_count + padding, max_height)
 end
 
+-- Make the gutter (where statuscolumn renders) blend into the chat
+-- background regardless of colorscheme. Each themable column highlight
+-- group is mapped to Normal.
+local CHAT_GUTTER_WINHIGHLIGHT = "EndOfBuffer:"
+    .. ",LineNr:Normal,CursorLineNr:Normal"
+    .. ",SignColumn:Normal,CursorLineSign:Normal"
+    .. ",FoldColumn:Normal,CursorLineFold:Normal"
+
+--- @type table<string, any>
+local PANEL_WINDOW_OPTS = {
+    number = false,
+    relativenumber = false,
+    cursorline = false,
+    cursorcolumn = false,
+    foldcolumn = "0",
+    spell = false,
+    list = false,
+    signcolumn = "no",
+    colorcolumn = "",
+    statuscolumn = "",
+    fillchars = "eob: ,fold: ",
+    winhighlight = "EndOfBuffer:",
+}
+
+--- @param winid integer
+--- @param bufnr integer
+--- @param window_name agentic.ui.ChatWidget.PanelNames
+--- @param win_opts table<string, any>
+local function apply_panel_window_opts(winid, bufnr, window_name, win_opts)
+    -- Mark this window so BufferGuard knows which buffer belongs here
+    vim.w[winid].agentic_bufnr = bufnr
+
+    local window_config = Config.windows[window_name] or {}
+    local config_win_opts = window_config.win_opts or {}
+
+    local merged_win_opts = vim.tbl_deep_extend("force", {
+        wrap = true,
+        linebreak = true,
+        winfixheight = true,
+    }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
+
+    for name, value in pairs(merged_win_opts) do
+        vim.api.nvim_set_option_value(name, value, { win = winid })
+    end
+end
+
 --- @param bufnr integer
 --- @param enter boolean
 --- @param opts vim.api.keyset.win_config
@@ -86,28 +133,13 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
         split = "right",
         win = -1,
         noautocmd = true,
-        style = "minimal",
     }
 
     local config = vim.tbl_deep_extend("force", default_opts, opts)
 
     local winid = vim.api.nvim_open_win(bufnr, enter, config)
 
-    -- Mark this window so BufferGuard knows which buffer belongs here
-    vim.w[winid].agentic_bufnr = bufnr
-
-    local window_config = Config.windows[window_name] or {}
-    local config_win_opts = window_config.win_opts or {}
-
-    local merged_win_opts = vim.tbl_deep_extend("force", {
-        wrap = true,
-        linebreak = true,
-        winfixheight = true,
-    }, win_opts or {}, config_win_opts)
-
-    for name, value in pairs(merged_win_opts) do
-        vim.api.nvim_set_option_value(name, value, { win = winid })
-    end
+    apply_panel_window_opts(winid, bufnr, window_name, win_opts)
 
     return winid
 end
@@ -202,6 +234,8 @@ local function show_layout(params, position)
 
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
         scrolloff = 4,
+        statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR,
+        winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
     })
@@ -268,6 +302,39 @@ local function show_layout(params, position)
             end
         end)
     end
+end
+
+--- @param bufnr integer Chat buffer
+--- @return integer|nil winid nil on failure (graceful degradation)
+function WidgetLayout.open_hidden_chat_window(bufnr)
+    -- Width must match the visible chat so nvim_win_text_height agrees. ADR 001.
+    local width = WidgetLayout.calculate_width(Config.windows.width)
+
+    local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
+        relative = "editor",
+        row = 0,
+        col = 0,
+        width = width,
+        height = 20,
+        hide = true,
+        focusable = false,
+        noautocmd = true,
+    })
+
+    if not ok or type(winid) ~= "number" then
+        Logger.debug("open_hidden_chat_window failed: " .. tostring(winid))
+        return nil
+    end
+
+    vim.wo[winid].winbar = ""
+
+    apply_panel_window_opts(winid, bufnr, "chat", {
+        statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR,
+    })
+
+    Fold.setup_window(winid, bufnr)
+
+    return winid
 end
 
 --- @param params agentic.ui.WidgetLayout.Params

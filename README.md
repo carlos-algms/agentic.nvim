@@ -355,56 +355,12 @@ by configuring the `acp_providers` property:
   (e.g., `"bypassPermissions"`, `"plan"`)
 - `initial_model` (string, optional) - Default model ID to set on session
   creation (e.g., `"haiku"`)
+- `default_thought_level` (string, optional) - Default thought effort level to
+  apply on session creation (e.g., `"high"`, `"max"` for Claude)
 
 > [!NOTE]  
 > Customizing a provider only requires specifying the fields you want to
 > override, not the entire configuration.
-
-#### Setting a Default Agent Mode
-
-If you prefer a specific agent mode other than the provider's default, you can
-configure it per provider:
-
-```lua
-{
-  "carlos-algms/agentic.nvim",
-  --- @type agentic.PartialUserConfig
-  opts = {
-    acp_providers = {
-      ["claude-agent-acp"] = {
-        -- Automatically switch to this mode when a new session starts
-        default_mode = "bypassPermissions",
-      },
-    },
-  },
-}
-```
-
-The mode will only be set if it's available from the provider. Use `<S-Tab>` to
-see available modes for your provider.
-
-#### Setting an Initial Model
-
-If you want to start sessions with a specific model instead of the provider's
-default:
-
-```lua
-{
-  "carlos-algms/agentic.nvim",
-  --- @type agentic.PartialUserConfig
-  opts = {
-    acp_providers = {
-      ["claude-agent-acp"] = {
-        -- Automatically switch to this model when a new session starts
-        initial_model = "haiku",
-      },
-    },
-  },
-}
-```
-
-The model will only be set if it's available from the provider. Use
-`<localLeader>m` to see available models for your provider.
 
 ### Window Layout
 
@@ -544,6 +500,7 @@ individual folds, or `zR`/`zM` to open/close all folds in the chat window.
 | `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
 | `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session      |
+| `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
 | `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
 | `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
 
@@ -594,6 +551,17 @@ require("agentic").add_files_to_context({
 })
 ```
 
+`restore_session_by_id(session_id)` accepts a **session_id** argument with the
+ID of the session you want to restore. Session IDs come from your provider's
+session storage (e.g. provider logs, project metadata, or scripts that track
+them). Unlike `restore_session()`, this does not require the provider to
+support listing sessions.
+
+```lua
+-- Restore a session by ID
+require("agentic").restore_session_by_id("58e5cf8a-1277-4e43-bc29-10c1246a2c66")
+```
+
 ### Built-in Keybindings
 
 These keybindings are automatically set in Agentic buffers:
@@ -607,6 +575,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
 | `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
+| `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -635,6 +604,7 @@ your setup:
         },
         switch_provider = "<localLeader>s",  -- Switch ACP provider
         switch_model = "<localLeader>m",     -- Switch model
+        change_thought_level = "<localLeader>t",  -- Select thought effort level
       },
 
       -- Keybindings for the prompt buffer only
@@ -784,6 +754,11 @@ Call `require("agentic").restore_session()` to:
    (including sessions started in the terminal)
 2. Select a session to restore the full conversation history
 
+If you know the session ID, call
+`require("agentic").restore_session_by_id(session_id)` to restore a specific
+session directly. This skips listing sessions, so it also works with providers
+that don't support session listing.
+
 **Conflict handling:**
 
 If you try to restore a session when the current tab already has an active
@@ -822,6 +797,30 @@ integrating with other plugins.
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
+      -- Called when a new ACP session is created (or fails to create).
+      -- Fires on both success and failure; check `data.err` first.
+      on_create_session_response = function(data)
+        -- data.session_id: string|nil - The ACP session ID (nil if err is set)
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.response: table|nil - The ACP session creation response
+        --   (nil if err is set)
+        -- data.err: table|nil - Error details if session creation failed
+        if data.err then
+          vim.notify(
+            "Session failed: " .. vim.inspect(data.err),
+            vim.log.levels.ERROR
+          )
+          return
+        end
+        vim.notify("New session: " .. data.response.sessionId)
+
+        -- Reset the agentic_usage tabpage var (set by the on_session_update
+        -- example below) so a new session starts with a clean usage counter.
+        if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
+          vim.t[data.tab_page_id].agentic_usage = nil
+        end
+      end,
+
       -- Called when the user submits a prompt
       on_prompt_submit = function(data)
         -- data.prompt: string - The user's prompt text

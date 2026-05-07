@@ -27,8 +27,8 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
---- @param data agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
+--- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
+--- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
@@ -172,15 +172,17 @@ function SessionManager:new(tab_page_id)
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
-    self.config_options = AgentConfigOptions:new(
-        self.widget.buf_nrs,
-        function(mode_id, is_legacy)
+    self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
+        set_mode = function(mode_id, is_legacy)
             self:_handle_mode_change(mode_id, is_legacy)
         end,
-        function(model_id, is_legacy)
+        set_model = function(model_id, is_legacy)
             self:_handle_model_change(model_id, is_legacy)
-        end
-    )
+        end,
+        set_thought_level = function(value)
+            self:_handle_thought_level_change(value)
+        end,
+    })
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then
@@ -560,7 +562,14 @@ end
 --- Send the newly selected model to the agent
 --- @param model_id string
 --- @param is_legacy boolean|nil
-function SessionManager:_handle_model_change(model_id, is_legacy)
+--- @param on_done fun()|nil Called after the agent responds successfully.
+---  Used by session-creation wiring to chain `default_thought_level` after
+---  the model change has refreshed the available effort/thought_level
+---  options server-side. Without this chain, applying the thought level
+---  before the model response validates against the OLD model's options,
+---  which can silently reject the configured value or warn that a valid
+---  option is unavailable.
+function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
     if not self.session_id then
         return
     end
@@ -596,6 +605,10 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
                 vim.log.levels.INFO,
                 { title = "Agentic Model changed" }
             )
+
+            if on_done then
+                on_done()
+            end
         end
     end
 
@@ -609,6 +622,57 @@ function SessionManager:_handle_model_change(model_id, is_legacy)
             callback
         )
     end
+end
+
+--- Send the newly selected thought level / effort to the agent.
+--- Reads `id` from the stored config option to determine the actual
+--- configId — Claude sends `effort`, Codex sends `thought_level`.
+--- @param value string
+function SessionManager:_handle_thought_level_change(value)
+    if not self.session_id then
+        return
+    end
+
+    local thought = self.config_options.thought_level
+
+    if not thought then
+        Logger.debug("no thought_level option available")
+        return
+    end
+
+    local request_session_id = self.session_id
+    local config_id = thought.id
+
+    local function callback(result, err)
+        if self.session_id ~= request_session_id then
+            Logger.debug("Stale thought_level change response, ignoring")
+            return
+        end
+
+        if err then
+            Logger.notify(
+                string.format(
+                    "Failed to change thought effort level to '%s': %s",
+                    value,
+                    err.message
+                ),
+                vim.log.levels.ERROR
+            )
+        else
+            if result and result.configOptions then
+                Logger.debug("received result after setting thought_level")
+                self:_handle_new_config_options(result.configOptions)
+            end
+
+            Logger.notify(
+                "Thought effort level changed to: " .. value,
+                vim.log.levels.INFO,
+                { title = "Agentic Thought Effort Level changed" }
+            )
+        end
+    end
+
+    self.agent:set_config_option(self.session_id, config_id, value, callback)
 end
 
 --- Schedule a coalesced re-render of function-based headers.
@@ -953,6 +1017,16 @@ function SessionManager:new_session(opts)
     self.agent:create_session(handlers, function(response, err)
         self.status_animation:stop()
 
+        --- @type agentic.UserConfig.CreateSessionResponseData
+        local hook_data = {
+            session_id = response and response.sessionId,
+            tab_page_id = self.tab_page_id,
+            response = response,
+            err = err,
+        }
+
+        P.invoke_hook("on_create_session_response", hook_data)
+
         if err or not response then
             -- no log here, already logged in create_session
             self.session_id = nil
@@ -979,10 +1053,28 @@ function SessionManager:new_session(opts)
             end
         end
 
-        self.config_options:set_initial_model(
+        local function apply_initial_thought_level()
+            self.config_options:set_initial_thought_level(
+                self.agent.provider_config.default_thought_level,
+                function(value)
+                    self:_handle_thought_level_change(value)
+                end
+            )
+        end
+
+        -- set_initial_model returns true when it actually triggered a model
+        -- change (target valid AND different from current). In that case,
+        -- effort/thought_level options will be rebuilt server-side, so we
+        -- chain `apply_initial_thought_level` to run AFTER the model
+        -- response. Otherwise (model unchanged), apply immediately.
+        local will_change_model = self.config_options:set_initial_model(
             self.agent.provider_config.initial_model,
             function(model, is_legacy)
-                self:_handle_model_change(model, is_legacy)
+                self:_handle_model_change(
+                    model,
+                    is_legacy,
+                    apply_initial_thought_level
+                )
             end
         )
 
@@ -992,6 +1084,10 @@ function SessionManager:new_session(opts)
                 self:_handle_mode_change(mode, is_legacy)
             end
         )
+
+        if not will_change_model then
+            apply_initial_thought_level()
+        end
 
         -- Reset first message flag for new session (skip when restoring)
         if not restore_mode then

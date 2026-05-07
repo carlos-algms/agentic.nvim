@@ -1,140 +1,144 @@
 local assert = require("tests.helpers.assert")
 local Fold = require("agentic.ui.tool_call_fold")
+local Config = require("agentic.config")
 
 describe("agentic.ui.ToolCallFold", function()
-    --- @type number
+    --- @type integer
     local bufnr
+    --- @type integer
+    local winid
+    --- @type agentic.UserConfig.Folding|nil
+    local saved_folding
 
     before_each(function()
+        saved_folding = Config.folding
+        Config.folding = {
+            tool_calls = { enabled = true, threshold = 5 },
+        }
         bufnr = vim.api.nvim_create_buf(false, true)
+        winid = vim.api.nvim_open_win(bufnr, false, {
+            relative = "editor",
+            row = 0,
+            col = 0,
+            width = 40,
+            height = 20,
+        })
     end)
 
     after_each(function()
-        Fold.unregister(bufnr)
+        if vim.api.nvim_win_is_valid(winid) then
+            vim.api.nvim_win_close(winid, true)
+        end
         if vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
+        Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
     end)
 
-    --- @param blocks agentic.ui.ToolCallFold.Block[]
-    local function register_blocks(blocks)
-        Fold.register(bufnr, function()
-            return blocks
-        end)
-    end
-
-    describe("foldexpr", function()
-        it("returns 0 when no instance is registered", function()
-            assert.equal(Fold.foldexpr(bufnr, 1), 0)
-            assert.equal(Fold.foldexpr(bufnr, 10), 0)
+    describe("threshold", function()
+        it("returns the configured threshold", function()
+            assert.equal(Fold.threshold(), 5)
         end)
 
-        it("returns 0 when getter returns empty list", function()
-            register_blocks({})
-            assert.equal(Fold.foldexpr(bufnr, 1), 0)
-            assert.equal(Fold.foldexpr(bufnr, 50), 0)
-        end)
-
-        -- Single foldable block spanning rows 0..16 (header=line 1, footer=line 17,
-        -- interior=lines 2..16 in 1-indexed). Covers header/footer/interior/outside
-        -- boundaries for a foldable block.
-        it("folds only the interior lines of a foldable block", function()
-            register_blocks({
-                { start_row = 0, end_row = 16, foldable = true },
-            })
-            --- @type { lnum: integer, expected: integer, label: string }[]
-            local cases = {
-                { lnum = 1, expected = 0, label = "header" },
-                { lnum = 2, expected = 1, label = "first interior" },
-                { lnum = 10, expected = 1, label = "mid interior" },
-                { lnum = 16, expected = 1, label = "last interior" },
-                { lnum = 17, expected = 0, label = "footer" },
-                { lnum = 50, expected = 0, label = "outside" },
+        it("returns nil when folding is disabled", function()
+            Config.folding = {
+                tool_calls = { enabled = false, threshold = 5 },
             }
-            for _, c in ipairs(cases) do
-                assert.equal(Fold.foldexpr(bufnr, c.lnum), c.expected)
-            end
+            assert.is_nil(Fold.threshold())
         end)
 
-        it("returns 0 for non-foldable block even in interior", function()
-            register_blocks({
-                { start_row = 0, end_row = 16, foldable = false },
-            })
-            assert.equal(Fold.foldexpr(bufnr, 2), 0)
-            assert.equal(Fold.foldexpr(bufnr, 10), 0)
-        end)
-
-        it("returns 0 for block with empty interior", function()
-            register_blocks({
-                { start_row = 0, end_row = 1, foldable = true },
-            })
-            assert.equal(Fold.foldexpr(bufnr, 1), 0)
-            assert.equal(Fold.foldexpr(bufnr, 2), 0)
-        end)
-
-        it("handles multiple mixed blocks per lnum", function()
-            register_blocks({
-                { start_row = 0, end_row = 5, foldable = false },
-                { start_row = 10, end_row = 30, foldable = true },
-                { start_row = 35, end_row = 40, foldable = false },
-            })
-            --- @type { lnum: integer, expected: integer }[]
-            local cases = {
-                { lnum = 3, expected = 0 },
-                { lnum = 8, expected = 0 },
-                { lnum = 11, expected = 0 },
-                { lnum = 12, expected = 1 },
-                { lnum = 25, expected = 1 },
-                { lnum = 30, expected = 1 },
-                { lnum = 38, expected = 0 },
+        it("clamps negative thresholds to 0", function()
+            Config.folding = {
+                tool_calls = { enabled = true, threshold = -3 },
             }
-            for _, c in ipairs(cases) do
-                assert.equal(Fold.foldexpr(bufnr, c.lnum), c.expected)
+            assert.equal(Fold.threshold(), 0)
+        end)
+    end)
+
+    describe("should_fold", function()
+        --- @param lines string[]
+        local function fill(lines)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+        end
+
+        it("folds when screen-row count exceeds threshold", function()
+            local six = {}
+            for i = 1, 6 do
+                six[i] = "L" .. i
             end
+            fill(six)
+            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
+        end)
+
+        it("tips over to fold at the screen-row threshold boundary", function()
+            local five = {}
+            for i = 1, 5 do
+                five[i] = "L" .. i
+            end
+            fill(five)
+            assert.is_false(Fold.should_fold(bufnr, 0, 4, false))
+
+            fill({ "L1", "L2", "L3", "L4", "L5", "L6" })
+            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
+        end)
+
+        it(
+            "folds a single buffer line that wraps past the threshold",
+            function()
+                fill({ string.rep("x", 240) })
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
+
+        it(
+            "does not fold a short single line, but does fold once it wraps far enough",
+            function()
+                fill({ "short" })
+                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+
+                fill({ string.rep("x", 240) })
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
+
+        it("never folds diff blocks regardless of size", function()
+            fill({ string.rep("x", 1000) })
+            assert.is_false(Fold.should_fold(bufnr, 0, 0, true))
+        end)
+
+        it(
+            "returns false when folding is disabled, even for huge content",
+            function()
+                fill({ string.rep("x", 1000) })
+                -- sanity: with folding ON this content would fold
+                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+
+                Config.folding = {
+                    tool_calls = { enabled = false, threshold = 5 },
+                }
+                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+            end
+        )
+
+        it("returns false when no window is attached to the buffer", function()
+            local hidden_buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(
+                hidden_buf,
+                0,
+                -1,
+                false,
+                { string.rep("x", 1000) }
+            )
+            assert.is_false(Fold.should_fold(hidden_buf, 0, 0, false))
+            vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
     end)
 
     describe("setup_window", function()
-        local Config = require("agentic.config")
-        --- @type agentic.UserConfig.Folding|nil
-        local saved_folding
-        --- @type integer
-        local winid
-
-        --- @return string
-        local function expected_foldexpr()
-            return string.format(
-                "v:lua.require'agentic.ui.tool_call_fold'.foldexpr(%d, v:lnum)",
-                bufnr
-            )
-        end
-
-        before_each(function()
-            saved_folding = Config.folding
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 10 },
-            }
-            winid = vim.api.nvim_open_win(bufnr, false, {
-                relative = "editor",
-                row = 0,
-                col = 0,
-                width = 40,
-                height = 20,
-            })
-        end)
-
-        after_each(function()
-            if vim.api.nvim_win_is_valid(winid) then
-                vim.api.nvim_win_close(winid, true)
-            end
-            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
-        end)
-
-        it("applies fold options to the window", function()
+        it("applies manual fold options to the window", function()
             Fold.setup_window(winid, bufnr)
 
-            assert.equal(vim.wo[winid].foldmethod, "expr")
-            assert.equal(vim.wo[winid].foldexpr, expected_foldexpr())
+            assert.equal(vim.wo[winid].foldmethod, "manual")
             assert.equal(vim.wo[winid].foldlevel, 0)
             assert.is_true(vim.wo[winid].foldenable)
             assert.equal(
@@ -145,24 +149,155 @@ describe("agentic.ui.ToolCallFold", function()
 
         it("does not apply options when folding is disabled", function()
             Config.folding = {
-                tool_calls = { enabled = false, threshold = 10 },
+                tool_calls = { enabled = false, threshold = 5 },
             }
-
             Fold.setup_window(winid, bufnr)
-
-            assert.equal(vim.wo[winid].foldmethod, "manual")
-            assert.is_not.equal(vim.wo[winid].foldexpr, expected_foldexpr())
+            -- foldmethod default is "manual" so we cannot use that as
+            -- the marker; assert that foldtext was NOT set instead.
+            assert.is_not.equal(
+                vim.wo[winid].foldtext,
+                "v:lua.require'agentic.ui.tool_call_fold'.foldtext()"
+            )
         end)
 
-        it("does not reset foldlevel on subsequent calls", function()
+        it("restores foldlevel and foldenable when drifted", function()
             Fold.setup_window(winid, bufnr)
             assert.equal(vim.wo[winid].foldlevel, 0)
 
-            -- Simulate a fold opened by the user. Re-applying must NOT reset
-            -- foldlevel, or the fold would close on the next widget rerender.
             vim.wo[winid].foldlevel = 99
+            vim.wo[winid].foldenable = false
             Fold.setup_window(winid, bufnr)
-            assert.equal(vim.wo[winid].foldlevel, 99)
+            assert.equal(vim.wo[winid].foldlevel, 0)
+            assert.is_true(vim.wo[winid].foldenable)
+        end)
+
+        it("preserves manually-opened folds across repeated calls", function()
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                0,
+                -1,
+                false,
+                vim.fn["repeat"]({ "L" }, 30)
+            )
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_win_call(winid, function()
+                vim.cmd("silent! 5,15fold")
+                vim.cmd("normal! 10G")
+                vim.cmd("normal! zo")
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+        end)
+
+        it("preserves fold ranges across window close + reopen", function()
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                0,
+                -1,
+                false,
+                vim.fn["repeat"]({ "L" }, 60)
+            )
+            Fold.setup_window(winid, bufnr)
+            Fold.close_range(bufnr, 5, 15)
+            Fold.close_range(bufnr, 25, 35)
+            Fold.close_range(bufnr, 45, 55)
+
+            vim.api.nvim_win_close(winid, true)
+            winid = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 0,
+                col = 0,
+                width = 40,
+                height = 20,
+            })
+            Fold.setup_window(winid, bufnr)
+
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), 5)
+                assert.equal(vim.fn.foldclosed(30), 25)
+                assert.equal(vim.fn.foldclosed(50), 45)
+                assert.equal(vim.fn.foldclosedend(10), 15)
+                assert.equal(vim.fn.foldclosedend(30), 35)
+                assert.equal(vim.fn.foldclosedend(50), 55)
+            end)
+        end)
+
+        it(
+            "preserves folds when user has non-manual foldmethod global",
+            function()
+                local saved_global = vim.go.foldmethod
+                vim.go.foldmethod = "indent"
+
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    vim.fn["repeat"]({ "    L" }, 30)
+                )
+                Fold.setup_window(winid, bufnr)
+                Fold.close_range(bufnr, 5, 15)
+
+                vim.api.nvim_win_call(winid, function()
+                    assert.equal(vim.fn.foldclosed(10), 5)
+                    assert.equal(vim.fn.foldclosedend(10), 15)
+                end)
+                assert.equal(vim.wo[winid].foldmethod, "manual")
+
+                vim.go.foldmethod = saved_global
+            end
+        )
+    end)
+
+    describe("close_range", function()
+        before_each(function()
+            local lines = {}
+            for i = 1, 30 do
+                lines[i] = "L" .. i
+            end
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+            Fold.setup_window(winid, bufnr)
+        end)
+
+        it("closes a manual fold over the requested range", function()
+            Fold.close_range(bufnr, 5, 20)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), 5)
+                assert.equal(vim.fn.foldclosed(20), 5)
+                assert.equal(vim.fn.foldclosed(21), -1)
+            end)
+        end)
+
+        it("is a no-op when folding is disabled", function()
+            Config.folding = {
+                tool_calls = { enabled = false, threshold = 5 },
+            }
+            Fold.close_range(bufnr, 5, 20)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+        end)
+
+        it("is a no-op when start_lnum > end_lnum", function()
+            Fold.close_range(bufnr, 20, 5)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(10), -1)
+            end)
+        end)
+
+        it("is a no-op when buffer is not displayed", function()
+            local hidden_buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(hidden_buf, 0, -1, false, { "a", "b" })
+
+            assert.has_no_errors(function()
+                Fold.close_range(hidden_buf, 1, 2)
+            end)
+
+            vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
     end)
 
@@ -174,29 +309,6 @@ describe("agentic.ui.ToolCallFold", function()
                 Fold.foldtext(),
                 "  10 lines hidden (Fold: `zo` open | `zc` close)"
             )
-        end)
-    end)
-
-    describe("register and unregister", function()
-        it("unregister removes the entry", function()
-            register_blocks({
-                { start_row = 0, end_row = 16, foldable = true },
-            })
-            Fold.unregister(bufnr)
-            assert.equal(Fold.foldexpr(bufnr, 5), 0)
-        end)
-
-        it("re-register replaces the previous getter", function()
-            register_blocks({
-                { start_row = 0, end_row = 16, foldable = true },
-            })
-            register_blocks({})
-            assert.equal(Fold.foldexpr(bufnr, 5), 0)
-        end)
-
-        it("unregister is safe when bufnr not registered", function()
-            Fold.unregister(bufnr)
-            assert.equal(Fold.foldexpr(bufnr, 1), 0)
         end)
     end)
 end)
