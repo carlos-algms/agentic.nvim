@@ -974,15 +974,40 @@ function SessionManager:_build_handlers()
         on_request_permission = function(request, callback)
             self.status_animation:stop()
 
+            -- When Copilot asks for permission to edit a file, it has already
+            -- sent a `tool_call` event for that edit — which is where the diff
+            -- gets stored (under the real tool-call id, e.g. "tooluse_abc123").
+            -- The subsequent `request_permission` event carries a different,
+            -- generic id: "write-permission".  That block has no diff attached,
+            -- so passing it straight to `_show_diff_in_buffer` is a no-op.
+            --
+            -- To find the right block, we look up the existing edit block for
+            -- the same file that already has a diff.  If none is found (e.g.
+            -- OpenCode, which sends `request_permission` without a preceding
+            -- `tool_call`) we fall back to the id from the permission request,
+            -- which is the correct block in that case.
+            local diff_tool_call_id = request.toolCall.toolCallId
+            local file_path = request.toolCall.locations
+                and request.toolCall.locations[1]
+                and request.toolCall.locations[1].path
+            if file_path then
+                for id, block in pairs(self.message_writer.tool_call_blocks) do
+                    if block.kind == "edit"
+                        and block.file_path == file_path
+                        and block.diff ~= nil
+                    then
+                        diff_tool_call_id = id
+                        break
+                    end
+                end
+            end
+
             local function wrapped_callback(option_id)
                 callback(option_id)
 
                 local is_rejection = option_id == "reject_once"
                     or option_id == "reject_always"
-                self:_clear_diff_in_buffer(
-                    request.toolCall.toolCallId,
-                    is_rejection
-                )
+                self:_clear_diff_in_buffer(diff_tool_call_id, is_rejection)
 
                 if
                     not self.permission_manager.current_request
@@ -992,7 +1017,7 @@ function SessionManager:_build_handlers()
                 end
             end
 
-            self:_show_diff_in_buffer(request.toolCall.toolCallId)
+            self:_show_diff_in_buffer(diff_tool_call_id)
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
