@@ -196,6 +196,26 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 - **FORBIDDEN: global keymaps** -> use `BufHelpers.keymap_set(bufnr, ...)`.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
   `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
+- **FORBIDDEN: `:set`-style writes for window-local options** -> use
+  `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
+  `nvim_set_option_value(opt, val, { win = winid })`. Per `:h local-options`,
+  window-local options are remembered per `(buffer, window)`. `:set` writes
+  imprint the value in any buffer that briefly cohabits the window and the
+  buffer carries it to its next host. `[0]` is the `:setlocal` sentinel
+  (only `[0]` is supported by `vim.wo`, see `:h vim.wo`); without it, panel
+  styling leaks to redirected buffers.
+  - Applies to ALL `vim.wo` writes, not just panels. No `vim.bo` equivalent
+    is needed: buffer options have no per-window memory.
+  - Reads (`local x = vim.wo[winid].opt`) are unaffected; `[0]` is
+    write-only.
+  - Regression: `lua/agentic/ui/buffer_guard.test.lua::"does not leak widget
+    window options to the editor window after redirect"`.
+- **AVOID: `nvim_set_option_value` / `nvim_get_option_value`** for buffer or
+  window options when an idiomatic accessor exists. Use `vim.bo[bufnr].opt`
+  for buffer options and `vim.wo[winid][0].opt` for window options. The
+  `nvim_*_option_value` API is reserved for cases that need a dynamic option
+  name or a non-default scope (e.g. `scope = "global"`). Reading is symmetric:
+  `vim.bo[bufnr].opt` / `vim.wo[winid].opt` (no `[0]` on reads).
 
 ## Code Style
 

@@ -117,7 +117,7 @@ local function apply_panel_window_opts(winid, bufnr, window_name, win_opts)
     }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
 
     for name, value in pairs(merged_win_opts) do
-        vim.api.nvim_set_option_value(name, value, { win = winid })
+        vim.wo[winid][0][name] = value
     end
 end
 
@@ -326,7 +326,7 @@ function WidgetLayout.open_hidden_chat_window(bufnr)
         return nil
     end
 
-    vim.wo[winid].winbar = ""
+    vim.wo[winid][0].winbar = ""
 
     apply_panel_window_opts(winid, bufnr, "chat", {
         statuscolumn = ToolBlockBorder.STATUSCOLUMN_EXPR,

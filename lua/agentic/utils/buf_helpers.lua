@@ -15,16 +15,11 @@ function BufHelpers.with_modifiable(bufnr, callback)
         return false
     end
 
-    local original_modifiable =
-        vim.api.nvim_get_option_value("modifiable", { buf = bufnr })
-    vim.api.nvim_set_option_value("modifiable", true, { buf = bufnr })
+    local original_modifiable = vim.bo[bufnr].modifiable
+    vim.bo[bufnr].modifiable = true
     local ok, response = pcall(callback, bufnr)
 
-    vim.api.nvim_set_option_value(
-        "modifiable",
-        original_modifiable,
-        { buf = bufnr }
-    )
+    vim.bo[bufnr].modifiable = original_modifiable
 
     if not ok then
         Logger.notify(

@@ -56,6 +56,14 @@ Widget windows are disposable.
   `tab_closing` check.
 - A hidden chat floating window keeps the chat buffer attached while the widget
   is hidden, so manual folds can be applied while closed. See ADR 001.
+  - Opened with `hide = true` + `focusable = false` + `noautocmd = true`. The
+    user cannot reach it: `<C-w>w`/`<C-w>p`, `:wincmd`, and `:buffer` skip it;
+    `nvim_list_wins()` returns it but interactive navigation does not visit it.
+    Only code holding `widget._hidden_chat_winid` can target it (via
+    `nvim_set_current_win`/`nvim_win_set_buf`). Treat it as an internal handle,
+    not a window the user might be sitting in. Do NOT add keymaps,
+    buffer-local autocmds expecting user focus, or any UX that assumes the user
+    can act inside it.
 
 ## Hard rules
 
@@ -87,6 +95,10 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
 - Foreign buffers in widget windows are redirected via `BufferGuard`
   (`lua/agentic/ui/buffer_guard.lua`) to a non-widget window in the same
   tabpage.
+- Panel + fold window options (`WidgetLayout.PANEL_WINDOW_OPTS`,
+  `Fold.setup_window`) MUST be written via `vim.wo[winid][0]`. See the
+  general `:set`-style ban in root `AGENTS.md` "Common traps". Regression:
+  `buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.
 - Module-level state is forbidden for per-tab data. Namespace IDs are exempt —
   IDs are global, isolation comes from per-buffer `nvim_buf_clear_namespace`.
 
@@ -207,3 +219,5 @@ change.
   `message_writer.test.lua::_check_auto_scroll`.
 - Thinking-state cleared on non-thought writes —
   `message_writer.test.lua::thinking block highlighting::"clears thinking state on reset_sender_tracking, write_tool_call_block, and write_message"`.
+- Widget window options do not leak to redirected buffers —
+  `buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.

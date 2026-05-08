@@ -174,7 +174,7 @@ local function set_winbar(winid, text)
 
     -- Handle empty string case - disable winbar completely
     if text == "" then
-        vim.api.nvim_set_option_value("winbar", nil, { win = winid })
+        vim.wo[winid][0].winbar = ""
         return
     end
 
@@ -192,7 +192,7 @@ local function set_winbar(winid, text)
 
     winbar_text = "%#Normal#" .. winbar_text
 
-    vim.api.nvim_set_option_value("winbar", winbar_text, { win = winid })
+    vim.wo[winid][0].winbar = winbar_text
 end
 
 --- Sets the buffer name based on header text and tab count

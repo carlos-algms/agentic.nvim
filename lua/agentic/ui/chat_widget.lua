@@ -499,7 +499,7 @@ function ChatWidget:_create_new_buf(opts)
     }, opts)
 
     for key, value in pairs(config) do
-        vim.api.nvim_set_option_value(key, value, { buf = bufnr })
+        vim.bo[bufnr][key] = value
     end
 
     return bufnr

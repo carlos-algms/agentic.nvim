@@ -63,13 +63,13 @@ function Fold.setup_window(winid, _bufnr)
         return
     end
     if vim.wo[winid].foldmethod ~= "manual" then
-        vim.wo[winid].foldmethod = "manual"
+        vim.wo[winid][0].foldmethod = "manual"
     end
     if vim.wo[winid].foldlevel ~= 0 then
-        vim.wo[winid].foldlevel = 0
+        vim.wo[winid][0].foldlevel = 0
     end
-    vim.wo[winid].foldenable = true
-    vim.wo[winid].foldtext = FOLDTEXT_EXPR
+    vim.wo[winid][0].foldenable = true
+    vim.wo[winid][0].foldtext = FOLDTEXT_EXPR
 end
 
 --- @param bufnr integer
