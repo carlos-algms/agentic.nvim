@@ -36,6 +36,38 @@ SessionManager (per tab)
 
 Widget windows are disposable.
 
+```mermaid
+stateDiagram-v2
+    [*] --> hidden
+    hidden --> visible: show()<br/>create fresh windows<br/>reapply window-local opts
+    visible --> hidden: hide()<br/>close + destroy widget windows<br/>buffers persist
+
+    state "destroy()" as destroy
+    visible --> destroy
+    hidden --> destroy
+
+    state tab_check <<choice>>
+    destroy --> tab_check
+    tab_check --> hide_then_delete: tab still in nvim_list_tabpages()
+    tab_check --> delete_only: tab_closing<br/>(TabClosed in progress)
+
+    hide_then_delete --> [*]: buffers deleted
+    delete_only --> [*]: buffers deleted<br/>(skip nvim_win_close, segfaults on 0.11.x)
+
+    note right of visible
+        hide() preconditions:
+        - ensure non-widget fallback window
+          (open_editor_window if none) -> E444 otherwise
+        - wrap close in _avoid_auto_close_cmd
+          (sets _closing) -> recursive close otherwise
+    end note
+    note right of hidden
+        hidden chat float keeps chat buffer
+        attached so manual folds apply while
+        closed (ADR 001). Internal handle only.
+    end note
+```
+
 - `hide` closes and destroys every widget window.
 - Buffers persist.
 - `show` creates fresh windows on every call and reapplies every window-local
@@ -197,6 +229,23 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
     write path itself: it is set true around `_reanchor_permission_prompt`'s own
     `set_lines` so the post-mutation callback no-ops instead of re-entering.
     Removing the flag re-enters and stack-overflows.
+
+    ```mermaid
+    sequenceDiagram
+        participant Caller
+        participant PM as PermissionManager
+        participant Buf as chat buffer
+        participant CB as post-mutation cb
+
+        Caller->>PM: _reanchor_permission_prompt()
+        PM->>PM: _reanchoring = true
+        PM->>Buf: set_lines (move buttons)
+        Buf-->>CB: fires post-mutation hook
+        CB->>PM: check _reanchoring
+        Note over CB,PM: true -> no-op<br/>(without flag: re-enters,<br/>stack overflow)
+        PM->>PM: _reanchoring = false
+        PM-->>Caller: done
+    ```
 
 ## Test invariants
 

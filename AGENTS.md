@@ -153,6 +153,28 @@ SessionRegistry.get_session_for_tab_page(nil, function(session)
 end)
 ```
 
+```mermaid
+flowchart TD
+    Caller["public entry in init.lua"]
+    Entry["SessionRegistry.get_session_for_tab_page(tab_id_or_nil, cb?)"]
+    HasCb{"callback provided?"}
+    Resolve["resolve tabpage<br/>(nil -> current tab)"]
+    Provider{"ACP provider configured?"}
+    ReturnNil["return nil"]
+    Wrap["pcall(callback, session)"]
+    Touch["touch session/widget state safely"]
+    Notify["errors notified, not raised"]
+    Bare["bare-return form<br/>returns session or nil"]
+
+    Caller --> Entry --> HasCb
+    HasCb -->|yes| Resolve --> Wrap
+    Wrap --> Touch
+    Wrap --> Notify
+    HasCb -->|no, bare| Provider
+    Provider -->|yes| Bare
+    Provider -->|no| ReturnNil
+```
+
 Guarantees inside the callback:
 
 - Tabpage and session resolved against the requested tab.
@@ -168,10 +190,10 @@ Outside the callback:
 
 Cleanup path:
 
-```text
-TabClosed autocmd
-  -> SessionRegistry.destroy_session(tab_page_id)
-     -> SessionManager:destroy
+```mermaid
+flowchart LR
+    A[TabClosed autocmd] --> B["SessionRegistry.destroy_session(tab_page_id)"]
+    B --> C["SessionManager:destroy"]
 ```
 
 ### Logger
