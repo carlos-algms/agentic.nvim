@@ -310,6 +310,50 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_true(#new_ranges > 0)
             assert.equal("inserted", new_ranges[1].new_line)
         end)
+
+        it(
+            "wraps markdown-file diffs in a 5-backtick fence so inner ``` survives",
+            function()
+                read_stub:returns({ "old line" })
+
+                local Theme = require("agentic.theme")
+                local lang = Theme.get_language_from_path("README.md")
+                local open_fence = string.rep("`", 5) .. lang
+                local close_fence = string.rep("`", 5)
+
+                --- @type agentic.ui.MessageWriter.ToolCallBlock
+                local block = {
+                    tool_call_id = "test-md-fence",
+                    status = "pending",
+                    kind = "edit",
+                    argument = "README.md",
+                    file_path = "README.md",
+                    diff = {
+                        old = { "old line" },
+                        new = { "new line", "```", "still new" },
+                    },
+                }
+
+                local lines = writer:_prepare_block_lines(block)
+
+                local open_idx, close_idx, inner_idx
+                for i, line in ipairs(lines) do
+                    if line == open_fence then
+                        open_idx = i
+                    elseif line == close_fence and not close_idx then
+                        close_idx = i
+                    elseif line == "```" then
+                        inner_idx = i
+                    end
+                end
+
+                assert.is_not_nil(open_idx)
+                assert.is_not_nil(close_idx)
+                assert.is_not_nil(inner_idx)
+                assert.is_true(open_idx < inner_idx)
+                assert.is_true(inner_idx < close_idx)
+            end
+        )
     end)
 
     describe("sender header tracking", function()

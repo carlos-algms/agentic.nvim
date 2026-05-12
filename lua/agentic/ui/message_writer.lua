@@ -664,12 +664,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         })
 
         local lang = Theme.get_language_from_path(diff_path)
-
-        -- Hack to avoid triple backtick conflicts in markdown files
-        local has_fences = lang ~= "md" and lang ~= "markdown"
-        if has_fences then
-            table.insert(lines, "```" .. lang)
-        end
+        table.insert(lines, "`````" .. lang)
 
         for _, block in ipairs(diff_blocks) do
             local old_count = #block.old_lines
@@ -748,10 +743,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             end
         end
 
-        -- Close code fences, if not markdown, to avoid conflicts
-        if has_fences then
-            table.insert(lines, "```")
-        end
+        table.insert(lines, "`````")
     else
         if tool_call_block.body then
             vim.list_extend(lines, tool_call_block.body)

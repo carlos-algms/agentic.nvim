@@ -50,7 +50,8 @@ local lang_map = {
     sh = "bash",
     typescriptreact = "tsx",
     javascriptreact = "jsx",
-    markdown = "md",
+    -- tree-sitter markdown parser does not register "md" as alias, fences with "md" are not highlighted
+    md = "markdown",
 }
 
 local status_hl = {
