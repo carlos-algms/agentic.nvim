@@ -44,6 +44,10 @@ non-obvious. Citation format: `ADR NNN` (zero-padded, no brackets, no dash).
 - New "FORBIDDEN" / "MUST" rule about runtime behavior = new test that fails
   without the rule. Reference the test by name in the rule body. Pure-style
   rules (formatting, naming, docs) are exempt.
+- Fenced code blocks MUST have a language hint. Use `text` for free-form ASCII
+  (trees, byte layouts, pseudocode), `mermaid` for diagrams, and the actual
+  language otherwise (`lua`, `bash`, `markdown`, etc.). CodeRabbit /
+  markdownlint flag bare fences (MD040).
 
 ## CRITICAL: No Assumptions - Gather Context First
 
@@ -223,18 +227,17 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   `nvim_set_option_value(opt, val, { win = winid })`. Per `:h local-options`,
   window-local options are remembered per `(buffer, window)`. `:set` writes
   imprint the value in any buffer that briefly cohabits the window and the
-  buffer carries it to its next host. `[0]` is the `:setlocal` sentinel
-  (only `[0]` is supported by `vim.wo`, see `:h vim.wo`); without it, panel
-  styling leaks to redirected buffers.
-  - Applies to ALL `vim.wo` writes, not just panels. No `vim.bo` equivalent
-    is needed: buffer options have no per-window memory.
-  - Reads (`local x = vim.wo[winid].opt`) are unaffected; `[0]` is
-    write-only.
-  - Regression: `lua/agentic/ui/buffer_guard.test.lua::"does not leak widget
-    window options to the editor window after redirect"`.
+  buffer carries it to its next host. `[0]` is the `:setlocal` sentinel (only
+  `[0]` is supported by `vim.wo`, see `:h vim.wo`); without it, panel styling
+  leaks to redirected buffers.
+  - Applies to ALL `vim.wo` writes, not just panels. No `vim.bo` equivalent is
+    needed: buffer options have no per-window memory.
+  - Reads (`local x = vim.wo[winid].opt`) are unaffected; `[0]` is write-only.
+  - Regression:
+    `lua/agentic/ui/buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.
 - **AVOID: `nvim_set_option_value` / `nvim_get_option_value`** for buffer or
-  window options when an idiomatic accessor exists. Use `vim.bo[bufnr].opt`
-  for buffer options and `vim.wo[winid][0].opt` for window options. The
+  window options when an idiomatic accessor exists. Use `vim.bo[bufnr].opt` for
+  buffer options and `vim.wo[winid][0].opt` for window options. The
   `nvim_*_option_value` API is reserved for cases that need a dynamic option
   name or a non-default scope (e.g. `scope = "global"`). Reading is symmetric:
   `vim.bo[bufnr].opt` / `vim.wo[winid].opt` (no `[0]` on reads).

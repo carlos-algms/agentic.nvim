@@ -63,7 +63,7 @@ docs), say so explicitly in the PR description.
 
 **Example structure:**
 
-```
+```text
 lua/agentic/
   ├── init.lua
   ├── init.test.lua

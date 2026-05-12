@@ -132,7 +132,7 @@ chunks. JSON-RPC messages are newline-delimited, but a single chunk
 may split mid-message or carry several messages plus a partial
 trailer.
 
-```
+```text
 chunk 1:  ...{"jsonrpc":"2.0","i
                               ╰── partial, no newline yet
 chunk 2:  d":1,...}\n{"jsonrpc":"2.0","method
@@ -142,7 +142,7 @@ chunk 2:  d":1,...}\n{"jsonrpc":"2.0","method
 
 The buffering loop in `acp_transport.create_stdio_transport`:
 
-```
+```text
 chunks = chunks .. data
 lines  = split(chunks, "\n")
 chunks = lines[#lines]    -- keep partial trailer for next read
