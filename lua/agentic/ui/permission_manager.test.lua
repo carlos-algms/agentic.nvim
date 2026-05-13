@@ -391,17 +391,6 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("button-level focus (h / l / <CR>)", function()
-        --- @param lhs string
-        --- @return function|nil
-        local function get_keymap_callback(lhs)
-            for _, km in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
-                if km.lhs == lhs then
-                    return km.callback
-                end
-            end
-            return nil
-        end
-
         it(
             "resets focused_button_index to 1 on each block focus change",
             function()
@@ -419,7 +408,7 @@ describe("agentic.ui.PermissionManager", function()
 
                 assert.equal(1, writer:get_focused_button_index("tc-1"))
 
-                local l_cb = get_keymap_callback("l")
+                local l_cb = get_digit_callback("l")
                 assert.is_not_nil(l_cb)
                 if l_cb then
                     l_cb()
@@ -440,7 +429,7 @@ describe("agentic.ui.PermissionManager", function()
                 spy.new(function() end) --[[@as function]]
             )
 
-            local l_cb = get_keymap_callback("l")
+            local l_cb = get_digit_callback("l")
             assert.is_not_nil(l_cb)
             if l_cb then
                 l_cb()
@@ -457,7 +446,7 @@ describe("agentic.ui.PermissionManager", function()
                 spy.new(function() end) --[[@as function]]
             )
 
-            local h_cb = get_keymap_callback("h")
+            local h_cb = get_digit_callback("h")
             assert.is_not_nil(h_cb)
             if h_cb then
                 h_cb() -- wraps from 1 to last (2)
@@ -474,8 +463,8 @@ describe("agentic.ui.PermissionManager", function()
                 local cb = spy.new(function() end)
                 pm:add_request(make_request("tc-1"), cb --[[@as function]])
 
-                local l_cb = get_keymap_callback("l")
-                local cr_cb = get_keymap_callback("<CR>")
+                local l_cb = get_digit_callback("l")
+                local cr_cb = get_digit_callback("<CR>")
                 assert.is_not_nil(l_cb)
                 assert.is_not_nil(cr_cb)
                 if l_cb then
@@ -517,8 +506,8 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                local right_cb = get_keymap_callback("<Right>")
-                local left_cb = get_keymap_callback("<Left>")
+                local right_cb = get_digit_callback("<Right>")
+                local left_cb = get_digit_callback("<Left>")
                 assert.is_not_nil(right_cb)
                 assert.is_not_nil(left_cb)
                 if right_cb then
@@ -542,9 +531,9 @@ describe("agentic.ui.PermissionManager", function()
                 -- Move cursor off the focused row.
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
-                local l_cb = get_keymap_callback("l")
-                local cr_cb = get_keymap_callback("<CR>")
-                local digit_cb = get_keymap_callback("1")
+                local l_cb = get_digit_callback("l")
+                local cr_cb = get_digit_callback("<CR>")
+                local digit_cb = get_digit_callback("1")
                 assert.is_not_nil(l_cb)
                 assert.is_not_nil(cr_cb)
                 assert.is_not_nil(digit_cb)
@@ -699,14 +688,7 @@ describe("agentic.ui.PermissionManager", function()
 
             assert.truthy(status_row_text("tc-only"):find("Allow"))
 
-            local digit_cb = (function()
-                for _, km in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
-                    if km.lhs == "1" then
-                        return km.callback
-                    end
-                end
-                return nil
-            end)()
+            local digit_cb = get_digit_callback("1")
             assert.is_not_nil(digit_cb)
             if digit_cb then
                 digit_cb()

@@ -478,16 +478,12 @@ function PermissionManager:_remove_focus_keymaps()
         return
     end
 
+    local bufnr = self.message_writer.bufnr
     for i = 1, MAX_DIGIT_KEYS do
-        pcall(
-            vim.keymap.del,
-            "n",
-            tostring(i),
-            { buffer = self.message_writer.bufnr }
-        )
+        BufHelpers.keymap_del(bufnr, "n", tostring(i))
     end
     for _, lhs in ipairs({ "h", "l", "<Left>", "<Right>", "<CR>" }) do
-        pcall(vim.keymap.del, "n", lhs, { buffer = self.message_writer.bufnr })
+        BufHelpers.keymap_del(bufnr, "n", lhs)
     end
 end
 
