@@ -13,8 +13,8 @@ local NS_DIFF_HIGHLIGHTS =
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
--- Static label map keyed by PermissionOptionKind. Agent-supplied option.name
--- is intentionally discarded.
+-- Static label map keyed by PermissionOptionKind
+-- Agent-supplied option.name is intentionally discarded
 local PERMISSION_OPTION_LABELS = {
     allow_once = "Allow",
     allow_always = "Allow Always",
@@ -759,18 +759,22 @@ function MessageWriter:get_focused_button_index(tool_call_id)
 end
 
 --- @param tool_call_id string
---- @return integer|nil col 0-indexed start column of the first permission button, or nil
-function MessageWriter:_get_first_button_col(tool_call_id)
+--- @param index integer 1-indexed button position
+--- @return integer|nil col 0-indexed start column of the Nth permission button, or nil
+function MessageWriter:get_button_col(tool_call_id, index)
     local tracker = self.tool_call_blocks[tool_call_id]
     if not tracker or not tracker.permission then
         return nil
     end
+
     local _, segments = self:_build_status_row(tracker)
-    -- segments[1] is the status word; segments[2] is the first button.
-    if not segments[2] then
+    -- segments[1] is the status word; segments[1 + i] is the i-th button.
+    local seg = segments[1 + index]
+    if not seg then
         return nil
     end
-    return segments[2][1]
+
+    return seg[1]
 end
 
 --- Recompute and write the status row (row N) for the given tool call block.
@@ -779,13 +783,17 @@ end
 --- @param tool_call_id string
 function MessageWriter:repaint_status_row(tool_call_id)
     local tracker = self.tool_call_blocks[tool_call_id]
+
     if not tracker then
         return
     end
-    local end_row = self:_get_block_end_row(tool_call_id)
+
+    local end_row = self:get_block_end_row(tool_call_id)
+
     if not end_row then
         return
     end
+
     local text, hl_segments = self:_build_status_row(tracker)
     self:_render_status_row(end_row, text, hl_segments)
 end
@@ -796,34 +804,41 @@ end
 --- @return integer|nil start_row
 function MessageWriter:_get_block_start_row(tool_call_id)
     local tracker = self.tool_call_blocks[tool_call_id]
+
     if not tracker or not tracker.extmark_id then
         return nil
     end
+
     local pos = vim.api.nvim_buf_get_extmark_by_id(
         self.bufnr,
         NS_TOOL_BLOCKS,
         tracker.extmark_id,
         {}
     )
+
     return pos and pos[1]
 end
 
 --- @param tool_call_id string
 --- @return integer|nil end_row
-function MessageWriter:_get_block_end_row(tool_call_id)
+function MessageWriter:get_block_end_row(tool_call_id)
     local tracker = self.tool_call_blocks[tool_call_id]
+
     if not tracker or not tracker.extmark_id then
         return nil
     end
+
     local pos = vim.api.nvim_buf_get_extmark_by_id(
         self.bufnr,
         NS_TOOL_BLOCKS,
         tracker.extmark_id,
         { details = true }
     )
+
     if not pos or not pos[1] then
         return nil
     end
+
     return pos[3] and pos[3].end_row
 end
 
@@ -1010,6 +1025,7 @@ end
 --- @return agentic.ui.MessageWriter.StatusSegment[] segments
 function MessageWriter:_build_status_row(tracker)
     local status = tracker.status
+
     if not status or status == "" then
         return "", {}
     end
@@ -1025,22 +1041,25 @@ function MessageWriter:_build_status_row(tracker)
     }
 
     local perm = tracker.permission
+
     if status ~= "pending" or not perm then
         return text, segments
     end
 
     local permission_icons = Config.permission_icons or {}
     local focused_btn = perm.focused_button_index
+
     for i, option in ipairs(perm.sorted_options) do
         local label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
         local btn_icon = permission_icons[option.kind] or ""
-        local body
+        local body = ""
+
         if perm.is_focused then
             body = string.format("%d %s %s", i, btn_icon, label)
         else
             body = string.format("%s %s", btn_icon, label)
         end
-        -- No brackets: the bg highlight on the padded span is the button.
+
         local btn = " " .. body .. " "
 
         text = text .. "  "
@@ -1050,6 +1069,7 @@ function MessageWriter:_build_status_row(tracker)
 
         local is_button_focused = perm.is_focused and i == focused_btn
         local hl_group
+
         if not is_button_focused then
             hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
         elseif option.kind == "allow_once" or option.kind == "allow_always" then

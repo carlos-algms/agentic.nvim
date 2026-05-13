@@ -16,7 +16,7 @@ local PERMISSION_KIND_PRIORITY = {
     reject_always = 4,
 }
 
-local MAX_DIGIT_KEYS = 4
+local MAX_DIGIT_KEYS = vim.tbl_count(PERMISSION_KIND_PRIORITY)
 
 --- @class agentic.ui.PermissionManager.PermissionRequest
 --- @field tool_call_id string
@@ -46,6 +46,7 @@ function PermissionManager:new(message_writer)
     -- their callback returns early when `_order` is empty, so pressing the key
     -- with no pending blocks is a no-op.
     local cfg = (Config.keymaps and Config.keymaps.permission) or {}
+
     BufHelpers.multi_keymap_set(
         cfg.cycle_next or "<C-n>",
         message_writer.bufnr,
@@ -54,6 +55,7 @@ function PermissionManager:new(message_writer)
         end,
         { desc = "Permission: focus next pending tool call" }
     )
+
     BufHelpers.multi_keymap_set(
         cfg.cycle_prev or "<C-p>",
         message_writer.bufnr,
@@ -69,10 +71,7 @@ end
 --- @param options agentic.acp.PermissionOption[]
 --- @return agentic.acp.PermissionOption[]
 function PermissionManager._sort_permission_options(options)
-    local sorted = {}
-    for _, option in ipairs(options) do
-        table.insert(sorted, option)
-    end
+    local sorted = vim.list_extend({}, options)
 
     table.sort(sorted, function(a, b)
         local priority_a = PERMISSION_KIND_PRIORITY[a.kind] or 999
@@ -102,6 +101,7 @@ function PermissionManager:add_request(request, callback)
     end
 
     local tool_call_id = request.toolCall.toolCallId
+
     if self.pending[tool_call_id] then
         Logger.debug(
             "PermissionManager: Duplicate request for " .. tool_call_id
@@ -143,11 +143,15 @@ function PermissionManager:_cycle_button(direction)
     if not self.focused_id then
         return
     end
+
     local pending = self.pending[self.focused_id]
+
     if not pending then
         return
     end
+
     local n = #pending.sorted_options
+
     if n == 0 then
         return
     end
@@ -155,6 +159,7 @@ function PermissionManager:_cycle_button(direction)
     local current = self.message_writer:get_focused_button_index(
         self.focused_id
     ) or 1
+
     local new_idx = ((current - 1 + direction + n) % n) + 1
 
     self.message_writer:set_permission_state(self.focused_id, {
@@ -163,24 +168,50 @@ function PermissionManager:_cycle_button(direction)
         focused_button_index = new_idx,
     })
     self.message_writer:repaint_status_row(self.focused_id)
+    self:_jump_cursor_to_button(self.focused_id, new_idx)
+end
+
+--- @param tool_call_id string
+--- @param button_index integer 1-indexed
+--- @protected
+function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
+    local row = self.message_writer:get_block_end_row(tool_call_id)
+    if not row then
+        return
+    end
+
+    local winid = self:_find_visible_chat_winid()
+    if not winid then
+        return
+    end
+
+    local col = self.message_writer:get_button_col(tool_call_id, button_index)
+    if not col then
+        return
+    end
+
+    pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
 end
 
 --- Resolve the focused block with its currently focused button's option.
---- @protected
 function PermissionManager:_submit_focused_button()
     if not self.focused_id then
         return
     end
+
     local pending = self.pending[self.focused_id]
     if not pending then
         return
     end
+
     local idx = self.message_writer:get_focused_button_index(self.focused_id)
         or 1
     local opt = pending.sorted_options[idx]
+
     if not opt then
         return
     end
+
     self:resolve(self.focused_id, opt.optionId)
 end
 
@@ -190,6 +221,7 @@ end
 --- @param option_id string|nil
 function PermissionManager:resolve(tool_call_id, option_id)
     local request = self.pending[tool_call_id]
+
     if not request then
         return
     end
@@ -197,6 +229,7 @@ function PermissionManager:resolve(tool_call_id, option_id)
     local was_focused = self.focused_id == tool_call_id
 
     self.pending[tool_call_id] = nil
+
     for i, id in ipairs(self._order) do
         if id == tool_call_id then
             table.remove(self._order, i)
@@ -226,10 +259,7 @@ end
 --- pending callback with nil.
 function PermissionManager:clear()
     --- @type string[]
-    local ids = {}
-    for _, tool_call_id in ipairs(self._order) do
-        table.insert(ids, tool_call_id)
-    end
+    local ids = vim.list_extend({}, self._order)
 
     for _, tool_call_id in ipairs(ids) do
         local request = self.pending[tool_call_id]
@@ -263,6 +293,7 @@ end
 --- @protected
 function PermissionManager:_set_focus(new_id)
     local old_id = self.focused_id
+
     if new_id == old_id then
         return
     end
@@ -380,10 +411,11 @@ function PermissionManager:_install_focus_keymaps(pending)
         })
     end
 
-    local prev_button = function()
+    local function prev_button()
         self:_cycle_button(-1)
     end
-    local next_button = function()
+
+    local function next_button()
         self:_cycle_button(1)
     end
 
@@ -393,6 +425,7 @@ function PermissionManager:_install_focus_keymaps(pending)
             expr = true,
         })
     end
+
     for _, lhs in ipairs({ "l", "<Right>" }) do
         BufHelpers.keymap_set(bufnr, "n", lhs, gated(lhs, next_button), {
             desc = "Permission: focus next button",
@@ -430,13 +463,11 @@ function PermissionManager:_find_visible_chat_winid()
 end
 
 --- @return boolean
---- @protected
 function PermissionManager:_cursor_on_focused_row()
     if not self.focused_id then
         return false
     end
-    --- @diagnostic disable-next-line: invisible
-    local row = self.message_writer:_get_block_end_row(self.focused_id)
+    local row = self.message_writer:get_block_end_row(self.focused_id)
     if not row then
         return false
     end
@@ -449,7 +480,6 @@ function PermissionManager:_cursor_on_focused_row()
     return cursor_row == row + 1
 end
 
---- @protected
 function PermissionManager:_remove_focus_keymaps()
     if not vim.api.nvim_buf_is_valid(self.message_writer.bufnr) then
         return
@@ -465,10 +495,8 @@ function PermissionManager:_remove_focus_keymaps()
 end
 
 --- @param tool_call_id string
---- @protected
 function PermissionManager:_jump_cursor_to(tool_call_id)
-    --- @diagnostic disable-next-line: invisible
-    local row = self.message_writer:_get_block_end_row(tool_call_id)
+    local row = self.message_writer:get_block_end_row(tool_call_id)
     if not row then
         return
     end
@@ -484,7 +512,7 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
     end
 
     --- @diagnostic disable-next-line: invisible
-    local col = self.message_writer:_get_first_button_col(tool_call_id) or 0
+    local col = self.message_writer:get_button_col(tool_call_id, 1) or 0
     pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
     -- `zb` (not `zz`) matches the chat auto-scroll convention (`G0zb`),
     -- anchoring row N near the bottom of the window where the user expects

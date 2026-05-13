@@ -206,6 +206,58 @@ describe("agentic.ui.MessageWriter", function()
                 or ""
         end
 
+        --- @param tool_call_id string
+        --- @return vim.api.keyset.get_extmark_item[]
+        local function status_marks(tool_call_id)
+            local row = block_end_row(tool_call_id)
+            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
+            return vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                { row, 0 },
+                { row + 1, 0 },
+                { details = true }
+            )
+        end
+
+        --- @param marks vim.api.keyset.get_extmark_item[]
+        --- @param hl_group string
+        --- @return integer
+        local function count_hl_marks(marks, hl_group)
+            local count = 0
+            for _, em in ipairs(marks) do
+                if em[4].hl_group == hl_group then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+
+        local ALLOW_REJECT_OPTIONS = {
+            {
+                optionId = "allow-once",
+                name = "Allow once",
+                kind = "allow_once",
+            },
+            {
+                optionId = "reject-once",
+                name = "Reject once",
+                kind = "reject_once",
+            },
+        }
+
+        --- @param id string
+        --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
+        local function setup_permission_block(id, state)
+            writer:write_tool_call_block(make_tool_call_block(id, "pending"))
+            writer:set_permission_state(id, {
+                sorted_options = state.sorted_options or ALLOW_REJECT_OPTIONS,
+                is_focused = state.is_focused,
+                focused_button_index = state.focused_button_index,
+            })
+            writer:repaint_status_row(id)
+        end
+
         it(
             "writes the status word as real text at row N for non-pending blocks",
             function()
@@ -230,25 +282,7 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "renders inline buttons for pending non-focused permission state",
             function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("row-n-inactive", "pending")
-                )
-                writer:set_permission_state("row-n-inactive", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow once",
-                            kind = "allow_once",
-                        },
-                        {
-                            optionId = "reject-once",
-                            name = "Reject once",
-                            kind = "reject_once",
-                        },
-                    },
-                    is_focused = false,
-                })
-                writer:repaint_status_row("row-n-inactive")
+                setup_permission_block("row-n-inactive", { is_focused = false })
 
                 local text = status_row_text("row-n-inactive")
                 assert.truthy(text:find("pending"))
@@ -260,25 +294,7 @@ describe("agentic.ui.MessageWriter", function()
         )
 
         it("renders inline buttons with digit prefixes when focused", function()
-            writer:write_tool_call_block(
-                make_tool_call_block("row-n-focused", "pending")
-            )
-            writer:set_permission_state("row-n-focused", {
-                sorted_options = {
-                    {
-                        optionId = "allow-once",
-                        name = "Allow once",
-                        kind = "allow_once",
-                    },
-                    {
-                        optionId = "reject-once",
-                        name = "Reject once",
-                        kind = "reject_once",
-                    },
-                },
-                is_focused = true,
-            })
-            writer:repaint_status_row("row-n-focused")
+            setup_permission_block("row-n-focused", { is_focused = true })
 
             local text = status_row_text("row-n-focused")
             assert.truthy(text:find("1 "))
@@ -287,140 +303,56 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(text:find("Reject"))
         end)
 
-        --- @param marks vim.api.keyset.get_extmark_item[]
-        --- @param hl_group string
-        --- @return integer
-        local function count_hl_marks(marks, hl_group)
-            local count = 0
-            for _, em in ipairs(marks) do
-                if em[4].hl_group == hl_group then
-                    count = count + 1
-                end
-            end
-            return count
-        end
+        for _, case in ipairs({
+            {
+                index = 1,
+                focused_hl = "AgenticPermissionButtonAllow",
+                unfocused_hl = "AgenticPermissionButtonReject",
+                label = "allow",
+            },
+            {
+                index = 2,
+                focused_hl = "AgenticPermissionButtonReject",
+                unfocused_hl = "AgenticPermissionButtonAllow",
+                label = "reject",
+            },
+        }) do
+            it(
+                "applies "
+                    .. case.label
+                    .. " hl only on the focused "
+                    .. case.label
+                    .. " button (focused_button_index = "
+                    .. case.index
+                    .. ")",
+                function()
+                    local id = "row-n-hl-" .. case.label
+                    setup_permission_block(id, {
+                        is_focused = true,
+                        focused_button_index = case.index,
+                    })
 
-        --- @param tool_call_id string
-        --- @return vim.api.keyset.get_extmark_item[]
-        local function status_marks(tool_call_id)
-            local row = block_end_row(tool_call_id)
-            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
-            return vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                { row, 0 },
-                { row + 1, 0 },
-                { details = true }
+                    local marks = status_marks(id)
+                    assert.equal(1, count_hl_marks(marks, case.focused_hl))
+                    assert.equal(0, count_hl_marks(marks, case.unfocused_hl))
+                    -- The non-focused button stays inactive.
+                    assert.equal(
+                        1,
+                        count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                    )
+                end
             )
         end
 
         it(
-            "applies allow hl only on the focused allow button (focused_button_index = 1)",
-            function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("row-n-hl-allow", "pending")
-                )
-                writer:set_permission_state("row-n-hl-allow", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow once",
-                            kind = "allow_once",
-                        },
-                        {
-                            optionId = "reject-once",
-                            name = "Reject once",
-                            kind = "reject_once",
-                        },
-                    },
-                    is_focused = true,
-                    focused_button_index = 1,
-                })
-                writer:repaint_status_row("row-n-hl-allow")
-
-                local marks = status_marks("row-n-hl-allow")
-                assert.equal(
-                    1,
-                    count_hl_marks(marks, "AgenticPermissionButtonAllow")
-                )
-                assert.equal(
-                    0,
-                    count_hl_marks(marks, "AgenticPermissionButtonReject")
-                )
-                -- The non-focused reject button stays inactive.
-                assert.equal(
-                    1,
-                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
-                )
-            end
-        )
-
-        it(
-            "applies reject hl only on the focused reject button (focused_button_index = 2)",
-            function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("row-n-hl-reject", "pending")
-                )
-                writer:set_permission_state("row-n-hl-reject", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow once",
-                            kind = "allow_once",
-                        },
-                        {
-                            optionId = "reject-once",
-                            name = "Reject once",
-                            kind = "reject_once",
-                        },
-                    },
-                    is_focused = true,
-                    focused_button_index = 2,
-                })
-                writer:repaint_status_row("row-n-hl-reject")
-
-                local marks = status_marks("row-n-hl-reject")
-                assert.equal(
-                    1,
-                    count_hl_marks(marks, "AgenticPermissionButtonReject")
-                )
-                assert.equal(
-                    0,
-                    count_hl_marks(marks, "AgenticPermissionButtonAllow")
-                )
-                -- The non-focused allow button stays inactive.
-                assert.equal(
-                    1,
-                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
-                )
-            end
-        )
-
-        it(
             "applies inactive highlight group for non-focused permission buttons",
             function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("row-n-hl-inactive", "pending")
+                setup_permission_block(
+                    "row-n-hl-inactive",
+                    { is_focused = false }
                 )
-                writer:set_permission_state("row-n-hl-inactive", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow once",
-                            kind = "allow_once",
-                        },
-                        {
-                            optionId = "reject-once",
-                            name = "Reject once",
-                            kind = "reject_once",
-                        },
-                    },
-                    is_focused = false,
-                })
-                writer:repaint_status_row("row-n-hl-inactive")
 
                 local marks = status_marks("row-n-hl-inactive")
-
                 assert.equal(
                     2,
                     count_hl_marks(marks, "AgenticPermissionButtonInactive")
@@ -429,21 +361,11 @@ describe("agentic.ui.MessageWriter", function()
         )
 
         it("button labels are not wrapped in square brackets", function()
-            writer:write_tool_call_block(
-                make_tool_call_block("row-n-nobracket", "pending")
-            )
-            writer:set_permission_state("row-n-nobracket", {
-                sorted_options = {
-                    {
-                        optionId = "allow-once",
-                        name = "Allow once",
-                        kind = "allow_once",
-                    },
-                },
+            setup_permission_block("row-n-nobracket", {
+                sorted_options = { ALLOW_REJECT_OPTIONS[1] },
                 is_focused = true,
                 focused_button_index = 1,
             })
-            writer:repaint_status_row("row-n-nobracket")
 
             local text = status_row_text("row-n-nobracket")
             assert.is_nil(text:find("%["))
@@ -454,21 +376,11 @@ describe("agentic.ui.MessageWriter", function()
         it(
             "clears buttons when permission state is removed and repainted",
             function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("row-n-clear", "pending")
-                )
-                writer:set_permission_state("row-n-clear", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow once",
-                            kind = "allow_once",
-                        },
-                    },
+                setup_permission_block("row-n-clear", {
+                    sorted_options = { ALLOW_REJECT_OPTIONS[1] },
                     is_focused = true,
                     focused_button_index = 1,
                 })
-                writer:repaint_status_row("row-n-clear")
                 assert.truthy(status_row_text("row-n-clear"):find("Allow"))
 
                 writer:set_permission_state("row-n-clear", nil)
@@ -1086,8 +998,17 @@ describe("agentic.ui.MessageWriter", function()
         --- @type agentic.UserConfig.Folding|nil
         local saved_folding
 
+        local LONG_BODY =
+            { "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10" }
+
         before_each(function()
             saved_folding = Config.folding
+            Config.folding = { tool_calls = { enabled = true, threshold = 5 } }
+            Config.auto_scroll = { threshold = 10 }
+
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
         end)
 
         after_each(function()
@@ -1112,18 +1033,27 @@ describe("agentic.ui.MessageWriter", function()
             return start_row, start_row + 1, end_row - 1, end_row
         end
 
+        --- @param tool_call_id string
+        local function assert_fold_closed(tool_call_id)
+            local _, top_pad_row, bottom_pad_row = block_layout(tool_call_id)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(
+                    vim.fn.foldclosed(top_pad_row + 1),
+                    top_pad_row + 1
+                )
+                assert.equal(
+                    vim.fn.foldclosedend(top_pad_row + 1),
+                    bottom_pad_row + 1
+                )
+            end)
+            assert.is_true(
+                writer.tool_call_blocks[tool_call_id].has_fold == true
+            )
+        end
+
         it(
             "closes a manual fold when update_tool_call_block crosses the fold threshold",
             function()
-                Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
-                }
-                Config.auto_scroll = { threshold = 10 }
-
-                Fold.setup_window(winid, bufnr)
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
                 writer:write_tool_call_block({
                     tool_call_id = "fold-mat",
                     status = "pending",
@@ -1140,93 +1070,29 @@ describe("agentic.ui.MessageWriter", function()
                 writer:update_tool_call_block({
                     tool_call_id = "fold-mat",
                     status = "completed",
-                    body = {
-                        "L1",
-                        "L2",
-                        "L3",
-                        "L4",
-                        "L5",
-                        "L6",
-                        "L7",
-                        "L8",
-                        "L9",
-                        "L10",
-                    },
+                    body = LONG_BODY,
                 })
 
-                local _, new_top_pad_row, new_bottom_pad_row =
-                    block_layout("fold-mat")
-                vim.api.nvim_win_call(winid, function()
-                    local fold_start = vim.fn.foldclosed(new_top_pad_row + 1)
-                    local fold_end = vim.fn.foldclosedend(new_top_pad_row + 1)
-                    assert.equal(fold_start, new_top_pad_row + 1)
-                    assert.equal(fold_end, new_bottom_pad_row + 1)
-                end)
-
-                local tracker = writer.tool_call_blocks["fold-mat"]
-                assert.is_true(tracker.has_fold == true)
+                assert_fold_closed("fold-mat")
             end
         )
 
         it(
             "closes a manual fold when write_tool_call_block crosses the fold threshold",
             function()
-                Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
-                }
-                Config.auto_scroll = { threshold = 10 }
-
-                Fold.setup_window(winid, bufnr)
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
                 writer:write_tool_call_block({
                     tool_call_id = "fold-on-write",
                     status = "completed",
                     kind = "execute",
                     argument = "ls",
-                    body = {
-                        "L1",
-                        "L2",
-                        "L3",
-                        "L4",
-                        "L5",
-                        "L6",
-                        "L7",
-                        "L8",
-                        "L9",
-                        "L10",
-                    },
+                    body = LONG_BODY,
                 })
 
-                local _, top_pad_row, bottom_pad_row =
-                    block_layout("fold-on-write")
-                vim.api.nvim_win_call(winid, function()
-                    assert.equal(
-                        vim.fn.foldclosed(top_pad_row + 1),
-                        top_pad_row + 1
-                    )
-                    assert.equal(
-                        vim.fn.foldclosedend(top_pad_row + 1),
-                        bottom_pad_row + 1
-                    )
-                end)
-
-                local tracker = writer.tool_call_blocks["fold-on-write"]
-                assert.is_true(tracker.has_fold == true)
+                assert_fold_closed("fold-on-write")
             end
         )
 
         it("does not create a fold when block stays below threshold", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
-            }
-            Config.auto_scroll = { threshold = 10 }
-
-            Fold.setup_window(winid, bufnr)
-            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
             writer:write_tool_call_block({
                 tool_call_id = "no-fold",
                 status = "pending",
@@ -1245,14 +1111,6 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it("emits anchor pad lines around the body in every block", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
-            }
-            Config.auto_scroll = { threshold = 10 }
-
-            Fold.setup_window(winid, bufnr)
-            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-
             writer:write_tool_call_block({
                 tool_call_id = "anchors",
                 status = "pending",

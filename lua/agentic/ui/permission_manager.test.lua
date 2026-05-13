@@ -261,7 +261,7 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                local end_row_2 = writer:_get_block_end_row("tc-2")
+                local end_row_2 = writer:get_block_end_row("tc-2")
                 assert.is_not_nil(end_row_2)
 
                 pm:_cycle_focus(1)
@@ -338,8 +338,8 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                local end_row = writer:_get_block_end_row("tc-only")
-                local first_btn_col = writer:_get_first_button_col("tc-only")
+                local end_row = writer:get_block_end_row("tc-only")
+                local first_btn_col = writer:get_button_col("tc-only", 1)
                 assert.is_not_nil(end_row)
 
                 -- Move cursor away from the focused row.
@@ -439,6 +439,32 @@ describe("agentic.ui.PermissionManager", function()
             end
         end)
 
+        it(
+            "l moves cursor to the start col of the newly focused button",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local end_row = writer:get_block_end_row("tc-1")
+                assert.is_not_nil(end_row)
+
+                local l_cb = get_digit_callback("l")
+                assert.is_not_nil(l_cb)
+                if l_cb then
+                    l_cb()
+                end
+
+                local expected_col = writer:get_button_col("tc-1", 2)
+                assert.is_not_nil(expected_col)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((end_row or 0) + 1, cursor[1])
+                assert.equal(expected_col, cursor[2])
+            end
+        )
+
         it("h cycles button focus backward and wraps", function()
             seed_block("tc-1")
             pm:add_request(
@@ -486,8 +512,8 @@ describe("agentic.ui.PermissionManager", function()
                 spy.new(function() end) --[[@as function]]
             )
 
-            local end_row = writer:_get_block_end_row("tc-1")
-            local first_btn_col = writer:_get_first_button_col("tc-1")
+            local end_row = writer:get_block_end_row("tc-1")
+            local first_btn_col = writer:get_button_col("tc-1", 1)
             assert.is_not_nil(end_row)
             assert.is_not_nil(first_btn_col)
             assert.is_true((first_btn_col or 0) > 0)
@@ -692,7 +718,7 @@ describe("agentic.ui.PermissionManager", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            local row = writer:_get_block_end_row(tool_call_id) or 0
+            local row = writer:get_block_end_row(tool_call_id) or 0
             return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
                 or ""
         end

@@ -125,7 +125,7 @@ On every block-focus transition, `_jump_cursor_to(tool_call_id)`:
 
 1. Resolves the block's `end_row` via its range extmark.
 2. Resolves the first button's start column via
-   `MessageWriter:_get_first_button_col(id)`.
+   `MessageWriter:get_button_col(id, 1)`.
 3. Sets cursor to `(end_row + 1, first_button_col)` and `zb` anchors row
    N at the window bottom (matches chat auto-scroll convention, see
    ADR 001).
