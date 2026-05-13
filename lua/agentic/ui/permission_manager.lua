@@ -236,6 +236,7 @@ function PermissionManager:clear()
         if request then
             self.pending[tool_call_id] = nil
             self.message_writer:set_permission_state(tool_call_id, nil)
+            self.message_writer:repaint_status_row(tool_call_id)
             pcall(request.callback, nil)
         end
     end
@@ -243,10 +244,6 @@ function PermissionManager:clear()
     self._order = {}
     self:_remove_focus_keymaps()
     self.focused_id = nil
-
-    for _, tool_call_id in ipairs(ids) do
-        self.message_writer:repaint_status_row(tool_call_id)
-    end
 end
 
 --- Remove permission request for a specific tool call ID (e.g. when tool call
