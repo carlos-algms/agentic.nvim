@@ -40,7 +40,7 @@ flowchart TD
     Add["add_request(req, cb)"]
     Map["pending[tool_call_id] = req<br/>append to _order"]
     First{first pending?}
-    Focus["_set_focus(id)<br/>install per-block keymaps<br/>jump cursor + zz"]
+    Focus["_set_focus(id)<br/>install per-block keymaps<br/>jump cursor + zb"]
     Paint["repaint_status_row<br/>(non-focused state)"]
     Cycle["cycle_next / cycle_prev<br/>(default <C-n> / <C-p>)"]
     Btn["h / l / <Left> / <Right>"]
@@ -115,7 +115,9 @@ On every block-focus transition, `_jump_cursor_to(tool_call_id)`:
 1. Resolves the block's `end_row` via its range extmark.
 2. Resolves the first button's start column via
    `MessageWriter:_get_first_button_col(id)`.
-3. Sets cursor to `(end_row + 1, first_button_col)` and `zz` centers.
+3. Sets cursor to `(end_row + 1, first_button_col)` and `zb` anchors row
+   N at the window bottom (matches chat auto-scroll convention, see
+   ADR 001).
 
 Single-pending case: `cycle_next` lands on the same `focused_id`. Instead of
 no-op'ing in `_set_focus` (early return on same id), `_cycle_focus` detects

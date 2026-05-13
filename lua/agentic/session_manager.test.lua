@@ -850,6 +850,58 @@ describe("agentic.SessionManager", function()
             end
         end)
 
+        it(
+            "removes pending permission on failed and completed tool-call updates",
+            function()
+                for _, status in ipairs({ "failed", "completed" }) do
+                    local remove_calls = {}
+                    local session = make_session({
+                        ["tc-" .. status] = {
+                            kind = "edit",
+                            status = "in_progress",
+                        },
+                    })
+                    session.permission_manager.remove_request_by_tool_call_id = function(
+                        _self,
+                        id
+                    )
+                        table.insert(remove_calls, id)
+                    end
+
+                    SessionManager._on_tool_call_update(session, {
+                        tool_call_id = "tc-" .. status,
+                        status = status,
+                    })
+
+                    assert.equal(1, #remove_calls)
+                    assert.equal("tc-" .. status, remove_calls[1])
+                end
+            end
+        )
+
+        it(
+            "does not remove pending permission on non-terminal updates",
+            function()
+                local remove_calls = {}
+                local session = make_session({
+                    ["tc-prog"] = { kind = "edit", status = "pending" },
+                })
+                session.permission_manager.remove_request_by_tool_call_id = function(
+                    _self,
+                    id
+                )
+                    table.insert(remove_calls, id)
+                end
+
+                SessionManager._on_tool_call_update(session, {
+                    tool_call_id = "tc-prog",
+                    status = "in_progress",
+                })
+
+                assert.equal(0, #remove_calls)
+            end
+        )
+
         it("does not call checktime for failed tool calls", function()
             local session = make_session({
                 ["tc-1"] = { kind = "edit", status = "in_progress" },

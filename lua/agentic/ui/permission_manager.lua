@@ -189,18 +189,19 @@ function PermissionManager:resolve(tool_call_id, option_id)
 
     self.message_writer:set_permission_state(tool_call_id, nil)
 
+    -- Repaint BEFORE the callback so the user sees the buttons gone
+    -- immediately. The callback hits the ACP provider; any subsequent
+    -- agent update arrives on a later tick (notifications cross
+    -- `vim.schedule`), so no UI race. _set_focus below cannot do this
+    -- repaint for us because it skips the old-id branch once the id has
+    -- been removed from `pending`, and skips the new-id branch when there
+    -- is no next head.
+    self.message_writer:repaint_status_row(tool_call_id)
+
     pcall(request.callback, option_id)
 
-    -- Repaint the resolved block (no longer pending → status word only).
-    -- Skip this when the focused request was resolved, because _set_focus
-    -- below will handle the repaint as part of the focus transition.
-    if not was_focused then
-        self.message_writer:repaint_status_row(tool_call_id)
-    end
-
     if was_focused then
-        local next_id = self._order[1]
-        self:_set_focus(next_id)
+        self:_set_focus(self._order[1])
     end
 end
 
@@ -331,7 +332,9 @@ function PermissionManager:_cycle_focus(direction)
 end
 
 --- Install the configured block-cycle keymaps (`cycle_next` / `cycle_prev`)
---- on the chat buffer. Permanent. No-op when there are no pending blocks.
+--- on the chat buffer. The keymaps stay installed for the lifetime of the
+--- PermissionManager; their callback (`_cycle_focus`) returns early when
+--- `_order` is empty, so pressing the key with no pending blocks is a no-op.
 --- @protected
 function PermissionManager:_install_cycle_keymaps()
     if self._cycle_keymaps_installed then
@@ -377,13 +380,17 @@ function PermissionManager:_install_focus_keymaps(focused_id, mapping)
     --- Build an expr-keymap callback that runs `action` only when the cursor
     --- is on the focused row. Off-row, returns `fallback_keys` (typed via
     --- noremap), giving the user normal cursor / count behavior.
+    --- On-row, defers the action via `vim.schedule` because expr-keymaps run
+    --- inside textlock and cannot call `nvim_buf_set_lines` directly. Without
+    --- the defer, the row-N text rewrite in `repaint_status_row` silently
+    --- fails and the button labels stay visible (only their highlights drop).
     --- @param fallback_keys string
     --- @param action fun()
     --- @return fun(): string
     local function gated(fallback_keys, action)
         return function()
             if self:_cursor_on_focused_row() then
-                action()
+                vim.schedule(action)
                 return ""
             end
             return fallback_keys
@@ -506,8 +513,11 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
 
     local col = self.message_writer:_get_first_button_col(tool_call_id) or 0
     pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
+    -- `zb` (not `zz`) matches the chat auto-scroll convention (`G0zb`),
+    -- anchoring row N near the bottom of the window where the user expects
+    -- new chat content to live.
     vim.api.nvim_win_call(winid, function()
-        vim.cmd("noautocmd normal! zz")
+        vim.cmd("noautocmd normal! zb")
     end)
 end
 

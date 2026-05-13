@@ -29,8 +29,9 @@ SessionManager (per tab)
         ├── DiffHighlighter     line/word hl on chat buffer
         │                       (lives in agentic.utils, not ui)
         ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 002
-        └── PermissionManager   renders inline button strip on row N of pending
-                                blocks; rebinds digit keymaps on focus transition
+        └── PermissionManager   pending map + focus state; rebinds per-block
+                                keymaps on focus transition. Row N rendering
+                                owned by MessageWriter (repaint_status_row)
 ```
 
 ## Lifecycle

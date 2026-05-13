@@ -453,8 +453,14 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     local is_rejection = tool_call_update.status == "failed"
     self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
 
-    -- Remove the permission request if the tool call failed before user granted it
-    if tool_call_update.status == "failed" then
+    -- Remove the permission request when the tool call reaches a terminal
+    -- status. `failed` covers user rejection or agent-side error; `completed`
+    -- covers cases where the agent finishes the tool without (or alongside)
+    -- user resolution. Both should clear the inline buttons.
+    if
+        tool_call_update.status == "failed"
+        or tool_call_update.status == "completed"
+    then
         self.permission_manager:remove_request_by_tool_call_id(
             tool_call_update.tool_call_id
         )

@@ -1057,10 +1057,6 @@ function MessageWriter:_render_status_row(row, text, hl_segments)
     end
 
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        local line_count = vim.api.nvim_buf_line_count(bufnr)
-        if row >= line_count then
-            return false
-        end
         pcall(vim.api.nvim_buf_set_lines, bufnr, row, row + 1, false, { text })
     end)
 

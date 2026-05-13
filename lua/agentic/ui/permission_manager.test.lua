@@ -81,6 +81,9 @@ describe("agentic.ui.PermissionManager", function()
 
     before_each(function()
         schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(fn)
+            fn()
+        end)
 
         MessageWriter = require("agentic.ui.message_writer")
         PermissionManager = require("agentic.ui.permission_manager")
@@ -678,6 +681,65 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_false(pm:has_pending())
             assert.is_false(has_buf_keymap("n", "1"))
         end)
+    end)
+
+    describe("resolve hygiene", function()
+        --- @param tool_call_id string
+        --- @return string
+        local function status_row_text(tool_call_id)
+            local row = writer:_get_block_end_row(tool_call_id) or 0
+            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+                or ""
+        end
+
+        it("strips buttons from row N as soon as the user resolves", function()
+            seed_block("tc-only")
+            local cb = spy.new(function() end)
+            pm:add_request(make_request("tc-only"), cb --[[@as function]])
+
+            assert.truthy(status_row_text("tc-only"):find("Allow"))
+
+            local digit_cb = (function()
+                for _, km in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
+                    if km.lhs == "1" then
+                        return km.callback
+                    end
+                end
+                return nil
+            end)()
+            assert.is_not_nil(digit_cb)
+            if digit_cb then
+                digit_cb()
+            end
+
+            assert.spy(cb).was.called(1)
+            local text = status_row_text("tc-only")
+            assert.is_nil(text:find("Allow"))
+            assert.is_nil(text:find("Reject"))
+            assert.truthy(text:find("pending"))
+        end)
+
+        it(
+            "strips buttons from a non-focused block when it is resolved",
+            function()
+                seed_block("tc-1")
+                seed_block("tc-2")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+                pm:add_request(
+                    make_request("tc-2"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                pm:resolve("tc-2", nil)
+
+                local text = status_row_text("tc-2")
+                assert.is_nil(text:find("Allow"))
+                assert.is_nil(text:find("Reject"))
+            end
+        )
     end)
 
     describe("remove_request_by_tool_call_id", function()

@@ -534,6 +534,10 @@ Override default keybindings via the `keymaps` config option:
   }
 <
 
+The per-block permission keys (`h`, `l`, `<Left>`, `<Right>`, `<CR>`,
+`1`..`4`) are fixed and not configurable. Only `cycle_next` / `cycle_prev`
+can be remapped via `keymaps.permission`.
+
 Keymap configuration formats:
   - String: `close = "q"` (normal mode by default)
   - Array: `submit = { "<CR>", "<C-s>" }` (multiple bindings)
