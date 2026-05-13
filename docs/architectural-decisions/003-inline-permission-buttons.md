@@ -84,7 +84,7 @@ flowchart TD
 
 ### Row-gated per-block keymaps
 
-Per-block keymaps (`h`, `l`, `<Left>`, `<Right>`, `<CR>`, `1`..`4`) use
+Motion / submit keymaps (`h`, `l`, `<Left>`, `<Right>`, `<CR>`) use
 `expr = true`. On row N of the focused block they fire the action and return
 `""`. Off-row they return the original key, which is replayed with `noremap`
 and falls through to default Neovim behavior (cursor motion, counts,
@@ -92,6 +92,17 @@ read-only-buffer `<CR>`).
 
 This avoids buffer-wide hijacking of `h`/`l` while a permission is pending,
 without the complexity of an autocmd-driven install/uninstall lifecycle.
+
+Digit keys `1`..`4` are NOT row-gated: they fire from anywhere in the chat
+buffer. Direct dispatch is the whole point of inline permissions; gating them
+to row N forces the user to scroll to the block before pressing the digit,
+which defeats the feature. Digits `1`..`9` already have no useful unprefixed
+meaning in the chat buffer (counts only matter as prefixes to motions, which
+work normally since `0` is unbound and prefix-mode swallows digits before any
+mapping triggers).
+
+Regression test:
+`lua/agentic/ui/permission_manager.test.lua::"digit keymaps fire from anywhere in the chat buffer (off-row included)"`.
 
 ### Static label map
 
@@ -203,3 +214,4 @@ No change to ADR 001's manual-fold contract or anchor-pad invariants.
 | 2026-05-13 | -       | Two-level focus added: `h` / `l` / `<CR>` for buttons; digits kept; static label map; bg-only highlights, brackets removed.  |
 | 2026-05-13 | -       | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                      |
 | 2026-05-13 | -       | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.               |
+| 2026-05-13 | -       | Digits `1`..`4` ungated (fire from anywhere in the chat buffer); only motion / submit keys (`h`/`l`/`<Left>`/`<Right>`/`<CR>`) remain row-gated. |

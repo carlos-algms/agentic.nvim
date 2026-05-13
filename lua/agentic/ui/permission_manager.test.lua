@@ -522,7 +522,7 @@ describe("agentic.ui.PermissionManager", function()
         )
 
         it(
-            "keymaps are no-op (fall through) when cursor is off the focused row",
+            "motion / submit keymaps fall through when cursor is off the focused row",
             function()
                 seed_block("tc-1")
                 local cb = spy.new(function() end)
@@ -533,17 +533,12 @@ describe("agentic.ui.PermissionManager", function()
 
                 local l_cb = get_digit_callback("l")
                 local cr_cb = get_digit_callback("<CR>")
-                local digit_cb = get_digit_callback("1")
                 assert.is_not_nil(l_cb)
                 assert.is_not_nil(cr_cb)
-                assert.is_not_nil(digit_cb)
 
                 -- expr=true: returning the original key falls through to default behavior.
                 if l_cb then
                     assert.equal("l", l_cb())
-                end
-                if digit_cb then
-                    assert.equal("1", digit_cb())
                 end
                 if cr_cb then
                     assert.equal("<CR>", cr_cb())
@@ -552,6 +547,27 @@ describe("agentic.ui.PermissionManager", function()
                 -- No resolve fired, button index unchanged.
                 assert.spy(cb).was.called(0)
                 assert.equal(1, writer:get_focused_button_index("tc-1"))
+            end
+        )
+
+        it(
+            "digit keymaps fire from anywhere in the chat buffer (off-row included)",
+            function()
+                seed_block("tc-1")
+                local cb = spy.new(function() end)
+                pm:add_request(make_request("tc-1"), cb --[[@as function]])
+
+                -- Move cursor off the focused row.
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                local digit_cb = get_digit_callback("1")
+                assert.is_not_nil(digit_cb)
+                if digit_cb then
+                    digit_cb()
+                end
+
+                assert.spy(cb).was.called(1)
+                assert.equal("allow-once", cb.calls[1][1])
             end
         )
 

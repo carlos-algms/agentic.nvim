@@ -145,7 +145,7 @@ status animation, permission manager, file list, code selection.
   `{ buffer = bufnr }`: the option was renamed to `buf` in Neovim 0.12.1
   (`neovim#38360`) and removed
   in 0.15; the wrappers gate on `has('nvim-0.12.1')`. Regression tests:
-  `lua/agentic/utils/buf_helpers.test.lua::"uses `buffer`/`buf` opt on Neovim"`.
+  ``lua/agentic/utils/buf_helpers.test.lua::"uses `buffer`/`buf` opt on Neovim"``.
 
 ## Public API and call chain
 

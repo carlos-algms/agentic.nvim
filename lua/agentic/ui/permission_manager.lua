@@ -363,10 +363,11 @@ end
 
 --- Install the per-block focus keymaps: digits 1..N for direct dispatch,
 --- h / l / <Left> / <Right> for button-focus cycling, and <CR> for submit.
---- All keymaps are `expr = true`: they only fire when the cursor is on the
---- focused block's row N. Off-row, they fall through to the original key so
---- the user can navigate / count normally. The digit mapping and focused_id
---- are captured in the closure at install time (snapshot).
+--- Digits fire from anywhere in the chat buffer (direct dispatch is the whole
+--- point of inline permissions). Motion / submit keys are `expr = true` and
+--- only fire on the focused block's row N; off-row they return the original
+--- key so the user can navigate / count normally. The digit mapping and
+--- focused_id are captured in the closure at install time (snapshot).
 --- @param focused_id string Snapshot of focused id at install time
 --- @param mapping table<integer, string> Snapshot of digit -> option_id at install time
 --- @protected
@@ -403,18 +404,11 @@ function PermissionManager:_install_focus_keymaps(focused_id, mapping)
         local option_id = snapshot[i]
         if option_id then
             local digit = tostring(i)
-            BufHelpers.keymap_set(
-                bufnr,
-                "n",
-                digit,
-                gated(digit, function()
-                    self:resolve(focused_id, option_id)
-                end),
-                {
-                    desc = "Permission: select option " .. digit,
-                    expr = true,
-                }
-            )
+            BufHelpers.keymap_set(bufnr, "n", digit, function()
+                self:resolve(focused_id, option_id)
+            end, {
+                desc = "Permission: select option " .. digit,
+            })
         end
     end
 
