@@ -1,4 +1,6 @@
+--- @diagnostic disable: invisible
 local BufHelpers = require("agentic.utils.buf_helpers")
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
 -- Priority order for permission option kinds based on ACP tool-calls documentation
@@ -15,12 +17,20 @@ local PERMISSION_KIND_PRIORITY = {
     reject_always = 4,
 }
 
+local MAX_DIGIT_KEYS = 4
+
+--- @class agentic.ui.PermissionManager.PermissionRequest
+--- @field tool_call_id string
+--- @field request agentic.acp.RequestPermission
+--- @field callback fun(option_id: string|nil)
+--- @field sorted_options agentic.acp.PermissionOption[]
+
 --- @class agentic.ui.PermissionManager
---- @field message_writer agentic.ui.MessageWriter Reference to MessageWriter instance
---- @field queue table[] Queue of pending requests {toolCallId, request, callback}
---- @field current_request? agentic.ui.PermissionManager.PermissionRequest Currently displayed request with button positions
---- @field keymap_info table[] Keymap info for cleanup {mode, lhs}
---- @field _reanchoring boolean Guard flag to prevent recursive _on_permission_reanchor during reanchor
+--- @field message_writer agentic.ui.MessageWriter
+--- @field pending table<string, agentic.ui.PermissionManager.PermissionRequest> Pending requests keyed by tool_call_id
+--- @field _order string[] Insertion order of pending tool_call_ids
+--- @field focused_id? string Currently focused tool_call_id
+--- @field _cycle_keymaps_installed boolean Whether the cycle_next / cycle_prev keymaps are installed on the chat buffer
 local PermissionManager = {}
 PermissionManager.__index = PermissionManager
 
@@ -29,109 +39,15 @@ PermissionManager.__index = PermissionManager
 function PermissionManager:new(message_writer)
     local instance = setmetatable({
         message_writer = message_writer,
-        queue = {},
-        current_request = nil,
-        keymap_info = {},
-        _reanchoring = false,
+        pending = {},
+        _order = {},
+        focused_id = nil,
+        _cycle_keymaps_installed = false,
     }, self)
 
+    instance:_install_cycle_keymaps()
+
     return instance
-end
-
---- Add a new permission request to the queue to be processed sequentially
---- @param request agentic.acp.RequestPermission
---- @param callback fun(option_id: string|nil)
-function PermissionManager:add_request(request, callback)
-    if not request.toolCall or not request.toolCall.toolCallId then
-        Logger.debug(
-            "PermissionManager: Invalid request - missing toolCall.toolCallId"
-        )
-        return
-    end
-
-    local toolCallId = request.toolCall.toolCallId
-    table.insert(self.queue, { toolCallId, request, callback })
-
-    if not self.current_request then
-        self:_process_next()
-    end
-end
-
-function PermissionManager:_process_next()
-    if #self.queue == 0 then
-        return
-    end
-
-    local item = table.remove(self.queue, 1)
-    local toolCallId = item[1]
-    local request = item[2]
-    local callback = item[3]
-    local sorted_options = self._sort_permission_options(request.options)
-
-    local button_start_row, button_end_row, option_mapping =
-        self.message_writer:display_permission_buttons(
-            request.toolCall.toolCallId,
-            sorted_options
-        )
-
-    ---@class agentic.ui.PermissionManager.PermissionRequest
-    self.current_request = {
-        toolCallId = toolCallId,
-        request = request,
-        callback = callback,
-        button_start_row = button_start_row,
-        button_end_row = button_end_row,
-        option_mapping = option_mapping,
-    }
-
-    self:_setup_keymaps(option_mapping)
-
-    self.message_writer:set_permission_reanchor_callback(function()
-        self:_reanchor_permission_prompt()
-    end)
-end
-
-function PermissionManager:_reanchor_permission_prompt()
-    if self._reanchoring or not self.current_request then
-        return
-    end
-
-    self._reanchoring = true
-
-    --- @type agentic.ui.PermissionManager.PermissionRequest
-    local current = self.current_request
-
-    local ok, err = pcall(function()
-        self.message_writer:remove_permission_buttons(
-            current.button_start_row,
-            current.button_end_row
-        )
-        self:_remove_keymaps()
-
-        local sorted_options =
-            self._sort_permission_options(current.request.options)
-
-        local button_start_row, button_end_row, option_mapping =
-            self.message_writer:display_permission_buttons(
-                current.request.toolCall.toolCallId,
-                sorted_options
-            )
-
-        current.button_start_row = button_start_row
-        current.button_end_row = button_end_row
-        current.option_mapping = option_mapping
-
-        self:_setup_keymaps(option_mapping)
-    end)
-
-    self._reanchoring = false
-
-    if not ok then
-        Logger.notify(
-            "Error during permission prompt reanchor: " .. vim.inspect(err),
-            vim.log.levels.ERROR
-        )
-    end
 end
 
 --- @param options agentic.acp.PermissionOption[]
@@ -151,97 +67,448 @@ function PermissionManager._sort_permission_options(options)
     return sorted
 end
 
---- Complete the current request and process next in queue
---- @param option_id string|nil
-function PermissionManager:_complete_request(option_id)
-    local current = self.current_request
-    if not current then
+--- @return boolean
+function PermissionManager:has_pending()
+    return next(self.pending) ~= nil
+end
+
+--- Register a new permission request. Multiple requests can be pending
+--- simultaneously; out-of-order resolution is supported.
+--- @param request agentic.acp.RequestPermission
+--- @param callback fun(option_id: string|nil)
+function PermissionManager:add_request(request, callback)
+    if not request.toolCall or not request.toolCall.toolCallId then
+        Logger.debug(
+            "PermissionManager: Invalid request - missing toolCall.toolCallId"
+        )
         return
     end
 
-    self.message_writer:remove_permission_buttons(
-        current.button_start_row,
-        current.button_end_row
-    )
-
-    self:_remove_keymaps()
-    self.message_writer:set_permission_reanchor_callback(nil)
-    current.callback(option_id)
-
-    self.current_request = nil
-    self:_process_next()
-end
-
---- Clear all displayed buttons and keymaps, cancel all pending requests
-function PermissionManager:clear()
-    if self.current_request then
-        self.message_writer:remove_permission_buttons(
-            self.current_request.button_start_row,
-            self.current_request.button_end_row
+    local tool_call_id = request.toolCall.toolCallId
+    if self.pending[tool_call_id] then
+        Logger.debug(
+            "PermissionManager: Duplicate request for " .. tool_call_id
         )
-        self:_remove_keymaps()
-        self.message_writer:set_permission_reanchor_callback(nil)
-
-        pcall(self.current_request.callback, nil)
-        self.current_request = nil
+        return
     end
 
-    for _, item in ipairs(self.queue) do
-        local callback = item[3]
-        pcall(callback, nil)
-    end
+    local sorted_options = self._sort_permission_options(request.options)
 
-    self.queue = {}
+    --- @type agentic.ui.PermissionManager.PermissionRequest
+    local pending_req = {
+        tool_call_id = tool_call_id,
+        request = request,
+        callback = callback,
+        sorted_options = sorted_options,
+    }
+
+    self.pending[tool_call_id] = pending_req
+    table.insert(self._order, tool_call_id)
+
+    self.message_writer:set_permission_state(tool_call_id, {
+        sorted_options = sorted_options,
+        is_focused = false,
+        focused_button_index = 1,
+    })
+
+    if self.focused_id == nil then
+        self:_set_focus(tool_call_id)
+    else
+        self.message_writer:repaint_status_row(tool_call_id)
+    end
 end
 
---- Remove permission request for a specific tool call ID (e.g., when tool call fails)
---- @param toolCallId string
-function PermissionManager:remove_request_by_tool_call_id(toolCallId)
-    self.queue = vim.tbl_filter(function(item)
-        return item[1] ~= toolCallId
-    end, self.queue)
-
-    if
-        self.current_request
-        and self.current_request.toolCallId == toolCallId
-    then
-        self:_complete_request(nil)
+--- Move button focus within the currently focused block. Wraps. No-op when
+--- no block is focused or it has zero options.
+--- @param direction integer 1 = right (l), -1 = left (h)
+--- @protected
+function PermissionManager:_cycle_button(direction)
+    if not self.focused_id then
+        return
     end
+    local pending = self.pending[self.focused_id]
+    if not pending then
+        return
+    end
+    local n = #pending.sorted_options
+    if n == 0 then
+        return
+    end
+
+    local current = self.message_writer:get_focused_button_index(
+        self.focused_id
+    ) or 1
+    local new_idx = ((current - 1 + direction + n) % n) + 1
+
+    self.message_writer:set_permission_state(self.focused_id, {
+        sorted_options = pending.sorted_options,
+        is_focused = true,
+        focused_button_index = new_idx,
+    })
+    self.message_writer:repaint_status_row(self.focused_id)
 end
 
---- @param option_mapping table<integer, string> Mapping from number (1-N) to option_id
-function PermissionManager:_setup_keymaps(option_mapping)
-    self:_remove_keymaps()
+--- Resolve the focused block with its currently focused button's option.
+--- @protected
+function PermissionManager:_submit_focused_button()
+    if not self.focused_id then
+        return
+    end
+    local pending = self.pending[self.focused_id]
+    if not pending then
+        return
+    end
+    local idx = self.message_writer:get_focused_button_index(self.focused_id)
+        or 1
+    local opt = pending.sorted_options[idx]
+    if not opt then
+        return
+    end
+    self:resolve(self.focused_id, opt.optionId)
+end
 
-    -- Add buffer-local key mappings for each option
-    for number, option_id in pairs(option_mapping) do
-        local lhs = tostring(number)
-        local callback = function()
-            self:_complete_request(option_id)
+--- Fire the callback for tool_call_id with option_id and remove the request.
+--- If the resolved request was focused, advances focus to next pending head.
+--- @param tool_call_id string
+--- @param option_id string|nil
+function PermissionManager:resolve(tool_call_id, option_id)
+    local request = self.pending[tool_call_id]
+    if not request then
+        return
+    end
+
+    local was_focused = self.focused_id == tool_call_id
+
+    self.pending[tool_call_id] = nil
+    for i, id in ipairs(self._order) do
+        if id == tool_call_id then
+            table.remove(self._order, i)
+            break
         end
+    end
 
-        BufHelpers.keymap_set(self.message_writer.bufnr, "n", lhs, callback, {
-            desc = "Select permission option " .. tostring(number),
-        })
+    self.message_writer:set_permission_state(tool_call_id, nil)
 
-        table.insert(self.keymap_info, { mode = "n", lhs = lhs })
+    pcall(request.callback, option_id)
+
+    -- Repaint the resolved block (no longer pending → status word only).
+    -- Skip this when the focused request was resolved, because _set_focus
+    -- below will handle the repaint as part of the focus transition.
+    if not was_focused then
+        self.message_writer:repaint_status_row(tool_call_id)
+    end
+
+    if was_focused then
+        local next_id = self._order[1]
+        self:_set_focus(next_id)
     end
 end
 
-function PermissionManager:_remove_keymaps()
+--- Clear all pending requests (e.g. on session stop or teardown). Fires every
+--- pending callback with nil.
+function PermissionManager:clear()
+    --- @type string[]
+    local ids = {}
+    for _, tool_call_id in ipairs(self._order) do
+        table.insert(ids, tool_call_id)
+    end
+
+    for _, tool_call_id in ipairs(ids) do
+        local request = self.pending[tool_call_id]
+        if request then
+            self.pending[tool_call_id] = nil
+            self.message_writer:set_permission_state(tool_call_id, nil)
+            pcall(request.callback, nil)
+        end
+    end
+
+    self._order = {}
+    self:_remove_focus_keymaps()
+    self.focused_id = nil
+
+    for _, tool_call_id in ipairs(ids) do
+        self.message_writer:repaint_status_row(tool_call_id)
+    end
+end
+
+--- Remove permission request for a specific tool call ID (e.g. when tool call
+--- fails before user granted it). Equivalent to resolve with nil option_id.
+--- @param tool_call_id string
+function PermissionManager:remove_request_by_tool_call_id(tool_call_id)
+    if self.pending[tool_call_id] then
+        self:resolve(tool_call_id, nil)
+    end
+end
+
+--- Set focus to new_id (may be nil to clear focus). Repaints the previously
+--- focused block (if still pending) and the new focused block, rotates the
+--- focus keymaps (digits + h/l/<CR>), and jumps the cursor to the new
+--- focused row. Resets focused_button_index to 1 on every block-focus change.
+--- @param new_id string|nil
+--- @protected
+function PermissionManager:_set_focus(new_id)
+    local old_id = self.focused_id
+    if new_id == old_id then
+        return
+    end
+
+    self.focused_id = new_id
+
+    if old_id and self.pending[old_id] then
+        self.message_writer:set_permission_state(old_id, {
+            sorted_options = self.pending[old_id].sorted_options,
+            is_focused = false,
+            focused_button_index = 1,
+        })
+        self.message_writer:repaint_status_row(old_id)
+    end
+
+    self:_remove_focus_keymaps()
+
+    if new_id == nil then
+        return
+    end
+
+    local pending = self.pending[new_id]
+    if not pending then
+        self.focused_id = nil
+        return
+    end
+
+    --- @type table<integer, string>
+    local mapping = {}
+    for i, opt in ipairs(pending.sorted_options) do
+        if i > MAX_DIGIT_KEYS then
+            break
+        end
+        mapping[i] = opt.optionId
+    end
+    self:_install_focus_keymaps(new_id, mapping)
+
+    self.message_writer:set_permission_state(new_id, {
+        sorted_options = pending.sorted_options,
+        is_focused = true,
+        focused_button_index = 1,
+    })
+    self.message_writer:repaint_status_row(new_id)
+    self:_jump_cursor_to(new_id)
+end
+
+--- @param direction integer 1 for next, -1 for previous
+--- @protected
+function PermissionManager:_cycle_focus(direction)
+    local n = #self._order
+    if n == 0 then
+        return
+    end
+
+    local current_idx = nil
+    if self.focused_id then
+        for i, id in ipairs(self._order) do
+            if id == self.focused_id then
+                current_idx = i
+                break
+            end
+        end
+    end
+
+    if not current_idx then
+        self:_set_focus(self._order[1])
+        return
+    end
+
+    local new_idx = ((current_idx - 1 + direction + n) % n) + 1
+    local target_id = self._order[new_idx]
+
+    -- Single-pending case (or cycle landing on same id): focus is unchanged
+    -- but the user still expects the cursor to jump back onto the focused row.
+    if target_id == self.focused_id then
+        self:_jump_cursor_to(target_id)
+        return
+    end
+
+    self:_set_focus(target_id)
+end
+
+--- Install the configured block-cycle keymaps (`cycle_next` / `cycle_prev`)
+--- on the chat buffer. Permanent. No-op when there are no pending blocks.
+--- @protected
+function PermissionManager:_install_cycle_keymaps()
+    if self._cycle_keymaps_installed then
+        return
+    end
+    self._cycle_keymaps_installed = true
+
+    local cfg = (Config.keymaps and Config.keymaps.permission) or {}
+    BufHelpers.multi_keymap_set(
+        cfg.cycle_next or "<C-n>",
+        self.message_writer.bufnr,
+        function()
+            self:_cycle_focus(1)
+        end,
+        { desc = "Permission: focus next pending tool call" }
+    )
+    BufHelpers.multi_keymap_set(
+        cfg.cycle_prev or "<C-p>",
+        self.message_writer.bufnr,
+        function()
+            self:_cycle_focus(-1)
+        end,
+        { desc = "Permission: focus previous pending tool call" }
+    )
+end
+
+--- Install the per-block focus keymaps: digits 1..N for direct dispatch,
+--- h / l / <Left> / <Right> for button-focus cycling, and <CR> for submit.
+--- All keymaps are `expr = true`: they only fire when the cursor is on the
+--- focused block's row N. Off-row, they fall through to the original key so
+--- the user can navigate / count normally. The digit mapping and focused_id
+--- are captured in the closure at install time (snapshot).
+--- @param focused_id string Snapshot of focused id at install time
+--- @param mapping table<integer, string> Snapshot of digit -> option_id at install time
+--- @protected
+function PermissionManager:_install_focus_keymaps(focused_id, mapping)
+    --- @type table<integer, string>
+    local snapshot = {}
+    for k, v in pairs(mapping) do
+        snapshot[k] = v
+    end
+
+    --- Build an expr-keymap callback that runs `action` only when the cursor
+    --- is on the focused row. Off-row, returns `fallback_keys` (typed via
+    --- noremap), giving the user normal cursor / count behavior.
+    --- @param fallback_keys string
+    --- @param action fun()
+    --- @return fun(): string
+    local function gated(fallback_keys, action)
+        return function()
+            if self:_cursor_on_focused_row() then
+                action()
+                return ""
+            end
+            return fallback_keys
+        end
+    end
+
+    local bufnr = self.message_writer.bufnr
+
+    for i = 1, MAX_DIGIT_KEYS do
+        local option_id = snapshot[i]
+        if option_id then
+            local digit = tostring(i)
+            BufHelpers.keymap_set(
+                bufnr,
+                "n",
+                digit,
+                gated(digit, function()
+                    self:resolve(focused_id, option_id)
+                end),
+                {
+                    desc = "Permission: select option " .. digit,
+                    expr = true,
+                }
+            )
+        end
+    end
+
+    local prev_button = function()
+        self:_cycle_button(-1)
+    end
+    local next_button = function()
+        self:_cycle_button(1)
+    end
+
+    for _, lhs in ipairs({ "h", "<Left>" }) do
+        BufHelpers.keymap_set(bufnr, "n", lhs, gated(lhs, prev_button), {
+            desc = "Permission: focus previous button",
+            expr = true,
+        })
+    end
+    for _, lhs in ipairs({ "l", "<Right>" }) do
+        BufHelpers.keymap_set(bufnr, "n", lhs, gated(lhs, next_button), {
+            desc = "Permission: focus next button",
+            expr = true,
+        })
+    end
+
+    BufHelpers.keymap_set(
+        bufnr,
+        "n",
+        "<CR>",
+        gated("<CR>", function()
+            self:_submit_focused_button()
+        end),
+        {
+            desc = "Permission: submit focused button",
+            expr = true,
+        }
+    )
+end
+
+--- @return boolean
+--- @protected
+function PermissionManager:_cursor_on_focused_row()
+    if not self.focused_id then
+        return false
+    end
+    local row = self.message_writer:_get_block_end_row(self.focused_id)
+    if not row then
+        return false
+    end
+
+    local bufnr = self.message_writer.bufnr
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return false
+    end
+    local cursor_row = vim.api.nvim_win_get_cursor(wins[1])[1]
+    return cursor_row == row + 1
+end
+
+--- @protected
+function PermissionManager:_remove_focus_keymaps()
     if not vim.api.nvim_buf_is_valid(self.message_writer.bufnr) then
         return
     end
 
-    for _, info in ipairs(self.keymap_info) do
+    for i = 1, MAX_DIGIT_KEYS do
         pcall(
             vim.keymap.del,
-            info.mode,
-            info.lhs,
+            "n",
+            tostring(i),
             { buffer = self.message_writer.bufnr }
         )
     end
-    self.keymap_info = {}
+    for _, lhs in ipairs({ "h", "l", "<Left>", "<Right>", "<CR>" }) do
+        pcall(vim.keymap.del, "n", lhs, { buffer = self.message_writer.bufnr })
+    end
+end
+
+--- @param tool_call_id string
+--- @protected
+function PermissionManager:_jump_cursor_to(tool_call_id)
+    local row = self.message_writer:_get_block_end_row(tool_call_id)
+    if not row then
+        return
+    end
+
+    local bufnr = self.message_writer.bufnr
+    local wins = vim.fn.win_findbuf(bufnr)
+    if #wins == 0 then
+        return
+    end
+    local winid = wins[1]
+
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    if row + 1 > line_count then
+        return
+    end
+
+    local col = self.message_writer:_get_first_button_col(tool_call_id) or 0
+    pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
+    vim.api.nvim_win_call(winid, function()
+        vim.cmd("noautocmd normal! zz")
+    end)
 end
 
 return PermissionManager

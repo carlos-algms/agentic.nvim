@@ -62,10 +62,15 @@
 
 --- @alias agentic.UserConfig.KeymapValue string | string[] | (string | agentic.UserConfig.KeymapEntry)[]
 
+--- @class agentic.UserConfig.Keymaps.Permission
+--- @field cycle_next agentic.UserConfig.KeymapValue Focus next pending permission block
+--- @field cycle_prev agentic.UserConfig.KeymapValue Focus previous pending permission block
+
 --- @class agentic.UserConfig.Keymaps
 --- @field widget table<string, agentic.UserConfig.KeymapValue>
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
 --- @field diff_preview table<string, string>
+--- @field permission agentic.UserConfig.Keymaps.Permission
 
 --- Window options passed to nvim_set_option_value
 --- Overrides default options (wrap, linebreak, winfixheight)
@@ -408,6 +413,11 @@ local ConfigDefault = {
         diff_preview = {
             next_hunk = "]c",
             prev_hunk = "[c",
+        },
+
+        permission = {
+            cycle_next = "<C-n>",
+            cycle_prev = "<C-p>",
         },
     },
 

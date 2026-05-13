@@ -634,6 +634,18 @@ your setup:
         next_hunk = "]c",
         prev_hunk = "[c",
       },
+
+      -- Keybindings to cycle focus between pending permission blocks.
+      -- Once a block is focused, per-block keys work on its row N:
+      --   h / <Left>  : focus previous button
+      --   l / <Right> : focus next button
+      --   <CR>        : submit focused button
+      --   1..4        : submit option N directly
+      -- Per-block keys only fire when the cursor is on the focused row.
+      permission = {
+        cycle_next = "<C-n>",
+        cycle_prev = "<C-p>",
+      },
     },
   },
 }
@@ -892,6 +904,9 @@ colorscheme.
 | `AgenticStatusPending`   | Pending tool call status indicator       | `bg=#5f4d8f`                        |
 | `AgenticStatusCompleted` | Completed tool call status indicator     | `bg=#2d5a3d`                        |
 | `AgenticStatusFailed`    | Failed tool call status indicator        | `bg=#7a2d2d`                        |
+| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)         | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus)        | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonInactive` | All non-focused permission buttons                 | `bg=#3a3a3a`                        |
 | `AgenticCodeBlockFence`  | The left border decoration on tool calls | Links to `Directory`                |
 | `AgenticTitle`           | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
 | `AgenticThinking`        | Thinking block text in chat buffer       | Links to `Comment`                  |

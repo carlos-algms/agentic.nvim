@@ -793,8 +793,10 @@ describe("agentic.SessionManager", function()
                     tool_call_blocks = tool_call_blocks,
                 },
                 permission_manager = {
-                    current_request = nil,
-                    queue = {},
+                    pending = {},
+                    has_pending = function()
+                        return false
+                    end,
                     remove_request_by_tool_call_id = function() end,
                 },
                 status_animation = { start = function() end },

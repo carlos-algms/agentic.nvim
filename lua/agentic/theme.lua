@@ -16,6 +16,10 @@ Theme.HL_GROUPS = {
     CODE_BLOCK_FENCE = "AgenticCodeBlockFence",
     WIN_BAR_TITLE = "AgenticTitle",
 
+    PERMISSION_BUTTON_ALLOW = "AgenticPermissionButtonAllow",
+    PERMISSION_BUTTON_REJECT = "AgenticPermissionButtonReject",
+    PERMISSION_BUTTON_INACTIVE = "AgenticPermissionButtonInactive",
+
     SPINNER_GENERATING = "AgenticSpinnerGenerating",
     SPINNER_THINKING = "AgenticSpinnerThinking",
     SPINNER_SEARCHING = "AgenticSpinnerSearching",
@@ -29,6 +33,7 @@ local COLORS = {
     status_pending_bg = "#5f4d8f",
     status_completed_bg = "#2d5a3d",
     status_failed_bg = "#7a2d2d",
+    permission_button_inactive_bg = "#3a3a3a",
 
     title_bg = "#2787b0",
     title_fg = "#000000",
@@ -82,6 +87,11 @@ function Theme.setup()
         { Theme.HL_GROUPS.STATUS_COMPLETED, { bg = COLORS.status_completed_bg } },
         { Theme.HL_GROUPS.STATUS_FAILED, { bg = COLORS.status_failed_bg } },
         { Theme.HL_GROUPS.CODE_BLOCK_FENCE, { link = "Directory" } },
+
+        -- Permission button highlights (bg-based, button-like fill)
+        { Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW, { bg = COLORS.status_completed_bg, bold = true } },
+        { Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT, { bg = COLORS.status_failed_bg, bold = true } },
+        { Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE, { bg = COLORS.permission_button_inactive_bg } },
 
         -- Title highlight
         { Theme.HL_GROUPS.WIN_BAR_TITLE, { bg = COLORS.title_bg, fg = COLORS.title_fg, bold = true } },

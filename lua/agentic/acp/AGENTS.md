@@ -63,7 +63,7 @@ flowchart TD
     Client[ACPClient<br/>routes notification vs response<br/>__handle_tool_call,<br/>__handle_tool_call_update,<br/>__build_tool_call_message]
     Session[SessionManager<br/>subscriber per session_id<br/>routes by sessionUpdate type<br/>see 'Session update routing']
     Writer[MessageWriter<br/>writes to chat buffer<br/>tracks tool call state]
-    Perm[PermissionManager<br/>queues permission prompts<br/>manages keymaps]
+    Perm[PermissionManager<br/>renders inline buttons on row N<br/>concurrent pending map keyed by tool_call_id]
     History[ChatHistory<br/>accumulates messages<br/>for persistence]
 
     Provider -->|stdio: newline-delimited JSON-RPC| Transport
@@ -230,7 +230,7 @@ determines routing:
 | `"agent_message_chunk"` | `MessageWriter:write_message_chunk()`      |
 | `"agent_thought_chunk"` | `MessageWriter:write_message_chunk()`      |
 | `"plan"`                | `TodoList.render()`                        |
-| `"request_permission"`  | `PermissionManager` (queued, sequential)   |
+| `"request_permission"`  | `PermissionManager` (concurrent map)       |
 | others                  | `subscriber.on_session_update()` (generic) |
 
 ## Tool call lifecycle
@@ -326,22 +326,39 @@ flowchart TD
     P["Provider sends 'session/request_permission'"]
     SM["SessionManager<br/>opens diff preview if request carries a diff"]
     PM["PermissionManager:add_request(request, callback)"]
-    Q["Queue request (sequential, one prompt at a time)"]
-    R["Render permission buttons in chat buffer"]
-    K["Set up buffer-local keymaps (1, 2, 3, 4)"]
-    U["User presses key"]
-    CB["Send result back to provider via callback"]
+    Store["Store in pending[tool_call_id]<br/>append to insertion order"]
+    F{"first pending?"}
+    Focus["_set_focus -> install digit keymaps,<br/>jump cursor, paint focused row N"]
+    Paint["paint non-focused row N (buttons inactive)"]
+    U["User presses 1/2/3/4 (digit)"]
+    Cyc["User presses cycle_next / cycle_prev<br/>(default <C-n> / <C-p>)"]
+    Cycle["_cycle_focus -> repaint old + new row N"]
+    Res["resolve(focused_id, option_id)"]
+    CB["callback(option_id), provider notified"]
     Clear["Clear diff preview"]
-    Next{"more queued?"}
-    Deq["Dequeue + render next"]
+    Next{"more pending?"}
+    Adv["_set_focus(next head)"]
     Done["idle"]
 
-    P --> SM --> PM
-    PM --> Q --> R --> K --> U
-    U --> CB --> Clear --> Next
-    Next -->|yes| Deq --> R
+    P --> SM --> PM --> Store --> F
+    F -->|yes| Focus
+    F -->|no| Paint
+    Focus --> U
+    Paint --> U
+    U --> Res --> CB --> Clear --> Next
+    Next -->|yes| Adv --> U
     Next -->|no| Done
+    Cyc --> Cycle --> U
 ```
+
+Multiple permission requests can be pending concurrently (one per tool call).
+Focus tracks the queue head (oldest pending); new arrivals do not steal focus.
+Digit keys `1`..`4` dispatch the focused block's option;
+`Config.keymaps.permission.cycle_next` / `cycle_prev` (default `<C-n>` /
+`<C-p>`) cycle focus between pending blocks. `h` / `l` / `<Left>` / `<Right>`
+cycle the focused button within the block; `<CR>` submits it. All per-block
+keys fire only when the cursor is on the focused block's row N (off-row keys
+fall through to normal behavior).
 
 ## Protected methods in ACPClient
 

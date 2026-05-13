@@ -485,6 +485,12 @@ These keybindings are automatically set in Agentic buffers:
   d                      n/v     Remove file/selection/diagnostic
   ]c                     n       Next diff hunk
   [c                     n       Previous diff hunk
+  <C-n>                  n       Cycle to next pending permission block
+  <C-p>                  n       Cycle to previous pending permission block
+  h / <Left>             n       Focus previous permission button (on row)
+  l / <Right>            n       Focus next permission button (on row)
+  <CR>                   n       Submit focused permission button (on row)
+  1..4                   n       Submit permission option directly (on row)
 
                                         *agentic-keymaps-customizing*
 Customizing keymaps ~
@@ -519,6 +525,10 @@ Override default keybindings via the `keymaps` config option:
       diff_preview = {
         next_hunk = "]c",
         prev_hunk = "[c",
+      },
+      permission = {
+        cycle_next = "<C-n>",
+        cycle_prev = "<C-p>",
       },
     },
   }
@@ -673,6 +683,9 @@ loads, that definition is preserved.
   `AgenticStatusPending`     Pending tool call status   bg=#5f4d8f
   `AgenticStatusCompleted`   Completed tool status      bg=#2d5a3d
   `AgenticStatusFailed`      Failed tool status         bg=#7a2d2d
+  `AgenticPermissionButtonAllow`     Focused allow button   bg=#2d5a3d bold
+  `AgenticPermissionButtonReject`    Focused reject button  bg=#7a2d2d bold
+  `AgenticPermissionButtonInactive`  Non-focused buttons    bg=#3a3a3a
   `AgenticCodeBlockFence`    Tool call left border      Links to Directory
   `AgenticTitle`             Window titles              bg=#2787b0 fg=#000000
   `AgenticThinking`          Thinking block text        Links to Comment

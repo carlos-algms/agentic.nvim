@@ -29,7 +29,8 @@ SessionManager (per tab)
         ├── DiffHighlighter     line/word hl on chat buffer
         │                       (lives in agentic.utils, not ui)
         ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 002
-        └── PermissionManager   queues + reanchors permission prompts
+        └── PermissionManager   renders inline button strip on row N of pending
+                                blocks; rebinds digit keymaps on focus transition
 ```
 
 ## Lifecycle
@@ -122,8 +123,11 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
   (self-assign cache invalidation, `BufEnter` reapply, etc.), read the
   rejected-alternatives table in ADR 001 — every obvious workaround has been
   tried and documented.
-- Permission prompts reanchor after every chat mutation and reuse the existing
-  trailing `""` as separator.
+- Permission buttons live on row N (status line) of each pending block; row N
+  is outside the fold range, and digit keymaps are bound only while a block is
+  focused. Buttons are rendered as real text via
+  `MessageWriter:_render_status_row`; status word + button labels are
+  highlighted via extmark column ranges in `NS_STATUS`.
 - Foreign buffers in widget windows are redirected via `BufferGuard`
   (`lua/agentic/ui/buffer_guard.lua`) to a non-widget window in the same
   tabpage.
@@ -141,7 +145,8 @@ row 0    header           rewritten on every update, NOT folded
 row 1    "" top_pad       fold start anchor
 row 2..  body             replaced on every update
 row N-1  "" bottom_pad    fold end anchor
-row N    "" trailing      footer, status virt_text
+row N    status + buttons real text, outside fold, written by
+                          MessageWriter:_render_status_row
 ```
 
 Pads are unconditional. Header is rewritten unconditionally because providers
@@ -192,10 +197,6 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
     `WidgetLayout.close`, check
     `nvim_tabpage_is_valid(nvim_win_get_tabpage(winid))` per window before
     `nvim_win_close` — not just once at the start of the loop.
-- Adding a blank line before a reanchored prompt
-  - The reanchor leaves a trailing `""`; the next display reuses it.
-    `MessageWriter:display_permission_buttons` owns the detection — skip the
-    check there and reanchor cycles produce double blanks.
 - `vim.notify` directly
   - Fast-context errors. Use `Logger.notify`.
 - Module-level mutable state for per-tab data
@@ -216,36 +217,13 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
   - `vim.t` returns copies; nested edits do not persist. Read via
     `WindowDecoration.get_headers_state`, mutate, write back via
     `set_headers_state`.
-- Mutating chat content without
-  `_with_modifiable_and_notify_permission_reanchor`
-  - Skips `_notify_permission_reanchor`; permission prompts stop reanchoring.
-  - For non-chat buffers (input, diagnostics, etc.) `BufHelpers.with_modifiable`
-    is correct — those buffers have no permission-reanchor contract. Use the
-    wrapper only when mutating `self.bufnr` (the chat buffer).
-  - Exception: `display_permission_buttons` / `remove_permission_buttons` are
-    the reanchor write path itself and use `BufHelpers.with_modifiable` directly
-    under the `PermissionManager._reanchoring` guard.
-  - `PermissionManager._reanchoring` is the recursion guard for the reanchor
-    write path itself: it is set true around `_reanchor_permission_prompt`'s own
-    `set_lines` so the post-mutation callback no-ops instead of re-entering.
-    Removing the flag re-enters and stack-overflows.
-
-    ```mermaid
-    sequenceDiagram
-        participant Caller
-        participant PM as PermissionManager
-        participant Buf as chat buffer
-        participant CB as post-mutation cb
-
-        Caller->>PM: _reanchor_permission_prompt()
-        PM->>PM: _reanchoring = true
-        PM->>Buf: set_lines (move buttons)
-        Buf-->>CB: fires post-mutation hook
-        CB->>PM: check _reanchoring
-        Note over CB,PM: true -> no-op<br/>(without flag: re-enters,<br/>stack overflow)
-        PM->>PM: _reanchoring = false
-        PM-->>Caller: done
-    ```
+- Overwriting row N while a permission request is pending
+  - `MessageWriter:update_tool_call_block` ends up calling
+    `repaint_status_row(tracker.tool_call_id)`. The repaint reads
+    `tracker.permission` (the state stored by `PermissionManager`), so updates
+    that arrive while buttons are visible re-render the buttons rather than
+    wipe them. If you bypass `repaint_status_row` and write to row N directly,
+    buttons disappear until the next focus event triggers a repaint.
 
 ## Test invariants
 
@@ -258,10 +236,21 @@ change.
   `tool_call_fold.test.lua::should_fold::"folds when screen-row count exceeds threshold"`.
 - Fold counts wrapped rows, not buffer lines (one mega-line still folds) —
   `tool_call_fold.test.lua::should_fold::"folds a single buffer line that wraps past the threshold"`.
-- Permission reanchor preserves keymaps + button position —
-  `permission_manager.test.lua::reanchor permission prompt::"moves buttons to buffer bottom and preserves keymaps"`.
-- Permission reanchor does not double-blank across cycles —
-  `permission_manager.test.lua::empty line accumulation during reanchor`.
+- Row N is real text rendered per state —
+  `message_writer.test.lua::status row::"writes the status word as real text at row N for non-pending blocks"`,
+  `..::"renders inline buttons for pending non-focused permission state"`,
+  `..::"renders inline buttons with digit prefixes when focused"`.
+- Focus transition triggers exactly 2 status-row repaints (old + new) —
+  `permission_manager.test.lua::bracket cycle::"focus transition triggers exactly 2 status-row repaints"`.
+- Digit keymap dispatches the focused block's option —
+  `permission_manager.test.lua::digit keymap lifecycle::"digit 1 resolves the focused block's option 1"`,
+  `..::"rebinds digit keymaps with new mapping after focus transition"`.
+- Bracket cycle wraps and no-ops when pending is empty —
+  `permission_manager.test.lua::bracket cycle::"forward cycle wraps to first"`,
+  `..::"backward cycle wraps to last"`,
+  `..::"cycle is a no-op when pending is empty"`.
+- Concurrent map preserves insertion order and supports out-of-order resolve —
+  `permission_manager.test.lua::concurrent pending map::*`.
 - Sender header dedup on consecutive same-sender writes —
   `message_writer.test.lua::sender header tracking`.
 - Auto-scroll threshold preserves user reading position —

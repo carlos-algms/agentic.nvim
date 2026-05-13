@@ -497,10 +497,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         end
     end
 
-    if
-        not self.permission_manager.current_request
-        and #self.permission_manager.queue == 0
-    then
+    if not self.permission_manager:has_pending() then
         self.status_animation:start("generating")
     end
 end
@@ -984,10 +981,7 @@ function SessionManager:_build_handlers()
                     is_rejection
                 )
 
-                if
-                    not self.permission_manager.current_request
-                    and #self.permission_manager.queue == 0
-                then
+                if not self.permission_manager:has_pending() then
                     self.status_animation:start("generating")
                 end
             end

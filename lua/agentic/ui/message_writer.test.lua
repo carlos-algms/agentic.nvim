@@ -181,81 +181,304 @@ describe("agentic.ui.MessageWriter", function()
         end)
     end)
 
-    describe("permission_reanchor callback", function()
-        --- @type TestStub
-        local schedule_stub
-
-        before_each(function()
-            schedule_stub = spy.stub(vim, "schedule")
-        end)
-
-        after_each(function()
-            schedule_stub:revert()
-        end)
-
-        it(
-            "stores and fires callback via set_permission_reanchor_callback",
-            function()
-                local callback_spy = spy.new(function() end)
-                writer:set_permission_reanchor_callback(
-                    callback_spy --[[@as function]]
-                )
-
-                writer:_notify_permission_reanchor()
-
-                assert.spy(callback_spy).was.called(1)
-            end
-        )
-
-        it("clears callback when set to nil", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_permission_reanchor_callback(
-                callback_spy --[[@as function]]
+    describe("status row", function()
+        --- @param tool_call_id string
+        --- @return integer
+        local function block_end_row(tool_call_id)
+            local tracker = writer.tool_call_blocks[tool_call_id]
+            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+            local pos = vim.api.nvim_buf_get_extmark_by_id(
+                bufnr,
+                NS,
+                tracker.extmark_id,
+                { details = true }
             )
-            writer:set_permission_reanchor_callback(nil)
+            --- @type integer
+            local end_row = pos[3].end_row
+            return end_row
+        end
 
-            writer:_notify_permission_reanchor()
-
-            assert.spy(callback_spy).was.called(0)
-        end)
+        --- @param tool_call_id string
+        --- @return string
+        local function status_row_text(tool_call_id)
+            local row = block_end_row(tool_call_id)
+            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+                or ""
+        end
 
         it(
-            "fires callback for each write method that produces content",
+            "writes the status word as real text at row N for non-pending blocks",
             function()
-                local block = make_tool_call_block("cb-setup", "pending")
-                writer:write_tool_call_block(block)
-
-                local callback_spy = spy.new(function() end)
-                writer:set_permission_reanchor_callback(
-                    callback_spy --[[@as function]]
-                )
-
-                writer:write_message(make_update("hello"))
-                writer:write_message_chunk(make_update("chunk"))
                 writer:write_tool_call_block(
-                    make_tool_call_block("cb-1", "pending")
+                    make_tool_call_block("row-n-completed", "completed")
                 )
-                writer:update_tool_call_block({
-                    tool_call_id = "cb-setup",
-                    status = "completed",
-                    body = { "done" },
-                })
 
-                assert.spy(callback_spy).was.called(4)
+                local text = status_row_text("row-n-completed")
+                assert.truthy(text:find("completed"))
+                assert.is_true(#text > 0)
             end
         )
 
-        it("does not fire callback when content is empty", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_permission_reanchor_callback(
-                callback_spy --[[@as function]]
+        it("writes pending status word as real text at row N", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("row-n-pending", "pending")
             )
 
-            writer:write_message(make_update(""))
-            writer:write_message_chunk(make_update(""))
-
-            assert.spy(callback_spy).was.called(0)
+            assert.truthy(status_row_text("row-n-pending"):find("pending"))
         end)
+
+        it(
+            "renders inline buttons for pending non-focused permission state",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-inactive", "pending")
+                )
+                writer:set_permission_state("row-n-inactive", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject once",
+                            kind = "reject_once",
+                        },
+                    },
+                    is_focused = false,
+                })
+                writer:repaint_status_row("row-n-inactive")
+
+                local text = status_row_text("row-n-inactive")
+                assert.truthy(text:find("pending"))
+                assert.truthy(text:find("Allow"))
+                assert.truthy(text:find("Reject"))
+                -- non-focused: no digit prefix
+                assert.is_nil(text:find("1 "))
+            end
+        )
+
+        it("renders inline buttons with digit prefixes when focused", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("row-n-focused", "pending")
+            )
+            writer:set_permission_state("row-n-focused", {
+                sorted_options = {
+                    {
+                        optionId = "allow-once",
+                        name = "Allow once",
+                        kind = "allow_once",
+                    },
+                    {
+                        optionId = "reject-once",
+                        name = "Reject once",
+                        kind = "reject_once",
+                    },
+                },
+                is_focused = true,
+            })
+            writer:repaint_status_row("row-n-focused")
+
+            local text = status_row_text("row-n-focused")
+            assert.truthy(text:find("1 "))
+            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("Allow"))
+            assert.truthy(text:find("Reject"))
+        end)
+
+        --- @param marks vim.api.keyset.get_extmark_item[]
+        --- @param hl_group string
+        --- @return integer
+        local function count_hl_marks(marks, hl_group)
+            local count = 0
+            for _, em in ipairs(marks) do
+                if em[4].hl_group == hl_group then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+
+        --- @param tool_call_id string
+        --- @return vim.api.keyset.get_extmark_item[]
+        local function status_marks(tool_call_id)
+            local row = block_end_row(tool_call_id)
+            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
+            return vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                { row, 0 },
+                { row + 1, 0 },
+                { details = true }
+            )
+        end
+
+        it(
+            "applies allow hl only on the focused allow button (focused_button_index = 1)",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-hl-allow", "pending")
+                )
+                writer:set_permission_state("row-n-hl-allow", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject once",
+                            kind = "reject_once",
+                        },
+                    },
+                    is_focused = true,
+                    focused_button_index = 1,
+                })
+                writer:repaint_status_row("row-n-hl-allow")
+
+                local marks = status_marks("row-n-hl-allow")
+                assert.equal(
+                    1,
+                    count_hl_marks(marks, "AgenticPermissionButtonAllow")
+                )
+                assert.equal(
+                    0,
+                    count_hl_marks(marks, "AgenticPermissionButtonReject")
+                )
+                -- The non-focused reject button stays inactive.
+                assert.equal(
+                    1,
+                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                )
+            end
+        )
+
+        it(
+            "applies reject hl only on the focused reject button (focused_button_index = 2)",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-hl-reject", "pending")
+                )
+                writer:set_permission_state("row-n-hl-reject", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject once",
+                            kind = "reject_once",
+                        },
+                    },
+                    is_focused = true,
+                    focused_button_index = 2,
+                })
+                writer:repaint_status_row("row-n-hl-reject")
+
+                local marks = status_marks("row-n-hl-reject")
+                assert.equal(
+                    1,
+                    count_hl_marks(marks, "AgenticPermissionButtonReject")
+                )
+                assert.equal(
+                    0,
+                    count_hl_marks(marks, "AgenticPermissionButtonAllow")
+                )
+                -- The non-focused allow button stays inactive.
+                assert.equal(
+                    1,
+                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                )
+            end
+        )
+
+        it(
+            "applies inactive highlight group for non-focused permission buttons",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-hl-inactive", "pending")
+                )
+                writer:set_permission_state("row-n-hl-inactive", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject once",
+                            kind = "reject_once",
+                        },
+                    },
+                    is_focused = false,
+                })
+                writer:repaint_status_row("row-n-hl-inactive")
+
+                local marks = status_marks("row-n-hl-inactive")
+
+                assert.equal(
+                    2,
+                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                )
+            end
+        )
+
+        it("button labels are not wrapped in square brackets", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("row-n-nobracket", "pending")
+            )
+            writer:set_permission_state("row-n-nobracket", {
+                sorted_options = {
+                    {
+                        optionId = "allow-once",
+                        name = "Allow once",
+                        kind = "allow_once",
+                    },
+                },
+                is_focused = true,
+                focused_button_index = 1,
+            })
+            writer:repaint_status_row("row-n-nobracket")
+
+            local text = status_row_text("row-n-nobracket")
+            assert.is_nil(text:find("%["))
+            assert.is_nil(text:find("%]"))
+            assert.truthy(text:find("Allow"))
+        end)
+
+        it(
+            "clears buttons when permission state is removed and repainted",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-clear", "pending")
+                )
+                writer:set_permission_state("row-n-clear", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow once",
+                            kind = "allow_once",
+                        },
+                    },
+                    is_focused = true,
+                    focused_button_index = 1,
+                })
+                writer:repaint_status_row("row-n-clear")
+                assert.truthy(status_row_text("row-n-clear"):find("Allow"))
+
+                writer:set_permission_state("row-n-clear", nil)
+                writer:repaint_status_row("row-n-clear")
+
+                local text = status_row_text("row-n-clear")
+                assert.is_nil(text:find("Allow"))
+                assert.truthy(text:find("pending"))
+            end
+        )
     end)
 
     describe("_prepare_block_lines", function()
