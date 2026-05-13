@@ -530,7 +530,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             end
 
             self:_clear_status_namespace(start_row, old_end_row)
-            self:_apply_status_highlights_if_present(start_row, tracker)
+            self:_apply_status_highlights_if_present(tracker)
 
             return false
         end
@@ -572,7 +572,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             right_gravity = false,
         })
 
-        self:_apply_status_highlights_if_present(start_row, tracker)
+        self:_apply_status_highlights_if_present(tracker)
 
         if
             not tracker.has_fold
@@ -792,6 +792,22 @@ end
 
 --- Return the 0-indexed last row of the block, or nil when no block tracker
 --- or extmark is found.
+--- @param tool_call_id string
+--- @return integer|nil start_row
+function MessageWriter:_get_block_start_row(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+    if not tracker or not tracker.extmark_id then
+        return nil
+    end
+    local pos = vim.api.nvim_buf_get_extmark_by_id(
+        self.bufnr,
+        NS_TOOL_BLOCKS,
+        tracker.extmark_id,
+        {}
+    )
+    return pos and pos[1]
+end
+
 --- @param tool_call_id string
 --- @return integer|nil end_row
 function MessageWriter:_get_block_end_row(tool_call_id)
@@ -1110,13 +1126,17 @@ function MessageWriter:_clear_status_namespace(start_row, end_row)
     )
 end
 
---- @param start_row integer
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
-function MessageWriter:_apply_status_highlights_if_present(start_row, tracker)
-    if tracker.status then
-        self:_apply_header_highlight(start_row, tracker.status)
-        self:repaint_status_row(tracker.tool_call_id)
+function MessageWriter:_apply_status_highlights_if_present(tracker)
+    if not tracker.status then
+        return
     end
+    local start_row = self:_get_block_start_row(tracker.tool_call_id)
+    if not start_row then
+        return
+    end
+    self:_apply_header_highlight(start_row, tracker.status)
+    self:repaint_status_row(tracker.tool_call_id)
 end
 
 function MessageWriter:destroy() end

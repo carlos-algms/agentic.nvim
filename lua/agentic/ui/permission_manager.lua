@@ -1,4 +1,3 @@
---- @diagnostic disable: invisible
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
@@ -30,24 +29,41 @@ local MAX_DIGIT_KEYS = 4
 --- @field pending table<string, agentic.ui.PermissionManager.PermissionRequest> Pending requests keyed by tool_call_id
 --- @field _order string[] Insertion order of pending tool_call_ids
 --- @field focused_id? string Currently focused tool_call_id
---- @field _cycle_keymaps_installed boolean Whether the cycle_next / cycle_prev keymaps are installed on the chat buffer
 local PermissionManager = {}
 PermissionManager.__index = PermissionManager
 
 --- @param message_writer agentic.ui.MessageWriter
 --- @return agentic.ui.PermissionManager
 function PermissionManager:new(message_writer)
-    local instance = setmetatable({
+    self = setmetatable({
         message_writer = message_writer,
         pending = {},
         _order = {},
         focused_id = nil,
-        _cycle_keymaps_installed = false,
     }, self)
 
-    instance:_install_cycle_keymaps()
+    -- Cycle keymaps stay installed for the lifetime of the PermissionManager;
+    -- their callback returns early when `_order` is empty, so pressing the key
+    -- with no pending blocks is a no-op.
+    local cfg = (Config.keymaps and Config.keymaps.permission) or {}
+    BufHelpers.multi_keymap_set(
+        cfg.cycle_next or "<C-n>",
+        message_writer.bufnr,
+        function()
+            self:_cycle_focus(1)
+        end,
+        { desc = "Permission: focus next pending tool call" }
+    )
+    BufHelpers.multi_keymap_set(
+        cfg.cycle_prev or "<C-p>",
+        message_writer.bufnr,
+        function()
+            self:_cycle_focus(-1)
+        end,
+        { desc = "Permission: focus previous pending tool call" }
+    )
 
-    return instance
+    return self
 end
 
 --- @param options agentic.acp.PermissionOption[]
@@ -81,6 +97,7 @@ function PermissionManager:add_request(request, callback)
         Logger.debug(
             "PermissionManager: Invalid request - missing toolCall.toolCallId"
         )
+        pcall(callback, nil)
         return
     end
 
@@ -89,6 +106,7 @@ function PermissionManager:add_request(request, callback)
         Logger.debug(
             "PermissionManager: Duplicate request for " .. tool_call_id
         )
+        pcall(callback, nil)
         return
     end
 
@@ -105,15 +123,14 @@ function PermissionManager:add_request(request, callback)
     self.pending[tool_call_id] = pending_req
     table.insert(self._order, tool_call_id)
 
-    self.message_writer:set_permission_state(tool_call_id, {
-        sorted_options = sorted_options,
-        is_focused = false,
-        focused_button_index = 1,
-    })
-
     if self.focused_id == nil then
         self:_set_focus(tool_call_id)
     else
+        self.message_writer:set_permission_state(tool_call_id, {
+            sorted_options = sorted_options,
+            is_focused = false,
+            focused_button_index = 1,
+        })
         self.message_writer:repaint_status_row(tool_call_id)
     end
 end
@@ -276,15 +293,7 @@ function PermissionManager:_set_focus(new_id)
         return
     end
 
-    --- @type table<integer, string>
-    local mapping = {}
-    for i, opt in ipairs(pending.sorted_options) do
-        if i > MAX_DIGIT_KEYS then
-            break
-        end
-        mapping[i] = opt.optionId
-    end
-    self:_install_focus_keymaps(new_id, mapping)
+    self:_install_focus_keymaps(pending)
 
     self.message_writer:set_permission_state(new_id, {
         sorted_options = pending.sorted_options,
@@ -296,7 +305,6 @@ function PermissionManager:_set_focus(new_id)
 end
 
 --- @param direction integer 1 for next, -1 for previous
---- @protected
 function PermissionManager:_cycle_focus(direction)
     local n = #self._order
     if n == 0 then
@@ -331,53 +339,15 @@ function PermissionManager:_cycle_focus(direction)
     self:_set_focus(target_id)
 end
 
---- Install the configured block-cycle keymaps (`cycle_next` / `cycle_prev`)
---- on the chat buffer. The keymaps stay installed for the lifetime of the
---- PermissionManager; their callback (`_cycle_focus`) returns early when
---- `_order` is empty, so pressing the key with no pending blocks is a no-op.
---- @protected
-function PermissionManager:_install_cycle_keymaps()
-    if self._cycle_keymaps_installed then
-        return
-    end
-    self._cycle_keymaps_installed = true
-
-    local cfg = (Config.keymaps and Config.keymaps.permission) or {}
-    BufHelpers.multi_keymap_set(
-        cfg.cycle_next or "<C-n>",
-        self.message_writer.bufnr,
-        function()
-            self:_cycle_focus(1)
-        end,
-        { desc = "Permission: focus next pending tool call" }
-    )
-    BufHelpers.multi_keymap_set(
-        cfg.cycle_prev or "<C-p>",
-        self.message_writer.bufnr,
-        function()
-            self:_cycle_focus(-1)
-        end,
-        { desc = "Permission: focus previous pending tool call" }
-    )
-end
-
 --- Install the per-block focus keymaps: digits 1..N for direct dispatch,
 --- h / l / <Left> / <Right> for button-focus cycling, and <CR> for submit.
 --- Digits fire from anywhere in the chat buffer (direct dispatch is the whole
 --- point of inline permissions). Motion / submit keys are `expr = true` and
 --- only fire on the focused block's row N; off-row they return the original
---- key so the user can navigate / count normally. The digit mapping and
---- focused_id are captured in the closure at install time (snapshot).
---- @param focused_id string Snapshot of focused id at install time
---- @param mapping table<integer, string> Snapshot of digit -> option_id at install time
+--- key so the user can navigate / count normally.
+--- @param pending agentic.ui.PermissionManager.PermissionRequest
 --- @protected
-function PermissionManager:_install_focus_keymaps(focused_id, mapping)
-    --- @type table<integer, string>
-    local snapshot = {}
-    for k, v in pairs(mapping) do
-        snapshot[k] = v
-    end
-
+function PermissionManager:_install_focus_keymaps(pending)
     --- Build an expr-keymap callback that runs `action` only when the cursor
     --- is on the focused row. Off-row, returns `fallback_keys` (typed via
     --- noremap), giving the user normal cursor / count behavior.
@@ -400,16 +370,17 @@ function PermissionManager:_install_focus_keymaps(focused_id, mapping)
 
     local bufnr = self.message_writer.bufnr
 
-    for i = 1, MAX_DIGIT_KEYS do
-        local option_id = snapshot[i]
-        if option_id then
-            local digit = tostring(i)
-            BufHelpers.keymap_set(bufnr, "n", digit, function()
-                self:resolve(focused_id, option_id)
-            end, {
-                desc = "Permission: select option " .. digit,
-            })
+    for i, opt in ipairs(pending.sorted_options) do
+        if i > MAX_DIGIT_KEYS then
+            break
         end
+        local digit = tostring(i)
+        local option_id = opt.optionId
+        BufHelpers.keymap_set(bufnr, "n", digit, function()
+            self:resolve(pending.tool_call_id, option_id)
+        end, {
+            desc = "Permission: select option " .. digit,
+        })
     end
 
     local prev_button = function()
@@ -446,23 +417,38 @@ function PermissionManager:_install_focus_keymaps(focused_id, mapping)
     )
 end
 
+--- Find the first focusable window showing the chat buffer. The chat buffer
+--- may also live in a non-focusable float (`ChatWidget._hidden_chat_winid`)
+--- while the widget is hidden; cursor moves there are invisible to the user,
+--- so we skip those windows.
+--- @return integer|nil winid
+--- @protected
+function PermissionManager:_find_visible_chat_winid()
+    for _, winid in ipairs(vim.fn.win_findbuf(self.message_writer.bufnr)) do
+        if vim.api.nvim_win_get_config(winid).focusable then
+            return winid
+        end
+    end
+    return nil
+end
+
 --- @return boolean
 --- @protected
 function PermissionManager:_cursor_on_focused_row()
     if not self.focused_id then
         return false
     end
+    --- @diagnostic disable-next-line: invisible
     local row = self.message_writer:_get_block_end_row(self.focused_id)
     if not row then
         return false
     end
 
-    local bufnr = self.message_writer.bufnr
-    local wins = vim.fn.win_findbuf(bufnr)
-    if #wins == 0 then
+    local winid = self:_find_visible_chat_winid()
+    if not winid then
         return false
     end
-    local cursor_row = vim.api.nvim_win_get_cursor(wins[1])[1]
+    local cursor_row = vim.api.nvim_win_get_cursor(winid)[1]
     return cursor_row == row + 1
 end
 
@@ -484,23 +470,23 @@ end
 --- @param tool_call_id string
 --- @protected
 function PermissionManager:_jump_cursor_to(tool_call_id)
+    --- @diagnostic disable-next-line: invisible
     local row = self.message_writer:_get_block_end_row(tool_call_id)
     if not row then
         return
     end
 
-    local bufnr = self.message_writer.bufnr
-    local wins = vim.fn.win_findbuf(bufnr)
-    if #wins == 0 then
+    local winid = self:_find_visible_chat_winid()
+    if not winid then
         return
     end
-    local winid = wins[1]
 
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    local line_count = vim.api.nvim_buf_line_count(self.message_writer.bufnr)
     if row + 1 > line_count then
         return
     end
 
+    --- @diagnostic disable-next-line: invisible
     local col = self.message_writer:_get_first_button_col(tool_call_id) or 0
     pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
     -- `zb` (not `zz`) matches the chat auto-scroll convention (`G0zb`),
