@@ -139,7 +139,13 @@ status animation, permission manager, file list, code selection.
   global autocommands.
 
 - **Keymaps must be buffer-local.** Use
-  `BufHelpers.keymap_set(bufnr, "n", "key", fn)`. NEVER use global keymaps.
+  `BufHelpers.keymap_set(bufnr, "n", "key", fn)` and
+  `BufHelpers.keymap_del(bufnr, "n", "key")`. NEVER use global keymaps.
+  NEVER call `vim.keymap.set` / `vim.keymap.del` directly with
+  `{ buffer = bufnr }`: the option was renamed to `buf` in Neovim 0.12.1
+  (`neovim#38360`) and removed
+  in 0.15; the wrappers gate on `has('nvim-0.12.1')`. Regression tests:
+  `lua/agentic/utils/buf_helpers.test.lua::"uses `buffer`/`buf` opt on Neovim"`.
 
 ## Public API and call chain
 
@@ -219,7 +225,10 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   example.
 - **FORBIDDEN: module-level mutable state for per-tab data** -> store on per-tab
   instances. See "Multi-Tabpage Architecture" below.
-- **FORBIDDEN: global keymaps** -> use `BufHelpers.keymap_set(bufnr, ...)`.
+- **FORBIDDEN: global keymaps, and direct `vim.keymap.set`/`vim.keymap.del`
+  with `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
+  `BufHelpers.keymap_del`. See "Keymaps must be buffer-local" above for the
+  `buffer` -> `buf` rename rationale and regression tests.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
   `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use

@@ -150,6 +150,54 @@ describe("BufHelpers", function()
         end)
     end)
 
+    describe("keymap_del", function()
+        --- @type TestStub
+        local keymap_del_stub
+        --- @type TestStub
+        local has_stub
+
+        before_each(function()
+            keymap_del_stub = spy.stub(vim.keymap, "del")
+            has_stub = spy.stub(vim.fn, "has")
+        end)
+
+        after_each(function()
+            keymap_del_stub:revert()
+            has_stub:revert()
+        end)
+
+        -- See keymap_set tests for the 0.12.0-dev / 0.12.1 rename rationale.
+        it("uses `buffer` opt on Neovim < 0.12.1", function()
+            has_stub:invokes(function(feature)
+                return feature == "nvim-0.12.1" and 0 or 1
+            end)
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.keymap_del(bufnr, "n", "x")
+
+            local opts = keymap_del_stub.calls[1][3]
+            assert.equal(bufnr, opts.buffer)
+            assert.is_nil(opts.buf)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+
+        it("uses `buf` opt on Neovim >= 0.12.1", function()
+            has_stub:invokes(function(feature)
+                return feature == "nvim-0.12.1" and 1 or 0
+            end)
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.keymap_del(bufnr, "n", "x")
+
+            local opts = keymap_del_stub.calls[1][3]
+            assert.equal(bufnr, opts.buf)
+            assert.is_nil(opts.buffer)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+    end)
+
     describe("is_buffer_empty", function()
         it("should return true for buffer with single empty line", function()
             local bufnr = vim.api.nvim_create_buf(false, true)
