@@ -1037,7 +1037,7 @@ function MessageWriter:_build_status_row(tracker)
     local text = " " .. status_label .. " "
     --- @type agentic.ui.MessageWriter.StatusSegment[]
     local segments = {
-        { 1, #text, Theme.get_status_hl_group(status) },
+        { 0, #text, Theme.get_status_hl_group(status) },
     }
 
     local perm = tracker.permission
