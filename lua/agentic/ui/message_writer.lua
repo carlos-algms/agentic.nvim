@@ -1034,7 +1034,7 @@ function MessageWriter:_build_status_row(tracker)
     local icon = icons[status] or ""
     local status_label = icon ~= "" and (icon .. " " .. status) or status
 
-    local text = " " .. status_label
+    local text = " " .. status_label .. " "
     --- @type agentic.ui.MessageWriter.StatusSegment[]
     local segments = {
         { 1, #text, Theme.get_status_hl_group(status) },
