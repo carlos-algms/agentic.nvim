@@ -325,6 +325,34 @@ function MessageWriter:_append_lines(lines)
     end
 end
 
+--- @param cursor_line integer 1-indexed window cursor row
+--- @return boolean
+function MessageWriter:_cursor_on_permission_button_row(cursor_line)
+    local row = cursor_line - 1
+    local marks = vim.api.nvim_buf_get_extmarks(
+        self.bufnr,
+        NS_STATUS,
+        { row, 0 },
+        { row + 1, 0 },
+        { details = true, hl_name = true }
+    )
+
+    for _, mark in ipairs(marks) do
+        local details = mark[4]
+        local hl_group = details and details.hl_group
+
+        if
+            hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
+            or hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
+            or hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
 --- @param bufnr integer
 --- @return boolean should_scroll
 function MessageWriter:_check_auto_scroll(bufnr)
@@ -340,6 +368,11 @@ function MessageWriter:_check_auto_scroll(bufnr)
     end
 
     local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
+
+    if self:_cursor_on_permission_button_row(cursor_line) then
+        return false
+    end
+
     local total_lines = vim.api.nvim_buf_line_count(bufnr)
     local distance_from_bottom = total_lines - cursor_line
 

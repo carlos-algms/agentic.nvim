@@ -124,6 +124,47 @@ describe("agentic.ui.MessageWriter", function()
         }
     end
 
+    --- @param tool_call_id string
+    --- @return integer
+    local function block_end_row(tool_call_id)
+        local tracker = writer.tool_call_blocks[tool_call_id]
+        local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+        local pos = vim.api.nvim_buf_get_extmark_by_id(
+            bufnr,
+            NS,
+            tracker.extmark_id,
+            { details = true }
+        )
+        --- @type integer
+        local end_row = pos[3].end_row
+        return end_row
+    end
+
+    local ALLOW_REJECT_OPTIONS = {
+        {
+            optionId = "allow-once",
+            name = "Allow once",
+            kind = "allow_once",
+        },
+        {
+            optionId = "reject-once",
+            name = "Reject once",
+            kind = "reject_once",
+        },
+    }
+
+    --- @param id string
+    --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
+    local function setup_permission_block(id, state)
+        writer:write_tool_call_block(make_tool_call_block(id, "pending"))
+        writer:set_permission_state(id, {
+            sorted_options = state.sorted_options or ALLOW_REJECT_OPTIONS,
+            is_focused = state.is_focused,
+            focused_button_index = state.focused_button_index,
+        })
+        writer:repaint_status_row(id)
+    end
+
     local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
     --- @return vim.api.keyset.get_extmark_item[]
@@ -179,25 +220,39 @@ describe("agentic.ui.MessageWriter", function()
             vim.api.nvim_set_current_tabpage(tab2)
             vim.cmd("tabclose")
         end)
+
+        it(
+            "returns false when cursor is parked on a permission button row",
+            function()
+                setup_permission_block("auto-scroll-permission-row", {
+                    is_focused = false,
+                })
+                vim.api.nvim_win_set_cursor(winid, {
+                    block_end_row("auto-scroll-permission-row") + 1,
+                    0,
+                })
+
+                assert.is_false(writer:_check_auto_scroll(bufnr))
+            end
+        )
+
+        it(
+            "still auto-scrolls when cursor is on a non-permission status row",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("auto-scroll-status-row", "pending")
+                )
+                vim.api.nvim_win_set_cursor(winid, {
+                    block_end_row("auto-scroll-status-row") + 1,
+                    0,
+                })
+
+                assert.is_true(writer:_check_auto_scroll(bufnr))
+            end
+        )
     end)
 
     describe("status row", function()
-        --- @param tool_call_id string
-        --- @return integer
-        local function block_end_row(tool_call_id)
-            local tracker = writer.tool_call_blocks[tool_call_id]
-            local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
-            local pos = vim.api.nvim_buf_get_extmark_by_id(
-                bufnr,
-                NS,
-                tracker.extmark_id,
-                { details = true }
-            )
-            --- @type integer
-            local end_row = pos[3].end_row
-            return end_row
-        end
-
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
@@ -231,31 +286,6 @@ describe("agentic.ui.MessageWriter", function()
                 end
             end
             return count
-        end
-
-        local ALLOW_REJECT_OPTIONS = {
-            {
-                optionId = "allow-once",
-                name = "Allow once",
-                kind = "allow_once",
-            },
-            {
-                optionId = "reject-once",
-                name = "Reject once",
-                kind = "reject_once",
-            },
-        }
-
-        --- @param id string
-        --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
-        local function setup_permission_block(id, state)
-            writer:write_tool_call_block(make_tool_call_block(id, "pending"))
-            writer:set_permission_state(id, {
-                sorted_options = state.sorted_options or ALLOW_REJECT_OPTIONS,
-                is_focused = state.is_focused,
-                focused_button_index = state.focused_button_index,
-            })
-            writer:repaint_status_row(id)
         end
 
         it(

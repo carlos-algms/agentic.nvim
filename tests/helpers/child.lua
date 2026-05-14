@@ -16,7 +16,7 @@ function M.new()
     local root_dir = vim.fn.getcwd()
 
     function child.setup()
-        child.restart({ "-u", "NONE" })
+        child.restart({ "-i", "NONE", "-u", "NONE" })
         child.lua("vim.opt.rtp:prepend(...)", { root_dir })
 
         child.lua([[

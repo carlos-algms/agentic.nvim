@@ -169,6 +169,8 @@ describe("FilePicker:scan_files", function()
                 FilePicker.GLOB_EXCLUDE_PATTERNS,
                 "settings%.local%.json"
             )
+            -- Local headless Neovim runs can create nvim.log after rg scanned.
+            table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "nvim%.log$")
             -- .opencode/.gitignore ignores specific files (bun.lock, package.json, etc.)
             -- rg/fd/git respect nested .gitignore but glob fallback doesn't
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.opencode/bun")
