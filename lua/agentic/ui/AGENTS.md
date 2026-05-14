@@ -118,6 +118,9 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
     than `Config.auto_scroll.threshold` lines from the bottom. This is
     intentional sticky-reading behavior, not a bug — the user stopped following
     the stream and we preserve their position.
+  - `_check_auto_scroll` also returns false when the cursor row has
+    permission-button extmarks in `NS_STATUS`. This avoids a
+    `PermissionManager` back-reference in `MessageWriter`.
 - Tool-call body updates replace only the body between stable anchor pads; the
   whole block range is never replaced.
 - Manual folds only. Never `foldexpr`. Before proposing a `foldexpr` workaround
@@ -254,7 +257,7 @@ change.
   `permission_manager.test.lua::concurrent pending map::*`.
 - Sender header dedup on consecutive same-sender writes —
   `message_writer.test.lua::sender header tracking`.
-- Auto-scroll threshold preserves user reading position —
+- Auto-scroll threshold preserves reading position and permission-row cursor —
   `message_writer.test.lua::_check_auto_scroll`.
 - Thinking-state cleared on non-thought writes —
   `message_writer.test.lua::thinking block highlighting::"clears thinking state on reset_sender_tracking, write_tool_call_block, and write_message"`.

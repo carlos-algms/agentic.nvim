@@ -1,7 +1,7 @@
 # 003. Inline permission buttons
 
 - Status: accepted
-- Last updated: 2026-05-13
+- Last updated: 2026-05-14
 - Related: `lua/agentic/ui/permission_manager.lua`,
   `lua/agentic/ui/message_writer.lua`, `lua/agentic/ui/AGENTS.md`,
   `lua/agentic/acp/AGENTS.md`
@@ -135,6 +135,14 @@ no-op'ing in `_set_focus` (early return on same id), `_cycle_focus` detects
 this and calls `_jump_cursor_to` directly, so the user can recall the focused
 row even with one pending block.
 
+### Auto-scroll suppression
+
+`MessageWriter:_check_auto_scroll` stops following new output when the cursor
+row contains a permission-button extmark in `NS_STATUS`. The check uses
+rendered state, not `PermissionManager` focus state, so `MessageWriter` stays
+decoupled from permission ownership and row shifts remain correct after block
+rewrites.
+
 ### Highlight groups
 
 Three HL groups, defined with backgrounds (button-fill look, not text-color):
@@ -175,6 +183,9 @@ No change to ADR 001's manual-fold contract or anchor-pad invariants.
   line from the tracker; called by both update paths
   (`update_tool_call_block`, body refresh) and `PermissionManager` state
   changes.
+- Auto-scroll suppression is driven by `NS_STATUS` permission-button extmarks
+  on the cursor row. No focus-row callback from `PermissionManager` to
+  `MessageWriter` is needed.
 - `<CR>` consumed on row N of focused block. Read-only buffer default
   (next-line) was rarely useful there.
 - Sticky-reading regression on focus jump: user reading farther up the
@@ -215,3 +226,4 @@ No change to ADR 001's manual-fold contract or anchor-pad invariants.
 | 2026-05-13 | -       | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                      |
 | 2026-05-13 | -       | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.               |
 | 2026-05-13 | -       | Digits `1`..`4` ungated (fire from anywhere in the chat buffer); only motion / submit keys (`h`/`l`/`<Left>`/`<Right>`/`<CR>`) remain row-gated. |
+| 2026-05-14 | -       | Auto-scroll suppresses follow mode on `NS_STATUS` permission-button rows; no `PermissionManager` focus-row callback.          |
