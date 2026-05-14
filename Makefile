@@ -17,7 +17,7 @@ test-file:
 
 # Lua Language Server headless diagnosis report
 luals:
-	@VIMRUNTIME=$${VIMRUNTIME:-$$($(NVIM) --headless -i NONE -n -c 'echo $$VIMRUNTIME' -c q 2>/dev/null)}; \
+	@VIMRUNTIME=$${VIMRUNTIME:-$$($(NVIM) --headless -i NONE -n -u NONE -c 'lua io.stdout:write(vim.env.VIMRUNTIME or "")' -c q 2>/dev/null)}; \
 	if [ -z "$$VIMRUNTIME" ]; then \
 		echo "Error: Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable" >&2; \
 		exit 1; \
