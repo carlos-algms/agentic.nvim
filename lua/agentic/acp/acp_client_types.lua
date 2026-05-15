@@ -252,8 +252,8 @@
 
 --- @class agentic.acp.SessionInfoUpdate
 --- @field sessionUpdate "session_info_update"
---- @field title? string|nil
---- @field updatedAt? string|nil
+--- @field title? string
+--- @field updatedAt? string
 
 --- @class agentic.acp.ConfigOptionsUpdate
 --- @field sessionUpdate "config_option_update"
