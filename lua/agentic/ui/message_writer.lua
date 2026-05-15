@@ -22,6 +22,8 @@ local PERMISSION_OPTION_LABELS = {
     reject_always = "Reject Always",
 }
 
+local TITLE_FENCE = "`````"
+
 --- @class agentic.ui.MessageWriter.HighlightRange
 --- @field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
 --- @field line_index integer Line index relative to returned lines (0-based)
@@ -631,13 +633,98 @@ end
 --- @return string header
 function MessageWriter:_build_header_line(tool_call_block)
     local kind = tool_call_block.kind or "other"
+    local argument = self:_build_header_argument(tool_call_block)
+
+    return string.format(" %s(%s) ", kind, argument)
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string argument
+function MessageWriter:_build_header_argument(tool_call_block)
     local argument = tool_call_block.argument or ""
 
     -- Sanitize argument to prevent newlines in the header line
     -- nvim_buf_set_lines doesn't accept array items with embedded newlines
     argument = argument:gsub("\n", "\\n")
 
-    return string.format(" %s(%s) ", kind, argument)
+    local max_length = self:_get_title_max_length()
+    if
+        max_length > 0
+        and #argument > max_length
+        and self:_should_render_full_title_body(tool_call_block)
+    then
+        return argument:sub(1, max_length) .. "..."
+    end
+
+    return argument
+end
+
+--- @return integer max_length
+function MessageWriter:_get_title_max_length()
+    local cfg = Config.tool_calls and Config.tool_calls.title
+    local max_length = cfg and cfg.max_length
+
+    if type(max_length) ~= "number" or max_length < 0 then
+        return 0
+    end
+
+    return max_length
+end
+
+--- @param kind string|nil
+--- @return boolean enabled
+function MessageWriter:_title_kind_enabled(kind)
+    if not kind then
+        return false
+    end
+
+    local cfg = Config.tool_calls and Config.tool_calls.title
+    local kinds = cfg and cfg.truncate_title_kinds
+
+    if type(kinds) ~= "table" then
+        return false
+    end
+
+    for _, configured_kind in ipairs(kinds) do
+        if configured_kind == kind then
+            return true
+        end
+    end
+
+    return false
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return boolean should_render
+function MessageWriter:_should_render_full_title_body(tool_call_block)
+    local argument = tool_call_block.argument or ""
+    local max_length = self:_get_title_max_length()
+
+    return max_length > 0
+        and #argument > max_length
+        and tool_call_block.diff == nil
+        and self:_title_kind_enabled(tool_call_block.kind)
+end
+
+--- @param argument string
+--- @return string[] lines
+function MessageWriter:_split_title_lines(argument)
+    local normalized = argument:gsub("\\n", "\n")
+    return vim.split(normalized, "\n", { plain = true })
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string[] lines
+function MessageWriter:_build_full_title_body_lines(tool_call_block)
+    local lang = tool_call_block.kind == "execute" and "bash" or "text"
+    local lines = { TITLE_FENCE .. lang }
+    vim.list_extend(
+        lines,
+        self:_split_title_lines(tool_call_block.argument or "")
+    )
+    table.insert(lines, TITLE_FENCE)
+
+    return lines
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
@@ -654,11 +741,27 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     --- @type agentic.ui.MessageWriter.HighlightRange[]
     local highlight_ranges = {}
 
+    local has_title_body = self:_should_render_full_title_body(tool_call_block)
+    if has_title_body then
+        vim.list_extend(
+            lines,
+            self:_build_full_title_body_lines(tool_call_block)
+        )
+    end
+
+    --- @param has_body boolean
+    local function insert_title_separator(has_body)
+        if has_title_body and has_body then
+            vim.list_extend(lines, { "", "---", "" })
+        end
+    end
+
     if kind == "read" then
         -- Count lines from content, we don't want to show full content that was read
         local line_count = tool_call_block.body and #tool_call_block.body or 0
 
         if line_count > 0 then
+            insert_title_separator(true)
             table.insert(lines, string.format("Read %d lines", line_count))
 
             --- @type agentic.ui.MessageWriter.HighlightRange
@@ -761,7 +864,8 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
 
         table.insert(lines, "`````")
     else
-        if tool_call_block.body then
+        if tool_call_block.body and #tool_call_block.body > 0 then
+            insert_title_separator(true)
             vim.list_extend(lines, tool_call_block.body)
         end
     end
@@ -926,43 +1030,21 @@ function MessageWriter:replay_history_messages(messages)
     self._provider_name = current_provider
 end
 
---- Apply highlights to block content (either diff highlights or Comment for non-edit blocks)
---- @param bufnr integer
+--- Apply semantic highlights to block content.
+--- @param _bufnr integer
 --- @param start_row integer Header line number
---- @param end_row integer Footer line number
---- @param kind string Tool call kind
+--- @param _end_row integer Footer line number
+--- @param _kind string Tool call kind
 --- @param highlight_ranges agentic.ui.MessageWriter.HighlightRange[] Diff highlight ranges
 function MessageWriter:_apply_block_highlights(
-    bufnr,
+    _bufnr,
     start_row,
-    end_row,
-    kind,
+    _end_row,
+    _kind,
     highlight_ranges
 )
     if #highlight_ranges > 0 then
         self:_apply_diff_highlights(start_row, highlight_ranges)
-    elseif kind ~= "edit" and kind ~= "switch_mode" then
-        -- Apply Comment highlight for non-edit blocks without diffs
-        for line_idx = start_row + 1, end_row - 1 do
-            local line = vim.api.nvim_buf_get_lines(
-                bufnr,
-                line_idx,
-                line_idx + 1,
-                false
-            )[1]
-            if line and #line > 0 then
-                vim.api.nvim_buf_set_extmark(
-                    bufnr,
-                    NS_DIFF_HIGHLIGHTS,
-                    line_idx,
-                    0,
-                    {
-                        end_col = #line,
-                        hl_group = "Comment",
-                    }
-                )
-            end
-        end
     end
 end
 

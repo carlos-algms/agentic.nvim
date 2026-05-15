@@ -832,6 +832,31 @@ Folding ~
   }
 <
 
+                                          *agentic-tool-call-title-config*
+Tool call titles ~
+>lua
+  --- @type agentic.PartialUserConfig
+  opts = {
+    tool_calls = {
+      title = {
+        max_length = 50,  -- 0 disables truncation
+        truncate_title_kinds = {
+          "execute",
+          "think",
+          "SubAgent",
+          "fetch",
+          "search",
+        },
+      },
+    },
+  }
+<
+
+Only `truncate_title_kinds` are affected by `max_length`. Non-diff titles
+longer than `max_length` are truncated to `max_length` bytes plus `...`; the
+full title is rendered in the folded body. Negative values are clamped to 0.
+Diff tool calls keep full header-only titles.
+
 ==============================================================================
 INTEGRATIONS                                      *agentic-integrations*
 

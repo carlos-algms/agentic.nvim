@@ -74,6 +74,24 @@ describe("config_default", function()
             assert.equal(false, cfg.diff_preview.enabled)
         end)
 
+        it("accepts partial tool call title config", function()
+            --- @type agentic.PartialUserConfig
+            local cfg = {
+                tool_calls = {
+                    title = {
+                        max_length = 80,
+                        truncate_title_kinds = { "execute", "fetch" },
+                    },
+                },
+            }
+
+            assert.equal(80, cfg.tool_calls.title.max_length)
+            assert.equal(
+                "execute",
+                cfg.tool_calls.title.truncate_title_kinds[1]
+            )
+        end)
+
         it("accepts partial settings", function()
             --- @type agentic.PartialUserConfig
             local cfg = {

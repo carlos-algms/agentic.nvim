@@ -55,6 +55,10 @@ the chat buffer. A single very long line that wraps past the threshold folds
 even though it's one buffer line — relevant for huge tool outputs (Defuddle,
 `curl`-piped-to-`python`) that arrive as one mega-line.
 
+Long non-diff tool-call titles can render as the first body block when
+configured via `Config.tool_calls.title`. That title body lives inside the same
+anchor pads as provider output, so it counts toward `Fold.should_fold`.
+
 ## Consequences
 
 - O(1) per fold transition instead of O(N).
@@ -102,12 +106,13 @@ Our case (live transitions on growing blocks) is the harder variant.
 
 ## Changelog
 
-| Date       | Commit  | Change                                                                 |
-| ---------- | ------- | ---------------------------------------------------------------------- |
-| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.                              |
-| 2026-04-29 | 28cb6ff | Migrate to manual + anchor pads + sync scroll.                         |
-| 2026-04-29 | 28cb6ff | Add hidden chat float for fold-state preservation.                     |
-| 2026-05-03 | -       | Switch fold decision to screen rows via `nvim_win_text_height`; sync hidden float dimensions/wrap with config. |
+| Date       | Commit  | Change                                           |
+| ---------- | ------- | ------------------------------------------------ |
+| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.        |
+| 2026-04-29 | 28cb6ff | Manual folds + anchor pads + sync scroll.        |
+| 2026-04-29 | 28cb6ff | Hidden chat float preserves fold state.          |
+| 2026-05-03 | -       | Screen-row folding; sync dimensions/wrap.        |
+| 2026-05-15 | -       | Long-title body counts inside body fold range.   |
 
 ## Sources
 

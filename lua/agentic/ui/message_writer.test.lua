@@ -15,9 +15,12 @@ describe("agentic.ui.MessageWriter", function()
 
     --- @type agentic.UserConfig.AutoScroll|nil
     local original_auto_scroll
+    --- @type agentic.UserConfig.ToolCalls|nil
+    local original_tool_calls
 
     before_each(function()
         original_auto_scroll = Config.auto_scroll
+        original_tool_calls = Config.tool_calls
         MessageWriter = require("agentic.ui.message_writer")
 
         bufnr = vim.api.nvim_create_buf(false, true)
@@ -36,6 +39,7 @@ describe("agentic.ui.MessageWriter", function()
 
     after_each(function()
         Config.auto_scroll = original_auto_scroll --- @diagnostic disable-line: assign-type-mismatch
+        Config.tool_calls = original_tool_calls --- @diagnostic disable-line: assign-type-mismatch
         if writer then
             writer:destroy()
         end
@@ -521,6 +525,118 @@ describe("agentic.ui.MessageWriter", function()
         )
     end)
 
+    describe("tool call title truncation", function()
+        before_each(function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = {
+                        "execute",
+                        "think",
+                        "SubAgent",
+                        "fetch",
+                        "search",
+                    },
+                },
+            }
+        end)
+
+        --- @param kind agentic.acp.ToolKind
+        --- @param argument string
+        --- @return agentic.ui.MessageWriter.ToolCallBlock block
+        local function make_title_block(kind, argument)
+            return {
+                tool_call_id = "title-" .. kind,
+                status = "completed",
+                kind = kind,
+                argument = argument,
+                body = { "output" },
+            }
+        end
+
+        it(
+            "truncates selected long titles and renders full title body",
+            function()
+                local title = string.rep("x", 55) .. "\\nsecond line"
+
+                writer:write_tool_call_block(make_title_block("execute", title))
+
+                local content = get_all_content()
+                assert.truthy(
+                    content:find(
+                        "execute(" .. string.rep("x", 50) .. "...)",
+                        1,
+                        true
+                    )
+                )
+                assert.truthy(content:find("`````bash", 1, true))
+                assert.truthy(content:find(string.rep("x", 55), 1, true))
+                assert.truthy(content:find("second line", 1, true))
+                assert.truthy(content:find("`````\n\n---\n\noutput", 1, true))
+                assert.same(
+                    { "output" },
+                    writer.tool_call_blocks["title-execute"].body
+                )
+            end
+        )
+
+        it("keeps selected short titles in the header only", function()
+            writer:write_tool_call_block(make_title_block("execute", "ls"))
+
+            local content = get_all_content()
+            assert.truthy(content:find(" execute(ls) ", 1, true))
+            assert.is_nil(content:find("`````bash", 1, true))
+        end)
+
+        it("does not truncate non-selected long titles", function()
+            local title = string.rep("x", 55)
+
+            writer:write_tool_call_block(make_title_block("write", title))
+
+            local content = get_all_content()
+            assert.truthy(content:find(" write(" .. title .. ") ", 1, true))
+            assert.is_nil(
+                content:find("write(" .. string.rep("x", 50) .. "...)", 1, true)
+            )
+            assert.is_nil(content:find("`````", 1, true))
+        end)
+
+        it("re-renders late long titles without mutating body", function()
+            writer:write_tool_call_block(make_title_block("execute", "bash"))
+
+            local late_title = "ls " .. string.rep("x", 60)
+            writer:update_tool_call_block({
+                tool_call_id = "title-execute",
+                argument = late_title,
+            })
+
+            local content = get_all_content()
+            assert.truthy(
+                content:find(
+                    "execute(" .. late_title:sub(1, 50) .. "...)",
+                    1,
+                    true
+                )
+            )
+            assert.truthy(content:find("`````bash", 1, true))
+            assert.truthy(content:find(late_title, 1, true))
+            assert.same(
+                { "output" },
+                writer.tool_call_blocks["title-execute"].body
+            )
+        end)
+
+        it("uses text fences for non-execute selected kinds", function()
+            local title = string.rep("x", 55)
+
+            writer:write_tool_call_block(make_title_block("SubAgent", title))
+
+            local content = get_all_content()
+            assert.truthy(content:find("`````text", 1, true))
+            assert.is_nil(content:find("`````bash", 1, true))
+        end)
+    end)
+
     describe("sender header tracking", function()
         --- @type TestStub
         local schedule_stub
@@ -747,6 +863,40 @@ describe("agentic.ui.MessageWriter", function()
             local tracker = writer.tool_call_blocks["tc-json"]
             assert.is_not_nil(tracker)
             assert.is_true(#tracker.body > 1)
+        end)
+
+        it("renders truncated title body on replay", function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = { "fetch" },
+                },
+            }
+            writer:set_provider_name("Claude")
+
+            local title = string.rep("x", 55)
+
+            --- @type agentic.ui.ChatHistory.Message[]
+            local messages = {
+                {
+                    type = "tool_call",
+                    tool_call_id = "tc-title-replay",
+                    kind = "fetch",
+                    argument = title,
+                    status = "completed",
+                    body = { "output" },
+                    provider_name = "Claude",
+                },
+            }
+
+            writer:replay_history_messages(messages)
+
+            local content = get_all_content()
+            assert.truthy(
+                content:find("fetch(" .. string.rep("x", 50) .. "...)", 1, true)
+            )
+            assert.truthy(content:find("`````text", 1, true))
+            assert.truthy(content:find(title, 1, true))
         end)
 
         it(
@@ -989,38 +1139,34 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("tool call block update highlighting", function()
-        it(
-            "applies block body highlights synchronously during update",
-            function()
-                local block = make_tool_call_block("sync-hl-1", "pending")
-                writer:write_tool_call_block(block)
+        it("does not apply generic comment highlights during update", function()
+            local block = make_tool_call_block("sync-hl-1", "pending")
+            writer:write_tool_call_block(block)
 
-                writer:update_tool_call_block({
-                    tool_call_id = "sync-hl-1",
-                    status = "completed",
-                    body = { "new output" },
-                })
+            writer:update_tool_call_block({
+                tool_call_id = "sync-hl-1",
+                status = "completed",
+                body = { "new output" },
+            })
 
-                local ns =
-                    vim.api.nvim_create_namespace("agentic_diff_highlights")
-                local extmarks = vim.api.nvim_buf_get_extmarks(
-                    bufnr,
-                    ns,
-                    0,
-                    -1,
-                    { details = true }
-                )
+            local ns = vim.api.nvim_create_namespace("agentic_diff_highlights")
+            local extmarks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
 
-                local has_comment_hl = false
-                for _, em in ipairs(extmarks) do
-                    if em[4].hl_group == "Comment" then
-                        has_comment_hl = true
-                        break
-                    end
+            local has_comment_hl = false
+            for _, em in ipairs(extmarks) do
+                if em[4].hl_group == "Comment" then
+                    has_comment_hl = true
+                    break
                 end
-                assert.is_true(has_comment_hl)
             end
-        )
+            assert.is_false(has_comment_hl)
+        end)
     end)
 
     describe("Fold integration", function()
@@ -1277,6 +1423,31 @@ describe("agentic.ui.MessageWriter", function()
             vim.api.nvim_win_call(winid, function()
                 assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
             end)
+        end)
+
+        it("counts rendered long title body toward fold threshold", function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = { "execute" },
+                },
+            }
+
+            writer:write_tool_call_block({
+                tool_call_id = "fold-title",
+                status = "completed",
+                kind = "execute",
+                argument = table.concat({
+                    string.rep("x", 55),
+                    "line two",
+                    "line three",
+                    "line four",
+                    "line five",
+                }, "\\n"),
+                body = { "short" },
+            })
+
+            assert_fold_closed("fold-title")
         end)
 
         it("emits anchor pad lines around the body in every block", function()

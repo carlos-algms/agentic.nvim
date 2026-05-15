@@ -176,6 +176,15 @@
 --- @class agentic.UserConfig.Folding
 --- @field tool_calls agentic.UserConfig.Folding.ToolCalls
 
+--- Tool call title display configuration
+--- @class agentic.UserConfig.ToolCalls.Title
+--- @field max_length integer Maximum title length before truncation. 0 disables truncation.
+--- @field truncate_title_kinds agentic.acp.ToolKind[] Tool kinds affected by max_length.
+
+--- Tool call display configuration
+--- @class agentic.UserConfig.ToolCalls
+--- @field title agentic.UserConfig.ToolCalls.Title
+
 --- @class agentic.UserConfig.Hooks
 --- @field on_create_session_response? fun(data: agentic.UserConfig.CreateSessionResponseData): nil
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
@@ -206,6 +215,7 @@
 --- @class (partial) agentic.PartialUserConfig.AutoScroll: agentic.UserConfig.AutoScroll
 --- @class (partial) agentic.PartialUserConfig.DiffPreview: agentic.UserConfig.DiffPreview
 --- @class (partial) agentic.PartialUserConfig.Folding.ToolCalls: agentic.UserConfig.Folding.ToolCalls
+--- @class (partial) agentic.PartialUserConfig.ToolCalls.Title: agentic.UserConfig.ToolCalls.Title
 --- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
 
 --- Windows partial with nested type overrides
@@ -220,6 +230,10 @@
 --- Folding partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
 --- @field tool_calls? agentic.PartialUserConfig.Folding.ToolCalls
+
+--- Tool calls partial with nested type overrides
+--- @class (partial) agentic.PartialUserConfig.ToolCalls: agentic.UserConfig.ToolCalls
+--- @field title? agentic.PartialUserConfig.ToolCalls.Title
 
 --- Top-level partial config -- all UserConfig fields become optional
 --- Nested fields override to use partial variants
@@ -237,6 +251,7 @@
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
 --- @field folding? agentic.PartialUserConfig.Folding
+--- @field tool_calls? agentic.PartialUserConfig.ToolCalls
 --- @field settings? agentic.PartialUserConfig.Settings
 
 --- @class agentic.UserConfig
@@ -256,6 +271,7 @@
 --- @field auto_scroll agentic.UserConfig.AutoScroll
 --- @field diff_preview agentic.UserConfig.DiffPreview
 --- @field folding agentic.UserConfig.Folding
+--- @field tool_calls agentic.UserConfig.ToolCalls
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
@@ -487,6 +503,19 @@ local ConfigDefault = {
             enabled = true,
             threshold = 10,
             fold_on_error = false,
+        },
+    },
+
+    tool_calls = {
+        title = {
+            max_length = 50,
+            truncate_title_kinds = {
+                "execute",
+                "think",
+                "SubAgent",
+                "fetch",
+                "search",
+            },
         },
     },
 

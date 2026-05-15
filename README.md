@@ -484,6 +484,34 @@ The fold hides the body only - the tool call header and completion status
 remain visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle
 individual folds, or `zR`/`zM` to open/close all folds in the chat window.
 
+### Tool Call Titles
+
+Long non-diff titles for configured tool call kinds are truncated in the header
+and shown in full as the first body block.
+
+```lua
+--- @type agentic.PartialUserConfig
+opts = {
+  tool_calls = {
+    title = {
+      max_length = 50,
+      truncate_title_kinds = {
+        "execute",
+        "think",
+        "SubAgent",
+        "fetch",
+        "search",
+      },
+    },
+  },
+}
+```
+
+Only `truncate_title_kinds` are affected by `max_length`. Titles longer than
+`max_length` are truncated to `max_length` bytes plus `...`; the full title is
+rendered in the folded body. Set `max_length = 0` to disable title truncation.
+Negative values are clamped to 0. Diff tool calls keep full header-only titles.
+
 ## 🚀 Usage (Public Lua API)
 
 ### Commands
