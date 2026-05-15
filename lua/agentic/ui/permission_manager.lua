@@ -29,6 +29,7 @@ local MAX_DIGIT_KEYS = vim.tbl_count(PERMISSION_KIND_PRIORITY)
 --- @field pending table<string, agentic.ui.PermissionManager.PermissionRequest> Pending requests keyed by tool_call_id
 --- @field _order string[] Insertion order of pending tool_call_ids
 --- @field focused_id? string Currently focused tool_call_id
+--- @field _cycle_keymaps_installed boolean
 local PermissionManager = {}
 PermissionManager.__index = PermissionManager
 
@@ -40,32 +41,49 @@ function PermissionManager:new(message_writer)
         pending = {},
         _order = {},
         focused_id = nil,
+        _cycle_keymaps_installed = false,
     }, self)
 
-    -- Cycle keymaps stay installed for the lifetime of the PermissionManager;
-    -- their callback returns early when `_order` is empty, so pressing the key
-    -- with no pending blocks is a no-op.
-    local cfg = (Config.keymaps and Config.keymaps.permission) or {}
-
-    BufHelpers.multi_keymap_set(
-        cfg.cycle_next or "<C-n>",
-        message_writer.bufnr,
-        function()
-            self:_cycle_focus(1)
-        end,
-        { desc = "Permission: focus next pending tool call" }
-    )
-
-    BufHelpers.multi_keymap_set(
-        cfg.cycle_prev or "<C-p>",
-        message_writer.bufnr,
-        function()
-            self:_cycle_focus(-1)
-        end,
-        { desc = "Permission: focus previous pending tool call" }
-    )
-
     return self
+end
+
+function PermissionManager:_install_cycle_keymaps()
+    if self._cycle_keymaps_installed then
+        return
+    end
+
+    if not vim.api.nvim_buf_is_valid(self.message_writer.bufnr) then
+        return
+    end
+
+    local cfg = (Config.keymaps and Config.keymaps.permission) or {}
+    local bufnr = self.message_writer.bufnr
+
+    BufHelpers.multi_keymap_set(cfg.cycle_next or "<C-n>", bufnr, function()
+        self:_cycle_focus(1)
+    end, { desc = "Permission: focus next pending tool call" })
+
+    BufHelpers.multi_keymap_set(cfg.cycle_prev or "<C-p>", bufnr, function()
+        self:_cycle_focus(-1)
+    end, { desc = "Permission: focus previous pending tool call" })
+
+    self._cycle_keymaps_installed = true
+end
+
+function PermissionManager:_remove_cycle_keymaps()
+    if not self._cycle_keymaps_installed then
+        return
+    end
+
+    if vim.api.nvim_buf_is_valid(self.message_writer.bufnr) then
+        local cfg = (Config.keymaps and Config.keymaps.permission) or {}
+        local bufnr = self.message_writer.bufnr
+
+        BufHelpers.multi_keymap_del(cfg.cycle_next or "<C-n>", bufnr)
+        BufHelpers.multi_keymap_del(cfg.cycle_prev or "<C-p>", bufnr)
+    end
+
+    self._cycle_keymaps_installed = false
 end
 
 --- @param options agentic.acp.PermissionOption[]
@@ -122,6 +140,10 @@ function PermissionManager:add_request(request, callback)
 
     self.pending[tool_call_id] = pending_req
     table.insert(self._order, tool_call_id)
+
+    if #self._order == 1 then
+        self:_install_cycle_keymaps()
+    end
 
     if self.focused_id == nil then
         self:_set_focus(tool_call_id)
@@ -273,6 +295,7 @@ function PermissionManager:clear()
 
     self._order = {}
     self:_remove_focus_keymaps()
+    self:_remove_cycle_keymaps()
     self.focused_id = nil
 end
 
@@ -312,6 +335,7 @@ function PermissionManager:_set_focus(new_id)
     self:_remove_focus_keymaps()
 
     if new_id == nil then
+        self:_remove_cycle_keymaps()
         return
     end
 

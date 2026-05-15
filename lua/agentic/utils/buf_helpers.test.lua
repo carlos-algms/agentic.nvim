@@ -198,6 +198,53 @@ describe("BufHelpers", function()
         end)
     end)
 
+    describe("multi_keymap_del", function()
+        --- @type TestStub
+        local keymap_del_stub
+        --- @type TestStub
+        local has_stub
+
+        before_each(function()
+            keymap_del_stub = spy.stub(vim.keymap, "del")
+            has_stub = spy.stub(vim.fn, "has")
+            has_stub:returns(1)
+        end)
+
+        after_each(function()
+            keymap_del_stub:revert()
+            has_stub:revert()
+        end)
+
+        it("deletes a single string keymap", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.multi_keymap_del("x", bufnr)
+
+            assert.equal(1, keymap_del_stub.call_count)
+            assert.equal("n", keymap_del_stub.calls[1][1])
+            assert.equal("x", keymap_del_stub.calls[1][2])
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+
+        it("deletes array entries with configured modes", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.multi_keymap_del({
+                "x",
+                { "y", mode = "i" },
+            }, bufnr)
+
+            assert.equal(2, keymap_del_stub.call_count)
+            assert.equal("n", keymap_del_stub.calls[1][1])
+            assert.equal("x", keymap_del_stub.calls[1][2])
+            assert.equal("i", keymap_del_stub.calls[2][1])
+            assert.equal("y", keymap_del_stub.calls[2][2])
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+    end)
+
     describe("is_buffer_empty", function()
         it("should return true for buffer with single empty line", function()
             local bufnr = vim.api.nvim_create_buf(false, true)

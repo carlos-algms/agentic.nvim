@@ -274,10 +274,27 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("bracket cycle", function()
-        it("installs the configured cycle_next / cycle_prev keymaps", function()
-            assert.is_true(has_buf_keymap("n", "<C-N>"))
-            assert.is_true(has_buf_keymap("n", "<C-P>"))
-        end)
+        it(
+            "installs cycle keymaps only while permissions are pending",
+            function()
+                assert.is_false(has_buf_keymap("n", "<C-N>"))
+                assert.is_false(has_buf_keymap("n", "<C-P>"))
+
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                assert.is_true(has_buf_keymap("n", "<C-N>"))
+                assert.is_true(has_buf_keymap("n", "<C-P>"))
+
+                pm:resolve("tc-1", "allow-once")
+
+                assert.is_false(has_buf_keymap("n", "<C-N>"))
+                assert.is_false(has_buf_keymap("n", "<C-P>"))
+            end
+        )
 
         it("forward cycle wraps to first", function()
             seed_block("tc-1")
@@ -711,6 +728,8 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_nil(pm.focused_id)
             assert.is_false(pm:has_pending())
             assert.is_false(has_buf_keymap("n", "1"))
+            assert.is_false(has_buf_keymap("n", "<C-N>"))
+            assert.is_false(has_buf_keymap("n", "<C-P>"))
         end)
     end)
 

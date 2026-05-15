@@ -76,7 +76,7 @@ end
 
 --- Deletes a keymap for a specific buffer.
 --- @param bufnr integer
---- @param mode string
+--- @param mode string|string[]
 --- @param lhs string
 function BufHelpers.keymap_del(bufnr, mode, lhs)
     --- @type table
@@ -116,6 +116,31 @@ function BufHelpers.multi_keymap_set(keymaps, bufnr, callback, opts)
         end
 
         BufHelpers.keymap_set(bufnr, modes, keymap, callback, opts)
+    end
+end
+
+--- Deletes multiple keymaps from a KeymapValue config entry for a specific buffer.
+--- @param keymaps agentic.UserConfig.KeymapValue
+--- @param bufnr integer
+function BufHelpers.multi_keymap_del(keymaps, bufnr)
+    if type(keymaps) == "string" then
+        keymaps = { keymaps }
+    end
+
+    for _, key in ipairs(keymaps) do
+        --- @type string|string[]
+        local modes = "n"
+        --- @type string
+        local keymap
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
+        end
+
+        BufHelpers.keymap_del(bufnr, modes, keymap)
     end
 end
 

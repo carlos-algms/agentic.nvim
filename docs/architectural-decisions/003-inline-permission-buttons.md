@@ -1,7 +1,7 @@
 # 003. Inline permission buttons
 
 - Status: accepted
-- Last updated: 2026-05-14
+- Last updated: 2026-05-15
 - Related: `lua/agentic/ui/permission_manager.lua`,
   `lua/agentic/ui/message_writer.lua`, `lua/agentic/ui/AGENTS.md`,
   `lua/agentic/acp/AGENTS.md`
@@ -75,7 +75,8 @@ flowchart TD
 
 - **Block-level** (`Config.keymaps.permission.cycle_next` /
   `cycle_prev`, default `<C-n>` / `<C-p>`): cycles `focused_id` across pending
-  blocks. Permanent buffer-local keymaps; no-op when `pending` empty.
+  blocks. Buffer-local keymaps are installed only while permissions are
+  pending.
 - **Button-level** (`h` / `l` / `<Left>` / `<Right>`): cycles
   `focused_button_index` within the focused block. `<CR>` submits. Digits
   `1`..`4` submit option N directly.
