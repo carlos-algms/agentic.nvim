@@ -892,7 +892,11 @@ describe("agentic.ui.ChatWidget", function()
 
                 local saved_folding = Config.folding
                 Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
+                    tool_calls = {
+                        enabled = true,
+                        threshold = 5,
+                        fold_on_error = false,
+                    },
                 }
 
                 vim.bo[widget.buf_nrs.chat].modifiable = true

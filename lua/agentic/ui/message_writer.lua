@@ -459,12 +459,13 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         local body_start = start_row + 2
         local body_end = end_row - 2
         if
-            Fold.should_fold(
-                bufnr,
-                body_start,
-                body_end,
-                tool_call_block.diff ~= nil
-            )
+            Fold.should_fold({
+                bufnr = bufnr,
+                start_row = body_start,
+                end_row = body_end,
+                status = tool_call_block.status,
+                is_diff = tool_call_block.diff ~= nil,
+            })
         then
             Fold.close_range(bufnr, start_row + 2, end_row)
             tool_call_block.has_fold = true
@@ -609,12 +610,13 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         if
             not tracker.has_fold
-            and Fold.should_fold(
-                bufnr,
-                start_row + 2,
-                new_end_row - 2,
-                tracker.diff ~= nil
-            )
+            and Fold.should_fold({
+                bufnr = bufnr,
+                start_row = start_row + 2,
+                end_row = new_end_row - 2,
+                status = tracker.status,
+                is_diff = tracker.diff ~= nil,
+            })
         then
             Fold.close_range(bufnr, start_row + 2, new_end_row)
             tracker.has_fold = true

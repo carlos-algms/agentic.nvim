@@ -170,6 +170,7 @@
 --- @class agentic.UserConfig.Folding.ToolCalls
 --- @field enabled boolean Whether to fold tool call bodies.
 --- @field threshold integer Fold when the interior occupies more than this many wrapped screen rows. 0 always folds. Negative values are clamped to 0.
+--- @field fold_on_error boolean Whether failed tool calls should fold when over threshold.
 
 --- Folding behavior in the chat buffer
 --- @class agentic.UserConfig.Folding
@@ -485,6 +486,7 @@ local ConfigDefault = {
         tool_calls = {
             enabled = true,
             threshold = 10,
+            fold_on_error = false,
         },
     },
 

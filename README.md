@@ -460,8 +460,8 @@ header parts:
 
 ### Folding
 
-Long tool call outputs are automatically folded to keep the chat buffer
-readable. Toggle the master switch or tune the line threshold.
+Completed tool call outputs are automatically folded to keep the chat buffer
+readable. Failed tool calls stay open unless `fold_on_error` is enabled.
 
 ```lua
 --- @type agentic.PartialUserConfig
@@ -470,13 +470,15 @@ opts = {
     tool_calls = {
       enabled = true,
       threshold = 10,
+      fold_on_error = false,
     },
   },
 }
 ```
 
-Set `threshold = 0` to always fold every tool call body. Negative values are
-clamped to 0. Set `enabled = false` to disable folding entirely.
+Set `threshold = 0` to always fold completed calls, and failed calls when
+`fold_on_error = true`. Negative values are clamped to 0. Set
+`enabled = false` to disable folding entirely.
 
 The fold hides the body only - the tool call header and completion status
 remain visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle

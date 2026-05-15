@@ -304,6 +304,13 @@ for the underlying validator limitation.
 - WRONG: `@field _state string|nil` (use `?` here instead)
 - WRONG: `@field _state string?` (`?` goes after variable name, not type)
 
+For a partial variant of an existing class, use `@class (partial)` extending the
+source type instead of re-declaring every field as optional.
+
+- RIGHT:
+  `@class (partial) MyOptsOverride: MyOpts`
+- WRONG: re-listing `@field field? type` for every field from `MyOpts`
+
 **`@return`, `@type`, `@alias` - Use explicit `type|nil`:**
 
 - RIGHT: `@return string|nil result`, `@type table<string, number|nil>`,

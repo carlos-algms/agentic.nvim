@@ -1033,7 +1033,13 @@ describe("agentic.ui.MessageWriter", function()
 
         before_each(function()
             saved_folding = Config.folding
-            Config.folding = { tool_calls = { enabled = true, threshold = 5 } }
+            Config.folding = {
+                tool_calls = {
+                    enabled = true,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
+            }
             Config.auto_scroll = { threshold = 10 }
 
             Fold.setup_window(winid, bufnr)
@@ -1081,8 +1087,17 @@ describe("agentic.ui.MessageWriter", function()
             )
         end
 
+        --- @param tool_call_id string
+        local function assert_fold_open(tool_call_id)
+            local _, top_pad_row = block_layout(tool_call_id)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
+            end)
+            assert.is_nil(writer.tool_call_blocks[tool_call_id].has_fold)
+        end
+
         it(
-            "closes a manual fold when update_tool_call_block crosses the fold threshold",
+            "closes a manual fold when completed update crosses the fold threshold",
             function()
                 writer:write_tool_call_block({
                     tool_call_id = "fold-mat",
@@ -1108,7 +1123,7 @@ describe("agentic.ui.MessageWriter", function()
         )
 
         it(
-            "closes a manual fold when write_tool_call_block crosses the fold threshold",
+            "closes a manual fold when completed write crosses the fold threshold",
             function()
                 writer:write_tool_call_block({
                     tool_call_id = "fold-on-write",
@@ -1122,10 +1137,134 @@ describe("agentic.ui.MessageWriter", function()
             end
         )
 
+        it("keeps active tool calls open when they exceed threshold", function()
+            for _, status in ipairs({ "pending", "in_progress" }) do
+                local tool_call_id = "open-" .. status
+                writer:write_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = status,
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                })
+
+                assert_fold_open(tool_call_id)
+            end
+        end)
+
+        it("keeps active updates open when they exceed threshold", function()
+            for _, status in ipairs({ "pending", "in_progress" }) do
+                local tool_call_id = "open-update-" .. status
+                writer:write_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "short" },
+                })
+
+                writer:update_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = status,
+                    body = LONG_BODY,
+                })
+
+                assert_fold_open(tool_call_id)
+            end
+        end)
+
+        it("keeps failed updates open by default", function()
+            writer:write_tool_call_block({
+                tool_call_id = "failed-open",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "short" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "failed-open",
+                status = "failed",
+                body = LONG_BODY,
+            })
+
+            assert_fold_open("failed-open")
+        end)
+
+        it("folds failed updates when fold_on_error is enabled", function()
+            Config.folding.tool_calls.fold_on_error = true
+
+            writer:write_tool_call_block({
+                tool_call_id = "failed-folded",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "short" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "failed-folded",
+                status = "failed",
+                body = LONG_BODY,
+            })
+
+            assert_fold_closed("failed-folded")
+        end)
+
+        it("folds restored completed tool calls", function()
+            writer:replay_history_messages({
+                {
+                    type = "tool_call",
+                    tool_call_id = "restored-completed",
+                    status = "completed",
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                },
+            })
+
+            assert_fold_closed("restored-completed")
+        end)
+
+        it("keeps restored failed tool calls open by default", function()
+            writer:replay_history_messages({
+                {
+                    type = "tool_call",
+                    tool_call_id = "restored-failed",
+                    status = "failed",
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                },
+            })
+
+            assert_fold_open("restored-failed")
+        end)
+
+        it(
+            "folds restored failed tool calls when fold_on_error is enabled",
+            function()
+                Config.folding.tool_calls.fold_on_error = true
+
+                writer:replay_history_messages({
+                    {
+                        type = "tool_call",
+                        tool_call_id = "restored-failed-folded",
+                        status = "failed",
+                        kind = "execute",
+                        argument = "ls",
+                        body = LONG_BODY,
+                    },
+                })
+
+                assert_fold_closed("restored-failed-folded")
+            end
+        )
+
         it("does not create a fold when block stays below threshold", function()
             writer:write_tool_call_block({
                 tool_call_id = "no-fold",
-                status = "pending",
+                status = "completed",
                 kind = "execute",
                 argument = "ls",
                 body = { "L1", "L2", "L3" },
