@@ -210,6 +210,37 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_start_spinner_if_generating", function()
+        --- @type TestSpy
+        local start_spy
+        --- @type agentic.SessionManager
+        local session
+
+        before_each(function()
+            start_spy = spy.new(function() end)
+            session = {
+                is_generating = false,
+                status_animation = { start = start_spy },
+                _start_spinner = SessionManager._start_spinner,
+            } --[[@as agentic.SessionManager]]
+        end)
+
+        it("skips spinner when no user turn is active (opener case)", function()
+            session:_start_spinner("generating")
+
+            assert.spy(start_spy).was.called(0)
+        end)
+
+        it("starts spinner when a user turn is active", function()
+            session.is_generating = true
+
+            session:_start_spinner("generating")
+
+            assert.spy(start_spy).was.called(1)
+            assert.equal("generating", start_spy.calls[1][2])
+        end)
+    end)
+
     describe("FileChangedShell autocommand", function()
         local Child = require("tests.helpers.child")
         local child = Child:new()
@@ -670,7 +701,9 @@ describe("agentic.SessionManager", function()
                 },
                 status_animation = { start = function() end },
                 agent = { provider_config = { name = "Test" } },
+                is_generating = true,
                 _on_session_update = SessionManager._on_session_update,
+                _start_spinner = SessionManager._start_spinner,
             } --[[@as agentic.SessionManager]]
         end
 
@@ -800,6 +833,8 @@ describe("agentic.SessionManager", function()
                     remove_request_by_tool_call_id = function() end,
                 },
                 status_animation = { start = function() end },
+                is_generating = true,
+                _start_spinner = SessionManager._start_spinner,
                 _clear_diff_in_buffer = function() end,
                 _on_tool_call = function() end,
                 chat_history = {

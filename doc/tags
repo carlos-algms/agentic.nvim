@@ -32,8 +32,10 @@ agentic-install-copilot	agentic.txt	/*agentic-install-copilot*
 agentic-install-cursor	agentic.txt	/*agentic-install-cursor*
 agentic-install-gemini	agentic.txt	/*agentic-install-gemini*
 agentic-install-goose	agentic.txt	/*agentic-install-goose*
+agentic-install-kiro	agentic.txt	/*agentic-install-kiro*
 agentic-install-mistral	agentic.txt	/*agentic-install-mistral*
 agentic-install-opencode	agentic.txt	/*agentic-install-opencode*
+agentic-install-pi	agentic.txt	/*agentic-install-pi*
 agentic-installation	agentic.txt	/*agentic-installation*
 agentic-integrations	agentic.txt	/*agentic-integrations*
 agentic-introduction	agentic.txt	/*agentic-introduction*

@@ -5,7 +5,7 @@
 > ⚡ A Chat interface for AI agents in Neovim that works with any provider
 > supporting the [Agent Client Protocol (ACP)](https://agentclientprotocol.com)
 > — including Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot, Auggie,
-> Mistral Vibe, Cline, Goose, and more.
+> Mistral Vibe, Cline, Goose, Kiro, Pi, and more.
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
@@ -104,7 +104,13 @@ limited to:
       </picture><br>
       <b>Goose</b>
     </td>
-    <td width="130"></td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/pi-light.svg">
+        <img src=".github/assets/images/pi.svg" width="48" height="48" alt="Pi">
+      </picture><br>
+      <b>Pi</b>
+    </td>
   </tr>
 </table>
 
@@ -116,7 +122,8 @@ _...and any future ACP-compatible provider._
   times
 - **🔌 Any ACP Provider** - Works with any AI provider that implements the Agent
   Client Protocol — Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot,
-  Auggie, Mistral Vibe, Cline, Goose, and any future ACP-compatible provider
+  Auggie, Mistral Vibe, Cline, Goose, Kiro, Pi, and any future ACP-compatible
+  provider
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -212,19 +219,20 @@ tools like `nvm`, `fnm`, etc...
 
 **You are free to chose** any installation method you prefer!
 
-| Provider                             | Install                                                                                                                                                                                        |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @agentclientprotocol/claude-agent-acp`<br/> **OR** `npm i -g @agentclientprotocol/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                      |
-| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
-| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
-| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
-| [cursor-agent][cursor-agent-docs]    | `curl https://cursor.com/install -fsS \| bash` **OR** windows: `irm 'https://cursor.com/install?win32=true' \| iex`<br/> **OR** See [Cursor docs][cursor-agent-docs]                           |
-| [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                     |
-| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
-| [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
-| [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                      |
-| [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                        |
-| [kiro-cli][kiro-docs]                 | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                   |
+| Provider                             | Install                                                                                                                                                                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @agentclientprotocol/claude-agent-acp`<br/> **OR** `npm i -g @agentclientprotocol/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                                                                                                            |
+| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                                                                                                                  |
+| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                                                                                                           |
+| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                                                                                                        |
+| [cursor-agent][cursor-agent-docs]    | `curl https://cursor.com/install -fsS \| bash` **OR** windows: `irm 'https://cursor.com/install?win32=true' \| iex`<br/> **OR** See [Cursor docs][cursor-agent-docs]                                                                                                                 |
+| [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                                                                                                           |
+| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                                                                                                              |
+| [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases]                                                                                       |
+| [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                                                                                                            |
+| [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                                                                                                              |
+| [kiro-cli][kiro-docs]                | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                                                                                                         |
+| [pi-acp][pi-acp]                     | Requires the [`pi` CLI][pi-docs] installed first: `curl -fsSL https://pi.dev/install.sh \| sh`<br/> **OR** `pnpm add -g @earendil-works/pi-coding-agent`<br/> **OR** `npm i -g @earendil-works/pi-coding-agent`<br/> Then the adapter: `pnpm add -g pi-acp` **OR** `npm i -g pi-acp` |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -247,7 +255,7 @@ tools like `nvm`, `fnm`, etc...
 
   --- @type agentic.PartialUserConfig
   opts = {
-    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp"
+    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -1268,3 +1276,5 @@ the the acknowledgments 😊.
 [goose]: https://github.com/block/goose
 [goose-docs]: https://block.github.io/goose/docs/getting-started/installation
 [kiro-docs]: https://kiro.dev/docs/cli/
+[pi-acp]: https://github.com/svkozak/pi-acp
+[pi-docs]: https://pi.dev/docs/latest

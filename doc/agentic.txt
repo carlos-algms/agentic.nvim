@@ -5,7 +5,7 @@
 A Chat interface for AI agents in Neovim that works with any provider
 supporting the Agent Client Protocol (ACP) -- including Claude, Gemini,
 Codex, OpenCode, Cursor Agent, Copilot, Auggie, Mistral Vibe, Cline,
-Goose, and more.
+Goose, Kiro, Pi, and more.
 
 Type |gO| to see the table of contents.
 
@@ -56,6 +56,8 @@ Supported providers:
   - Mistral Vibe (mistral-vibe-acp)
   - Cline (cline-acp)
   - Goose (goose-acp)
+  - Kiro (kiro-acp)
+  - Pi (pi-acp)
   - ...and any future ACP-compatible provider
 
 ==============================================================================
@@ -134,6 +136,22 @@ Provider install commands (always check official docs):
     https://block.github.io/goose/docs/getting-started/installation
     `brew install block-goose-cli`
 
+  kiro-cli                                        *agentic-install-kiro*
+    https://kiro.dev/docs/cli/
+    `curl -fsSL https://cli.kiro.dev/install | bash`
+
+  pi-acp                                            *agentic-install-pi*
+    Requires the `pi` CLI installed first:
+    https://pi.dev/docs/latest
+    `curl -fsSL https://pi.dev/install.sh | sh`
+    OR `pnpm add -g @earendil-works/pi-coding-agent`
+    OR `npm i -g @earendil-works/pi-coding-agent`
+
+    Then install the ACP adapter:
+    https://github.com/svkozak/pi-acp
+    `pnpm add -g pi-acp`
+    OR `npm i -g pi-acp`
+
 Optional: |img-clip.nvim| for pasting screenshots from the clipboard.
 Drag-and-drop works without it if your terminal supports it.
 
@@ -153,7 +171,7 @@ Using lazy.nvim: ~
       -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
       -- "opencode-acp" | "cursor-acp" | "copilot-acp"
       -- "auggie-acp" | "mistral-vibe-acp" | "cline-acp"
-      -- "goose-acp"
+      -- "goose-acp" | "kiro-acp" | "pi-acp"
       provider = "claude-agent-acp",
     },
 
@@ -219,7 +237,8 @@ provider ~
   The ACP provider to use. Built-in providers:
   `"claude-agent-acp"`, `"claude-acp"`, `"gemini-acp"`, `"codex-acp"`,
   `"opencode-acp"`, `"cursor-acp"`, `"copilot-acp"`, `"auggie-acp"`,
-  `"mistral-vibe-acp"`, `"cline-acp"`, `"goose-acp"`.
+  `"mistral-vibe-acp"`, `"cline-acp"`, `"goose-acp"`, `"kiro-acp"`,
+  `"pi-acp"`.
 
                                       *agentic-config-acp-providers*
 acp_providers ~
@@ -825,7 +844,9 @@ Folding ~
     folding = {
       tool_calls = {
         enabled = true,  -- Master switch for tool call body folding
-        threshold = 10,  -- Fold when interior wraps to more than N screen rows. 0 = always.
+        -- Fold when interior wraps to more than N screen rows.
+        -- 0 = always.
+        threshold = 10,
         fold_on_error = false,  -- Fold failed calls after threshold
       },
     },

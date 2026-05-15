@@ -334,7 +334,7 @@ function SessionManager:_on_session_update(update)
             self.todo_list:render(update.entries)
         end
     elseif update.sessionUpdate == "agent_message_chunk" then
-        self.status_animation:start("generating")
+        self:_start_spinner("generating")
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
@@ -345,7 +345,7 @@ function SessionManager:_on_session_update(update)
             })
         end
     elseif update.sessionUpdate == "agent_thought_chunk" then
-        self.status_animation:start("thinking")
+        self:_start_spinner("thinking")
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
@@ -506,7 +506,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     end
 
     if not self.permission_manager:has_pending() then
-        self.status_animation:start("generating")
+        self:_start_spinner("generating")
     end
 end
 
@@ -990,7 +990,7 @@ function SessionManager:_build_handlers()
                 )
 
                 if not self.permission_manager:has_pending() then
-                    self.status_animation:start("generating")
+                    self:_start_spinner("generating")
                 end
             end
 
@@ -1131,6 +1131,13 @@ function SessionManager:new_session(opts)
             self._session_ready_callbacks = {}
         end)
     end)
+end
+
+--- @param state agentic.Theme.SpinnerState
+function SessionManager:_start_spinner(state)
+    if self.is_generating then
+        self.status_animation:start(state)
+    end
 end
 
 function SessionManager:_cancel_session()

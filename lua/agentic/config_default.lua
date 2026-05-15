@@ -11,6 +11,7 @@
 --- | "cline-acp"
 --- | "goose-acp"
 --- | "kiro-acp"
+--- | "pi-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
@@ -373,6 +374,12 @@ local ConfigDefault = {
             name = "Kiro ACP",
             command = "kiro-cli",
             args = { "acp" },
+            env = {},
+        },
+
+        ["pi-acp"] = {
+            name = "Pi ACP",
+            command = "pi-acp",
             env = {},
         },
     },
