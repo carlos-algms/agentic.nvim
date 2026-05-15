@@ -477,12 +477,12 @@ opts = {
 ```
 
 Set `threshold = 0` to always fold completed calls, and failed calls when
-`fold_on_error = true`. Negative values are clamped to 0. Set
-`enabled = false` to disable folding entirely.
+`fold_on_error = true`. Negative values are clamped to 0. Set `enabled = false`
+to disable folding entirely.
 
-The fold hides the body only - the tool call header and completion status
-remain visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle
-individual folds, or `zR`/`zM` to open/close all folds in the chat window.
+The fold hides the body only - the tool call header and completion status remain
+visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle individual
+folds, or `zR`/`zM` to open/close all folds in the chat window.
 
 ### Tool Call Titles
 
@@ -584,8 +584,8 @@ require("agentic").add_files_to_context({
 `restore_session_by_id(session_id)` accepts a **session_id** argument with the
 ID of the session you want to restore. Session IDs come from your provider's
 session storage (e.g. provider logs, project metadata, or scripts that track
-them). Unlike `restore_session()`, this does not require the provider to
-support listing sessions.
+them). Unlike `restore_session()`, this does not require the provider to support
+listing sessions.
 
 ```lua
 -- Restore a session by ID
@@ -925,21 +925,21 @@ colorscheme.
 
 ### Available Highlight Groups
 
-| Highlight Group          | Purpose                                  | Default                             |
-| ------------------------ | ---------------------------------------- | ----------------------------------- |
-| `AgenticDiffDelete`      | Deleted lines in diff view               | Links to `DiffDelete`               |
-| `AgenticDiffAdd`         | Added lines in diff view                 | Links to `DiffAdd`                  |
-| `AgenticDiffDeleteWord`  | Word-level deletions in diff             | `bg=#9a3c3c, bold=true`             |
-| `AgenticDiffAddWord`     | Word-level additions in diff             | `bg=#155729, bold=true`             |
-| `AgenticStatusPending`   | Pending tool call status indicator       | `bg=#5f4d8f`                        |
-| `AgenticStatusCompleted` | Completed tool call status indicator     | `bg=#2d5a3d`                        |
-| `AgenticStatusFailed`    | Failed tool call status indicator        | `bg=#7a2d2d`                        |
-| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)         | `bg=#2d5a3d, bold=true`             |
-| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus)        | `bg=#7a2d2d, bold=true`             |
-| `AgenticPermissionButtonInactive` | All non-focused permission buttons                 | `bg=#3a3a3a`                        |
-| `AgenticCodeBlockFence`  | The left border decoration on tool calls | Links to `Directory`                |
-| `AgenticTitle`           | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
-| `AgenticThinking`        | Thinking block text in chat buffer       | Links to `Comment`                  |
+| Highlight Group                   | Purpose                                     | Default                             |
+| --------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `AgenticDiffDelete`               | Deleted lines in diff view                  | Links to `DiffDelete`               |
+| `AgenticDiffAdd`                  | Added lines in diff view                    | Links to `DiffAdd`                  |
+| `AgenticDiffDeleteWord`           | Word-level deletions in diff                | `bg=#9a3c3c, bold=true`             |
+| `AgenticDiffAddWord`              | Word-level additions in diff                | `bg=#155729, bold=true`             |
+| `AgenticStatusPending`            | Pending tool call status indicator          | `bg=#5f4d8f`                        |
+| `AgenticStatusCompleted`          | Completed tool call status indicator        | `bg=#2d5a3d`                        |
+| `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
+| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)  | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus) | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonInactive` | All non-focused permission buttons          | `bg=#3a3a3a`                        |
+| `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
+| `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |
+| `AgenticThinking`                 | Thinking block text in chat buffer          | Links to `Comment`                  |
 
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
@@ -1006,7 +1006,8 @@ You can customize the icons used in the permission approval workflow:
 
 ### Customizing Chat Icons
 
-You can customize the icons used to identify user and agent messages in the chat:
+You can customize the icons used to identify user and agent messages in the
+chat:
 
 ```lua
 {
@@ -1154,6 +1155,30 @@ require('cmp').setup({
 })
 ```
 
+## ❤️ Sponsor
+
+If agentic.nvim makes your day better, consider sponsoring development. Pick
+whichever channel you prefer - all of them help equally.
+
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/carlos-algms?style=for-the-badge&logo=githubsponsors&logoColor=white&label=GitHub%20Sponsors&color=ea4aaa)](https://github.com/sponsors/carlos-algms)
+[![Patreon](https://img.shields.io/badge/Patreon-Support-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/cw/CarlosAlgms)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Tip-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/carlos.algms)
+[![Corporate Sponsor](https://img.shields.io/badge/Corporate-Sponsor-2A6FDB?style=for-the-badge&logo=github&logoColor=white)](#-for-companies)
+
+### 🏢 For companies
+
+Does your company have the budget to sponsor open source?
+
+Sponsoring agentic.nvim gets your team:
+
+- Logo placement in this README
+- Direct line to the maintainer
+- Priority consideration on issues affecting your workflow
+
+Reach out via [GitHub Sponsors](https://github.com/sponsors/carlos-algms) or
+[open an issue](https://github.com/carlos-algms/agentic.nvim/issues/new) to
+discuss custom terms.
+
 ## 🔧 Development
 
 ### Health Check
@@ -1218,7 +1243,8 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
-[claude-agent-acp-releases]: https://github.com/agentclientprotocol/claude-agent-acp/releases
+[claude-agent-acp-releases]:
+  https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -1228,8 +1254,10 @@ the the acknowledgments 😊.
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
 [mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
-[preview-diff-side-by-side-image]: https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
-[preview-diff-inline-image]: https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[preview-diff-side-by-side-image]:
+  https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
+[preview-diff-inline-image]:
+  https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
 [cline]: https://github.com/cline/cline
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline
