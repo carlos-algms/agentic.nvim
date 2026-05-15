@@ -375,6 +375,8 @@ function SessionManager:_on_session_update(update)
         -- Usage updates contain token/cost information - currently informational only
         -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
         -- Keeping silent for now to avoid "press any key" prompts on large JSON output
+    elseif update.sessionUpdate == "session_info_update" then
+        -- Session metadata is currently informational only
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
         Logger.notify(
