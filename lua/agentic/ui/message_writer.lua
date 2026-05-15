@@ -741,6 +741,25 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     --- @type agentic.ui.MessageWriter.HighlightRange[]
     local highlight_ranges = {}
 
+    --- @param start_index integer
+    --- @param body_lines string[]
+    local function add_body_comment_ranges(start_index, body_lines)
+        if kind == "edit" or kind == "switch_mode" then
+            return
+        end
+
+        for offset, line in ipairs(body_lines) do
+            if #line > 0 then
+                --- @type agentic.ui.MessageWriter.HighlightRange
+                local range = {
+                    type = "comment",
+                    line_index = start_index + offset - 1,
+                }
+                table.insert(highlight_ranges, range)
+            end
+        end
+    end
+
     local has_title_body = self:_should_render_full_title_body(tool_call_block)
     if has_title_body then
         vim.list_extend(
@@ -866,7 +885,9 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     else
         if tool_call_block.body and #tool_call_block.body > 0 then
             insert_title_separator(true)
+            local body_start_index = #lines
             vim.list_extend(lines, tool_call_block.body)
+            add_body_comment_ranges(body_start_index, tool_call_block.body)
         end
     end
 

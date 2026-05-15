@@ -3,6 +3,8 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 
+local TITLE_FENCE = string.rep("`", 5)
+
 describe("agentic.ui.MessageWriter", function()
     --- @type agentic.ui.MessageWriter
     local MessageWriter
@@ -142,6 +144,42 @@ describe("agentic.ui.MessageWriter", function()
         --- @type integer
         local end_row = pos[3].end_row
         return end_row
+    end
+
+    --- @return table<integer, true> rows
+    local function comment_highlight_rows()
+        local ns = vim.api.nvim_create_namespace("agentic_diff_highlights")
+        local extmarks =
+            vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+        local rows = {}
+        for _, extmark in ipairs(extmarks) do
+            if extmark[4].hl_group == "Comment" then
+                rows[extmark[2]] = true
+            end
+        end
+        return rows
+    end
+
+    --- @param line string
+    --- @return integer|nil row
+    local function find_row(line)
+        local lines = get_all_lines()
+        for row, current in ipairs(lines) do
+            if current == line then
+                return row - 1
+            end
+        end
+        return nil
+    end
+
+    --- @param line string
+    --- @return boolean highlighted
+    local function line_has_comment_highlight(line)
+        local row = find_row(line)
+        if not row then
+            return false
+        end
+        return comment_highlight_rows()[row] == true
     end
 
     local ALLOW_REJECT_OPTIONS = {
@@ -573,6 +611,14 @@ describe("agentic.ui.MessageWriter", function()
                 assert.truthy(content:find(string.rep("x", 55), 1, true))
                 assert.truthy(content:find("second line", 1, true))
                 assert.truthy(content:find("`````\n\n---\n\noutput", 1, true))
+                assert.is_false(
+                    line_has_comment_highlight(TITLE_FENCE .. "bash")
+                )
+                assert.is_false(line_has_comment_highlight(string.rep("x", 55)))
+                assert.is_false(line_has_comment_highlight("second line"))
+                assert.is_false(line_has_comment_highlight(TITLE_FENCE))
+                assert.is_false(line_has_comment_highlight("---"))
+                assert.is_true(line_has_comment_highlight("output"))
                 assert.same(
                     { "output" },
                     writer.tool_call_blocks["title-execute"].body
@@ -1139,7 +1185,19 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("tool call block update highlighting", function()
-        it("does not apply generic comment highlights during update", function()
+        it("comments provider body when writing non-diff tool calls", function()
+            writer:write_tool_call_block({
+                tool_call_id = "write-hl-1",
+                status = "completed",
+                kind = "execute",
+                argument = "ls",
+                body = { "write output" },
+            })
+
+            assert.is_true(line_has_comment_highlight("write output"))
+        end)
+
+        it("comments provider body during non-diff updates", function()
             local block = make_tool_call_block("sync-hl-1", "pending")
             writer:write_tool_call_block(block)
 
@@ -1149,23 +1207,21 @@ describe("agentic.ui.MessageWriter", function()
                 body = { "new output" },
             })
 
-            local ns = vim.api.nvim_create_namespace("agentic_diff_highlights")
-            local extmarks = vim.api.nvim_buf_get_extmarks(
-                bufnr,
-                ns,
-                0,
-                -1,
-                { details = true }
-            )
+            assert.is_true(line_has_comment_highlight("new output"))
+        end)
 
-            local has_comment_hl = false
-            for _, em in ipairs(extmarks) do
-                if em[4].hl_group == "Comment" then
-                    has_comment_hl = true
-                    break
-                end
+        it("does not comment edit or switch_mode provider bodies", function()
+            for _, kind in ipairs({ "edit", "switch_mode" }) do
+                writer:write_tool_call_block({
+                    tool_call_id = "excluded-" .. kind,
+                    status = "completed",
+                    kind = kind,
+                    argument = kind,
+                    body = { kind .. " output" },
+                })
+
+                assert.is_false(line_has_comment_highlight(kind .. " output"))
             end
-            assert.is_false(has_comment_hl)
         end)
     end)
 
