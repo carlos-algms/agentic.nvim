@@ -224,7 +224,7 @@ tools like `nvm`, `fnm`, etc...
 | [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
 | [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                      |
 | [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                        |
-|[kiro-cli][kiro-docs]                 | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                   |
+| [kiro-cli][kiro-docs]                 | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                   |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -1267,4 +1267,4 @@ the the acknowledgments 😊.
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline
 [goose]: https://github.com/block/goose
 [goose-docs]: https://block.github.io/goose/docs/getting-started/installation
-[kiro-docs]: https://kiro.dev/cli/
+[kiro-docs]: https://kiro.dev/docs/cli/
