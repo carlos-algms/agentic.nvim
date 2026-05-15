@@ -101,6 +101,10 @@ limited to:
       </picture><br>
       <b>Goose</b>
     </td>
+    <td align="center" width="130">
+      <img src=".github/assets/images/kiro.svg" width="48" height="48" alt="Kiro"><br>
+      <b>Kiro</b>
+    </td>
     <td width="130"></td>
   </tr>
 </table>
@@ -221,6 +225,7 @@ tools like `nvm`, `fnm`, etc...
 | [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
 | [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                      |
 | [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                        |
+|[kiro-cli][kiro-cli]                       | `curl -fsSL https://cli.kiro.dev/install | bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                                        |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -1263,3 +1268,4 @@ the the acknowledgments 😊.
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline
 [goose]: https://github.com/block/goose
 [goose-docs]: https://block.github.io/goose/docs/getting-started/installation
+[kiro-docs]: https://kiro.dev/cli/
