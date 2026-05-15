@@ -389,7 +389,8 @@ For bug fixes and behavioral changes, write the failing test BEFORE the fix:
    scaffold the module/class/method with stubbed bodies so the test fails on
    wrong behavior, not on `attempt to call a nil value`.
 2. **Green** - Minimal change to turn the test green.
-3. Run `make validate` to confirm nothing else broke.
+3. For Lua/test code changes, run `make validate` to confirm nothing else
+   broke. Docs-only changes do not require full validation.
 
 A test written after the fix is already green proves nothing. Non-negotiable.
 Only exception: pure refactors, formatting, docs - call out explicitly in the
@@ -402,8 +403,17 @@ other projects (e.g. `assert` is a custom helper, not `luassert`; spies have no
 
 ### MANDATORY: Post-change validation for Lua files
 
-Run `make validate` ONLY when `.lua` files changed. Skip for markdown/config
-changes.
+Run `make validate` ONLY when `.lua` files changed.
+
+Skip `make validate` for docs-only changes, including `.md`, `.txt`,
+`README.md`, `AGENTS.md`, `doc/agentic.txt`, and
+`docs/architectural-decisions/`.
+
+Run the narrow doc-specific check instead. For vimdoc changes, run:
+
+```bash
+timeout 5 nvim --headless -c "helptags doc/" -c "quit"
+```
 
 ```bash
 make validate

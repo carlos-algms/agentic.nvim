@@ -39,7 +39,8 @@
 
 2. **Green:** Replace the stub with the real implementation, minimal code
    to turn the test green.
-3. Run the full suite (`make validate`) to confirm nothing else broke.
+3. For Lua/test code changes, run the full suite (`make validate`) to confirm
+   nothing else broke. Docs-only changes do not require full validation.
 4. **Mark count check (MANDATORY):** After adding or modifying tests,
    run `make test` and verify the reported marks for the changed file
    match the number of `it()` blocks in the source. Loop-expanded
