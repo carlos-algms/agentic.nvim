@@ -4,6 +4,11 @@ local ToolCallBlocks = {}
 ToolCallBlocks.NS_TOOL_BLOCKS =
     vim.api.nvim_create_namespace("agentic_tool_blocks")
 
+--- Number of lines between a block's start_row and its body's first line.
+--- Layout: row 0 = header line, row 1 = blank separator, row 2 = body start.
+--- Kept in sync with `MessageWriter:_prepare_block_lines`.
+ToolCallBlocks.HEADER_HEIGHT = 2
+
 --- @class agentic.ui.ToolCallBlocks.Range
 --- @field start_row integer
 --- @field end_row integer
@@ -93,7 +98,7 @@ function ToolCallBlocks.navigation_target_row(
         return nil
     end
 
-    return extmarks[count][2] + 2
+    return extmarks[count][2] + ToolCallBlocks.HEADER_HEIGHT
 end
 
 return ToolCallBlocks

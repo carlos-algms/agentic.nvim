@@ -69,14 +69,14 @@ describe("agentic.ui.ToolCallBlocks", function()
         it("returns nth block target when moving forward", function()
             assert.equal(
                 ToolCallBlocks.navigation_target_row(bufnr, 1, 3, 100),
-                252
+                250 + ToolCallBlocks.HEADER_HEIGHT
             )
         end)
 
         it("returns nth block target when moving backward", function()
             assert.equal(
                 ToolCallBlocks.navigation_target_row(bufnr, -1, 2, 100),
-                52
+                50 + ToolCallBlocks.HEADER_HEIGHT
             )
         end)
 

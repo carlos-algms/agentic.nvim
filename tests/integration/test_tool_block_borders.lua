@@ -2,7 +2,7 @@ local assert = require("tests.helpers.assert")
 local Config = require("agentic.config")
 local ChatWidget = require("agentic.ui.chat_widget")
 local MessageWriter = require("agentic.ui.message_writer")
-local ToolBlockBorder = require("agentic.ui.tool_block_border")
+local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
 
 describe("Tool block borders", function()
     --- @type agentic.UserConfig.Folding|nil
@@ -93,7 +93,7 @@ describe("Tool block borders", function()
         local tracker = current_writer.tool_call_blocks[tool_call_id]
         local pos = vim.api.nvim_buf_get_extmark_by_id(
             chat_bufnr,
-            ToolBlockBorder.NS_TOOL_BLOCKS,
+            ToolCallBlocks.NS_TOOL_BLOCKS,
             tracker.extmark_id,
             { details = true }
         )

@@ -15,7 +15,6 @@ local STATUSCOLUMN_EXPR =
 
 --- @class agentic.ui.ToolBlockBorder
 local ToolBlockBorder = {
-    NS_TOOL_BLOCKS = ToolCallBlocks.NS_TOOL_BLOCKS,
     STATUSCOLUMN_EXPR = STATUSCOLUMN_EXPR,
 }
 

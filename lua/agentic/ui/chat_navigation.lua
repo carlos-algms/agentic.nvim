@@ -8,6 +8,16 @@ local HEADING_QUERY = [[
 (atx_heading (atx_h3_marker)) @heading
 ]]
 
+--- @type vim.treesitter.Query|nil
+local HEADING_TS_QUERY
+do
+    local ok, query =
+        pcall(vim.treesitter.query.parse, "markdown", HEADING_QUERY)
+    if ok then
+        HEADING_TS_QUERY = query
+    end
+end
+
 local ChatNavigation = {}
 
 --- @param count integer|nil
@@ -32,7 +42,7 @@ end
 --- @param bufnr integer
 --- @return integer[] rows
 local function heading_rows(bufnr)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
+    if not HEADING_TS_QUERY or not vim.api.nvim_buf_is_valid(bufnr) then
         return {}
     end
 
@@ -49,19 +59,12 @@ local function heading_rows(bufnr)
         return {}
     end
 
-    local ok_query, query =
-        pcall(vim.treesitter.query.parse, "markdown", HEADING_QUERY)
-    if not ok_query or not query then
-        return {}
-    end
-
     local rows = {}
-    for _, node in query:iter_captures(trees[1]:root(), bufnr) do
+    for _, node in HEADING_TS_QUERY:iter_captures(trees[1]:root(), bufnr) do
         local start_row = node:range()
         table.insert(rows, start_row)
     end
 
-    table.sort(rows)
     return rows
 end
 
@@ -106,21 +109,35 @@ end
 function ChatNavigation.setup_keymaps(bufnr)
     local keymaps = Config.keymaps.chat
 
-    BufHelpers.multi_keymap_set(keymaps.next_heading, bufnr, function()
-        ChatNavigation.next_heading(bufnr)
-    end, { desc = "Agentic: Next chat heading" })
+    --- @type { key: agentic.UserConfig.KeymapValue, fn: fun(bufnr: integer, count: integer|nil), desc: string }[]
+    local bindings = {
+        {
+            key = keymaps.next_heading,
+            fn = ChatNavigation.next_heading,
+            desc = "Agentic: Next chat heading",
+        },
+        {
+            key = keymaps.prev_heading,
+            fn = ChatNavigation.prev_heading,
+            desc = "Agentic: Previous chat heading",
+        },
+        {
+            key = keymaps.next_tool_call,
+            fn = ChatNavigation.next_tool_call,
+            desc = "Agentic: Next tool call",
+        },
+        {
+            key = keymaps.prev_tool_call,
+            fn = ChatNavigation.prev_tool_call,
+            desc = "Agentic: Previous tool call",
+        },
+    }
 
-    BufHelpers.multi_keymap_set(keymaps.prev_heading, bufnr, function()
-        ChatNavigation.prev_heading(bufnr)
-    end, { desc = "Agentic: Previous chat heading" })
-
-    BufHelpers.multi_keymap_set(keymaps.next_tool_call, bufnr, function()
-        ChatNavigation.next_tool_call(bufnr)
-    end, { desc = "Agentic: Next tool call" })
-
-    BufHelpers.multi_keymap_set(keymaps.prev_tool_call, bufnr, function()
-        ChatNavigation.prev_tool_call(bufnr)
-    end, { desc = "Agentic: Previous tool call" })
+    for _, binding in ipairs(bindings) do
+        BufHelpers.multi_keymap_set(binding.key, bufnr, function()
+            binding.fn(bufnr)
+        end, { desc = binding.desc })
+    end
 end
 
 --- @param bufnr integer
