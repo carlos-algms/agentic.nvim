@@ -68,9 +68,16 @@
 --- @field cycle_next agentic.UserConfig.KeymapValue Focus next pending permission block
 --- @field cycle_prev agentic.UserConfig.KeymapValue Focus previous pending permission block
 
+--- @class agentic.UserConfig.Keymaps.Chat
+--- @field next_heading agentic.UserConfig.KeymapValue Jump to next chat heading
+--- @field prev_heading agentic.UserConfig.KeymapValue Jump to previous chat heading
+--- @field next_tool_call agentic.UserConfig.KeymapValue Jump to next tool call
+--- @field prev_tool_call agentic.UserConfig.KeymapValue Jump to previous tool call
+
 --- @class agentic.UserConfig.Keymaps
 --- @field widget table<string, agentic.UserConfig.KeymapValue>
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
+--- @field chat agentic.UserConfig.Keymaps.Chat
 --- @field diff_preview table<string, string>
 --- @field permission agentic.UserConfig.Keymaps.Permission
 
@@ -439,6 +446,14 @@ local ConfigDefault = {
                     mode = { "i" },
                 },
             },
+        },
+
+        --- Keys bindings for chat buffer navigation
+        chat = {
+            next_heading = "]]",
+            prev_heading = "[[",
+            next_tool_call = "]t",
+            prev_tool_call = "[t",
         },
 
         --- Keys bindings for diff preview navigation

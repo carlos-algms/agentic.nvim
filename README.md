@@ -621,6 +621,10 @@ These keybindings are automatically set in Agentic buffers:
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
+| `]]`             | n     | Navigate to next chat heading                                   |
+| `[[`             | n     | Navigate to previous chat heading                               |
+| `]t`             | n     | Navigate to next tool call                                      |
+| `[t`             | n     | Navigate to previous tool call                                  |
 | `]c`             | n     | Navigate to next diff hunk (when diff preview is active)        |
 | `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)    |
 
@@ -669,6 +673,14 @@ your setup:
             mode = { "i" },
           }
         },
+      },
+
+      -- Keybindings for chat buffer navigation
+      chat = {
+        next_heading = "]]",
+        prev_heading = "[[",
+        next_tool_call = "]t",
+        prev_tool_call = "[t",
       },
 
       -- Keybindings for diff preview navigation

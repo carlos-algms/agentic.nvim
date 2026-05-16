@@ -6,8 +6,9 @@ local Fold = require("agentic.ui.tool_call_fold")
 local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
+local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
 
-local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+local NS_TOOL_BLOCKS = ToolCallBlocks.NS_TOOL_BLOCKS
 local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")

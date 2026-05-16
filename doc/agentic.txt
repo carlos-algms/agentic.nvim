@@ -502,6 +502,10 @@ These keybindings are automatically set in Agentic buffers:
   <localLeader>t         n       Select thought effort level (model-dependent)
   q                      n       Close chat widget
   d                      n/v     Remove file/selection/diagnostic
+  ]]                     n       Next chat heading
+  [[                     n       Previous chat heading
+  ]t                     n       Next tool call
+  [t                     n       Previous tool call
   ]c                     n       Next diff hunk
   [c                     n       Previous diff hunk
   <C-n>                  n       Cycle to next pending permission block
@@ -540,6 +544,12 @@ Override default keybindings via the `keymaps` config option:
         accept_completion = {
           { "<Tab>", mode = { "i" } },
         },
+      },
+      chat = {
+        next_heading = "]]",
+        prev_heading = "[[",
+        next_tool_call = "]t",
+        prev_tool_call = "[t",
       },
       diff_preview = {
         next_hunk = "]c",
