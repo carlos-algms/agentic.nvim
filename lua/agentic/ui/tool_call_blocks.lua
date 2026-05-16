@@ -79,7 +79,14 @@ function ToolCallBlocks.navigation_target_row(
         start = { cursor_row + 1, 0 }
         finish = -1
     elseif cursor_row > 0 then
-        start = { cursor_row - 1, -1 }
+        -- When cursor sits inside a block, jump past its anchor so the
+        -- backward search lands on the previous block, not the current one.
+        local current = ToolCallBlocks.block_range_at_row(bufnr, cursor_row)
+        local search_from = current and current.start_row or cursor_row
+        if search_from <= 0 then
+            return nil
+        end
+        start = { search_from - 1, -1 }
         finish = { 0, 0 }
     else
         return nil

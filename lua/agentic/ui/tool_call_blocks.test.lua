@@ -74,9 +74,12 @@ describe("agentic.ui.ToolCallBlocks", function()
         end)
 
         it("returns nth block target when moving backward", function()
+            -- Cursor sits inside the cluster {99, 100, 101}. Backward nav
+            -- skips the current block, so count=1 -> block at row 50,
+            -- count=2 -> block at row 5.
             assert.equal(
                 ToolCallBlocks.navigation_target_row(bufnr, -1, 2, 100),
-                50 + ToolCallBlocks.HEADER_HEIGHT
+                5 + ToolCallBlocks.HEADER_HEIGHT
             )
         end)
 

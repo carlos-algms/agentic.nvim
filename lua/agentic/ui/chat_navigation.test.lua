@@ -179,6 +179,24 @@ describe("agentic.ui.ChatNavigation", function()
             ChatNavigation.next_tool_call(bufnr, 1)
             assert.equal(cursor_row(), 40)
         end)
+
+        it(
+            "prev_tool_call from inside a block jumps to the previous block, not the current one",
+            function()
+                open_window_at(20 + ToolCallBlocks.HEADER_HEIGHT)
+                ChatNavigation.prev_tool_call(bufnr, 1)
+                assert.equal(cursor_row(), 5 + ToolCallBlocks.HEADER_HEIGHT)
+            end
+        )
+
+        it(
+            "next_tool_call from inside a block jumps to the next block, not the current one",
+            function()
+                open_window_at(5 + ToolCallBlocks.HEADER_HEIGHT)
+                ChatNavigation.next_tool_call(bufnr, 1)
+                assert.equal(cursor_row(), 20 + ToolCallBlocks.HEADER_HEIGHT)
+            end
+        )
     end)
 
     describe("setup_keymaps", function()
