@@ -228,6 +228,12 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
     that arrive while buttons are visible re-render the buttons rather than
     wipe them. If you bypass `repaint_status_row` and write to row N directly,
     buttons disappear until the next focus event triggers a repaint.
+- Direct `nvim_buf_set_name` for widget buffers
+  - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
+    persists agentic buffer names; direct calls raise E95 on reopen. Use
+    `WindowDecoration._set_buffer_name`, which renames any pre-existing
+    holder to `<name>-old-N`. Regression:
+    `lua/agentic/ui/window_decoration.test.lua`.
 
 ## Test invariants
 
