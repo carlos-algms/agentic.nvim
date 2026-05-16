@@ -380,6 +380,54 @@ describe("WidgetLayout", function()
             end
         )
 
+        it("sizes panel to visual rows when content wraps", function()
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local files_buf = vim.api.nvim_create_buf(false, true)
+            local long = string.rep("a/very/long/path/segment/", 20)
+            vim.api.nvim_buf_set_lines(
+                files_buf,
+                0,
+                -1,
+                false,
+                { "- " .. long, "- " .. long }
+            )
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = files_buf,
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            local files_win = win_nrs.files
+            assert.is_not_nil(files_win)
+            ---@cast files_win integer
+
+            local visual = vim.api.nvim_win_text_height(files_win, {}).all
+            local height = vim.api.nvim_win_get_height(files_win)
+            local expected = math.min(visual, Config.windows.files.max_height)
+
+            assert.is_true(height >= expected)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
         it("honors a user-provided chat statuscolumn option", function()
             saved_chat_win_opts = vim.deepcopy(Config.windows.chat.win_opts)
             Config.windows.chat.win_opts =

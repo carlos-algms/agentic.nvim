@@ -63,16 +63,31 @@ function WidgetLayout.calculate_height(size)
     return calculate_dimension(size, vim.o.lines, DefaultConfig.windows.height)
 end
 
+--- Counts visual screen rows for the buffer shown in `winid`. Wrap on. Falls
+--- back to buffer line count when the API rejects the window (e.g. zero
+--- width during construction).
+--- @param winid integer
+--- @param bufnr integer
+--- @return integer
+local function visual_row_count(winid, bufnr)
+    local ok, result = pcall(vim.api.nvim_win_text_height, winid, {})
+    if ok and type(result) == "table" and type(result.all) == "number" then
+        return result.all
+    end
+    return vim.api.nvim_buf_line_count(bufnr)
+end
+
+--- @param winid integer
 --- @param bufnr integer
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
 --- @return integer
-local function calculate_dynamic_height(bufnr, max_height, position)
+local function calculate_dynamic_height(winid, bufnr, max_height, position)
     max_height = math.max(1, max_height)
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
-    -- Use 2 in bottom layout to prevent the file list from touching the screen edge
+    local rows = visual_row_count(winid, bufnr)
+    -- Use 2 in bottom layout to prevent the panel from touching the screen edge
     local padding = position == "bottom" and 2 or 1
-    return math.min(line_count + padding, max_height)
+    return math.min(rows + padding, max_height)
 end
 
 -- Make the gutter (where statuscolumn renders) blend into the chat
@@ -194,15 +209,17 @@ local function open_or_resize_dynamic_window(
         return
     end
 
-    local height = calculate_dynamic_height(bufnr, max_height, position)
-
     if not winid or not vim.api.nvim_win_is_valid(winid) then
-        open_win_opts.height = height
-        win_nrs[window_name] =
-            open_win(bufnr, false, open_win_opts, window_name, {})
-    else
-        vim.api.nvim_win_set_config(winid, { height = height })
+        -- Open at min height first so we can measure wrapped rows against the
+        -- real window width, then resize. ADR 0001 uses the same pattern for
+        -- screen-row math (fold sizing). Buffer-line count understates wraps.
+        open_win_opts.height = 1
+        winid = open_win(bufnr, false, open_win_opts, window_name, {})
+        win_nrs[window_name] = winid
     end
+
+    local height = calculate_dynamic_height(winid, bufnr, max_height, position)
+    vim.api.nvim_win_set_config(winid, { height = height })
 
     WindowDecoration.render_header(bufnr, window_name)
 end
@@ -307,7 +324,7 @@ end
 --- @param bufnr integer Chat buffer
 --- @return integer|nil winid nil on failure (graceful degradation)
 function WidgetLayout.open_hidden_chat_window(bufnr)
-    -- Width must match the visible chat so nvim_win_text_height agrees. ADR 001.
+    -- Width must match the visible chat so nvim_win_text_height agrees. ADR 0001.
     local width = WidgetLayout.calculate_width(Config.windows.width)
 
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
