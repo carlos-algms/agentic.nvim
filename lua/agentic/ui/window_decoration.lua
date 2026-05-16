@@ -195,6 +195,62 @@ local function set_winbar(winid, text)
     vim.wo[winid][0].winbar = winbar_text
 end
 
+--- Returns a normalized path comparable across nvim's stored buffer
+--- names and the input given to `nvim_buf_set_name`. nvim resolves
+--- symlinks and prefixes the cwd; we mirror both.
+--- @param name string
+--- @return string
+local function normalize(name)
+    return vim.fn.resolve(vim.fn.fnamemodify(name, ":p"))
+end
+
+--- Returns the buffer that would collide with `name` on
+--- `nvim_buf_set_name`, or nil. Excludes `bufnr` itself so callers
+--- can use the result to decide whether to rename a different buffer.
+--- @param name string
+--- @param exclude_bufnr integer|nil
+--- @return integer|nil
+local function find_buf_by_name(name, exclude_bufnr)
+    local target = normalize(name)
+    for _, b in ipairs(vim.api.nvim_list_bufs()) do
+        if b ~= exclude_bufnr then
+            local existing = vim.api.nvim_buf_get_name(b)
+            if existing ~= "" and normalize(existing) == target then
+                return b
+            end
+        end
+    end
+    return nil
+end
+
+--- Assigns `buf_name` to `bufnr`, renaming any pre-existing buffer
+--- that already holds the name to `<buf_name>-old-N` (lowest free N
+--- starting at 1) to keep names unique.
+--- Required to survive session restore: `:mksession` (with `blank` in
+--- `sessionoptions`) persists agentic buffer names; on reopen
+--- `nvim_buf_set_name` would otherwise raise E95.
+--- @param bufnr integer
+--- @param buf_name string
+function WindowDecoration._set_buffer_name(bufnr, buf_name)
+    if normalize(vim.api.nvim_buf_get_name(bufnr)) == normalize(buf_name) then
+        return
+    end
+
+    local collider = find_buf_by_name(buf_name, bufnr)
+    local n = 1
+
+    while collider do
+        local candidate = buf_name .. "-old-" .. n
+        if not find_buf_by_name(candidate, bufnr) then
+            vim.api.nvim_buf_set_name(collider, candidate)
+            break
+        end
+        n = n + 1
+    end
+
+    vim.api.nvim_buf_set_name(bufnr, buf_name)
+end
+
 --- Sets the buffer name based on header text and tab count
 --- @param bufnr integer Buffer number
 --- @param header_text string|nil Resolved header text
@@ -207,7 +263,7 @@ local function set_buffer_name(bufnr, header_text, tab_page_id)
     -- Determine if we should show tab suffix based on total tab count
     local total_tabs = #vim.api.nvim_list_tabpages()
 
-    --- @type string|nil
+    --- @type string
     local buf_name
     if total_tabs > 1 then
         buf_name = string.format("%s (Tab %d)", header_text, tab_page_id)
@@ -215,7 +271,7 @@ local function set_buffer_name(bufnr, header_text, tab_page_id)
         buf_name = header_text
     end
 
-    vim.api.nvim_buf_set_name(bufnr, buf_name)
+    WindowDecoration._set_buffer_name(bufnr, buf_name)
 end
 
 --- Renders a header for a window, handling user customization, winbar, and buffer naming
