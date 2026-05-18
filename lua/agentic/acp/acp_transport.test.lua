@@ -68,7 +68,7 @@ describe("ACPTransport process lifecycle", function()
                     command = "/bin/sh",
                     args = {
                         "-c",
-                        'sleep 9999 & echo "{\\"pid\\":$!}"; exec cat >/dev/null',
+                        'sleep 300 & echo "{\\"pid\\":$!}"; exec cat >/dev/null',
                     },
                 }, {
                     on_state_change = function(s) _G.t.state = s end,
