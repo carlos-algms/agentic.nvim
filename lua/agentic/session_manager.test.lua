@@ -1552,4 +1552,94 @@ describe("agentic.SessionManager", function()
             end
         )
     end)
+
+    describe("_build_handlers: on_request_permission", function()
+        local Config = require("agentic.config")
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestSpy
+        local hook_spy
+        --- @type agentic.SessionManager
+        local session
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+            hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_request_permission = nil
+
+            session = {
+                session_id = "test-session-123",
+                tab_page_id = 1,
+                status_animation = {
+                    stop = function() end,
+                    start = function() end,
+                },
+                permission_manager = {
+                    has_pending = function()
+                        return false
+                    end,
+                    add_request = function() end,
+                },
+                _show_diff_in_buffer = function() end,
+                _clear_diff_in_buffer = function() end,
+                _build_handlers = SessionManager._build_handlers,
+            } --[[@as agentic.SessionManager]]
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+            Config.hooks.on_request_permission = nil
+        end)
+
+        it("invokes on_request_permission hook with correct payload", function()
+            Config.hooks.on_request_permission = function(data)
+                hook_spy(data)
+            end
+
+            local handlers = session:_build_handlers()
+            local mock_request = {
+                sessionId = "test-session-123",
+                toolCall = {
+                    toolCallId = "tool-1",
+                    kind = "edit",
+                    title = "Edit file",
+                },
+                options = {
+                    {
+                        optionId = "allow_once",
+                        name = "Allow Once",
+                        kind = "allow_once",
+                    },
+                },
+            }
+            local mock_callback = function() end
+
+            handlers.on_request_permission(mock_request, mock_callback)
+
+            assert.spy(hook_spy).was.called(1)
+            local data = hook_spy.calls[1][1]
+            assert.equal("test-session-123", data.session_id)
+            assert.equal(1, data.tab_page_id)
+            assert.equal(mock_request, data.request)
+        end)
+
+        it("does not fail when hook is not configured", function()
+            Config.hooks.on_request_permission = nil
+
+            local handlers = session:_build_handlers()
+            local mock_request = {
+                sessionId = "test-session-123",
+                toolCall = { toolCallId = "tool-1", kind = "edit" },
+                options = {},
+            }
+            local mock_callback = function() end
+
+            -- Should not throw an error
+            handlers.on_request_permission(mock_request, mock_callback)
+        end)
+    end)
 end)

@@ -27,8 +27,8 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
---- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
+--- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
+--- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
@@ -977,6 +977,12 @@ function SessionManager:_build_handlers()
         end,
 
         on_request_permission = function(request, callback)
+            P.invoke_hook("on_request_permission", {
+                request = request,
+                session_id = self.session_id,
+                tab_page_id = self.tab_page_id,
+            })
+
             self.status_animation:stop()
 
             local function wrapped_callback(option_id)
