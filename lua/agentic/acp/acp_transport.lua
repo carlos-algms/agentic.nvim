@@ -268,6 +268,9 @@ function M.create_stdio_transport(config, callbacks)
                 end)
             end
 
+            -- Safe to close the handle here even though the spawn exit
+            -- callback may still fire; libuv tolerates close-after-exit and
+            -- the callback's own close path is guarded by `if self.process`.
             process:close()
         end
 

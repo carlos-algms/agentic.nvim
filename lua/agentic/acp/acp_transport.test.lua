@@ -4,6 +4,11 @@ local assert = require("tests.helpers.assert")
 -- Real-subprocess tests for ACPTransport. We bypass `tests/helpers/child.lua`
 -- because its `setup()` mocks `agentic.acp.acp_transport`; here we need the
 -- real module to spawn a real process.
+--
+-- This is the canonical exception to the "MUST stub `agentic.acp.acp_transport`"
+-- rule in `tests/AGENTS.md`: that rule exists for tests that *use* the
+-- transport. This file *tests* the transport itself, so spawning a real
+-- subprocess is the whole point. No provider binary is spawned; only /bin/sh.
 
 describe("ACPTransport process lifecycle", function()
     local child
@@ -51,7 +56,12 @@ describe("ACPTransport process lifecycle", function()
             --   2. emit its PID as a JSON line on stdout
             --   3. `exec cat` so the foreground process holds stdin open
             --      without any signal trap. SIGTERM => cat dies, sleep orphans.
-            child.lua([[
+            --
+            -- The backgrounded `sleep` is in the same session/pgrp as the
+            -- foreground shell because `detached = true` already called
+            -- `setsid` at spawn time and `sh -c` does not create a new pgrp
+            -- without job control. See ADR 0006.
+            local got_pid = child.lua([[
                 local Transport = require("agentic.acp.acp_transport")
                 _G.t = {}
                 _G.transport = Transport.create_stdio_transport({
@@ -66,11 +76,12 @@ describe("ACPTransport process lifecycle", function()
                     on_reconnect = function() end,
                 })
                 _G.transport:start()
-                vim.wait(2000, function()
+                return vim.wait(2000, function()
                     return _G.t.grandchild_pid ~= nil
                 end)
             ]])
 
+            assert.is_true(got_pid)
             local grandchild_pid = child.lua_get([[_G.t.grandchild_pid]])
             assert.is_not_nil(grandchild_pid)
             assert.is_true(is_alive(grandchild_pid))
