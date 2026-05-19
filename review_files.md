@@ -1,3 +1,0 @@
-- [x] lua/agentic/acp/acp_transport.lua
-- [x] lua/agentic/acp/acp_transport.test.lua
-- [x] docs/adr/0006-acp-subprocess-process-group.md
