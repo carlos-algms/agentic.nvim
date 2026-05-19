@@ -465,6 +465,48 @@ describe("agentic.ui.MessageWriter", function()
         )
     end)
 
+    describe("on_tool_call_block_created hook", function()
+        it(
+            "fires once with the tool_call_id after write_tool_call_block",
+            function()
+                local hook_spy = spy.new(function() end)
+                writer.on_tool_call_block_created = hook_spy --[[@as function]]
+
+                writer:write_tool_call_block(
+                    make_tool_call_block("hook-1", "pending")
+                )
+
+                assert.spy(hook_spy).was.called(1)
+                assert.equal("hook-1", hook_spy.calls[1][1])
+            end
+        )
+
+        it("does not fire when the hook is unset", function()
+            writer.on_tool_call_block_created = nil
+            assert.has_no_errors(function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("hook-unset", "pending")
+                )
+            end)
+        end)
+
+        it("does not fire on update_tool_call_block", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("hook-update", "pending")
+            )
+
+            local hook_spy = spy.new(function() end)
+            writer.on_tool_call_block_created = hook_spy --[[@as function]]
+
+            writer:update_tool_call_block({
+                tool_call_id = "hook-update",
+                status = "completed",
+            })
+
+            assert.spy(hook_spy).was.called(0)
+        end)
+    end)
+
     describe("_prepare_block_lines", function()
         local FileSystem
         local read_stub

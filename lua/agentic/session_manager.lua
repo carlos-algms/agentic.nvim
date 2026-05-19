@@ -168,6 +168,9 @@ function SessionManager:new(tab_page_id)
     end
 
     self.permission_manager = PermissionManager:new(self.message_writer)
+    self.message_writer.on_tool_call_block_created = function(tool_call_id)
+        self.permission_manager:reapply_if_pending(tool_call_id)
+    end
 
     FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)

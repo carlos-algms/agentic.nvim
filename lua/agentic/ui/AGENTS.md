@@ -31,7 +31,10 @@ SessionManager (per tab)
         ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 0002
         └── PermissionManager   pending map + focus state; rebinds per-block
                                 keymaps on focus transition. Row N rendering
-                                owned by MessageWriter (repaint_status_row)
+                                owned by MessageWriter (repaint_status_row).
+                                Requests arriving before their tool_call
+                                block are deferred and re-attached via the
+                                MessageWriter.on_tool_call_block_created hook.
 ```
 
 ## Lifecycle

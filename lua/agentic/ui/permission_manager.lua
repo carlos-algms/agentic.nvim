@@ -141,20 +141,43 @@ function PermissionManager:add_request(request, callback)
     self.pending[tool_call_id] = pending_req
     table.insert(self._order, tool_call_id)
 
-    if #self._order == 1 then
-        self:_install_cycle_keymaps()
+    -- Race: permission can arrive before the tool_call notification. Without
+    -- a tracker, set_permission_state / repaint_status_row silently no-op and
+    -- buttons never render. Defer UI/keymap setup until MessageWriter fires
+    -- `on_tool_call_block_created` -> SessionManager -> `reapply_if_pending`.
+    if not self.message_writer.tool_call_blocks[tool_call_id] then
+        return
     end
+
+    self:_attach_to_block(tool_call_id, pending_req)
+end
+
+--- Install UI state + keymaps for a pending request whose tool call block
+--- tracker exists.
+--- @param tool_call_id string
+--- @param pending agentic.ui.PermissionManager.PermissionRequest
+--- @protected
+function PermissionManager:_attach_to_block(tool_call_id, pending)
+    self:_install_cycle_keymaps()
 
     if self.focused_id == nil then
         self:_set_focus(tool_call_id)
     else
-        self.message_writer:set_permission_state(tool_call_id, {
-            sorted_options = sorted_options,
-            is_focused = false,
-            focused_button_index = 1,
-        })
-        self.message_writer:repaint_status_row(tool_call_id)
+        self:_paint_unfocused(tool_call_id, pending)
     end
+end
+
+--- Paint row N for `tool_call_id` as non-focused (button index 1).
+--- @param tool_call_id string
+--- @param pending agentic.ui.PermissionManager.PermissionRequest
+--- @protected
+function PermissionManager:_paint_unfocused(tool_call_id, pending)
+    self.message_writer:set_permission_state(tool_call_id, {
+        sorted_options = pending.sorted_options,
+        is_focused = false,
+        focused_button_index = 1,
+    })
+    self.message_writer:repaint_status_row(tool_call_id)
 end
 
 --- Move button focus within the currently focused block. Wraps. No-op when
@@ -273,8 +296,35 @@ function PermissionManager:resolve(tool_call_id, option_id)
     pcall(request.callback, option_id)
 
     if was_focused then
-        self:_set_focus(self._order[1])
+        -- Skip deferred ids: focusing one binds digit keymaps with no
+        -- visible buttons.
+        self:_set_focus(self:_first_paintable_id())
     end
+end
+
+--- Return the first id in `_order` whose tool call block tracker exists, or
+--- nil.
+--- @return string|nil
+--- @protected
+function PermissionManager:_first_paintable_id()
+    for _, id in ipairs(self._order) do
+        if self.message_writer.tool_call_blocks[id] then
+            return id
+        end
+    end
+    return nil
+end
+
+--- Attach UI state for a pending request once its tool call block tracker
+--- exists. No-op if no pending request for the ID.
+--- @param tool_call_id string
+function PermissionManager:reapply_if_pending(tool_call_id)
+    local pending = self.pending[tool_call_id]
+    if not pending then
+        return
+    end
+
+    self:_attach_to_block(tool_call_id, pending)
 end
 
 --- Clear all pending requests (e.g. on session stop or teardown). Fires every
@@ -324,12 +374,7 @@ function PermissionManager:_set_focus(new_id)
     self.focused_id = new_id
 
     if old_id and self.pending[old_id] then
-        self.message_writer:set_permission_state(old_id, {
-            sorted_options = self.pending[old_id].sorted_options,
-            is_focused = false,
-            focused_button_index = 1,
-        })
-        self.message_writer:repaint_status_row(old_id)
+        self:_paint_unfocused(old_id, self.pending[old_id])
     end
 
     self:_remove_focus_keymaps()
@@ -358,14 +403,23 @@ end
 
 --- @param direction integer 1 for next, -1 for previous
 function PermissionManager:_cycle_focus(direction)
-    local n = #self._order
+    -- Walk only the paintable subset: deferred (tracker-less) ids would land
+    -- focus on an id with no visible buttons.
+    local paintable = {}
+    for _, id in ipairs(self._order) do
+        if self.message_writer.tool_call_blocks[id] then
+            table.insert(paintable, id)
+        end
+    end
+
+    local n = #paintable
     if n == 0 then
         return
     end
 
     local current_idx = nil
     if self.focused_id then
-        for i, id in ipairs(self._order) do
+        for i, id in ipairs(paintable) do
             if id == self.focused_id then
                 current_idx = i
                 break
@@ -374,12 +428,12 @@ function PermissionManager:_cycle_focus(direction)
     end
 
     if not current_idx then
-        self:_set_focus(self._order[1])
+        self:_set_focus(paintable[1])
         return
     end
 
     local new_idx = ((current_idx - 1 + direction + n) % n) + 1
-    local target_id = self._order[new_idx]
+    local target_id = paintable[new_idx]
 
     -- Single-pending case (or cycle landing on same id): focus is unchanged
     -- but the user still expects the cursor to jump back onto the focused row.
