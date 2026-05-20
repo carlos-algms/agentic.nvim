@@ -17,6 +17,8 @@ describe("agentic.ui.PermissionManager", function()
     local pm
     --- @type TestStub
     local schedule_stub
+    --- @type TestSpy|nil
+    local cmd_spy
 
     --- Build a permission request with the given tool_call_id. Defaults to
     --- one allow_once + one reject_once option; pass opts.options to override.
@@ -104,6 +106,11 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     after_each(function()
+        if cmd_spy then
+            cmd_spy:revert()
+            cmd_spy = nil
+        end
+
         schedule_stub:revert()
 
         if winid and vim.api.nvim_win_is_valid(winid) then
@@ -243,6 +250,40 @@ describe("agentic.ui.PermissionManager", function()
                 assert.is_nil(pm.focused_id)
                 assert.is_false(has_buf_keymap("n", "1"))
                 assert.is_false(has_buf_keymap("n", "2"))
+            end
+        )
+
+        it("catches up to the bottom when queue drains", function()
+            seed_block("tc-1")
+            pm:add_request(
+                make_request("tc-1"),
+                spy.new(function() end) --[[@as function]]
+            )
+
+            cmd_spy = spy.on(vim, "cmd")
+            pm:resolve("tc-1", "allow-once")
+
+            assert.is_true(cmd_spy:called_with("noautocmd normal! G0zb"))
+        end)
+
+        it(
+            "does not catch up when focus advances to another request",
+            function()
+                seed_block("tc-1")
+                seed_block("tc-2")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+                pm:add_request(
+                    make_request("tc-2"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                cmd_spy = spy.on(vim, "cmd")
+                pm:resolve("tc-1", "allow-once")
+
+                assert.is_false(cmd_spy:called_with("noautocmd normal! G0zb"))
             end
         )
 
