@@ -351,6 +351,23 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(status_row_text("row-n-pending"):find("pending"))
         end)
 
+        it("defaults missing initial tool call fields before render", function()
+            writer:write_tool_call_block({
+                tool_call_id = "row-n-missing-fields",
+            })
+
+            local tracker = writer.tool_call_blocks["row-n-missing-fields"]
+            assert.is_not_nil(tracker)
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            assert.equal("other", tracker.kind)
+            assert.equal("Pending", tracker.argument)
+            assert.equal("pending", tracker.status)
+            assert.truthy(get_all_content():find("other(Pending)", 1, true))
+            assert.truthy(
+                status_row_text("row-n-missing-fields"):find("pending")
+            )
+        end)
+
         it(
             "renders inline buttons for pending non-focused permission state",
             function()
@@ -463,48 +480,6 @@ describe("agentic.ui.MessageWriter", function()
                 assert.truthy(text:find("pending"))
             end
         )
-    end)
-
-    describe("on_tool_call_block_created hook", function()
-        it(
-            "fires once with the tool_call_id after write_tool_call_block",
-            function()
-                local hook_spy = spy.new(function() end)
-                writer.on_tool_call_block_created = hook_spy --[[@as function]]
-
-                writer:write_tool_call_block(
-                    make_tool_call_block("hook-1", "pending")
-                )
-
-                assert.spy(hook_spy).was.called(1)
-                assert.equal("hook-1", hook_spy.calls[1][1])
-            end
-        )
-
-        it("does not fire when the hook is unset", function()
-            writer.on_tool_call_block_created = nil
-            assert.has_no_errors(function()
-                writer:write_tool_call_block(
-                    make_tool_call_block("hook-unset", "pending")
-                )
-            end)
-        end)
-
-        it("does not fire on update_tool_call_block", function()
-            writer:write_tool_call_block(
-                make_tool_call_block("hook-update", "pending")
-            )
-
-            local hook_spy = spy.new(function() end)
-            writer.on_tool_call_block_created = hook_spy --[[@as function]]
-
-            writer:update_tool_call_block({
-                tool_call_id = "hook-update",
-                status = "completed",
-            })
-
-            assert.spy(hook_spy).was.called(0)
-        end)
     end)
 
     describe("_prepare_block_lines", function()

@@ -323,31 +323,26 @@ To handle a new provider quirk, add the fallback logic in
 ```mermaid
 flowchart TD
     P["Provider sends 'session/request_permission'"]
+    C["ACPClient.__handle_request_permission<br/>emits request.toolCall as tool_call_update"]
+    PH["SessionManager:_on_tool_call_update<br/>routes missing tracker to first render"]
+    W["MessageWriter:write_tool_call_block<br/>defaults missing fields to<br/>other(Pending) pending"]
     SM["SessionManager<br/>opens diff preview if request carries a diff"]
     PM["PermissionManager:add_request(request, callback)"]
     Store["Store in pending[tool_call_id]<br/>append to insertion order"]
-    T{"tool call block<br/>tracker exists?"}
-    Defer["Defer UI / keymap setup; return"]
-    Hook["MessageWriter:write_tool_call_block fires<br/>on_tool_call_block_created(id)"]
-    Reapply["PermissionManager:reapply_if_pending(id)"]
-    Attach["_attach_to_block(id, pending)<br/>(install cycle keymaps idempotently)"]
-    F{"focused_id == nil?"}
+    F{"first pending?"}
     Focus["_set_focus -> install digit keymaps,<br/>jump cursor, paint focused row N"]
-    Paint["_paint_unfocused row N (buttons inactive)"]
+    Paint["paint non-focused row N (buttons inactive)"]
     U["User presses 1/2/3/4 (digit)"]
     Cyc["User presses cycle_next / cycle_prev<br/>(default <C-n> / <C-p>)"]
-    Cycle["_cycle_focus -> walk paintable subset,<br/>repaint old + new row N"]
+    Cycle["_cycle_focus -> repaint old + new row N"]
     Res["resolve(focused_id, option_id)"]
     CB["callback(option_id), provider notified"]
     Clear["Clear diff preview"]
-    Next{"more paintable<br/>pending?"}
-    Adv["_set_focus(_first_paintable_id)"]
+    Next{"more pending?"}
+    Adv["_set_focus(next head)"]
     Done["idle"]
 
-    P --> SM --> PM --> Store --> T
-    T -->|no| Defer --> Hook --> Reapply --> Attach
-    T -->|yes| Attach
-    Attach --> F
+    P --> C --> PH --> W --> SM --> PM --> Store --> F
     F -->|yes| Focus
     F -->|no| Paint
     Focus --> U
@@ -359,15 +354,14 @@ flowchart TD
 ```
 
 Multiple permission requests can be pending concurrently (one per tool call).
-Focus tracks the oldest **paintable** pending request (head of `_order`
-filtered by `tool_call_blocks[id] ~= nil`); new arrivals do not steal focus.
-Requests that arrive before their `tool_call` notification are stored in
-`pending` without any UI or keymap side effects, then attached via the
-`MessageWriter.on_tool_call_block_created` hook ->
-`PermissionManager:reapply_if_pending`. `resolve` and `_cycle_focus` skip
-deferred (tracker-less) ids so focus never lands on an id whose row N
-cannot render. Regression:
-`lua/agentic/ui/permission_manager.test.lua::"permission arrives before tool_call (race)"`.
+Focus tracks the queue head (oldest pending); new arrivals do not steal focus.
+Requests that arrive before their `tool_call` notification are normalized by
+the first-render path: `SessionManager:_on_tool_call_update` routes a missing
+tracker through `MessageWriter:write_tool_call_block`, which defaults missing
+kind/title/status to `other(Pending)` + `pending`. This creates row N before
+`PermissionManager:add_request` paints buttons, without overwriting partial
+updates on existing blocks. Regression:
+`lua/agentic/ui/message_writer.test.lua::"defaults missing initial tool call fields before render"`.
 
 Digit keys `1`..`4` dispatch the focused block's option;
 `Config.keymaps.permission.cycle_next` / `cycle_prev` (default `<C-n>` /
@@ -428,7 +422,7 @@ its own session/process group. `transport:stop` signals the whole group via
 `codex-acp.js` uses `spawnSync` with no signal handlers, otherwise its native
 grandchild leaks as `PPID 1`). Trade-off: children outlive a hard `kill -9` of
 nvim. See ADR 0006. Regression:
-`lua/agentic/acp/acp_transport.test.lua::"kills descendant processes when wrapper does not forward signals"`.
+``lua/agentic/acp/acp_transport.test.lua::"kills descendant processes when wrapper does not forward signals"``.
 
 ## Reconnect
 

@@ -56,7 +56,6 @@ local TITLE_FENCE = "`````"
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
 --- @field tool_call_blocks table<string, agentic.ui.MessageWriter.ToolCallBlock>
---- @field on_tool_call_block_created? fun(tool_call_id: string) Fired once when a new tool call block tracker is registered.
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
@@ -418,6 +417,10 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    tool_call_block.kind = tool_call_block.kind or "other"
+    tool_call_block.argument = tool_call_block.argument or "Pending"
+    tool_call_block.status = tool_call_block.status or "pending"
+
     if tool_call_block.body then
         tool_call_block.body = JsonFormat.format_lines(tool_call_block.body)
     end
@@ -483,10 +486,6 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     end)
 
     self:_apply_scroll(self.bufnr)
-
-    if self.on_tool_call_block_created then
-        self.on_tool_call_block_created(tool_call_block.tool_call_id)
-    end
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock

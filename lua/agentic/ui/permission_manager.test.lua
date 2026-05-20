@@ -68,25 +68,6 @@ describe("agentic.ui.PermissionManager", function()
         return false
     end
 
-    --- @param tool_call_id string
-    --- @return string
-    local function status_row_text(tool_call_id)
-        local row = writer:get_block_end_row(tool_call_id) or 0
-        return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1] or ""
-    end
-
-    --- Wire the writer hook the same way SessionManager does.
-    local function wire_reapply_hook()
-        writer.on_tool_call_block_created = function(id)
-            pm:reapply_if_pending(id)
-        end
-    end
-
-    --- @return fun(option_id: string|nil)
-    local function noop_cb()
-        return spy.new(function() end) --[[@as function]]
-    end
-
     --- @param lhs string
     --- @return function|nil
     local function get_digit_callback(lhs)
@@ -753,6 +734,14 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("resolve hygiene", function()
+        --- @param tool_call_id string
+        --- @return string
+        local function status_row_text(tool_call_id)
+            local row = writer:get_block_end_row(tool_call_id) or 0
+            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+                or ""
+        end
+
         it("strips buttons from row N as soon as the user resolves", function()
             seed_block("tc-only")
             local cb = spy.new(function() end)
@@ -813,108 +802,6 @@ describe("agentic.ui.PermissionManager", function()
             assert.is_nil(cb_1.calls[1][1])
             assert.spy(cb_2).was.called(0)
             assert.equal("tc-2", pm.focused_id)
-        end)
-    end)
-
-    describe("permission arrives before tool_call (race)", function()
-        it(
-            "stores the request in pending without touching the writer or keymaps when no tracker exists",
-            function()
-                pm:add_request(make_request("tc-race"), noop_cb())
-
-                assert.is_not_nil(pm.pending["tc-race"])
-                assert.equal("tc-race", pm._order[1])
-                assert.is_nil(pm.focused_id)
-                assert.is_false(has_buf_keymap("n", "1"))
-                assert.is_false(has_buf_keymap("n", "2"))
-                assert.is_nil(writer:get_block_end_row("tc-race"))
-            end
-        )
-
-        it(
-            "renders buttons and installs digit keymaps when the tool call block arrives via the hook",
-            function()
-                pm:add_request(make_request("tc-race"), noop_cb())
-                assert.is_nil(pm.focused_id)
-
-                wire_reapply_hook()
-                seed_block("tc-race")
-
-                assert.equal("tc-race", pm.focused_id)
-                local text = status_row_text("tc-race")
-                assert.truthy(text:find("Allow"))
-                assert.truthy(text:find("Reject"))
-                assert.is_true(has_buf_keymap("n", "1"))
-                assert.is_true(has_buf_keymap("n", "2"))
-            end
-        )
-
-        it(
-            "renders non-focused buttons when reapply_if_pending fires for an id that is not currently focused",
-            function()
-                seed_block("tc-head")
-                pm:add_request(make_request("tc-head"), noop_cb())
-                assert.equal("tc-head", pm.focused_id)
-
-                pm:add_request(make_request("tc-late"), noop_cb())
-                assert.equal("tc-head", pm.focused_id)
-                assert.is_nil(writer:get_block_end_row("tc-late"))
-
-                wire_reapply_hook()
-                seed_block("tc-late")
-
-                assert.equal("tc-head", pm.focused_id)
-                local text = status_row_text("tc-late")
-                assert.truthy(text:find("Allow"))
-                assert.truthy(text:find("Reject"))
-            end
-        )
-
-        it("is a no-op when no pending request exists for the id", function()
-            seed_block("tc-empty")
-            assert.has_no_errors(function()
-                pm:reapply_if_pending("tc-empty")
-            end)
-            assert.is_nil(pm.focused_id)
-            assert.is_false(has_buf_keymap("n", "1"))
-        end)
-
-        it(
-            "resolve skips deferred ids when picking the next focus head",
-            function()
-                seed_block("tc-head")
-                pm:add_request(make_request("tc-head"), noop_cb())
-                pm:add_request(make_request("tc-late"), noop_cb())
-
-                assert.equal("tc-head", pm.focused_id)
-
-                pm:resolve("tc-head", "allow-once")
-
-                assert.is_nil(pm.focused_id)
-                assert.is_false(has_buf_keymap("n", "1"))
-
-                wire_reapply_hook()
-                seed_block("tc-late")
-
-                assert.equal("tc-late", pm.focused_id)
-                assert.is_true(has_buf_keymap("n", "1"))
-            end
-        )
-
-        it("cycle_focus skips deferred ids", function()
-            seed_block("tc-1")
-            pm:add_request(make_request("tc-1"), noop_cb())
-            pm:add_request(make_request("tc-mid"), noop_cb())
-            seed_block("tc-3")
-            pm:add_request(make_request("tc-3"), noop_cb())
-
-            assert.equal("tc-1", pm.focused_id)
-
-            pm:_cycle_focus(1)
-            assert.equal("tc-3", pm.focused_id)
-
-            pm:_cycle_focus(1)
-            assert.equal("tc-1", pm.focused_id)
         end)
     end)
 end)
