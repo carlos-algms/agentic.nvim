@@ -392,6 +392,23 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(text:find("Reject"))
         end)
 
+        it("keeps inline buttons when an active update repaints", function()
+            setup_permission_block("row-n-active-update", { is_focused = true })
+
+            writer:update_tool_call_block({
+                tool_call_id = "row-n-active-update",
+                status = "in_progress",
+                body = { "running" },
+            })
+
+            local text = status_row_text("row-n-active-update")
+            assert.truthy(text:find("in_progress"))
+            assert.truthy(text:find("1 "))
+            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("Allow"))
+            assert.truthy(text:find("Reject"))
+        end)
+
         for _, case in ipairs({
             {
                 index = 1,

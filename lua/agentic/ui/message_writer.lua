@@ -1170,7 +1170,7 @@ end
 --- @field [3] string hl_group
 
 --- Build the text + highlight segments for the status row (row N) of a block.
---- Pending blocks with an attached PermissionState include inline buttons.
+--- Blocks with an attached PermissionState include inline buttons.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return string text
 --- @return agentic.ui.MessageWriter.StatusSegment[] segments
@@ -1193,7 +1193,7 @@ function MessageWriter:_build_status_row(tracker)
 
     local perm = tracker.permission
 
-    if status ~= "pending" or not perm then
+    if not perm then
         return text, segments
     end
 
