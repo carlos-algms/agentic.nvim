@@ -112,7 +112,9 @@ function M.create_stdio_transport(config, callbacks)
             -- leader (setsid). Required so transport:stop can signal the
             -- whole group via uv.kill(-pid, ...) and reap wrappers that
             -- don't forward signals (e.g. codex-acp.js spawnSync).
-            detached = true,
+            -- On Windows, detached allocates a new console window, so we
+            -- skip it there (process:kill() is used for teardown instead).
+            detached = vim.fn.has("win32") == 0,
         }, function(code, signal)
             local cmd_str = config.command
                 .. (#args > 0 and " " .. table.concat(args, " ") or "")
