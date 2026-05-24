@@ -430,22 +430,42 @@ describe("agentic.SessionRegistry", function()
             end)
         end)
 
-        it("sorts installed providers before not-installed", function()
+        it("sorts healthy providers first then alphabetically", function()
+            config_mock.provider_switcher = {
+                hide_unhealthy_providers = false,
+            }
+            config_mock.acp_providers = {
+                ["zeta-acp"] = { command = "zeta" },
+                ["alpha-missing-acp"] = { command = "alpha-missing" },
+                ["beta-acp"] = { command = "beta" },
+                ["aardvark-missing-acp"] = {
+                    command = "aardvark-missing",
+                },
+            }
             acp_health_mock.get_default_provider_names = function()
-                return { "claude-acp", "gemini-acp" }
+                return {
+                    "zeta-acp",
+                    "alpha-missing-acp",
+                    "beta-acp",
+                    "aardvark-missing-acp",
+                }
             end
             acp_health_mock.is_command_available = function(cmd)
-                return cmd == "gemini"
+                return cmd == "zeta" or cmd == "beta"
             end
 
             SessionRegistry.select_provider(function() end)
 
             assert.is_not_nil(captured_items)
-            assert.equal(2, #captured_items)
-            assert.equal("gemini-acp", captured_items[1].name)
+            assert.equal(4, #captured_items)
+            assert.equal("beta-acp", captured_items[1].name)
             assert.is_true(captured_items[1].installed)
-            assert.equal("claude-acp", captured_items[2].name)
-            assert.is_false(captured_items[2].installed)
+            assert.equal("zeta-acp", captured_items[2].name)
+            assert.is_true(captured_items[2].installed)
+            assert.equal("aardvark-missing-acp", captured_items[3].name)
+            assert.is_false(captured_items[3].installed)
+            assert.equal("alpha-missing-acp", captured_items[4].name)
+            assert.is_false(captured_items[4].installed)
         end)
 
         it("marks provider without config as not-installed", function()
@@ -533,6 +553,23 @@ describe("agentic.SessionRegistry", function()
                 end
             )
         end)
+
+        it(
+            "passes Snacks sort override for health and fuzzy ranking",
+            function()
+                acp_health_mock.get_default_provider_names = function()
+                    return { "claude-acp" }
+                end
+
+                SessionRegistry.select_provider(function() end)
+
+                assert.same({
+                    sort = {
+                        fields = { "installed", "score:desc", "idx" },
+                    },
+                }, captured_opts.snacks)
+            end
+        )
 
         describe("format_item labels", function()
             before_each(function()
