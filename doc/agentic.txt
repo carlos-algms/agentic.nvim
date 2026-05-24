@@ -493,8 +493,8 @@ agentic.rotate_layout({layouts})
     {layouts}  (table|nil)  List of position strings. Default:
                             `{ "right", "bottom", "left" }`.
 
-                                            *agentic.permission_allow()*
-agentic.permission_allow()
+                                        *agentic.permission_allow_once()*
+agentic.permission_allow_once()
   Allow the currently pending tool call (allow once). No-op if no
   permission is pending.
 

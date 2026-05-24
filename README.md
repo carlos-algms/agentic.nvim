@@ -1,4 +1,4 @@
-# Agentic.nvim
+# Agentic.nvim <!-- mock edit -->
 
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
@@ -545,7 +545,7 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 | `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
 | `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
 | `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
-| `:lua require("agentic").permission_allow()`                 | Allow the currently pending tool call (allow once)                 |
+| `:lua require("agentic").permission_allow_once()`            | Allow the currently pending tool call (allow once)                 |
 | `:lua require("agentic").permission_allow_always()`          | Allow the currently pending tool call (allow always)              |
 | `:lua require("agentic").permission_reject()`                | Reject the currently pending tool call (reject once)              |
 
