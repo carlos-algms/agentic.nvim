@@ -296,6 +296,7 @@ end
 
 --- Resolve the currently focused permission request by option kind.
 --- No-op if no permission is pending or the kind is unavailable.
+--- @private
 --- @param kind "allow_once" | "allow_always" | "reject_once"
 local function resolve_focused_permission(kind)
     SessionRegistry.get_session_for_tab_page(nil, function(session)
@@ -319,17 +320,20 @@ local function resolve_focused_permission(kind)
     end)
 end
 
---- Allow the currently pending tool call (allow once)
+--- Allow the currently pending tool call (allow once).
+--- No-op if no permission is pending.
 function Agentic.permission_allow_once()
     resolve_focused_permission("allow_once")
 end
 
---- Allow the currently pending tool call and remember the choice (allow always)
+--- Allow the currently pending tool call and remember the choice (allow always).
+--- No-op if no permission is pending.
 function Agentic.permission_allow_always()
     resolve_focused_permission("allow_always")
 end
 
---- Reject the currently pending tool call (reject once)
+--- Reject the currently pending tool call (reject once).
+--- No-op if no permission is pending.
 function Agentic.permission_reject()
     resolve_focused_permission("reject_once")
 end
