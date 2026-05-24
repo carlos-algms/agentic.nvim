@@ -294,6 +294,46 @@ function Agentic.switch_provider(opts)
     end)
 end
 
+--- Resolve the currently focused permission request by option kind.
+--- No-op if no permission is pending or the kind is unavailable.
+--- @param kind "allow_once" | "allow_always" | "reject_once"
+local function resolve_focused_permission(kind)
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        local pm = session.permission_manager
+        if not pm.focused_id then
+            return
+        end
+
+        local pending = pm.pending[pm.focused_id]
+        if not pending then
+            return
+        end
+
+        -- Only resolve if it's a valid option
+        for _, opt in ipairs(pending.sorted_options) do
+            if opt.kind == kind then
+                pm:resolve(pm.focused_id, opt.optionId)
+                return
+            end
+        end
+    end)
+end
+
+--- Allow the currently pending tool call (allow once)
+function Agentic.permission_allow_once()
+    resolve_focused_permission("allow_once")
+end
+
+--- Allow the currently pending tool call and remember the choice (allow always)
+function Agentic.permission_allow_always()
+    resolve_focused_permission("allow_always")
+end
+
+--- Reject the currently pending tool call (reject once)
+function Agentic.permission_reject()
+    resolve_focused_permission("reject_once")
+end
+
 --- Stops the agent's current generation or tool execution
 --- The session remains active and ready for the next prompt
 --- Safe to call multiple times or when no generation is active

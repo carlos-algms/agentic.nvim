@@ -6,6 +6,7 @@ agentic-config-diff-preview	agentic.txt	/*agentic-config-diff-preview*
 agentic-config-headers	agentic.txt	/*agentic-config-headers*
 agentic-config-hooks	agentic.txt	/*agentic-config-hooks*
 agentic-config-provider	agentic.txt	/*agentic-config-provider*
+agentic-config-provider-switcher	agentic.txt	/*agentic-config-provider-switcher*
 agentic-config-settings	agentic.txt	/*agentic-config-settings*
 agentic-config-windows	agentic.txt	/*agentic-config-windows*
 agentic-configuration	agentic.txt	/*agentic-configuration*
@@ -66,6 +67,9 @@ agentic.new_session()	agentic.txt	/*agentic.new_session()*
 agentic.new_session_with_provider()	agentic.txt	/*agentic.new_session_with_provider()*
 agentic.nvim	agentic.txt	/*agentic.nvim*
 agentic.open()	agentic.txt	/*agentic.open()*
+agentic.permission_allow()	agentic.txt	/*agentic.permission_allow()*
+agentic.permission_allow_always()	agentic.txt	/*agentic.permission_allow_always()*
+agentic.permission_reject()	agentic.txt	/*agentic.permission_reject()*
 agentic.restore_session()	agentic.txt	/*agentic.restore_session()*
 agentic.restore_session_by_id()	agentic.txt	/*agentic.restore_session_by_id()*
 agentic.rotate_layout()	agentic.txt	/*agentic.rotate_layout()*

@@ -493,6 +493,21 @@ agentic.rotate_layout({layouts})
     {layouts}  (table|nil)  List of position strings. Default:
                             `{ "right", "bottom", "left" }`.
 
+                                            *agentic.permission_allow()*
+agentic.permission_allow()
+  Allow the currently pending tool call (allow once). No-op if no
+  permission is pending.
+
+                                     *agentic.permission_allow_always()*
+agentic.permission_allow_always()
+  Allow the currently pending tool call and remember the choice
+  (allow always). No-op if no permission is pending.
+
+                                           *agentic.permission_reject()*
+agentic.permission_reject()
+  Reject the currently pending tool call (reject once). No-op if no
+  permission is pending.
+
 ==============================================================================
 KEYMAPS                                                *agentic-keymaps*
 
