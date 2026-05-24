@@ -1,4 +1,4 @@
-# Agentic.nvim <!-- mock edit -->
+# Agentic.nvim
 
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
