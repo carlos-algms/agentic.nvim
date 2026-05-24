@@ -58,6 +58,12 @@
 --- @field tab_page_id number The tabpage ID
 --- @field bufnr? number Buffer number if the file is loaded in a buffer
 
+--- Data passed to the on_request_permission hook
+--- @class agentic.UserConfig.RequestPermissionData
+--- @field request agentic.acp.RequestPermission The permission request object
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
 --- @field mode string|string[] The mode(s) for this binding
@@ -200,6 +206,7 @@
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
 --- @field on_file_edit? fun(data: agentic.UserConfig.FileEditData): nil
+--- @field on_request_permission? fun(data: agentic.UserConfig.RequestPermissionData): nil
 
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
@@ -555,6 +562,7 @@ local ConfigDefault = {
         on_response_complete = nil,
         on_session_update = nil,
         on_file_edit = nil,
+        on_request_permission = nil,
     },
 
     headers = {},

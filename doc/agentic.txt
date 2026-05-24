@@ -689,6 +689,11 @@ Event hooks ~
         -- data.tab_page_id: number
         -- data.bufnr: number|nil (if file is loaded in a buffer)
       end,
+      on_request_permission = function(data)
+        -- data.request: table (contains .toolCall)
+        -- data.session_id: string
+        -- data.tab_page_id: number
+      end,
     },
   }
 <

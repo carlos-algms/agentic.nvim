@@ -937,6 +937,18 @@ integrating with other plugins.
           vim.lsp.buf.format({ bufnr = data.bufnr, timeout_ms = 5000 })
         end
       end,
+
+      -- Called when the agent needs permission to execute a tool (e.g. shell command).
+      -- Fires for each pending permission request.
+      on_request_permission = function(data)
+        -- data.request: table - The ACP permission request object
+        -- data.request.toolCall: table - contains .kind, .title, etc.
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        local tool = data.request.toolCall
+        local label = tool.title or tool.kind or "action"
+        vim.notify("Agent needs permission for: " .. label)
+      end,
     }
   }
 }
