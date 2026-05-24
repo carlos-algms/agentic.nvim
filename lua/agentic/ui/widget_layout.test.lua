@@ -260,7 +260,11 @@ describe("WidgetLayout", function()
         it("preserves chat manual folds across close + reopen", function()
             local saved_folding = Config.folding
             Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
+                tool_calls = {
+                    enabled = true,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
             }
 
             vim.cmd("tabnew")
@@ -376,6 +380,54 @@ describe("WidgetLayout", function()
             end
         )
 
+        it("sizes panel to visual rows when content wraps", function()
+            vim.cmd("tabnew")
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local files_buf = vim.api.nvim_create_buf(false, true)
+            local long = string.rep("a/very/long/path/segment/", 20)
+            vim.api.nvim_buf_set_lines(
+                files_buf,
+                0,
+                -1,
+                false,
+                { "- " .. long, "- " .. long }
+            )
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = files_buf,
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                tab_page_id = tab_page_id,
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            local files_win = win_nrs.files
+            assert.is_not_nil(files_win)
+            ---@cast files_win integer
+
+            local visual = vim.api.nvim_win_text_height(files_win, {}).all
+            local height = vim.api.nvim_win_get_height(files_win)
+            local expected = math.min(visual, Config.windows.files.max_height)
+
+            assert.is_true(height >= expected)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
         it("honors a user-provided chat statuscolumn option", function()
             saved_chat_win_opts = vim.deepcopy(Config.windows.chat.win_opts)
             Config.windows.chat.win_opts =
@@ -435,62 +487,70 @@ describe("WidgetLayout", function()
             pcall(vim.api.nvim_buf_delete, chat_buf, { force = true })
         end)
 
-        it("applies manual fold options to the hidden float", function()
-            local saved_folding = Config.folding
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
-            }
+        describe("with folding enabled", function()
+            --- @type agentic.UserConfig.Folding|nil
+            local saved_folding
 
-            local chat_buf = vim.api.nvim_create_buf(false, true)
-            vim.bo[chat_buf].buftype = "nofile"
-            vim.bo[chat_buf].bufhidden = "hide"
-
-            local winid = WidgetLayout.open_hidden_chat_window(chat_buf)
-
-            assert.equal(vim.wo[winid].foldmethod, "manual")
-            assert.equal(vim.wo[winid].foldlevel, 0)
-            assert.is_true(vim.wo[winid].foldenable)
-
-            pcall(vim.api.nvim_win_close, winid, true)
-            pcall(vim.api.nvim_buf_delete, chat_buf, { force = true })
-            Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
-        end)
-
-        it(
-            "allows folding the buffer while no visible window is open",
-            function()
-                local saved_folding = Config.folding
+            before_each(function()
+                saved_folding = Config.folding
                 Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
+                    tool_calls = {
+                        enabled = true,
+                        threshold = 5,
+                        fold_on_error = false,
+                    },
                 }
+            end)
 
+            after_each(function()
+                Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
+            end)
+
+            it("applies manual fold options to the hidden float", function()
                 local chat_buf = vim.api.nvim_create_buf(false, true)
                 vim.bo[chat_buf].buftype = "nofile"
                 vim.bo[chat_buf].bufhidden = "hide"
-                vim.api.nvim_buf_set_lines(
-                    chat_buf,
-                    0,
-                    -1,
-                    false,
-                    vim.fn["repeat"]({ "L" }, 30)
-                )
 
-                local hidden_winid =
-                    WidgetLayout.open_hidden_chat_window(chat_buf)
-                assert.is_not_nil(hidden_winid)
-                ---@cast hidden_winid integer
+                local winid = WidgetLayout.open_hidden_chat_window(chat_buf)
 
-                local Fold = require("agentic.ui.tool_call_fold")
-                Fold.close_range(chat_buf, 5, 15)
+                assert.equal(vim.wo[winid].foldmethod, "manual")
+                assert.equal(vim.wo[winid].foldlevel, 0)
+                assert.is_true(vim.wo[winid].foldenable)
 
-                vim.api.nvim_win_call(hidden_winid, function()
-                    assert.equal(vim.fn.foldclosed(10), 5)
-                end)
-
-                pcall(vim.api.nvim_win_close, hidden_winid, true)
+                pcall(vim.api.nvim_win_close, winid, true)
                 pcall(vim.api.nvim_buf_delete, chat_buf, { force = true })
-                Config.folding = saved_folding --- @diagnostic disable-line: assign-type-mismatch
-            end
-        )
+            end)
+
+            it(
+                "allows folding the buffer while no visible window is open",
+                function()
+                    local chat_buf = vim.api.nvim_create_buf(false, true)
+                    vim.bo[chat_buf].buftype = "nofile"
+                    vim.bo[chat_buf].bufhidden = "hide"
+                    vim.api.nvim_buf_set_lines(
+                        chat_buf,
+                        0,
+                        -1,
+                        false,
+                        vim.fn["repeat"]({ "L" }, 30)
+                    )
+
+                    local hidden_winid =
+                        WidgetLayout.open_hidden_chat_window(chat_buf)
+                    assert.is_not_nil(hidden_winid)
+                    ---@cast hidden_winid integer
+
+                    local Fold = require("agentic.ui.tool_call_fold")
+                    Fold.close_range(chat_buf, 5, 15)
+
+                    vim.api.nvim_win_call(hidden_winid, function()
+                        assert.equal(vim.fn.foldclosed(10), 5)
+                    end)
+
+                    pcall(vim.api.nvim_win_close, hidden_winid, true)
+                    pcall(vim.api.nvim_buf_delete, chat_buf, { force = true })
+                end
+            )
+        end)
     end)
 end)

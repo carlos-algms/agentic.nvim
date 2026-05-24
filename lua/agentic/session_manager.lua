@@ -27,8 +27,8 @@ local FILE_MUTATING_KINDS = {
 }
 
 --- Safely invoke a user-configured hook
---- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit"
---- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData
+--- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
+--- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
 function P.invoke_hook(hook_name, data)
     local hook = Config.hooks and Config.hooks[hook_name]
 
@@ -334,7 +334,7 @@ function SessionManager:_on_session_update(update)
             self.todo_list:render(update.entries)
         end
     elseif update.sessionUpdate == "agent_message_chunk" then
-        self.status_animation:start("generating")
+        self:_start_spinner("generating")
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
@@ -345,7 +345,7 @@ function SessionManager:_on_session_update(update)
             })
         end
     elseif update.sessionUpdate == "agent_thought_chunk" then
-        self.status_animation:start("thinking")
+        self:_start_spinner("thinking")
         self.message_writer:write_message_chunk(update)
 
         if update.content and update.content.text then
@@ -375,6 +375,8 @@ function SessionManager:_on_session_update(update)
         -- Usage updates contain token/cost information - currently informational only
         -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
         -- Keeping silent for now to avoid "press any key" prompts on large JSON output
+    elseif update.sessionUpdate == "session_info_update" then
+        -- Session metadata is currently informational only
     else
         -- TODO: Move this to Logger from notify to debug when confidence is high
         Logger.notify(
@@ -453,8 +455,14 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     local is_rejection = tool_call_update.status == "failed"
     self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
 
-    -- Remove the permission request if the tool call failed before user granted it
-    if tool_call_update.status == "failed" then
+    -- Remove the permission request when the tool call reaches a terminal status.
+    -- `failed` covers user rejection or agent-side error;
+    -- `completed` covers cases where the agent finishes the tool without (or alongside) user resolution.
+    -- Both should clear the inline buttons.
+    if
+        tool_call_update.status == "failed"
+        or tool_call_update.status == "completed"
+    then
         self.permission_manager:remove_request_by_tool_call_id(
             tool_call_update.tool_call_id
         )
@@ -497,11 +505,8 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         end
     end
 
-    if
-        not self.permission_manager.current_request
-        and #self.permission_manager.queue == 0
-    then
-        self.status_animation:start("generating")
+    if not self.permission_manager:has_pending() then
+        self:_start_spinner("generating")
     end
 end
 
@@ -972,6 +977,12 @@ function SessionManager:_build_handlers()
         end,
 
         on_request_permission = function(request, callback)
+            P.invoke_hook("on_request_permission", {
+                request = request,
+                session_id = self.session_id,
+                tab_page_id = self.tab_page_id,
+            })
+
             self.status_animation:stop()
 
             local function wrapped_callback(option_id)
@@ -984,11 +995,8 @@ function SessionManager:_build_handlers()
                     is_rejection
                 )
 
-                if
-                    not self.permission_manager.current_request
-                    and #self.permission_manager.queue == 0
-                then
-                    self.status_animation:start("generating")
+                if not self.permission_manager:has_pending() then
+                    self:_start_spinner("generating")
                 end
             end
 
@@ -1129,6 +1137,13 @@ function SessionManager:new_session(opts)
             self._session_ready_callbacks = {}
         end)
     end)
+end
+
+--- @param state agentic.Theme.SpinnerState
+function SessionManager:_start_spinner(state)
+    if self.is_generating then
+        self.status_animation:start(state)
+    end
 end
 
 function SessionManager:_cancel_session()

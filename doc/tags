@@ -32,8 +32,10 @@ agentic-install-copilot	agentic.txt	/*agentic-install-copilot*
 agentic-install-cursor	agentic.txt	/*agentic-install-cursor*
 agentic-install-gemini	agentic.txt	/*agentic-install-gemini*
 agentic-install-goose	agentic.txt	/*agentic-install-goose*
+agentic-install-kiro	agentic.txt	/*agentic-install-kiro*
 agentic-install-mistral	agentic.txt	/*agentic-install-mistral*
 agentic-install-opencode	agentic.txt	/*agentic-install-opencode*
+agentic-install-pi	agentic.txt	/*agentic-install-pi*
 agentic-installation	agentic.txt	/*agentic-installation*
 agentic-integrations	agentic.txt	/*agentic-integrations*
 agentic-introduction	agentic.txt	/*agentic-introduction*
@@ -51,6 +53,7 @@ agentic-slash-commands	agentic.txt	/*agentic-slash-commands*
 agentic-spinner-chars	agentic.txt	/*agentic-spinner-chars*
 agentic-status-icons	agentic.txt	/*agentic-status-icons*
 agentic-system-context	agentic.txt	/*agentic-system-context*
+agentic-tool-call-title-config	agentic.txt	/*agentic-tool-call-title-config*
 agentic-usage	agentic.txt	/*agentic-usage*
 agentic.add_buffer_diagnostics()	agentic.txt	/*agentic.add_buffer_diagnostics()*
 agentic.add_current_line_diagnostics()	agentic.txt	/*agentic.add_current_line_diagnostics()*

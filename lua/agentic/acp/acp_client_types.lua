@@ -250,6 +250,11 @@
 --- @field size number Total context window size in tokens
 --- @field cost? { amount: number, currency: string } Cumulative session cost
 
+--- @class agentic.acp.SessionInfoUpdate
+--- @field sessionUpdate "session_info_update"
+--- @field title? string
+--- @field updatedAt? string
+
 --- @class agentic.acp.ConfigOptionsUpdate
 --- @field sessionUpdate "config_option_update"
 --- @field configOptions agentic.acp.ConfigOption[]
@@ -264,6 +269,7 @@
 --- | agentic.acp.AvailableCommandsUpdate
 --- | agentic.acp.CurrentModeUpdate
 --- | agentic.acp.UsageUpdate
+--- | agentic.acp.SessionInfoUpdate
 --- | agentic.acp.ConfigOptionsUpdate
 
 --- @class agentic.acp.PermissionOption

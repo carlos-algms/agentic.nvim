@@ -5,7 +5,7 @@
 > ⚡ A Chat interface for AI agents in Neovim that works with any provider
 > supporting the [Agent Client Protocol (ACP)](https://agentclientprotocol.com)
 > — including Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot, Auggie,
-> Mistral Vibe, Cline, Goose, and more.
+> Mistral Vibe, Cline, Goose, Kiro, Pi, and more.
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
@@ -86,7 +86,10 @@ limited to:
     </td>
   </tr>
   <tr>
-    <td width="130"></td>
+    <td align="center" width="130">
+      <img src=".github/assets/images/kiro.svg" width="48" height="48" alt="Kiro"><br>
+      <b>Kiro</b>
+    </td>
     <td align="center" width="130">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/cline-light.svg">
@@ -101,7 +104,13 @@ limited to:
       </picture><br>
       <b>Goose</b>
     </td>
-    <td width="130"></td>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/pi-light.svg">
+        <img src=".github/assets/images/pi.svg" width="48" height="48" alt="Pi">
+      </picture><br>
+      <b>Pi</b>
+    </td>
   </tr>
 </table>
 
@@ -113,7 +122,8 @@ _...and any future ACP-compatible provider._
   times
 - **🔌 Any ACP Provider** - Works with any AI provider that implements the Agent
   Client Protocol — Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot,
-  Auggie, Mistral Vibe, Cline, Goose, and any future ACP-compatible provider
+  Auggie, Mistral Vibe, Cline, Goose, Kiro, Pi, and any future ACP-compatible
+  provider
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -209,18 +219,20 @@ tools like `nvm`, `fnm`, etc...
 
 **You are free to chose** any installation method you prefer!
 
-| Provider                             | Install                                                                                                                                                                                        |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @agentclientprotocol/claude-agent-acp`<br/> **OR** `npm i -g @agentclientprotocol/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                      |
-| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                            |
-| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                     |
-| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                  |
-| [cursor-agent][cursor-agent-docs]    | `curl https://cursor.com/install -fsS \| bash` **OR** windows: `irm 'https://cursor.com/install?win32=true' \| iex`<br/> **OR** See [Cursor docs][cursor-agent-docs]                           |
-| [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                     |
-| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                        |
-| [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases] |
-| [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                      |
-| [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                        |
+| Provider                             | Install                                                                                                                                                                                                                                                                              |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [claude-agent-acp][claude-agent-acp] | `pnpm add -g @agentclientprotocol/claude-agent-acp`<br/> **OR** `npm i -g @agentclientprotocol/claude-agent-acp`<br/> **OR** [Download binary][claude-agent-acp-releases]                                                                                                            |
+| [gemini-cli][gemini-cli]             | `pnpm add -g @google/gemini-cli`<br/> **OR** `npm i -g @google/gemini-cli`<br/> **OR** `brew install --cask gemini`                                                                                                                                                                  |
+| [codex-acp][codex-acp]               | `pnpm add -g @zed-industries/codex-acp`<br/> **OR** `npm i -g @zed-industries/codex-acp`<br/> **OR** [Download binary][codex-acp-releases]                                                                                                                                           |
+| [opencode][opencode]                 | `pnpm add -g opencode-ai`<br/> **OR** `npm i -g opencode-ai`<br/> **OR** `brew install opencode`<br/> **OR** `curl -fsSL https://opencode.ai/install \| bash`                                                                                                                        |
+| [cursor-agent][cursor-agent-docs]    | `curl https://cursor.com/install -fsS \| bash` **OR** windows: `irm 'https://cursor.com/install?win32=true' \| iex`<br/> **OR** See [Cursor docs][cursor-agent-docs]                                                                                                                 |
+| [copilot-cli][copilot-cli]           | `pnpm add -g @github/copilot`<br/> **OR** `npm i -g @github/copilot`<br/> **OR** `brew install copilot-cli`<br/> **OR** `curl -fsSL https://gh.io/copilot-install \| bash`                                                                                                           |
+| [auggie][auggie]                     | `pnpm add -g @augmentcode/auggie`<br/> **OR** `npm i -g @augmentcode/auggie`<br/> **OR** See [Auggie docs][auggie-docs]                                                                                                                                                              |
+| [mistral-vibe][mistral-vibe]         | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`<br/> **OR** `uv tool install mistral-vibe`<br/> **OR** `pip install mistral-vibe`<br/> **OR** [Download binary][mistral-vibe-releases]                                                                                       |
+| [cline][cline]                       | `pnpm add -g cline`<br/> **OR** `npm i -g cline`<br/> **OR** See [Cline docs][cline-docs]                                                                                                                                                                                            |
+| [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                                                                                                              |
+| [kiro-cli][kiro-docs]                | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                                                                                                         |
+| [pi-acp][pi-acp]                     | Requires the [`pi` CLI][pi-docs] installed first: `curl -fsSL https://pi.dev/install.sh \| sh`<br/> **OR** `pnpm add -g @earendil-works/pi-coding-agent`<br/> **OR** `npm i -g @earendil-works/pi-coding-agent`<br/> Then the adapter: `pnpm add -g pi-acp` **OR** `npm i -g pi-acp` |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -243,7 +255,7 @@ tools like `nvm`, `fnm`, etc...
 
   --- @type agentic.PartialUserConfig
   opts = {
-    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp"
+    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -460,8 +472,8 @@ header parts:
 
 ### Folding
 
-Long tool call outputs are automatically folded to keep the chat buffer
-readable. Toggle the master switch or tune the line threshold.
+Completed tool call outputs are automatically folded to keep the chat buffer
+readable. Failed tool calls stay open unless `fold_on_error` is enabled.
 
 ```lua
 --- @type agentic.PartialUserConfig
@@ -470,17 +482,47 @@ opts = {
     tool_calls = {
       enabled = true,
       threshold = 10,
+      fold_on_error = false,
     },
   },
 }
 ```
 
-Set `threshold = 0` to always fold every tool call body. Negative values are
-clamped to 0. Set `enabled = false` to disable folding entirely.
+Set `threshold = 0` to always fold completed calls, and failed calls when
+`fold_on_error = true`. Negative values are clamped to 0. Set `enabled = false`
+to disable folding entirely.
 
-The fold hides the body only - the tool call header and completion status
-remain visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle
-individual folds, or `zR`/`zM` to open/close all folds in the chat window.
+The fold hides the body only - the tool call header and completion status remain
+visible. Use standard Vim fold commands (`za`, `zo`, `zc`) to toggle individual
+folds, or `zR`/`zM` to open/close all folds in the chat window.
+
+### Tool Call Titles
+
+Long non-diff titles for configured tool call kinds are truncated in the header
+and shown in full as the first body block.
+
+```lua
+--- @type agentic.PartialUserConfig
+opts = {
+  tool_calls = {
+    title = {
+      max_length = 50,
+      truncate_title_kinds = {
+        "execute",
+        "think",
+        "SubAgent",
+        "fetch",
+        "search",
+      },
+    },
+  },
+}
+```
+
+Only `truncate_title_kinds` are affected by `max_length`. Titles longer than
+`max_length` are truncated to `max_length` bytes plus `...`; the full title is
+rendered in the folded body. Set `max_length = 0` to disable title truncation.
+Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 
 ## 🚀 Usage (Public Lua API)
 
@@ -554,8 +596,8 @@ require("agentic").add_files_to_context({
 `restore_session_by_id(session_id)` accepts a **session_id** argument with the
 ID of the session you want to restore. Session IDs come from your provider's
 session storage (e.g. provider logs, project metadata, or scripts that track
-them). Unlike `restore_session()`, this does not require the provider to
-support listing sessions.
+them). Unlike `restore_session()`, this does not require the provider to support
+listing sessions.
 
 ```lua
 -- Restore a session by ID
@@ -579,6 +621,10 @@ These keybindings are automatically set in Agentic buffers:
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
+| `]]`             | n     | Navigate to next chat heading                                   |
+| `[[`             | n     | Navigate to previous chat heading                               |
+| `]t`             | n     | Navigate to next tool call                                      |
+| `[t`             | n     | Navigate to previous tool call                                  |
 | `]c`             | n     | Navigate to next diff hunk (when diff preview is active)        |
 | `[c`             | n     | Navigate to previous diff hunk (when diff preview is active)    |
 
@@ -629,10 +675,30 @@ your setup:
         },
       },
 
+      -- Keybindings for chat buffer navigation
+      chat = {
+        next_heading = "]]",
+        prev_heading = "[[",
+        next_tool_call = "]t",
+        prev_tool_call = "[t",
+      },
+
       -- Keybindings for diff preview navigation
       diff_preview = {
         next_hunk = "]c",
         prev_hunk = "[c",
+      },
+
+      -- Keybindings to cycle focus between pending permission blocks.
+      -- Once a block is focused, per-block keys work on its row N:
+      --   h / <Left>  : focus previous button
+      --   l / <Right> : focus next button
+      --   <CR>        : submit focused button
+      --   1..4        : submit option N directly
+      -- Per-block keys only fire when the cursor is on the focused row.
+      permission = {
+        cycle_next = "<C-n>",
+        cycle_prev = "<C-p>",
       },
     },
   },
@@ -871,6 +937,18 @@ integrating with other plugins.
           vim.lsp.buf.format({ bufnr = data.bufnr, timeout_ms = 5000 })
         end
       end,
+
+      -- Called when the agent needs permission to execute a tool (e.g. shell command).
+      -- Fires for each pending permission request.
+      on_request_permission = function(data)
+        -- data.request: table - The ACP permission request object
+        -- data.request.toolCall: table - contains .kind, .title, etc.
+        -- data.session_id: string - The ACP session ID
+        -- data.tab_page_id: number - The Neovim tabpage ID
+        local tool = data.request.toolCall
+        local label = tool.title or tool.kind or "action"
+        vim.notify("Agent needs permission for: " .. label)
+      end,
     }
   }
 }
@@ -883,18 +961,21 @@ colorscheme.
 
 ### Available Highlight Groups
 
-| Highlight Group          | Purpose                                  | Default                             |
-| ------------------------ | ---------------------------------------- | ----------------------------------- |
-| `AgenticDiffDelete`      | Deleted lines in diff view               | Links to `DiffDelete`               |
-| `AgenticDiffAdd`         | Added lines in diff view                 | Links to `DiffAdd`                  |
-| `AgenticDiffDeleteWord`  | Word-level deletions in diff             | `bg=#9a3c3c, bold=true`             |
-| `AgenticDiffAddWord`     | Word-level additions in diff             | `bg=#155729, bold=true`             |
-| `AgenticStatusPending`   | Pending tool call status indicator       | `bg=#5f4d8f`                        |
-| `AgenticStatusCompleted` | Completed tool call status indicator     | `bg=#2d5a3d`                        |
-| `AgenticStatusFailed`    | Failed tool call status indicator        | `bg=#7a2d2d`                        |
-| `AgenticCodeBlockFence`  | The left border decoration on tool calls | Links to `Directory`                |
-| `AgenticTitle`           | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
-| `AgenticThinking`        | Thinking block text in chat buffer       | Links to `Comment`                  |
+| Highlight Group                   | Purpose                                     | Default                             |
+| --------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `AgenticDiffDelete`               | Deleted lines in diff view                  | Links to `DiffDelete`               |
+| `AgenticDiffAdd`                  | Added lines in diff view                    | Links to `DiffAdd`                  |
+| `AgenticDiffDeleteWord`           | Word-level deletions in diff                | `bg=#9a3c3c, bold=true`             |
+| `AgenticDiffAddWord`              | Word-level additions in diff                | `bg=#155729, bold=true`             |
+| `AgenticStatusPending`            | Pending tool call status indicator          | `bg=#5f4d8f`                        |
+| `AgenticStatusCompleted`          | Completed tool call status indicator        | `bg=#2d5a3d`                        |
+| `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
+| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)  | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus) | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonInactive` | All non-focused permission buttons          | `bg=#3a3a3a`                        |
+| `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
+| `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |
+| `AgenticThinking`                 | Thinking block text in chat buffer          | Links to `Comment`                  |
 
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
@@ -961,7 +1042,8 @@ You can customize the icons used in the permission approval workflow:
 
 ### Customizing Chat Icons
 
-You can customize the icons used to identify user and agent messages in the chat:
+You can customize the icons used to identify user and agent messages in the
+chat:
 
 ```lua
 {
@@ -1109,6 +1191,30 @@ require('cmp').setup({
 })
 ```
 
+## ❤️ Sponsor
+
+If agentic.nvim makes your day better, consider sponsoring development. Pick
+whichever channel you prefer - all of them help equally.
+
+[![GitHub Sponsors](https://img.shields.io/github/sponsors/carlos-algms?style=for-the-badge&logo=githubsponsors&logoColor=white&label=GitHub%20Sponsors&color=ea4aaa)](https://github.com/sponsors/carlos-algms)
+[![Patreon](https://img.shields.io/badge/Patreon-Support-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://www.patreon.com/cw/CarlosAlgms)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Tip-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/carlos.algms)
+[![Corporate Sponsor](https://img.shields.io/badge/Corporate-Sponsor-2A6FDB?style=for-the-badge&logo=github&logoColor=white)](#-for-companies)
+
+### 🏢 For companies
+
+Does your company have the budget to sponsor open source?
+
+Sponsoring agentic.nvim gets your team:
+
+- Logo placement in this README
+- Direct line to the maintainer
+- Priority consideration on issues affecting your workflow
+
+Reach out via [GitHub Sponsors](https://github.com/sponsors/carlos-algms) or
+[open an issue](https://github.com/carlos-algms/agentic.nvim/issues/new) to
+discuss custom terms.
+
 ## 🔧 Development
 
 ### Health Check
@@ -1173,7 +1279,8 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
-[claude-agent-acp-releases]: https://github.com/agentclientprotocol/claude-agent-acp/releases
+[claude-agent-acp-releases]:
+  https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -1183,10 +1290,15 @@ the the acknowledgments 😊.
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
 [mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
-[preview-diff-side-by-side-image]: https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
-[preview-diff-inline-image]: https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[preview-diff-side-by-side-image]:
+  https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
+[preview-diff-inline-image]:
+  https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
 [cline]: https://github.com/cline/cline
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline
 [goose]: https://github.com/block/goose
 [goose-docs]: https://block.github.io/goose/docs/getting-started/installation
+[kiro-docs]: https://kiro.dev/docs/cli/
+[pi-acp]: https://github.com/svkozak/pi-acp
+[pi-docs]: https://pi.dev/docs/latest

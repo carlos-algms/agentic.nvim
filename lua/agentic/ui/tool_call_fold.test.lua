@@ -13,7 +13,11 @@ describe("agentic.ui.ToolCallFold", function()
     before_each(function()
         saved_folding = Config.folding
         Config.folding = {
-            tool_calls = { enabled = true, threshold = 5 },
+            tool_calls = {
+                enabled = true,
+                threshold = 5,
+                fold_on_error = false,
+            },
         }
         bufnr = vim.api.nvim_create_buf(false, true)
         winid = vim.api.nvim_open_win(bufnr, false, {
@@ -42,14 +46,22 @@ describe("agentic.ui.ToolCallFold", function()
 
         it("returns nil when folding is disabled", function()
             Config.folding = {
-                tool_calls = { enabled = false, threshold = 5 },
+                tool_calls = {
+                    enabled = false,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
             }
             assert.is_nil(Fold.threshold())
         end)
 
         it("clamps negative thresholds to 0", function()
             Config.folding = {
-                tool_calls = { enabled = true, threshold = -3 },
+                tool_calls = {
+                    enabled = true,
+                    threshold = -3,
+                    fold_on_error = false,
+                },
             }
             assert.equal(Fold.threshold(), 0)
         end)
@@ -61,13 +73,30 @@ describe("agentic.ui.ToolCallFold", function()
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
         end
 
+        --- @class (partial) agentic.ui.ToolCallFold.ShouldFoldOptsOverride: agentic.ui.ToolCallFold.ShouldFoldOpts
+
+        --- @param overrides agentic.ui.ToolCallFold.ShouldFoldOptsOverride|nil
+        --- @return agentic.ui.ToolCallFold.ShouldFoldOpts opts
+        local function should_fold_opts(overrides)
+            --- @type agentic.ui.ToolCallFold.ShouldFoldOpts
+            local opts = {
+                bufnr = bufnr,
+                start_row = 0,
+                end_row = 0,
+                status = "completed",
+                is_diff = false,
+            }
+
+            return vim.tbl_extend("force", opts, overrides or {}) --[[@as agentic.ui.ToolCallFold.ShouldFoldOpts]]
+        end
+
         it("folds when screen-row count exceeds threshold", function()
             local six = {}
             for i = 1, 6 do
                 six[i] = "L" .. i
             end
             fill(six)
-            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
+            assert.is_true(Fold.should_fold(should_fold_opts({ end_row = 5 })))
         end)
 
         it("tips over to fold at the screen-row threshold boundary", function()
@@ -76,17 +105,17 @@ describe("agentic.ui.ToolCallFold", function()
                 five[i] = "L" .. i
             end
             fill(five)
-            assert.is_false(Fold.should_fold(bufnr, 0, 4, false))
+            assert.is_false(Fold.should_fold(should_fold_opts({ end_row = 4 })))
 
             fill({ "L1", "L2", "L3", "L4", "L5", "L6" })
-            assert.is_true(Fold.should_fold(bufnr, 0, 5, false))
+            assert.is_true(Fold.should_fold(should_fold_opts({ end_row = 5 })))
         end)
 
         it(
             "folds a single buffer line that wraps past the threshold",
             function()
                 fill({ string.rep("x", 240) })
-                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+                assert.is_true(Fold.should_fold(should_fold_opts()))
             end
         )
 
@@ -94,29 +123,60 @@ describe("agentic.ui.ToolCallFold", function()
             "does not fold a short single line, but does fold once it wraps far enough",
             function()
                 fill({ "short" })
-                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+                assert.is_false(Fold.should_fold(should_fold_opts()))
 
                 fill({ string.rep("x", 240) })
-                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+                assert.is_true(Fold.should_fold(should_fold_opts()))
             end
         )
 
         it("never folds diff blocks regardless of size", function()
             fill({ string.rep("x", 1000) })
-            assert.is_false(Fold.should_fold(bufnr, 0, 0, true))
+            assert.is_false(
+                Fold.should_fold(should_fold_opts({ is_diff = true }))
+            )
         end)
+
+        it("does not fold active tool calls regardless of size", function()
+            fill({ string.rep("x", 1000) })
+            for _, status in ipairs({ "pending", "in_progress" }) do
+                assert.is_false(
+                    Fold.should_fold(should_fold_opts({ status = status }))
+                )
+            end
+        end)
+
+        it(
+            "folds failed tool calls only when fold_on_error is enabled",
+            function()
+                fill({ string.rep("x", 1000) })
+                assert.is_false(
+                    Fold.should_fold(should_fold_opts({ status = "failed" }))
+                )
+
+                Config.folding.tool_calls.fold_on_error = true
+
+                assert.is_true(
+                    Fold.should_fold(should_fold_opts({ status = "failed" }))
+                )
+            end
+        )
 
         it(
             "returns false when folding is disabled, even for huge content",
             function()
                 fill({ string.rep("x", 1000) })
                 -- sanity: with folding ON this content would fold
-                assert.is_true(Fold.should_fold(bufnr, 0, 0, false))
+                assert.is_true(Fold.should_fold(should_fold_opts()))
 
                 Config.folding = {
-                    tool_calls = { enabled = false, threshold = 5 },
+                    tool_calls = {
+                        enabled = false,
+                        threshold = 5,
+                        fold_on_error = false,
+                    },
                 }
-                assert.is_false(Fold.should_fold(bufnr, 0, 0, false))
+                assert.is_false(Fold.should_fold(should_fold_opts()))
             end
         )
 
@@ -129,7 +189,9 @@ describe("agentic.ui.ToolCallFold", function()
                 false,
                 { string.rep("x", 1000) }
             )
-            assert.is_false(Fold.should_fold(hidden_buf, 0, 0, false))
+            assert.is_false(
+                Fold.should_fold(should_fold_opts({ bufnr = hidden_buf }))
+            )
             vim.api.nvim_buf_delete(hidden_buf, { force = true })
         end)
     end)
@@ -149,7 +211,11 @@ describe("agentic.ui.ToolCallFold", function()
 
         it("does not apply options when folding is disabled", function()
             Config.folding = {
-                tool_calls = { enabled = false, threshold = 5 },
+                tool_calls = {
+                    enabled = false,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
             }
             Fold.setup_window(winid, bufnr)
             -- foldmethod default is "manual" so we cannot use that as
@@ -274,7 +340,11 @@ describe("agentic.ui.ToolCallFold", function()
 
         it("is a no-op when folding is disabled", function()
             Config.folding = {
-                tool_calls = { enabled = false, threshold = 5 },
+                tool_calls = {
+                    enabled = false,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
             }
             Fold.close_range(bufnr, 5, 20)
             vim.api.nvim_win_call(winid, function()
@@ -302,12 +372,12 @@ describe("agentic.ui.ToolCallFold", function()
     end)
 
     describe("foldtext", function()
-        it("formats the hidden line count", function()
+        it("formats the folded line count", function()
             vim.v.foldstart = 3
             vim.v.foldend = 12
             assert.equal(
                 Fold.foldtext(),
-                "  10 lines hidden (Fold: `zo` open | `zc` close)"
+                "  10 lines folded - `zo` open | `zc` close"
             )
         end)
     end)

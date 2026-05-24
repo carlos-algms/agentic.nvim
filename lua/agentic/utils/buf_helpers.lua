@@ -74,6 +74,22 @@ function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     vim.keymap.set(mode, lhs, rhs, opts)
 end
 
+--- Deletes a keymap for a specific buffer.
+--- @param bufnr integer
+--- @param mode string|string[]
+--- @param lhs string
+function BufHelpers.keymap_del(bufnr, mode, lhs)
+    --- @type table
+    local opts
+    -- See keymap_set for the buffer/buf rename rationale.
+    if vim.fn.has("nvim-0.12.1") == 1 then
+        opts = { buf = bufnr }
+    else
+        opts = { buffer = bufnr }
+    end
+    pcall(vim.keymap.del, mode, lhs, opts)
+end
+
 --- Sets multiple keymaps from a KeymapValue config entry for a specific buffer.
 --- Normalizes the config value (string, string[], or array of string/KeymapEntry)
 --- and calls keymap_set for each binding.
@@ -100,6 +116,31 @@ function BufHelpers.multi_keymap_set(keymaps, bufnr, callback, opts)
         end
 
         BufHelpers.keymap_set(bufnr, modes, keymap, callback, opts)
+    end
+end
+
+--- Deletes multiple keymaps from a KeymapValue config entry for a specific buffer.
+--- @param keymaps agentic.UserConfig.KeymapValue
+--- @param bufnr integer
+function BufHelpers.multi_keymap_del(keymaps, bufnr)
+    if type(keymaps) == "string" then
+        keymaps = { keymaps }
+    end
+
+    for _, key in ipairs(keymaps) do
+        --- @type string|string[]
+        local modes = "n"
+        --- @type string
+        local keymap
+
+        if type(key) == "table" and key.mode then
+            modes = key.mode
+            keymap = key[1]
+        else
+            keymap = key --[[@as string]]
+        end
+
+        BufHelpers.keymap_del(bufnr, modes, keymap)
     end
 end
 

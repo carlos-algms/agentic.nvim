@@ -2,19 +2,28 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local DiffHighlighter = require("agentic.utils.diff_highlighter")
-local DiffPreview = require("agentic.ui.diff_preview")
 local Fold = require("agentic.ui.tool_call_fold")
 local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
+local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
 
-local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
-local NS_PERMISSION_BUTTONS =
-    vim.api.nvim_create_namespace("agentic_permission_buttons")
+local NS_TOOL_BLOCKS = ToolCallBlocks.NS_TOOL_BLOCKS
 local NS_DIFF_HIGHLIGHTS =
     vim.api.nvim_create_namespace("agentic_diff_highlights")
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
+
+-- Static label map keyed by PermissionOptionKind
+-- Agent-supplied option.name is intentionally discarded
+local PERMISSION_OPTION_LABELS = {
+    allow_once = "Allow",
+    allow_always = "Allow Always",
+    reject_once = "Reject",
+    reject_always = "Reject Always",
+}
+
+local TITLE_FENCE = "`````"
 
 --- @class agentic.ui.MessageWriter.HighlightRange
 --- @field type "comment"|"old"|"new"|"new_modification" Type of highlight to apply
@@ -27,6 +36,11 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field old string[]
 --- @field all? boolean TODO: check if it's still necessary to replace all occurrences or the agents send multiple requests
 
+--- @class agentic.ui.MessageWriter.PermissionState
+--- @field sorted_options agentic.acp.PermissionOption[] Options sorted by priority
+--- @field is_focused boolean Whether the block is the currently focused permission target
+--- @field focused_button_index? integer 1-indexed; which button inside the focused block is highlighted (h / l selection). Nil = no button focus (block not focused).
+
 --- @class agentic.ui.MessageWriter.ToolCallBlock
 --- @field tool_call_id string
 --- @field kind? agentic.acp.ToolKind
@@ -37,6 +51,7 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field body? string[]
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
+--- @field permission? agentic.ui.MessageWriter.PermissionState
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -44,7 +59,6 @@ local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 --- @field _last_message_type? string
 --- @field _should_auto_scroll? boolean
 --- @field _scroll_scheduled boolean
---- @field _on_permission_reanchor? fun()
 --- @field _last_sender? "user"|"agent"
 --- @field _provider_name? string
 --- @field _is_restoring boolean
@@ -71,11 +85,6 @@ function MessageWriter:new(bufnr)
     }, self)
 
     return self
-end
-
---- @param callback fun()|nil
-function MessageWriter:set_permission_reanchor_callback(callback)
-    self._on_permission_reanchor = callback
 end
 
 --- @param name string
@@ -106,23 +115,6 @@ function MessageWriter:write_structural_message(update)
     self._last_sender = "user"
     self:write_message(update)
     self._last_sender = saved
-end
-
-function MessageWriter:_notify_permission_reanchor()
-    if self._on_permission_reanchor then
-        self._on_permission_reanchor()
-    end
-end
-
---- Wraps BufHelpers.with_modifiable and fires _notify_permission_reanchor after.
---- The callback may return false to suppress the notification (e.g. on early-return without edits).
---- with_modifiable returns false for invalid buffers, which also suppresses notification.
---- @param fn fun(bufnr: integer): boolean|nil
-function MessageWriter:_with_modifiable_and_notify_permission_reanchor(fn)
-    local result = BufHelpers.with_modifiable(self.bufnr, fn)
-    if result ~= false then
-        self:_notify_permission_reanchor()
-    end
 end
 
 --- @type table<string, "user"|"agent">
@@ -166,7 +158,7 @@ function MessageWriter:_maybe_write_sender_header(session_update_type)
         header = string.format("### %s Agent - %s", icon, name)
     end
 
-    self:_with_modifiable_and_notify_permission_reanchor(function()
+    BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines({ "", header, "" })
     end)
 
@@ -198,7 +190,7 @@ function MessageWriter:write_message(update)
 
     local lines = vim.split(text, "\n", { plain = true })
 
-    self:_with_modifiable_and_notify_permission_reanchor(function()
+    BufHelpers.with_modifiable(self.bufnr, function()
         self:_append_lines(lines)
         self:_append_lines({ "" })
     end)
@@ -260,7 +252,7 @@ function MessageWriter:write_message_chunk(update)
 
     self._last_message_type = update.sessionUpdate
 
-    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local last_line = vim.api.nvim_buf_line_count(bufnr) - 1
 
         -- Capture start line before writing for new thinking blocks
@@ -336,6 +328,34 @@ function MessageWriter:_append_lines(lines)
     end
 end
 
+--- @param cursor_line integer 1-indexed window cursor row
+--- @return boolean
+function MessageWriter:_cursor_on_permission_button_row(cursor_line)
+    local row = cursor_line - 1
+    local marks = vim.api.nvim_buf_get_extmarks(
+        self.bufnr,
+        NS_STATUS,
+        { row, 0 },
+        { row + 1, 0 },
+        { details = true, hl_name = true }
+    )
+
+    for _, mark in ipairs(marks) do
+        local details = mark[4]
+        local hl_group = details and details.hl_group
+
+        if
+            hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
+            or hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
+            or hl_group == Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
+        then
+            return true
+        end
+    end
+
+    return false
+end
+
 --- @param bufnr integer
 --- @return boolean should_scroll
 function MessageWriter:_check_auto_scroll(bufnr)
@@ -351,6 +371,11 @@ function MessageWriter:_check_auto_scroll(bufnr)
     end
 
     local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
+
+    if self:_cursor_on_permission_button_row(cursor_line) then
+        return false
+    end
+
     local total_lines = vim.api.nvim_buf_line_count(bufnr)
     local distance_from_bottom = total_lines - cursor_line
 
@@ -392,6 +417,10 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    tool_call_block.kind = tool_call_block.kind or "other"
+    tool_call_block.argument = tool_call_block.argument or "Pending"
+    tool_call_block.status = tool_call_block.status or "pending"
+
     if tool_call_block.body then
         tool_call_block.body = JsonFormat.format_lines(tool_call_block.body)
     end
@@ -400,7 +429,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
     self:_capture_scroll(self.bufnr)
     self:_maybe_write_sender_header("tool_call")
 
-    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         local kind = tool_call_block.kind
 
         -- Always add a leading blank line for spacing the previous message chunk
@@ -432,19 +461,24 @@ function MessageWriter:write_tool_call_block(tool_call_block)
         self.tool_call_blocks[tool_call_block.tool_call_id] = tool_call_block
 
         self:_apply_header_highlight(start_row, tool_call_block.status)
-        self:_apply_status_footer(end_row, tool_call_block.status)
+        self:repaint_status_row(tool_call_block.tool_call_id)
 
-        local body_start = start_row + 2
+        local body_start = start_row + ToolCallBlocks.HEADER_HEIGHT
         local body_end = end_row - 2
         if
-            Fold.should_fold(
-                bufnr,
-                body_start,
-                body_end,
-                tool_call_block.diff ~= nil
-            )
+            Fold.should_fold({
+                bufnr = bufnr,
+                start_row = body_start,
+                end_row = body_end,
+                status = tool_call_block.status,
+                is_diff = tool_call_block.diff ~= nil,
+            })
         then
-            Fold.close_range(bufnr, start_row + 2, end_row)
+            Fold.close_range(
+                bufnr,
+                start_row + ToolCallBlocks.HEADER_HEIGHT,
+                end_row
+            )
             tool_call_block.has_fold = true
         end
 
@@ -520,7 +554,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         return
     end
 
-    self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row,
@@ -541,11 +575,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             end
 
             self:_clear_status_namespace(start_row, old_end_row)
-            self:_apply_status_highlights_if_present(
-                start_row,
-                old_end_row,
-                tracker.status
-            )
+            self:_apply_status_highlights_if_present(tracker)
 
             return false
         end
@@ -557,7 +587,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
         vim.api.nvim_buf_set_lines(
             bufnr,
-            start_row + 2,
+            start_row + ToolCallBlocks.HEADER_HEIGHT,
             old_end_row - 1,
             false,
             body_lines
@@ -587,22 +617,23 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             right_gravity = false,
         })
 
-        self:_apply_status_highlights_if_present(
-            start_row,
-            new_end_row,
-            tracker.status
-        )
+        self:_apply_status_highlights_if_present(tracker)
 
         if
             not tracker.has_fold
-            and Fold.should_fold(
-                bufnr,
-                start_row + 2,
-                new_end_row - 2,
-                tracker.diff ~= nil
-            )
+            and Fold.should_fold({
+                bufnr = bufnr,
+                start_row = start_row + ToolCallBlocks.HEADER_HEIGHT,
+                end_row = new_end_row - 2,
+                status = tracker.status,
+                is_diff = tracker.diff ~= nil,
+            })
         then
-            Fold.close_range(bufnr, start_row + 2, new_end_row)
+            Fold.close_range(
+                bufnr,
+                start_row + ToolCallBlocks.HEADER_HEIGHT,
+                new_end_row
+            )
             tracker.has_fold = true
         end
     end)
@@ -615,13 +646,98 @@ end
 --- @return string header
 function MessageWriter:_build_header_line(tool_call_block)
     local kind = tool_call_block.kind or "other"
+    local argument = self:_build_header_argument(tool_call_block)
+
+    return string.format(" %s(%s) ", kind, argument)
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string argument
+function MessageWriter:_build_header_argument(tool_call_block)
     local argument = tool_call_block.argument or ""
 
     -- Sanitize argument to prevent newlines in the header line
     -- nvim_buf_set_lines doesn't accept array items with embedded newlines
     argument = argument:gsub("\n", "\\n")
 
-    return string.format(" %s(%s) ", kind, argument)
+    local max_length = self:_get_title_max_length()
+    if
+        max_length > 0
+        and #argument > max_length
+        and self:_should_render_full_title_body(tool_call_block)
+    then
+        return argument:sub(1, max_length) .. "..."
+    end
+
+    return argument
+end
+
+--- @return integer max_length
+function MessageWriter:_get_title_max_length()
+    local cfg = Config.tool_calls and Config.tool_calls.title
+    local max_length = cfg and cfg.max_length
+
+    if type(max_length) ~= "number" or max_length < 0 then
+        return 0
+    end
+
+    return max_length
+end
+
+--- @param kind string|nil
+--- @return boolean enabled
+function MessageWriter:_title_kind_enabled(kind)
+    if not kind then
+        return false
+    end
+
+    local cfg = Config.tool_calls and Config.tool_calls.title
+    local kinds = cfg and cfg.truncate_title_kinds
+
+    if type(kinds) ~= "table" then
+        return false
+    end
+
+    for _, configured_kind in ipairs(kinds) do
+        if configured_kind == kind then
+            return true
+        end
+    end
+
+    return false
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return boolean should_render
+function MessageWriter:_should_render_full_title_body(tool_call_block)
+    local argument = tool_call_block.argument or ""
+    local max_length = self:_get_title_max_length()
+
+    return max_length > 0
+        and #argument > max_length
+        and tool_call_block.diff == nil
+        and self:_title_kind_enabled(tool_call_block.kind)
+end
+
+--- @param argument string
+--- @return string[] lines
+function MessageWriter:_split_title_lines(argument)
+    local normalized = argument:gsub("\\n", "\n")
+    return vim.split(normalized, "\n", { plain = true })
+end
+
+--- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
+--- @return string[] lines
+function MessageWriter:_build_full_title_body_lines(tool_call_block)
+    local lang = tool_call_block.kind == "execute" and "bash" or "text"
+    local lines = { TITLE_FENCE .. lang }
+    vim.list_extend(
+        lines,
+        self:_split_title_lines(tool_call_block.argument or "")
+    )
+    table.insert(lines, TITLE_FENCE)
+
+    return lines
 end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
@@ -638,11 +754,46 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     --- @type agentic.ui.MessageWriter.HighlightRange[]
     local highlight_ranges = {}
 
+    --- @param start_index integer
+    --- @param body_lines string[]
+    local function add_body_comment_ranges(start_index, body_lines)
+        if kind == "edit" or kind == "switch_mode" then
+            return
+        end
+
+        for offset, line in ipairs(body_lines) do
+            if #line > 0 then
+                --- @type agentic.ui.MessageWriter.HighlightRange
+                local range = {
+                    type = "comment",
+                    line_index = start_index + offset - 1,
+                }
+                table.insert(highlight_ranges, range)
+            end
+        end
+    end
+
+    local has_title_body = self:_should_render_full_title_body(tool_call_block)
+    if has_title_body then
+        vim.list_extend(
+            lines,
+            self:_build_full_title_body_lines(tool_call_block)
+        )
+    end
+
+    --- @param has_body boolean
+    local function insert_title_separator(has_body)
+        if has_title_body and has_body then
+            vim.list_extend(lines, { "", "---", "" })
+        end
+    end
+
     if kind == "read" then
         -- Count lines from content, we don't want to show full content that was read
         local line_count = tool_call_block.body and #tool_call_block.body or 0
 
         if line_count > 0 then
+            insert_title_separator(true)
             table.insert(lines, string.format("Read %d lines", line_count))
 
             --- @type agentic.ui.MessageWriter.HighlightRange
@@ -664,12 +815,7 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
         })
 
         local lang = Theme.get_language_from_path(diff_path)
-
-        -- Hack to avoid triple backtick conflicts in markdown files
-        local has_fences = lang ~= "md" and lang ~= "markdown"
-        if has_fences then
-            table.insert(lines, "```" .. lang)
-        end
+        table.insert(lines, "`````" .. lang)
 
         for _, block in ipairs(diff_blocks) do
             local old_count = #block.old_lines
@@ -748,13 +894,13 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
             end
         end
 
-        -- Close code fences, if not markdown, to avoid conflicts
-        if has_fences then
-            table.insert(lines, "```")
-        end
+        table.insert(lines, "`````")
     else
-        if tool_call_block.body then
+        if tool_call_block.body and #tool_call_block.body > 0 then
+            insert_title_separator(true)
+            local body_start_index = #lines
             vim.list_extend(lines, tool_call_block.body)
+            add_body_comment_ranges(body_start_index, tool_call_block.body)
         end
     end
 
@@ -764,155 +910,109 @@ function MessageWriter:_prepare_block_lines(tool_call_block)
     return lines, highlight_ranges
 end
 
---- Display permission request buttons at the end of the buffer
+--- Set or clear the permission state for a tool call block.
 --- @param tool_call_id string
---- @param options agentic.acp.PermissionOption[]
---- @return integer button_start_row Start row of button block
---- @return integer button_end_row End row of button block
---- @return table<integer, string> option_mapping Mapping from number (1-N) to option_id
-function MessageWriter:display_permission_buttons(tool_call_id, options)
-    local option_mapping = {}
-
-    local lines_to_append = {
-        "### Waiting for your response: ",
-        "",
-    }
-
+--- @param state agentic.ui.MessageWriter.PermissionState|nil nil to clear
+function MessageWriter:set_permission_state(tool_call_id, state)
     local tracker = self.tool_call_blocks[tool_call_id]
-
-    if tracker then
-        -- Sanitize argument to prevent newlines in the permission request, neovim throws error
-        local sanitized_argument = tracker.argument:gsub("\n", "\\n")
-
-        -- Get buffer width and limit the display line
-        local winid = vim.fn.bufwinid(self.bufnr)
-
-        local buf_width = 80 -- default fallback width, in case buf is not visible
-        if winid ~= -1 then
-            buf_width = vim.api.nvim_win_get_width(winid)
-        end
-
-        local tool_line =
-            string.format(" %s(%s)", tracker.kind, sanitized_argument)
-
-        -- Truncate if longer than buffer width, leaving space for "...)"
-        if #tool_line > buf_width then
-            tool_line = tool_line:sub(1, buf_width - 4) .. "...)"
-        end
-
-        vim.list_extend(lines_to_append, {
-            tool_line,
-            "", -- Blank line prevents markdown inline markers from spanning to next content
-        })
+    if not tracker then
+        return
     end
-
-    for i, option in ipairs(options) do
-        table.insert(
-            lines_to_append,
-            string.format(
-                "%d. %s %s",
-                i,
-                Config.permission_icons[option.kind] or "",
-                option.name
-            )
-        )
-        option_mapping[i] = option.optionId
-    end
-
-    table.insert(lines_to_append, "--- ---")
-
-    local hint_line_index =
-        DiffPreview.add_navigation_hint(tracker, lines_to_append)
-
-    table.insert(lines_to_append, "")
-
-    -- Ensure exactly one empty separator line before the permission block.
-    -- During reanchor, remove_permission_buttons leaves a trailing empty
-    -- line — reuse it instead of adding another one.
-    local line_count = vim.api.nvim_buf_line_count(self.bufnr)
-    local last_line = vim.api.nvim_buf_get_lines(
-        self.bufnr,
-        line_count - 1,
-        line_count,
-        false
-    )[1]
-
-    if last_line == "" then
-        -- Buffer already ends with an empty line (left by
-        -- remove_permission_buttons during reanchor). Reuse it as
-        -- separator — include it in the block range so it gets
-        -- cleaned up, but don't add another one.
-        line_count = line_count - 1
-    else
-        -- No trailing empty line — prepend one as separator
-        table.insert(lines_to_append, 1, "")
-    end
-
-    -- The separator line shifts hint position by 1 in both cases:
-    -- existing empty line included in block range, or prepended empty line.
-    if hint_line_index then
-        hint_line_index = hint_line_index + 1
-    end
-
-    local button_start_row = line_count
-
-    self:_capture_scroll(self.bufnr)
-
-    BufHelpers.with_modifiable(self.bufnr, function()
-        self:_append_lines(lines_to_append)
-    end)
-
-    self:_apply_scroll(self.bufnr)
-
-    local button_end_row = vim.api.nvim_buf_line_count(self.bufnr) - 1
-
-    if hint_line_index then
-        DiffPreview.apply_hint_styling(
-            self.bufnr,
-            NS_PERMISSION_BUTTONS,
-            button_start_row,
-            hint_line_index
-        )
-    end
-
-    -- Create extmark to track button block
-    vim.api.nvim_buf_set_extmark(
-        self.bufnr,
-        NS_PERMISSION_BUTTONS,
-        button_start_row,
-        0,
-        {
-            end_row = button_end_row,
-            right_gravity = false,
-        }
-    )
-
-    return button_start_row, button_end_row, option_mapping
+    tracker.permission = state
 end
 
---- @param start_row integer Start row of button block
---- @param end_row integer End row of button block
-function MessageWriter:remove_permission_buttons(start_row, end_row)
-    pcall(
-        vim.api.nvim_buf_clear_namespace,
+--- @param tool_call_id string
+--- @return integer|nil index 1-indexed focused button or nil when no permission state
+function MessageWriter:get_focused_button_index(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+    if not tracker or not tracker.permission then
+        return nil
+    end
+    return tracker.permission.focused_button_index
+end
+
+--- @param tool_call_id string
+--- @param index integer 1-indexed button position
+--- @return integer|nil col 0-indexed start column of the Nth permission button, or nil
+function MessageWriter:get_button_col(tool_call_id, index)
+    local tracker = self.tool_call_blocks[tool_call_id]
+    if not tracker or not tracker.permission then
+        return nil
+    end
+
+    local _, segments = self:_build_status_row(tracker)
+    -- segments[1] is the status word; segments[1 + i] is the i-th button.
+    local seg = segments[1 + index]
+    if not seg then
+        return nil
+    end
+
+    return seg[1]
+end
+
+--- Recompute and write the status row (row N) for the given tool call block.
+--- Used by both the writer itself (initial render / updates) and the
+--- PermissionManager when toggling buttons / focus.
+--- @param tool_call_id string
+function MessageWriter:repaint_status_row(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+
+    if not tracker then
+        return
+    end
+
+    local end_row = self:get_block_end_row(tool_call_id)
+
+    if not end_row then
+        return
+    end
+
+    local text, hl_segments = self:_build_status_row(tracker)
+    self:_render_status_row(end_row, text, hl_segments)
+end
+
+--- Return the 0-indexed last row of the block, or nil when no block tracker
+--- or extmark is found.
+--- @param tool_call_id string
+--- @return integer|nil start_row
+function MessageWriter:_get_block_start_row(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+
+    if not tracker or not tracker.extmark_id then
+        return nil
+    end
+
+    local pos = vim.api.nvim_buf_get_extmark_by_id(
         self.bufnr,
-        NS_PERMISSION_BUTTONS,
-        start_row,
-        end_row + 1
+        NS_TOOL_BLOCKS,
+        tracker.extmark_id,
+        {}
     )
 
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        pcall(
-            vim.api.nvim_buf_set_lines,
-            bufnr,
-            start_row,
-            end_row + 1,
-            false,
-            {
-                "", -- a leading as separator from previous content
-            }
-        )
-    end)
+    return pos and pos[1]
+end
+
+--- @param tool_call_id string
+--- @return integer|nil end_row
+function MessageWriter:get_block_end_row(tool_call_id)
+    local tracker = self.tool_call_blocks[tool_call_id]
+
+    if not tracker or not tracker.extmark_id then
+        return nil
+    end
+
+    local pos = vim.api.nvim_buf_get_extmark_by_id(
+        self.bufnr,
+        NS_TOOL_BLOCKS,
+        tracker.extmark_id,
+        { details = true }
+    )
+
+    if not pos or not pos[1] then
+        return nil
+    end
+
+    return pos[3] and pos[3].end_row
 end
 
 --- Replay saved chat history messages into the buffer.
@@ -945,7 +1045,7 @@ function MessageWriter:replay_history_messages(messages)
             local lines = vim.split(text, "\n", { plain = true })
             local start_line
 
-            self:_with_modifiable_and_notify_permission_reanchor(function(bufnr)
+            BufHelpers.with_modifiable(self.bufnr, function(bufnr)
                 start_line = vim.api.nvim_buf_line_count(bufnr)
                 self:_append_lines(lines)
                 self:_append_lines({ "" })
@@ -964,43 +1064,21 @@ function MessageWriter:replay_history_messages(messages)
     self._provider_name = current_provider
 end
 
---- Apply highlights to block content (either diff highlights or Comment for non-edit blocks)
---- @param bufnr integer
+--- Apply semantic highlights to block content.
+--- @param _bufnr integer
 --- @param start_row integer Header line number
---- @param end_row integer Footer line number
---- @param kind string Tool call kind
+--- @param _end_row integer Footer line number
+--- @param _kind string Tool call kind
 --- @param highlight_ranges agentic.ui.MessageWriter.HighlightRange[] Diff highlight ranges
 function MessageWriter:_apply_block_highlights(
-    bufnr,
+    _bufnr,
     start_row,
-    end_row,
-    kind,
+    _end_row,
+    _kind,
     highlight_ranges
 )
     if #highlight_ranges > 0 then
         self:_apply_diff_highlights(start_row, highlight_ranges)
-    elseif kind ~= "edit" and kind ~= "switch_mode" then
-        -- Apply Comment highlight for non-edit blocks without diffs
-        for line_idx = start_row + 1, end_row - 1 do
-            local line = vim.api.nvim_buf_get_lines(
-                bufnr,
-                line_idx,
-                line_idx + 1,
-                false
-            )[1]
-            if line and #line > 0 then
-                vim.api.nvim_buf_set_extmark(
-                    bufnr,
-                    NS_DIFF_HIGHLIGHTS,
-                    line_idx,
-                    0,
-                    {
-                        end_col = #line,
-                        hl_group = "Comment",
-                    }
-                )
-            end
-        end
     end
 end
 
@@ -1086,28 +1164,97 @@ function MessageWriter:_apply_header_highlight(header_line, status)
     })
 end
 
---- @param footer_line integer 0-indexed footer line number
---- @param status string Status value (pending, completed, etc.)
-function MessageWriter:_apply_status_footer(footer_line, status)
-    if
-        not vim.api.nvim_buf_is_valid(self.bufnr)
-        or not status
-        or status == ""
-    then
-        return
+--- @class agentic.ui.MessageWriter.StatusSegment
+--- @field [1] integer start_col 0-indexed inclusive
+--- @field [2] integer end_col 0-indexed exclusive
+--- @field [3] string hl_group
+
+--- Build the text + highlight segments for the status row (row N) of a block.
+--- Blocks with an attached PermissionState include inline buttons.
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @return string text
+--- @return agentic.ui.MessageWriter.StatusSegment[] segments
+function MessageWriter:_build_status_row(tracker)
+    local status = tracker.status
+
+    if not status or status == "" then
+        return "", {}
     end
 
     local icons = Config.status_icons or {}
-
     local icon = icons[status] or ""
-    local hl_group = Theme.get_status_hl_group(status)
+    local status_label = icon ~= "" and (icon .. " " .. status) or status
 
-    vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, footer_line, 0, {
-        virt_text = {
-            { string.format(" %s %s ", icon, status), hl_group },
-        },
-        virt_text_pos = "overlay",
-    })
+    local text = " " .. status_label .. " "
+    --- @type agentic.ui.MessageWriter.StatusSegment[]
+    local segments = {
+        { 0, #text, Theme.get_status_hl_group(status) },
+    }
+
+    local perm = tracker.permission
+
+    if not perm then
+        return text, segments
+    end
+
+    local permission_icons = Config.permission_icons or {}
+    local focused_btn = perm.focused_button_index
+
+    for i, option in ipairs(perm.sorted_options) do
+        local label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
+        local btn_icon = permission_icons[option.kind] or ""
+        local body = ""
+
+        if perm.is_focused then
+            body = string.format("%d %s %s", i, btn_icon, label)
+        else
+            body = string.format("%s %s", btn_icon, label)
+        end
+
+        local btn = " " .. body .. " "
+
+        text = text .. "  "
+        local start_col = #text
+        text = text .. btn
+        local end_col = #text
+
+        local is_button_focused = perm.is_focused and i == focused_btn
+        local hl_group
+
+        if not is_button_focused then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
+        elseif option.kind == "allow_once" or option.kind == "allow_always" then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
+        else
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
+        end
+        table.insert(segments, { start_col, end_col, hl_group })
+    end
+
+    return text, segments
+end
+
+--- Write text and apply highlight segments at the given row in NS_STATUS.
+--- @param row integer 0-indexed row
+--- @param text string
+--- @param hl_segments agentic.ui.MessageWriter.StatusSegment[]
+function MessageWriter:_render_status_row(row, text, hl_segments)
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+        pcall(vim.api.nvim_buf_set_lines, bufnr, row, row + 1, false, { text })
+    end)
+
+    pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, NS_STATUS, row, row + 1)
+
+    for _, seg in ipairs(hl_segments) do
+        vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, row, seg[1], {
+            end_col = seg[2],
+            hl_group = seg[3],
+        })
+    end
 end
 
 --- Sets or updates a thinking highlight extmark over the given line range.
@@ -1150,18 +1297,17 @@ function MessageWriter:_clear_status_namespace(start_row, end_row)
     )
 end
 
---- @param start_row integer
---- @param end_row integer
---- @param status string|nil
-function MessageWriter:_apply_status_highlights_if_present(
-    start_row,
-    end_row,
-    status
-)
-    if status then
-        self:_apply_header_highlight(start_row, status)
-        self:_apply_status_footer(end_row, status)
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+function MessageWriter:_apply_status_highlights_if_present(tracker)
+    if not tracker.status then
+        return
     end
+    local start_row = self:_get_block_start_row(tracker.tool_call_id)
+    if not start_row then
+        return
+    end
+    self:_apply_header_highlight(start_row, tracker.status)
+    self:repaint_status_row(tracker.tool_call_id)
 end
 
 function MessageWriter:destroy() end

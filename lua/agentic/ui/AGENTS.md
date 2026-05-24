@@ -18,23 +18,57 @@ SessionManager (per tab)
     ├── WidgetLayout      open/close/resize panels, applies PANEL_WINDOW_OPTS
     ├── _hidden_chat_winid  float keeping chat buffer attached while widget
     │                       hidden — managed by ChatWidget._hidden_chat_winid
-    │                       + WidgetLayout.open_hidden_chat_window — ADR 001
+    │                       + WidgetLayout.open_hidden_chat_window — ADR 0001
     ├── BufferGuard       redirects foreign buffers out of widget windows
     ├── WindowDecoration  winbar + buf names, headers in vim.t[tab]
     ├── DiffPreview       inline/split diff in real file buf (not chat)
     └── MessageWriter (per chat bufnr) ── owns chat-buffer content
         ├── tool_call_blocks    id -> ToolCallBlock (extmark-tracked range)
-        ├── ToolCallFold        manual folds, anchor pads — ADR 001
+        ├── ToolCallFold        manual folds, anchor pads — ADR 0001
         ├── ToolCallDiff        diff extraction + minimization
         ├── DiffHighlighter     line/word hl on chat buffer
         │                       (lives in agentic.utils, not ui)
-        ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 002
-        └── PermissionManager   queues + reanchors permission prompts
+        ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 0002
+        └── PermissionManager   pending map + focus state; rebinds per-block
+                                keymaps on focus transition. Row N rendering
+                                owned by MessageWriter (repaint_status_row)
 ```
 
 ## Lifecycle
 
 Widget windows are disposable.
+
+```mermaid
+stateDiagram-v2
+    [*] --> hidden
+    hidden --> visible: show()<br/>create fresh windows<br/>reapply window-local opts
+    visible --> hidden: hide()<br/>close + destroy widget windows<br/>buffers persist
+
+    state "destroy()" as destroy
+    visible --> destroy
+    hidden --> destroy
+
+    state tab_check <<choice>>
+    destroy --> tab_check
+    tab_check --> hide_then_delete: tab still in nvim_list_tabpages()
+    tab_check --> delete_only: tab_closing<br/>(TabClosed in progress)
+
+    hide_then_delete --> [*]: buffers deleted
+    delete_only --> [*]: buffers deleted<br/>(skip nvim_win_close, segfaults on 0.11.x)
+
+    note right of visible
+        hide() preconditions:
+        - ensure non-widget fallback window
+          (open_editor_window if none) -> E444 otherwise
+        - wrap close in _avoid_auto_close_cmd
+          (sets _closing) -> recursive close otherwise
+    end note
+    note right of hidden
+        hidden chat float keeps chat buffer
+        attached so manual folds apply while
+        closed (ADR 0001). Internal handle only.
+    end note
+```
 
 - `hide` closes and destroys every widget window.
 - Buffers persist.
@@ -55,7 +89,7 @@ Widget windows are disposable.
   conditional `hide`, the buffers are deleted. See `ChatWidget:destroy` for the
   `tab_closing` check.
 - A hidden chat floating window keeps the chat buffer attached while the widget
-  is hidden, so manual folds can be applied while closed. See ADR 001.
+  is hidden, so manual folds can be applied while closed. See ADR 0001.
   - Opened with `hide = true` + `focusable = false` + `noautocmd = true`. The
     user cannot reach it: `<C-w>w`/`<C-w>p`, `:wincmd`, and `:buffer` skip it;
     `nvim_list_wins()` returns it but interactive navigation does not visit it.
@@ -84,14 +118,20 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
     than `Config.auto_scroll.threshold` lines from the bottom. This is
     intentional sticky-reading behavior, not a bug — the user stopped following
     the stream and we preserve their position.
+  - `_check_auto_scroll` also returns false when the cursor row has
+    permission-button extmarks in `NS_STATUS`. This avoids a
+    `PermissionManager` back-reference in `MessageWriter`.
 - Tool-call body updates replace only the body between stable anchor pads; the
   whole block range is never replaced.
 - Manual folds only. Never `foldexpr`. Before proposing a `foldexpr` workaround
   (self-assign cache invalidation, `BufEnter` reapply, etc.), read the
-  rejected-alternatives table in ADR 001 — every obvious workaround has been
+  rejected-alternatives table in ADR 0001 — every obvious workaround has been
   tried and documented.
-- Permission prompts reanchor after every chat mutation and reuse the existing
-  trailing `""` as separator.
+- Permission buttons live on row N (status line) of each pending block; row N
+  is outside the fold range, and digit keymaps are bound only while a block is
+  focused. Buttons are rendered as real text via
+  `MessageWriter:_render_status_row`; status word + button labels are
+  highlighted via extmark column ranges in `NS_STATUS`.
 - Foreign buffers in widget windows are redirected via `BufferGuard`
   (`lua/agentic/ui/buffer_guard.lua`) to a non-widget window in the same
   tabpage.
@@ -109,11 +149,44 @@ row 0    header           rewritten on every update, NOT folded
 row 1    "" top_pad       fold start anchor
 row 2..  body             replaced on every update
 row N-1  "" bottom_pad    fold end anchor
-row N    "" trailing      footer, status virt_text
+row N    status + buttons real text, outside fold, written by
+                          MessageWriter:_render_status_row
 ```
 
 Pads are unconditional. Header is rewritten unconditionally because providers
 send placeholder titles before the real one.
+
+## Special write paths
+
+Three `MessageWriter` methods bypass the normal `_maybe_write_sender_header`
+flow. Picking the wrong one breaks message attribution silently.
+
+| Method                     | When to use                                                 | Bypasses                               |
+| -------------------------- | ----------------------------------------------------------- | -------------------------------------- |
+| `write_structural_message` | Welcome banner on session open; banner before restore.      | Sender-header dedup (one-shot reset).  |
+| `write_restoring_message`  | Per-message replay during session restore.                  | Timestamps in user header.             |
+| `replay_history_messages`  | Provider switch only — bulk repaint from in-memory history. | Both above (delegates to sub-writers). |
+
+Rules:
+
+- Outside restore and provider-switch, NEVER call these. Use
+  `write_message_chunk` / `write_tool_call_block`.
+- `replay_history_messages` is the only caller that loops over saved
+  messages. It does NOT re-issue ACP `send_prompt`; the new provider sees no
+  prior context.
+- Adding a new bulk-write path means adding a fourth row here and a test.
+
+## TodoList (separate buffer)
+
+`TodoList` lives in its own buffer (`ChatWidget.buf_nrs.todos`) and its own
+window, opened after diagnostics in `WidgetLayout`. Gated by
+`Config.windows.todos.display` (default true).
+
+- Hidden until first **Plan** event arrives.
+- Auto-closes its window via `close_if_all_completed` when every task is
+  done.
+- No keymaps — read-only display.
+- Plan updates and chat chunks target different buffers.
 
 ## Sender classification
 
@@ -129,10 +202,8 @@ tool_call              ─┘
 plan                   ───▶ (no header)
 ```
 
-Special write paths bypass `_maybe_write_sender_header`'s normal flow:
-`write_structural_message`, `write_restoring_message`,
-`replay_history_messages`. Read those methods before adding a new
-`sessionUpdate` type — picking the wrong path breaks message attribution.
+Bypass paths: see "Special write paths" above. Read those methods before
+adding a new `sessionUpdate` type.
 
 - Thinking blocks (`agent_thought_chunk`) reuse one extmark in `NS_THINKING`
   across chunks. Any non-thought write must call
@@ -147,7 +218,7 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
 - Setting `foldmethod` / `foldlevel` unconditionally
   - Only `Fold.setup_window` (in `lua/agentic/ui/tool_call_fold.lua`) is allowed
     to write these. The set-handler triggers even on no-op assigns, closing the
-    user's `zo`-opened folds. See ADR 001.
+    user's `zo`-opened folds. See ADR 0001.
 - `vim.schedule` between mutation and `G0zb`
   - Separate tick lets a redraw run with stale topline -> flicker.
 - Replacing the whole tool-call range with `set_lines`
@@ -160,16 +231,12 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
     `WidgetLayout.close`, check
     `nvim_tabpage_is_valid(nvim_win_get_tabpage(winid))` per window before
     `nvim_win_close` — not just once at the start of the loop.
-- Adding a blank line before a reanchored prompt
-  - The reanchor leaves a trailing `""`; the next display reuses it.
-    `MessageWriter:display_permission_buttons` owns the detection — skip the
-    check there and reanchor cycles produce double blanks.
 - `vim.notify` directly
   - Fast-context errors. Use `Logger.notify`.
 - Module-level mutable state for per-tab data
   - Cross-tab leakage. See root `AGENTS.md`.
 - Two windows holding the chat buffer concurrently
-  - Breaks fold-state preservation. ADR 001.
+  - Breaks fold-state preservation. ADR 0001.
 - Reopening the hidden chat float without closing the previous one
   - Overwrites the stored winid and leaks the prior window.
 - Re-rendering tool-call body after a diff is set
@@ -184,19 +251,19 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
   - `vim.t` returns copies; nested edits do not persist. Read via
     `WindowDecoration.get_headers_state`, mutate, write back via
     `set_headers_state`.
-- Mutating chat content without
-  `_with_modifiable_and_notify_permission_reanchor`
-  - Skips `_notify_permission_reanchor`; permission prompts stop reanchoring.
-  - For non-chat buffers (input, diagnostics, etc.) `BufHelpers.with_modifiable`
-    is correct — those buffers have no permission-reanchor contract. Use the
-    wrapper only when mutating `self.bufnr` (the chat buffer).
-  - Exception: `display_permission_buttons` / `remove_permission_buttons` are
-    the reanchor write path itself and use `BufHelpers.with_modifiable` directly
-    under the `PermissionManager._reanchoring` guard.
-  - `PermissionManager._reanchoring` is the recursion guard for the reanchor
-    write path itself: it is set true around `_reanchor_permission_prompt`'s own
-    `set_lines` so the post-mutation callback no-ops instead of re-entering.
-    Removing the flag re-enters and stack-overflows.
+- Overwriting row N while a permission request is pending
+  - `MessageWriter:update_tool_call_block` ends up calling
+    `repaint_status_row(tracker.tool_call_id)`. The repaint reads
+    `tracker.permission` (the state stored by `PermissionManager`), so updates
+    that arrive while buttons are visible re-render the buttons rather than
+    wipe them. If you bypass `repaint_status_row` and write to row N directly,
+    buttons disappear until the next focus event triggers a repaint.
+- Direct `nvim_buf_set_name` for widget buffers
+  - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
+    persists agentic buffer names; direct calls raise E95 on reopen. Use
+    `WindowDecoration._set_buffer_name`, which renames any pre-existing
+    holder to `<name>-old-N`. Regression:
+    `lua/agentic/ui/window_decoration.test.lua`.
 
 ## Test invariants
 
@@ -209,13 +276,24 @@ change.
   `tool_call_fold.test.lua::should_fold::"folds when screen-row count exceeds threshold"`.
 - Fold counts wrapped rows, not buffer lines (one mega-line still folds) —
   `tool_call_fold.test.lua::should_fold::"folds a single buffer line that wraps past the threshold"`.
-- Permission reanchor preserves keymaps + button position —
-  `permission_manager.test.lua::reanchor permission prompt::"moves buttons to buffer bottom and preserves keymaps"`.
-- Permission reanchor does not double-blank across cycles —
-  `permission_manager.test.lua::empty line accumulation during reanchor`.
+- Row N is real text rendered per state —
+  `message_writer.test.lua::status row::"writes the status word as real text at row N for non-pending blocks"`,
+  `..::"renders inline buttons for pending non-focused permission state"`,
+  `..::"renders inline buttons with digit prefixes when focused"`.
+- Focus transition triggers exactly 2 status-row repaints (old + new) —
+  `permission_manager.test.lua::bracket cycle::"focus transition triggers exactly 2 status-row repaints"`.
+- Digit keymap dispatches the focused block's option —
+  `permission_manager.test.lua::digit keymap lifecycle::"digit 1 resolves the focused block's option 1"`,
+  `..::"rebinds digit keymaps with new mapping after focus transition"`.
+- Bracket cycle wraps and no-ops when pending is empty —
+  `permission_manager.test.lua::bracket cycle::"forward cycle wraps to first"`,
+  `..::"backward cycle wraps to last"`,
+  `..::"cycle is a no-op when pending is empty"`.
+- Concurrent map preserves insertion order and supports out-of-order resolve —
+  `permission_manager.test.lua::concurrent pending map::*`.
 - Sender header dedup on consecutive same-sender writes —
   `message_writer.test.lua::sender header tracking`.
-- Auto-scroll threshold preserves user reading position —
+- Auto-scroll threshold preserves reading position and permission-row cursor —
   `message_writer.test.lua::_check_auto_scroll`.
 - Thinking-state cleared on non-thought writes —
   `message_writer.test.lua::thinking block highlighting::"clears thinking state on reset_sender_tracking, write_tool_call_block, and write_message"`.

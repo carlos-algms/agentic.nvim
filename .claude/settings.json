@@ -11,6 +11,7 @@
       "Bash(make format:*)",
       "Bash(make luacheck:*)",
       "Bash(make luals:*)",
+      "Bash(make selene *)",
       "Bash(make test-file:*)",
       "Bash(make test:*)",
       "Bash(make validate:*)",

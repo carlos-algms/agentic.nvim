@@ -10,6 +10,8 @@
 --- | "mistral-vibe-acp"
 --- | "cline-acp"
 --- | "goose-acp"
+--- | "kiro-acp"
+--- | "pi-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
 
@@ -56,16 +58,34 @@
 --- @field tab_page_id number The tabpage ID
 --- @field bufnr? number Buffer number if the file is loaded in a buffer
 
+--- Data passed to the on_request_permission hook
+--- @class agentic.UserConfig.RequestPermissionData
+--- @field request agentic.acp.RequestPermission The permission request object
+--- @field session_id string The ACP session ID
+--- @field tab_page_id number The tabpage ID
+
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
 --- @field mode string|string[] The mode(s) for this binding
 
 --- @alias agentic.UserConfig.KeymapValue string | string[] | (string | agentic.UserConfig.KeymapEntry)[]
 
+--- @class agentic.UserConfig.Keymaps.Permission
+--- @field cycle_next agentic.UserConfig.KeymapValue Focus next pending permission block
+--- @field cycle_prev agentic.UserConfig.KeymapValue Focus previous pending permission block
+
+--- @class agentic.UserConfig.Keymaps.Chat
+--- @field next_heading agentic.UserConfig.KeymapValue Jump to next chat heading
+--- @field prev_heading agentic.UserConfig.KeymapValue Jump to previous chat heading
+--- @field next_tool_call agentic.UserConfig.KeymapValue Jump to next tool call
+--- @field prev_tool_call agentic.UserConfig.KeymapValue Jump to previous tool call
+
 --- @class agentic.UserConfig.Keymaps
 --- @field widget table<string, agentic.UserConfig.KeymapValue>
 --- @field prompt table<string, agentic.UserConfig.KeymapValue>
+--- @field chat agentic.UserConfig.Keymaps.Chat
 --- @field diff_preview table<string, string>
+--- @field permission agentic.UserConfig.Keymaps.Permission
 
 --- Window options passed to nvim_set_option_value
 --- Overrides default options (wrap, linebreak, winfixheight)
@@ -165,10 +185,20 @@
 --- @class agentic.UserConfig.Folding.ToolCalls
 --- @field enabled boolean Whether to fold tool call bodies.
 --- @field threshold integer Fold when the interior occupies more than this many wrapped screen rows. 0 always folds. Negative values are clamped to 0.
+--- @field fold_on_error boolean Whether failed tool calls should fold when over threshold.
 
 --- Folding behavior in the chat buffer
 --- @class agentic.UserConfig.Folding
 --- @field tool_calls agentic.UserConfig.Folding.ToolCalls
+
+--- Tool call title display configuration
+--- @class agentic.UserConfig.ToolCalls.Title
+--- @field max_length integer Maximum title length before truncation. 0 disables truncation.
+--- @field truncate_title_kinds agentic.acp.ToolKind[] Tool kinds affected by max_length.
+
+--- Tool call display configuration
+--- @class agentic.UserConfig.ToolCalls
+--- @field title agentic.UserConfig.ToolCalls.Title
 
 --- @class agentic.UserConfig.Hooks
 --- @field on_create_session_response? fun(data: agentic.UserConfig.CreateSessionResponseData): nil
@@ -176,6 +206,7 @@
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
 --- @field on_session_update? fun(data: agentic.UserConfig.SessionUpdateData): nil
 --- @field on_file_edit? fun(data: agentic.UserConfig.FileEditData): nil
+--- @field on_request_permission? fun(data: agentic.UserConfig.RequestPermissionData): nil
 
 --- Provider switcher UI behavior
 --- @class agentic.UserConfig.ProviderSwitcher
@@ -204,6 +235,7 @@
 --- @class (partial) agentic.PartialUserConfig.AutoScroll: agentic.UserConfig.AutoScroll
 --- @class (partial) agentic.PartialUserConfig.DiffPreview: agentic.UserConfig.DiffPreview
 --- @class (partial) agentic.PartialUserConfig.Folding.ToolCalls: agentic.UserConfig.Folding.ToolCalls
+--- @class (partial) agentic.PartialUserConfig.ToolCalls.Title: agentic.UserConfig.ToolCalls.Title
 --- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
 --- @class (partial) agentic.PartialUserConfig.ProviderSwitcher: agentic.UserConfig.ProviderSwitcher
 
@@ -219,6 +251,10 @@
 --- Folding partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
 --- @field tool_calls? agentic.PartialUserConfig.Folding.ToolCalls
+
+--- Tool calls partial with nested type overrides
+--- @class (partial) agentic.PartialUserConfig.ToolCalls: agentic.UserConfig.ToolCalls
+--- @field title? agentic.PartialUserConfig.ToolCalls.Title
 
 --- Top-level partial config -- all UserConfig fields become optional
 --- Nested fields override to use partial variants
@@ -236,6 +272,7 @@
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
 --- @field folding? agentic.PartialUserConfig.Folding
+--- @field tool_calls? agentic.PartialUserConfig.ToolCalls
 --- @field settings? agentic.PartialUserConfig.Settings
 --- @field provider_switcher? agentic.PartialUserConfig.ProviderSwitcher
 
@@ -256,6 +293,7 @@
 --- @field auto_scroll agentic.UserConfig.AutoScroll
 --- @field diff_preview agentic.UserConfig.DiffPreview
 --- @field folding agentic.UserConfig.Folding
+--- @field tool_calls agentic.UserConfig.ToolCalls
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
 --- @field settings agentic.UserConfig.Settings
@@ -352,6 +390,19 @@ local ConfigDefault = {
             args = { "acp" },
             env = {},
         },
+
+        ["kiro-acp"] = {
+            name = "Kiro ACP",
+            command = "kiro-cli",
+            args = { "acp" },
+            env = {},
+        },
+
+        ["pi-acp"] = {
+            name = "Pi ACP",
+            command = "pi-acp",
+            env = {},
+        },
     },
 
     windows = {
@@ -411,10 +462,23 @@ local ConfigDefault = {
             },
         },
 
+        --- Keys bindings for chat buffer navigation
+        chat = {
+            next_heading = "]]",
+            prev_heading = "[[",
+            next_tool_call = "]t",
+            prev_tool_call = "[t",
+        },
+
         --- Keys bindings for diff preview navigation
         diff_preview = {
             next_hunk = "]c",
             prev_hunk = "[c",
+        },
+
+        permission = {
+            cycle_next = "<C-n>",
+            cycle_prev = "<C-p>",
         },
     },
 
@@ -482,6 +546,20 @@ local ConfigDefault = {
         tool_calls = {
             enabled = true,
             threshold = 10,
+            fold_on_error = false,
+        },
+    },
+
+    tool_calls = {
+        title = {
+            max_length = 50,
+            truncate_title_kinds = {
+                "execute",
+                "think",
+                "SubAgent",
+                "fetch",
+                "search",
+            },
         },
     },
 
@@ -491,6 +569,7 @@ local ConfigDefault = {
         on_response_complete = nil,
         on_session_update = nil,
         on_file_edit = nil,
+        on_request_permission = nil,
     },
 
     headers = {},

@@ -1,6 +1,5 @@
 local Theme = require("agentic.theme")
-
-local NS_TOOL_BLOCKS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
 
 local GLYPHS = {
     TOP_LEFT = "╭",
@@ -14,13 +13,8 @@ local BLANK = " "
 local STATUSCOLUMN_EXPR =
     "%!v:lua.require'agentic.ui.tool_block_border'.statuscolumn()"
 
---- @class agentic.ui.ToolBlockBorder.Range
---- @field start_row integer
---- @field end_row integer
-
 --- @class agentic.ui.ToolBlockBorder
 local ToolBlockBorder = {
-    NS_TOOL_BLOCKS = NS_TOOL_BLOCKS,
     STATUSCOLUMN_EXPR = STATUSCOLUMN_EXPR,
 }
 
@@ -45,51 +39,6 @@ end
 
 --- @param bufnr integer
 --- @param row integer
---- @return agentic.ui.ToolBlockBorder.Range|nil range
-function ToolBlockBorder.block_range_at_row(bufnr, row)
-    if row < 0 or not vim.api.nvim_buf_is_valid(bufnr) then
-        return nil
-    end
-
-    local ok, extmarks = pcall(
-        vim.api.nvim_buf_get_extmarks,
-        bufnr,
-        NS_TOOL_BLOCKS,
-        {
-            row,
-            0,
-        },
-        { row, -1 },
-        {
-            details = true,
-            limit = 1,
-            overlap = true,
-        }
-    )
-
-    if not ok or not extmarks or not extmarks[1] then
-        return nil
-    end
-
-    local extmark = extmarks[1]
-    local start_row = extmark[2]
-    local details = extmark[4] or {}
-    local end_row = details.end_row
-
-    if not end_row or row < start_row or row > end_row then
-        return nil
-    end
-
-    --- @type agentic.ui.ToolBlockBorder.Range
-    local range = {
-        start_row = start_row,
-        end_row = end_row,
-    }
-    return range
-end
-
---- @param bufnr integer
---- @param row integer
 --- @param virtnum integer
 --- @return string glyph
 function ToolBlockBorder.glyph_for_line(bufnr, row, virtnum)
@@ -97,7 +46,7 @@ function ToolBlockBorder.glyph_for_line(bufnr, row, virtnum)
         return BLANK
     end
 
-    local range = ToolBlockBorder.block_range_at_row(bufnr, row)
+    local range = ToolCallBlocks.block_range_at_row(bufnr, row)
     if not range then
         return BLANK
     end

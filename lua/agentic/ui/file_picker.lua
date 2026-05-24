@@ -231,6 +231,7 @@ FilePicker.GLOB_EXCLUDE_PATTERNS = {
     "^%.%.$",
     "%.git/",
     "^%.git$", -- Exclude .git (both directory and file used in worktrees)
+    "%.worktrees/",
     "%.DS_Store$",
     "node_modules/",
     "%.pyc$",

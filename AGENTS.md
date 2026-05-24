@@ -7,31 +7,57 @@ providing AI-driven code assistance through a chat interface.
 
 Read these before touching the matching area:
 
-- `@lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions, providers
-- `@lua/agentic/ui/AGENTS.md` - chat UI: topology, lifecycle contracts
+- `lua/agentic/acp/AGENTS.md` - ACP client, tool calls, permissions, providers
+- `lua/agentic/ui/AGENTS.md` - chat UI: topology, lifecycle contracts
   (open/close/destroy), MessageWriter state machines, tool-call block layout,
   folding, auto-scroll, permission reanchor, traps
-- `@tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
+- `tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
+
+## Domain glossary — lazy read
+
+`CONTEXT.md` (repo root) defines overloaded terms (Session, Agent, Provider,
+Tool Call, Diff, etc.). Do NOT pre-read. Grep it for the ambiguous keyword
+first; only Read the file if the grep matches. If no match, the term is not
+in the glossary — proceed without loading.
 
 ## Architectural decisions (ADRs) — optional read
 
-`docs/architectural-decisions/` stores Architecture Decision Records (ADRs). One
-file per subject. Filename convention: `NNN-short-slug.md`, so "ADR 2" means
-`docs/architectural-decisions/002-*.md`.
+`docs/adr/` stores Architecture Decision Records (ADRs). One file per subject.
+Filename convention: `NNNN-short-slug.md` (4-digit, zero-padded). "ADR 2" means
+`docs/adr/0002-*.md`.
 
 Each ADR records why a current rule exists: option taken, alternatives rejected,
-changelog of how it evolved.
+changelog of how it evolved. The full template lives in `docs/adr/README.md`
+and MUST be used verbatim for new ADRs.
 
-Do NOT pre-read ADRs. Pull one only when:
+Do NOT pre-read ADRs. Trigger to load:
 
 - A rule in `AGENTS.md` is unclear, contested, or looks arbitrary.
 - You are about to propose rewriting a subsystem an ADR covers.
 - A reviewer asks "why didn't we do X?".
 
-Do NOT read the whole folder. List filenames first, or Grep the topic.
+Discovery (no prior pointer): Grep `docs/adr/` for the topic keyword. Read
+only on match. No match means no ADR exists for the topic — proceed without
+loading. Do NOT `ls` or read the whole folder.
 
-Nested `AGENTS.md` files point to specific ADRs by number when the rationale is
-non-obvious. Citation format: `ADR NNN` (zero-padded, no brackets, no dash).
+Direct citation (`ADR NNNN` in a nested `AGENTS.md` or `CONTEXT.md`) is an
+implicit match, NOT an auto-load. Read the cited path only when the trigger
+above fires — rule is unclear, you are about to change that subsystem, or a
+reviewer asks why. A citation seen in passing is not a trigger.
+
+Citation format: `ADR NNNN` (4-digit, zero-padded, no brackets, no dash).
+
+### grill-with-docs override
+
+The `grill-with-docs` skill ships a minimal 1-3 sentence ADR template and uses
+`docs/adr/` with 4-digit numbering. Path + numbering match this repo. Template
+does NOT — use the repo template in `docs/adr/README.md` verbatim. Do NOT
+substitute the skill's minimal template. Do NOT skip the `Rejected /
+superseded alternatives` table or `Changelog` sections.
+
+For `CONTEXT.md`: skill expects a domain glossary at repo root, devoid of
+implementation. Populate it incrementally as overloaded terms surface. Do NOT
+turn it into a spec, scratchpad, or design doc.
 
 ## Anti-staleness rules for AGENTS.md files
 
@@ -44,6 +70,10 @@ non-obvious. Citation format: `ADR NNN` (zero-padded, no brackets, no dash).
 - New "FORBIDDEN" / "MUST" rule about runtime behavior = new test that fails
   without the rule. Reference the test by name in the rule body. Pure-style
   rules (formatting, naming, docs) are exempt.
+- Fenced code blocks MUST have a language hint. Use `text` for free-form ASCII
+  (trees, byte layouts, pseudocode), `mermaid` for diagrams, and the actual
+  language otherwise (`lua`, `bash`, `markdown`, etc.). CodeRabbit /
+  markdownlint flag bare fences (MD040).
 
 ## CRITICAL: No Assumptions - Gather Context First
 
@@ -64,7 +94,7 @@ instance per tabpage.
 
 - `SessionRegistry` maps `tab_page_id -> SessionManager`
 - 1 ACP provider instance (single subprocess, shared across tabpages, managed by
-  `AgentInstance`)
+  `AgentInstance`). See ADR 0004.
 - 1 ACP session ID per tabpage (ACP supports multiple but only one is active per
   tab)
 - 1 `SessionManager` + 1 `ChatWidget` per tabpage (full UI isolation)
@@ -135,7 +165,13 @@ status animation, permission manager, file list, code selection.
   global autocommands.
 
 - **Keymaps must be buffer-local.** Use
-  `BufHelpers.keymap_set(bufnr, "n", "key", fn)`. NEVER use global keymaps.
+  `BufHelpers.keymap_set(bufnr, "n", "key", fn)` and
+  `BufHelpers.keymap_del(bufnr, "n", "key")`. NEVER use global keymaps.
+  NEVER call `vim.keymap.set` / `vim.keymap.del` directly with
+  `{ buffer = bufnr }`: the option was renamed to `buf` in Neovim 0.12.1
+  (`neovim#38360`) and removed
+  in 0.15; the wrappers gate on `has('nvim-0.12.1')`. Regression tests:
+  ``lua/agentic/utils/buf_helpers.test.lua::"uses `buffer`/`buf` opt on Neovim"``.
 
 ## Public API and call chain
 
@@ -153,6 +189,28 @@ SessionRegistry.get_session_for_tab_page(nil, function(session)
 end)
 ```
 
+```mermaid
+flowchart TD
+    Caller["public entry in init.lua"]
+    Entry["SessionRegistry.get_session_for_tab_page(tab_id_or_nil, cb?)"]
+    HasCb{"callback provided?"}
+    Resolve["resolve tabpage<br/>(nil -> current tab)"]
+    Provider{"ACP provider configured?"}
+    ReturnNil["return nil"]
+    Wrap["pcall(callback, session)"]
+    Touch["touch session/widget state safely"]
+    Notify["errors notified, not raised"]
+    Bare["bare-return form<br/>returns session or nil"]
+
+    Caller --> Entry --> HasCb
+    HasCb -->|yes| Resolve --> Wrap
+    Wrap --> Touch
+    Wrap --> Notify
+    HasCb -->|no, bare| Provider
+    Provider -->|yes| Bare
+    Provider -->|no| ReturnNil
+```
+
 Guarantees inside the callback:
 
 - Tabpage and session resolved against the requested tab.
@@ -166,12 +224,26 @@ Outside the callback:
   `self.tab_page_id` (or check `nvim_tabpage_is_valid(self.tab_page_id)`). The
   `nil` form resolves to whatever tab is current then, not the original.
 
+### Public entries (overview)
+
+Source of truth: `lua/agentic/init.lua` exports. Grouped:
+
+- **Widget lifecycle** — open/close/toggle/rotate_layout.
+- **Context attach** — selection, file(s), diagnostics adders.
+- **Session ops** — new/restore/stop.
+- **Provider switch** — `switch_provider`. UI history replay only; the new
+  provider receives no prior LLM context (see `acp/AGENTS.md`).
+- **Config entry** — `setup`.
+
+Callback-form entries go through `SessionRegistry.get_session_for_tab_page`.
+`new_session` and `new_session_with_provider` are bare-return.
+
 Cleanup path:
 
-```text
-TabClosed autocmd
-  -> SessionRegistry.destroy_session(tab_page_id)
-     -> SessionManager:destroy
+```mermaid
+flowchart LR
+    A[TabClosed autocmd] --> B["SessionRegistry.destroy_session(tab_page_id)"]
+    B --> C["SessionManager:destroy"]
 ```
 
 ### Logger
@@ -193,7 +265,10 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   example.
 - **FORBIDDEN: module-level mutable state for per-tab data** -> store on per-tab
   instances. See "Multi-Tabpage Architecture" below.
-- **FORBIDDEN: global keymaps** -> use `BufHelpers.keymap_set(bufnr, ...)`.
+- **FORBIDDEN: global keymaps, and direct `vim.keymap.set`/`vim.keymap.del`
+  with `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
+  `BufHelpers.keymap_del`. See "Keymaps must be buffer-local" above for the
+  `buffer` -> `buf` rename rationale and regression tests.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
   `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
@@ -201,18 +276,17 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   `nvim_set_option_value(opt, val, { win = winid })`. Per `:h local-options`,
   window-local options are remembered per `(buffer, window)`. `:set` writes
   imprint the value in any buffer that briefly cohabits the window and the
-  buffer carries it to its next host. `[0]` is the `:setlocal` sentinel
-  (only `[0]` is supported by `vim.wo`, see `:h vim.wo`); without it, panel
-  styling leaks to redirected buffers.
-  - Applies to ALL `vim.wo` writes, not just panels. No `vim.bo` equivalent
-    is needed: buffer options have no per-window memory.
-  - Reads (`local x = vim.wo[winid].opt`) are unaffected; `[0]` is
-    write-only.
-  - Regression: `lua/agentic/ui/buffer_guard.test.lua::"does not leak widget
-    window options to the editor window after redirect"`.
+  buffer carries it to its next host. `[0]` is the `:setlocal` sentinel (only
+  `[0]` is supported by `vim.wo`, see `:h vim.wo`); without it, panel styling
+  leaks to redirected buffers.
+  - Applies to ALL `vim.wo` writes, not just panels. No `vim.bo` equivalent is
+    needed: buffer options have no per-window memory.
+  - Reads (`local x = vim.wo[winid].opt`) are unaffected; `[0]` is write-only.
+  - Regression:
+    `lua/agentic/ui/buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.
 - **AVOID: `nvim_set_option_value` / `nvim_get_option_value`** for buffer or
-  window options when an idiomatic accessor exists. Use `vim.bo[bufnr].opt`
-  for buffer options and `vim.wo[winid][0].opt` for window options. The
+  window options when an idiomatic accessor exists. Use `vim.bo[bufnr].opt` for
+  buffer options and `vim.wo[winid][0].opt` for window options. The
   `nvim_*_option_value` API is reserved for cases that need a dynamic option
   name or a non-default scope (e.g. `scope = "global"`). Reading is symmetric:
   `vim.bo[bufnr].opt` / `vim.wo[winid].opt` (no `[0]` on reads).
@@ -269,6 +343,13 @@ for the underlying validator limitation.
 - RIGHT: `@field diff? { all?: boolean }` (inline tables also use `?`)
 - WRONG: `@field _state string|nil` (use `?` here instead)
 - WRONG: `@field _state string?` (`?` goes after variable name, not type)
+
+For a partial variant of an existing class, use `@class (partial)` extending the
+source type instead of re-declaring every field as optional.
+
+- RIGHT:
+  `@class (partial) MyOptsOverride: MyOpts`
+- WRONG: re-listing `@field field? type` for every field from `MyOpts`
 
 **`@return`, `@type`, `@alias` - Use explicit `type|nil`:**
 
@@ -348,7 +429,8 @@ For bug fixes and behavioral changes, write the failing test BEFORE the fix:
    scaffold the module/class/method with stubbed bodies so the test fails on
    wrong behavior, not on `attempt to call a nil value`.
 2. **Green** - Minimal change to turn the test green.
-3. Run `make validate` to confirm nothing else broke.
+3. For Lua/test code changes, run `make validate` to confirm nothing else
+   broke. Docs-only changes do not require full validation.
 
 A test written after the fix is already green proves nothing. Non-negotiable.
 Only exception: pure refactors, formatting, docs - call out explicitly in the
@@ -361,8 +443,17 @@ other projects (e.g. `assert` is a custom helper, not `luassert`; spies have no
 
 ### MANDATORY: Post-change validation for Lua files
 
-Run `make validate` ONLY when `.lua` files changed. Skip for markdown/config
-changes.
+Run `make validate` ONLY when `.lua` files changed.
+
+Skip `make validate` for docs-only changes, including `.md`, `.txt`,
+`README.md`, `AGENTS.md`, `doc/agentic.txt`, and
+`docs/adr/`.
+
+Run the narrow doc-specific check instead. For vimdoc changes, run:
+
+```bash
+timeout 5 nvim --headless -c "helptags doc/" -c "quit"
+```
 
 ```bash
 make validate

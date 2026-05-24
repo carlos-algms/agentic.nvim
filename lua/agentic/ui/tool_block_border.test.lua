@@ -1,5 +1,6 @@
 local assert = require("tests.helpers.assert")
 local ToolBlockBorder = require("agentic.ui.tool_block_border")
+local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
 
 describe("agentic.ui.ToolBlockBorder", function()
     local bufnr
@@ -33,7 +34,7 @@ describe("agentic.ui.ToolBlockBorder", function()
     local function add_block(start_row, end_row)
         vim.api.nvim_buf_set_extmark(
             bufnr,
-            ToolBlockBorder.NS_TOOL_BLOCKS,
+            ToolCallBlocks.NS_TOOL_BLOCKS,
             start_row,
             0,
             {

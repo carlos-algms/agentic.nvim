@@ -10,14 +10,14 @@ LOGDIR  ?= .luals-log
 .PHONY: luals selene selene-file format-check format format-file check test validate install-hooks
 
 test:
-	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run()"
+	$(NVIM) --headless -i NONE -n -u tests/init.lua -c "lua require('tests.runner').run()"
 
 test-file:
-	$(NVIM) --headless -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
+	$(NVIM) --headless -i NONE -n -u tests/init.lua -c "lua require('tests.runner').run_file('$(FILE)')"
 
 # Lua Language Server headless diagnosis report
 luals:
-	@VIMRUNTIME=$$($(NVIM) --headless -c 'echo $$VIMRUNTIME' -c q 2>&1); \
+	@VIMRUNTIME=$${VIMRUNTIME:-$$($(NVIM) --headless -i NONE -n -u NONE -c 'lua io.stdout:write(vim.env.VIMRUNTIME or "")' -c q 2>/dev/null)}; \
 	if [ -z "$$VIMRUNTIME" ]; then \
 		echo "Error: Could not determine VIMRUNTIME. Check that '$(NVIM)' is on PATH and runnable" >&2; \
 		exit 1; \

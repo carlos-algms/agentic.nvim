@@ -3,6 +3,8 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 
+local TITLE_FENCE = string.rep("`", 5)
+
 describe("agentic.ui.MessageWriter", function()
     --- @type agentic.ui.MessageWriter
     local MessageWriter
@@ -15,9 +17,12 @@ describe("agentic.ui.MessageWriter", function()
 
     --- @type agentic.UserConfig.AutoScroll|nil
     local original_auto_scroll
+    --- @type agentic.UserConfig.ToolCalls|nil
+    local original_tool_calls
 
     before_each(function()
         original_auto_scroll = Config.auto_scroll
+        original_tool_calls = Config.tool_calls
         MessageWriter = require("agentic.ui.message_writer")
 
         bufnr = vim.api.nvim_create_buf(false, true)
@@ -36,6 +41,7 @@ describe("agentic.ui.MessageWriter", function()
 
     after_each(function()
         Config.auto_scroll = original_auto_scroll --- @diagnostic disable-line: assign-type-mismatch
+        Config.tool_calls = original_tool_calls --- @diagnostic disable-line: assign-type-mismatch
         if writer then
             writer:destroy()
         end
@@ -124,6 +130,83 @@ describe("agentic.ui.MessageWriter", function()
         }
     end
 
+    --- @param tool_call_id string
+    --- @return integer
+    local function block_end_row(tool_call_id)
+        local tracker = writer.tool_call_blocks[tool_call_id]
+        local NS = vim.api.nvim_create_namespace("agentic_tool_blocks")
+        local pos = vim.api.nvim_buf_get_extmark_by_id(
+            bufnr,
+            NS,
+            tracker.extmark_id,
+            { details = true }
+        )
+        --- @type integer
+        local end_row = pos[3].end_row
+        return end_row
+    end
+
+    --- @return table<integer, true> rows
+    local function comment_highlight_rows()
+        local ns = vim.api.nvim_create_namespace("agentic_diff_highlights")
+        local extmarks =
+            vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+        local rows = {}
+        for _, extmark in ipairs(extmarks) do
+            if extmark[4].hl_group == "Comment" then
+                rows[extmark[2]] = true
+            end
+        end
+        return rows
+    end
+
+    --- @param line string
+    --- @return integer|nil row
+    local function find_row(line)
+        local lines = get_all_lines()
+        for row, current in ipairs(lines) do
+            if current == line then
+                return row - 1
+            end
+        end
+        return nil
+    end
+
+    --- @param line string
+    --- @return boolean highlighted
+    local function line_has_comment_highlight(line)
+        local row = find_row(line)
+        if not row then
+            return false
+        end
+        return comment_highlight_rows()[row] == true
+    end
+
+    local ALLOW_REJECT_OPTIONS = {
+        {
+            optionId = "allow-once",
+            name = "Allow once",
+            kind = "allow_once",
+        },
+        {
+            optionId = "reject-once",
+            name = "Reject once",
+            kind = "reject_once",
+        },
+    }
+
+    --- @param id string
+    --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
+    local function setup_permission_block(id, state)
+        writer:write_tool_call_block(make_tool_call_block(id, "pending"))
+        writer:set_permission_state(id, {
+            sorted_options = state.sorted_options or ALLOW_REJECT_OPTIONS,
+            is_focused = state.is_focused,
+            focused_button_index = state.focused_button_index,
+        })
+        writer:repaint_status_row(id)
+    end
+
     local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
     --- @return vim.api.keyset.get_extmark_item[]
@@ -179,83 +262,241 @@ describe("agentic.ui.MessageWriter", function()
             vim.api.nvim_set_current_tabpage(tab2)
             vim.cmd("tabclose")
         end)
-    end)
-
-    describe("permission_reanchor callback", function()
-        --- @type TestStub
-        local schedule_stub
-
-        before_each(function()
-            schedule_stub = spy.stub(vim, "schedule")
-        end)
-
-        after_each(function()
-            schedule_stub:revert()
-        end)
 
         it(
-            "stores and fires callback via set_permission_reanchor_callback",
+            "returns false when cursor is parked on a permission button row",
             function()
-                local callback_spy = spy.new(function() end)
-                writer:set_permission_reanchor_callback(
-                    callback_spy --[[@as function]]
-                )
-
-                writer:_notify_permission_reanchor()
-
-                assert.spy(callback_spy).was.called(1)
-            end
-        )
-
-        it("clears callback when set to nil", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_permission_reanchor_callback(
-                callback_spy --[[@as function]]
-            )
-            writer:set_permission_reanchor_callback(nil)
-
-            writer:_notify_permission_reanchor()
-
-            assert.spy(callback_spy).was.called(0)
-        end)
-
-        it(
-            "fires callback for each write method that produces content",
-            function()
-                local block = make_tool_call_block("cb-setup", "pending")
-                writer:write_tool_call_block(block)
-
-                local callback_spy = spy.new(function() end)
-                writer:set_permission_reanchor_callback(
-                    callback_spy --[[@as function]]
-                )
-
-                writer:write_message(make_update("hello"))
-                writer:write_message_chunk(make_update("chunk"))
-                writer:write_tool_call_block(
-                    make_tool_call_block("cb-1", "pending")
-                )
-                writer:update_tool_call_block({
-                    tool_call_id = "cb-setup",
-                    status = "completed",
-                    body = { "done" },
+                setup_permission_block("auto-scroll-permission-row", {
+                    is_focused = false,
+                })
+                vim.api.nvim_win_set_cursor(winid, {
+                    block_end_row("auto-scroll-permission-row") + 1,
+                    0,
                 })
 
-                assert.spy(callback_spy).was.called(4)
+                assert.is_false(writer:_check_auto_scroll(bufnr))
             end
         )
 
-        it("does not fire callback when content is empty", function()
-            local callback_spy = spy.new(function() end)
-            writer:set_permission_reanchor_callback(
-                callback_spy --[[@as function]]
+        it(
+            "still auto-scrolls when cursor is on a non-permission status row",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("auto-scroll-status-row", "pending")
+                )
+                vim.api.nvim_win_set_cursor(winid, {
+                    block_end_row("auto-scroll-status-row") + 1,
+                    0,
+                })
+
+                assert.is_true(writer:_check_auto_scroll(bufnr))
+            end
+        )
+    end)
+
+    describe("status row", function()
+        --- @param tool_call_id string
+        --- @return string
+        local function status_row_text(tool_call_id)
+            local row = block_end_row(tool_call_id)
+            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
+                or ""
+        end
+
+        --- @param tool_call_id string
+        --- @return vim.api.keyset.get_extmark_item[]
+        local function status_marks(tool_call_id)
+            local row = block_end_row(tool_call_id)
+            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
+            return vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                { row, 0 },
+                { row + 1, 0 },
+                { details = true }
+            )
+        end
+
+        --- @param marks vim.api.keyset.get_extmark_item[]
+        --- @param hl_group string
+        --- @return integer
+        local function count_hl_marks(marks, hl_group)
+            local count = 0
+            for _, em in ipairs(marks) do
+                if em[4].hl_group == hl_group then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+
+        it(
+            "writes the status word as real text at row N for non-pending blocks",
+            function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("row-n-completed", "completed")
+                )
+
+                local text = status_row_text("row-n-completed")
+                assert.truthy(text:find("completed"))
+                assert.is_true(#text > 0)
+            end
+        )
+
+        it("writes pending status word as real text at row N", function()
+            writer:write_tool_call_block(
+                make_tool_call_block("row-n-pending", "pending")
             )
 
-            writer:write_message(make_update(""))
-            writer:write_message_chunk(make_update(""))
-
-            assert.spy(callback_spy).was.called(0)
+            assert.truthy(status_row_text("row-n-pending"):find("pending"))
         end)
+
+        it("defaults missing initial tool call fields before render", function()
+            writer:write_tool_call_block({
+                tool_call_id = "row-n-missing-fields",
+            })
+
+            local tracker = writer.tool_call_blocks["row-n-missing-fields"]
+            assert.is_not_nil(tracker)
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            assert.equal("other", tracker.kind)
+            assert.equal("Pending", tracker.argument)
+            assert.equal("pending", tracker.status)
+            assert.truthy(get_all_content():find("other(Pending)", 1, true))
+            assert.truthy(
+                status_row_text("row-n-missing-fields"):find("pending")
+            )
+        end)
+
+        it(
+            "renders inline buttons for pending non-focused permission state",
+            function()
+                setup_permission_block("row-n-inactive", { is_focused = false })
+
+                local text = status_row_text("row-n-inactive")
+                assert.truthy(text:find("pending"))
+                assert.truthy(text:find("Allow"))
+                assert.truthy(text:find("Reject"))
+                -- non-focused: no digit prefix
+                assert.is_nil(text:find("1 "))
+            end
+        )
+
+        it("renders inline buttons with digit prefixes when focused", function()
+            setup_permission_block("row-n-focused", { is_focused = true })
+
+            local text = status_row_text("row-n-focused")
+            assert.truthy(text:find("1 "))
+            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("Allow"))
+            assert.truthy(text:find("Reject"))
+        end)
+
+        it("keeps inline buttons when an active update repaints", function()
+            setup_permission_block("row-n-active-update", { is_focused = true })
+
+            writer:update_tool_call_block({
+                tool_call_id = "row-n-active-update",
+                status = "in_progress",
+                body = { "running" },
+            })
+
+            local text = status_row_text("row-n-active-update")
+            assert.truthy(text:find("in_progress"))
+            assert.truthy(text:find("1 "))
+            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("Allow"))
+            assert.truthy(text:find("Reject"))
+        end)
+
+        for _, case in ipairs({
+            {
+                index = 1,
+                focused_hl = "AgenticPermissionButtonAllow",
+                unfocused_hl = "AgenticPermissionButtonReject",
+                label = "allow",
+            },
+            {
+                index = 2,
+                focused_hl = "AgenticPermissionButtonReject",
+                unfocused_hl = "AgenticPermissionButtonAllow",
+                label = "reject",
+            },
+        }) do
+            it(
+                "applies "
+                    .. case.label
+                    .. " hl only on the focused "
+                    .. case.label
+                    .. " button (focused_button_index = "
+                    .. case.index
+                    .. ")",
+                function()
+                    local id = "row-n-hl-" .. case.label
+                    setup_permission_block(id, {
+                        is_focused = true,
+                        focused_button_index = case.index,
+                    })
+
+                    local marks = status_marks(id)
+                    assert.equal(1, count_hl_marks(marks, case.focused_hl))
+                    assert.equal(0, count_hl_marks(marks, case.unfocused_hl))
+                    -- The non-focused button stays inactive.
+                    assert.equal(
+                        1,
+                        count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                    )
+                end
+            )
+        end
+
+        it(
+            "applies inactive highlight group for non-focused permission buttons",
+            function()
+                setup_permission_block(
+                    "row-n-hl-inactive",
+                    { is_focused = false }
+                )
+
+                local marks = status_marks("row-n-hl-inactive")
+                assert.equal(
+                    2,
+                    count_hl_marks(marks, "AgenticPermissionButtonInactive")
+                )
+            end
+        )
+
+        it("button labels are not wrapped in square brackets", function()
+            setup_permission_block("row-n-nobracket", {
+                sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                is_focused = true,
+                focused_button_index = 1,
+            })
+
+            local text = status_row_text("row-n-nobracket")
+            assert.is_nil(text:find("%["))
+            assert.is_nil(text:find("%]"))
+            assert.truthy(text:find("Allow"))
+        end)
+
+        it(
+            "clears buttons when permission state is removed and repainted",
+            function()
+                setup_permission_block("row-n-clear", {
+                    sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                    is_focused = true,
+                    focused_button_index = 1,
+                })
+                assert.truthy(status_row_text("row-n-clear"):find("Allow"))
+
+                writer:set_permission_state("row-n-clear", nil)
+                writer:repaint_status_row("row-n-clear")
+
+                local text = status_row_text("row-n-clear")
+                assert.is_nil(text:find("Allow"))
+                assert.truthy(text:find("pending"))
+            end
+        )
     end)
 
     describe("_prepare_block_lines", function()
@@ -309,6 +550,170 @@ describe("agentic.ui.MessageWriter", function()
             end, highlight_ranges)
             assert.is_true(#new_ranges > 0)
             assert.equal("inserted", new_ranges[1].new_line)
+        end)
+
+        it(
+            "wraps markdown-file diffs in a 5-backtick fence so inner ``` survives",
+            function()
+                read_stub:returns({ "old line" })
+
+                local Theme = require("agentic.theme")
+                local lang = Theme.get_language_from_path("README.md")
+                local open_fence = string.rep("`", 5) .. lang
+                local close_fence = string.rep("`", 5)
+
+                --- @type agentic.ui.MessageWriter.ToolCallBlock
+                local block = {
+                    tool_call_id = "test-md-fence",
+                    status = "pending",
+                    kind = "edit",
+                    argument = "README.md",
+                    file_path = "README.md",
+                    diff = {
+                        old = { "old line" },
+                        new = { "new line", "```", "still new" },
+                    },
+                }
+
+                local lines = writer:_prepare_block_lines(block)
+
+                local open_idx, close_idx, inner_idx
+                for i, line in ipairs(lines) do
+                    if line == open_fence then
+                        open_idx = i
+                    elseif line == close_fence and not close_idx then
+                        close_idx = i
+                    elseif line == "```" then
+                        inner_idx = i
+                    end
+                end
+
+                assert.is_not_nil(open_idx)
+                assert.is_not_nil(close_idx)
+                assert.is_not_nil(inner_idx)
+                assert.is_true(open_idx < inner_idx)
+                assert.is_true(inner_idx < close_idx)
+            end
+        )
+    end)
+
+    describe("tool call title truncation", function()
+        before_each(function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = {
+                        "execute",
+                        "think",
+                        "SubAgent",
+                        "fetch",
+                        "search",
+                    },
+                },
+            }
+        end)
+
+        --- @param kind agentic.acp.ToolKind
+        --- @param argument string
+        --- @return agentic.ui.MessageWriter.ToolCallBlock block
+        local function make_title_block(kind, argument)
+            return {
+                tool_call_id = "title-" .. kind,
+                status = "completed",
+                kind = kind,
+                argument = argument,
+                body = { "output" },
+            }
+        end
+
+        it(
+            "truncates selected long titles and renders full title body",
+            function()
+                local title = string.rep("x", 55) .. "\\nsecond line"
+
+                writer:write_tool_call_block(make_title_block("execute", title))
+
+                local content = get_all_content()
+                assert.truthy(
+                    content:find(
+                        "execute(" .. string.rep("x", 50) .. "...)",
+                        1,
+                        true
+                    )
+                )
+                assert.truthy(content:find("`````bash", 1, true))
+                assert.truthy(content:find(string.rep("x", 55), 1, true))
+                assert.truthy(content:find("second line", 1, true))
+                assert.truthy(content:find("`````\n\n---\n\noutput", 1, true))
+                assert.is_false(
+                    line_has_comment_highlight(TITLE_FENCE .. "bash")
+                )
+                assert.is_false(line_has_comment_highlight(string.rep("x", 55)))
+                assert.is_false(line_has_comment_highlight("second line"))
+                assert.is_false(line_has_comment_highlight(TITLE_FENCE))
+                assert.is_false(line_has_comment_highlight("---"))
+                assert.is_true(line_has_comment_highlight("output"))
+                assert.same(
+                    { "output" },
+                    writer.tool_call_blocks["title-execute"].body
+                )
+            end
+        )
+
+        it("keeps selected short titles in the header only", function()
+            writer:write_tool_call_block(make_title_block("execute", "ls"))
+
+            local content = get_all_content()
+            assert.truthy(content:find(" execute(ls) ", 1, true))
+            assert.is_nil(content:find("`````bash", 1, true))
+        end)
+
+        it("does not truncate non-selected long titles", function()
+            local title = string.rep("x", 55)
+
+            writer:write_tool_call_block(make_title_block("write", title))
+
+            local content = get_all_content()
+            assert.truthy(content:find(" write(" .. title .. ") ", 1, true))
+            assert.is_nil(
+                content:find("write(" .. string.rep("x", 50) .. "...)", 1, true)
+            )
+            assert.is_nil(content:find("`````", 1, true))
+        end)
+
+        it("re-renders late long titles without mutating body", function()
+            writer:write_tool_call_block(make_title_block("execute", "bash"))
+
+            local late_title = "ls " .. string.rep("x", 60)
+            writer:update_tool_call_block({
+                tool_call_id = "title-execute",
+                argument = late_title,
+            })
+
+            local content = get_all_content()
+            assert.truthy(
+                content:find(
+                    "execute(" .. late_title:sub(1, 50) .. "...)",
+                    1,
+                    true
+                )
+            )
+            assert.truthy(content:find("`````bash", 1, true))
+            assert.truthy(content:find(late_title, 1, true))
+            assert.same(
+                { "output" },
+                writer.tool_call_blocks["title-execute"].body
+            )
+        end)
+
+        it("uses text fences for non-execute selected kinds", function()
+            local title = string.rep("x", 55)
+
+            writer:write_tool_call_block(make_title_block("SubAgent", title))
+
+            local content = get_all_content()
+            assert.truthy(content:find("`````text", 1, true))
+            assert.is_nil(content:find("`````bash", 1, true))
         end)
     end)
 
@@ -538,6 +943,40 @@ describe("agentic.ui.MessageWriter", function()
             local tracker = writer.tool_call_blocks["tc-json"]
             assert.is_not_nil(tracker)
             assert.is_true(#tracker.body > 1)
+        end)
+
+        it("renders truncated title body on replay", function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = { "fetch" },
+                },
+            }
+            writer:set_provider_name("Claude")
+
+            local title = string.rep("x", 55)
+
+            --- @type agentic.ui.ChatHistory.Message[]
+            local messages = {
+                {
+                    type = "tool_call",
+                    tool_call_id = "tc-title-replay",
+                    kind = "fetch",
+                    argument = title,
+                    status = "completed",
+                    body = { "output" },
+                    provider_name = "Claude",
+                },
+            }
+
+            writer:replay_history_messages(messages)
+
+            local content = get_all_content()
+            assert.truthy(
+                content:find("fetch(" .. string.rep("x", 50) .. "...)", 1, true)
+            )
+            assert.truthy(content:find("`````text", 1, true))
+            assert.truthy(content:find(title, 1, true))
         end)
 
         it(
@@ -780,38 +1219,44 @@ describe("agentic.ui.MessageWriter", function()
     end)
 
     describe("tool call block update highlighting", function()
-        it(
-            "applies block body highlights synchronously during update",
-            function()
-                local block = make_tool_call_block("sync-hl-1", "pending")
-                writer:write_tool_call_block(block)
+        it("comments provider body when writing non-diff tool calls", function()
+            writer:write_tool_call_block({
+                tool_call_id = "write-hl-1",
+                status = "completed",
+                kind = "execute",
+                argument = "ls",
+                body = { "write output" },
+            })
 
-                writer:update_tool_call_block({
-                    tool_call_id = "sync-hl-1",
+            assert.is_true(line_has_comment_highlight("write output"))
+        end)
+
+        it("comments provider body during non-diff updates", function()
+            local block = make_tool_call_block("sync-hl-1", "pending")
+            writer:write_tool_call_block(block)
+
+            writer:update_tool_call_block({
+                tool_call_id = "sync-hl-1",
+                status = "completed",
+                body = { "new output" },
+            })
+
+            assert.is_true(line_has_comment_highlight("new output"))
+        end)
+
+        it("does not comment edit or switch_mode provider bodies", function()
+            for _, kind in ipairs({ "edit", "switch_mode" }) do
+                writer:write_tool_call_block({
+                    tool_call_id = "excluded-" .. kind,
                     status = "completed",
-                    body = { "new output" },
+                    kind = kind,
+                    argument = kind,
+                    body = { kind .. " output" },
                 })
 
-                local ns =
-                    vim.api.nvim_create_namespace("agentic_diff_highlights")
-                local extmarks = vim.api.nvim_buf_get_extmarks(
-                    bufnr,
-                    ns,
-                    0,
-                    -1,
-                    { details = true }
-                )
-
-                local has_comment_hl = false
-                for _, em in ipairs(extmarks) do
-                    if em[4].hl_group == "Comment" then
-                        has_comment_hl = true
-                        break
-                    end
-                end
-                assert.is_true(has_comment_hl)
+                assert.is_false(line_has_comment_highlight(kind .. " output"))
             end
-        )
+        end)
     end)
 
     describe("Fold integration", function()
@@ -819,8 +1264,23 @@ describe("agentic.ui.MessageWriter", function()
         --- @type agentic.UserConfig.Folding|nil
         local saved_folding
 
+        local LONG_BODY =
+            { "L1", "L2", "L3", "L4", "L5", "L6", "L7", "L8", "L9", "L10" }
+
         before_each(function()
             saved_folding = Config.folding
+            Config.folding = {
+                tool_calls = {
+                    enabled = true,
+                    threshold = 5,
+                    fold_on_error = false,
+                },
+            }
+            Config.auto_scroll = { threshold = 10 }
+
+            Fold.setup_window(winid, bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
         end)
 
         after_each(function()
@@ -845,18 +1305,36 @@ describe("agentic.ui.MessageWriter", function()
             return start_row, start_row + 1, end_row - 1, end_row
         end
 
+        --- @param tool_call_id string
+        local function assert_fold_closed(tool_call_id)
+            local _, top_pad_row, bottom_pad_row = block_layout(tool_call_id)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(
+                    vim.fn.foldclosed(top_pad_row + 1),
+                    top_pad_row + 1
+                )
+                assert.equal(
+                    vim.fn.foldclosedend(top_pad_row + 1),
+                    bottom_pad_row + 1
+                )
+            end)
+            assert.is_true(
+                writer.tool_call_blocks[tool_call_id].has_fold == true
+            )
+        end
+
+        --- @param tool_call_id string
+        local function assert_fold_open(tool_call_id)
+            local _, top_pad_row = block_layout(tool_call_id)
+            vim.api.nvim_win_call(winid, function()
+                assert.equal(vim.fn.foldclosed(top_pad_row + 1), -1)
+            end)
+            assert.is_nil(writer.tool_call_blocks[tool_call_id].has_fold)
+        end
+
         it(
-            "closes a manual fold when update_tool_call_block crosses the fold threshold",
+            "closes a manual fold when completed update crosses the fold threshold",
             function()
-                Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
-                }
-                Config.auto_scroll = { threshold = 10 }
-
-                Fold.setup_window(winid, bufnr)
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
                 writer:write_tool_call_block({
                     tool_call_id = "fold-mat",
                     status = "pending",
@@ -873,96 +1351,156 @@ describe("agentic.ui.MessageWriter", function()
                 writer:update_tool_call_block({
                     tool_call_id = "fold-mat",
                     status = "completed",
-                    body = {
-                        "L1",
-                        "L2",
-                        "L3",
-                        "L4",
-                        "L5",
-                        "L6",
-                        "L7",
-                        "L8",
-                        "L9",
-                        "L10",
-                    },
+                    body = LONG_BODY,
                 })
 
-                local _, new_top_pad_row, new_bottom_pad_row =
-                    block_layout("fold-mat")
-                vim.api.nvim_win_call(winid, function()
-                    local fold_start = vim.fn.foldclosed(new_top_pad_row + 1)
-                    local fold_end = vim.fn.foldclosedend(new_top_pad_row + 1)
-                    assert.equal(fold_start, new_top_pad_row + 1)
-                    assert.equal(fold_end, new_bottom_pad_row + 1)
-                end)
-
-                local tracker = writer.tool_call_blocks["fold-mat"]
-                assert.is_true(tracker.has_fold == true)
+                assert_fold_closed("fold-mat")
             end
         )
 
         it(
-            "closes a manual fold when write_tool_call_block crosses the fold threshold",
+            "closes a manual fold when completed write crosses the fold threshold",
             function()
-                Config.folding = {
-                    tool_calls = { enabled = true, threshold = 5 },
-                }
-                Config.auto_scroll = { threshold = 10 }
-
-                Fold.setup_window(winid, bufnr)
-                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
                 writer:write_tool_call_block({
                     tool_call_id = "fold-on-write",
                     status = "completed",
                     kind = "execute",
                     argument = "ls",
-                    body = {
-                        "L1",
-                        "L2",
-                        "L3",
-                        "L4",
-                        "L5",
-                        "L6",
-                        "L7",
-                        "L8",
-                        "L9",
-                        "L10",
+                    body = LONG_BODY,
+                })
+
+                assert_fold_closed("fold-on-write")
+            end
+        )
+
+        it("keeps active tool calls open when they exceed threshold", function()
+            for _, status in ipairs({ "pending", "in_progress" }) do
+                local tool_call_id = "open-" .. status
+                writer:write_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = status,
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                })
+
+                assert_fold_open(tool_call_id)
+            end
+        end)
+
+        it("keeps active updates open when they exceed threshold", function()
+            for _, status in ipairs({ "pending", "in_progress" }) do
+                local tool_call_id = "open-update-" .. status
+                writer:write_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = "pending",
+                    kind = "execute",
+                    argument = "ls",
+                    body = { "short" },
+                })
+
+                writer:update_tool_call_block({
+                    tool_call_id = tool_call_id,
+                    status = status,
+                    body = LONG_BODY,
+                })
+
+                assert_fold_open(tool_call_id)
+            end
+        end)
+
+        it("keeps failed updates open by default", function()
+            writer:write_tool_call_block({
+                tool_call_id = "failed-open",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "short" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "failed-open",
+                status = "failed",
+                body = LONG_BODY,
+            })
+
+            assert_fold_open("failed-open")
+        end)
+
+        it("folds failed updates when fold_on_error is enabled", function()
+            Config.folding.tool_calls.fold_on_error = true
+
+            writer:write_tool_call_block({
+                tool_call_id = "failed-folded",
+                status = "pending",
+                kind = "execute",
+                argument = "ls",
+                body = { "short" },
+            })
+
+            writer:update_tool_call_block({
+                tool_call_id = "failed-folded",
+                status = "failed",
+                body = LONG_BODY,
+            })
+
+            assert_fold_closed("failed-folded")
+        end)
+
+        it("folds restored completed tool calls", function()
+            writer:replay_history_messages({
+                {
+                    type = "tool_call",
+                    tool_call_id = "restored-completed",
+                    status = "completed",
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                },
+            })
+
+            assert_fold_closed("restored-completed")
+        end)
+
+        it("keeps restored failed tool calls open by default", function()
+            writer:replay_history_messages({
+                {
+                    type = "tool_call",
+                    tool_call_id = "restored-failed",
+                    status = "failed",
+                    kind = "execute",
+                    argument = "ls",
+                    body = LONG_BODY,
+                },
+            })
+
+            assert_fold_open("restored-failed")
+        end)
+
+        it(
+            "folds restored failed tool calls when fold_on_error is enabled",
+            function()
+                Config.folding.tool_calls.fold_on_error = true
+
+                writer:replay_history_messages({
+                    {
+                        type = "tool_call",
+                        tool_call_id = "restored-failed-folded",
+                        status = "failed",
+                        kind = "execute",
+                        argument = "ls",
+                        body = LONG_BODY,
                     },
                 })
 
-                local _, top_pad_row, bottom_pad_row =
-                    block_layout("fold-on-write")
-                vim.api.nvim_win_call(winid, function()
-                    assert.equal(
-                        vim.fn.foldclosed(top_pad_row + 1),
-                        top_pad_row + 1
-                    )
-                    assert.equal(
-                        vim.fn.foldclosedend(top_pad_row + 1),
-                        bottom_pad_row + 1
-                    )
-                end)
-
-                local tracker = writer.tool_call_blocks["fold-on-write"]
-                assert.is_true(tracker.has_fold == true)
+                assert_fold_closed("restored-failed-folded")
             end
         )
 
         it("does not create a fold when block stays below threshold", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
-            }
-            Config.auto_scroll = { threshold = 10 }
-
-            Fold.setup_window(winid, bufnr)
-            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
-            vim.api.nvim_win_set_cursor(winid, { 1, 0 })
-
             writer:write_tool_call_block({
                 tool_call_id = "no-fold",
-                status = "pending",
+                status = "completed",
                 kind = "execute",
                 argument = "ls",
                 body = { "L1", "L2", "L3" },
@@ -977,15 +1515,32 @@ describe("agentic.ui.MessageWriter", function()
             end)
         end)
 
-        it("emits anchor pad lines around the body in every block", function()
-            Config.folding = {
-                tool_calls = { enabled = true, threshold = 5 },
+        it("counts rendered long title body toward fold threshold", function()
+            Config.tool_calls = {
+                title = {
+                    max_length = 50,
+                    truncate_title_kinds = { "execute" },
+                },
             }
-            Config.auto_scroll = { threshold = 10 }
 
-            Fold.setup_window(winid, bufnr)
-            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "intro" })
+            writer:write_tool_call_block({
+                tool_call_id = "fold-title",
+                status = "completed",
+                kind = "execute",
+                argument = table.concat({
+                    string.rep("x", 55),
+                    "line two",
+                    "line three",
+                    "line four",
+                    "line five",
+                }, "\\n"),
+                body = { "short" },
+            })
 
+            assert_fold_closed("fold-title")
+        end)
+
+        it("emits anchor pad lines around the body in every block", function()
             writer:write_tool_call_block({
                 tool_call_id = "anchors",
                 status = "pending",
