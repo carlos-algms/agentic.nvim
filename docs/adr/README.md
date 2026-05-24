@@ -1,8 +1,8 @@
 # Architectural decisions (ADRs)
 
 Why the codebase looks the way it looks. Each file is one Architecture Decision
-Record (ADR). Filename convention: `NNN-short-slug.md`. "ADR 2" means `002-*.md`
-in this folder.
+Record (ADR). Filename convention: `NNNN-short-slug.md` (4-digit, zero-padded).
+"ADR 2" means `0002-*.md` in this folder.
 
 Each ADR captures the option taken, the alternatives rejected, and the empirical
 findings that ruled them out.
@@ -26,7 +26,7 @@ are mutable and reflect today's truth; the `Rejected / superseded alternatives`
 table and `Changelog` are append-only history. Do NOT load the whole folder into
 context.
 
-1. List filenames in `docs/architectural-decisions/` first.
+1. List filenames in `docs/adr/` first.
 1. Search for the topic across those files.
 1. Open only the matching ADR.
 
@@ -37,7 +37,7 @@ Use whatever file-listing and search tools your environment provides.
 - One file per **subject area**, not per refactor. A subject is a durable
   concern (e.g. tool-call folding, border rendering). Iterations on the same
   subject update the same file.
-- Filename is `NNN-short-slug.md`, zero-padded to 3 digits. New ADR number =
+- Filename is `NNNN-short-slug.md`, zero-padded to 4 digits. New ADR number =
   max(existing) + 1. Numbers are chronological by first creation. Never
   renumber, even when an ADR is superseded.
 - Current truth at the top. Rejected options and changelog below.
@@ -57,7 +57,7 @@ the file always reflects what the code does today.
 ## ADR template
 
 ```markdown
-# NNN. Subject
+# NNNN. Subject
 
 - Status: accepted
 - Last updated: YYYY-MM-DD

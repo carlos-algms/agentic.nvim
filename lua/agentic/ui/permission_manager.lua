@@ -273,7 +273,11 @@ function PermissionManager:resolve(tool_call_id, option_id)
     pcall(request.callback, option_id)
 
     if was_focused then
-        self:_set_focus(self._order[1])
+        local next_id = self._order[1]
+        self:_set_focus(next_id)
+        if not next_id then
+            self:_scroll_chat_to_bottom()
+        end
     end
 end
 
@@ -516,6 +520,17 @@ function PermissionManager:_remove_focus_keymaps()
     for _, lhs in ipairs({ "h", "l", "<Left>", "<Right>", "<CR>" }) do
         BufHelpers.keymap_del(bufnr, "n", lhs)
     end
+end
+
+function PermissionManager:_scroll_chat_to_bottom()
+    local winid = self:_find_visible_chat_winid()
+    if not winid then
+        return
+    end
+
+    vim.api.nvim_win_call(winid, function()
+        vim.cmd("noautocmd normal! G0zb")
+    end)
 end
 
 --- @param tool_call_id string

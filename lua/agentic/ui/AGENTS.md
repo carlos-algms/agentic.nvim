@@ -18,17 +18,17 @@ SessionManager (per tab)
     ├── WidgetLayout      open/close/resize panels, applies PANEL_WINDOW_OPTS
     ├── _hidden_chat_winid  float keeping chat buffer attached while widget
     │                       hidden — managed by ChatWidget._hidden_chat_winid
-    │                       + WidgetLayout.open_hidden_chat_window — ADR 001
+    │                       + WidgetLayout.open_hidden_chat_window — ADR 0001
     ├── BufferGuard       redirects foreign buffers out of widget windows
     ├── WindowDecoration  winbar + buf names, headers in vim.t[tab]
     ├── DiffPreview       inline/split diff in real file buf (not chat)
     └── MessageWriter (per chat bufnr) ── owns chat-buffer content
         ├── tool_call_blocks    id -> ToolCallBlock (extmark-tracked range)
-        ├── ToolCallFold        manual folds, anchor pads — ADR 001
+        ├── ToolCallFold        manual folds, anchor pads — ADR 0001
         ├── ToolCallDiff        diff extraction + minimization
         ├── DiffHighlighter     line/word hl on chat buffer
         │                       (lives in agentic.utils, not ui)
-        ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 002
+        ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 0002
         └── PermissionManager   pending map + focus state; rebinds per-block
                                 keymaps on focus transition. Row N rendering
                                 owned by MessageWriter (repaint_status_row)
@@ -66,7 +66,7 @@ stateDiagram-v2
     note right of hidden
         hidden chat float keeps chat buffer
         attached so manual folds apply while
-        closed (ADR 001). Internal handle only.
+        closed (ADR 0001). Internal handle only.
     end note
 ```
 
@@ -89,7 +89,7 @@ stateDiagram-v2
   conditional `hide`, the buffers are deleted. See `ChatWidget:destroy` for the
   `tab_closing` check.
 - A hidden chat floating window keeps the chat buffer attached while the widget
-  is hidden, so manual folds can be applied while closed. See ADR 001.
+  is hidden, so manual folds can be applied while closed. See ADR 0001.
   - Opened with `hide = true` + `focusable = false` + `noautocmd = true`. The
     user cannot reach it: `<C-w>w`/`<C-w>p`, `:wincmd`, and `:buffer` skip it;
     `nvim_list_wins()` returns it but interactive navigation does not visit it.
@@ -125,7 +125,7 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
   whole block range is never replaced.
 - Manual folds only. Never `foldexpr`. Before proposing a `foldexpr` workaround
   (self-assign cache invalidation, `BufEnter` reapply, etc.), read the
-  rejected-alternatives table in ADR 001 — every obvious workaround has been
+  rejected-alternatives table in ADR 0001 — every obvious workaround has been
   tried and documented.
 - Permission buttons live on row N (status line) of each pending block; row N
   is outside the fold range, and digit keymaps are bound only while a block is
@@ -156,6 +156,38 @@ row N    status + buttons real text, outside fold, written by
 Pads are unconditional. Header is rewritten unconditionally because providers
 send placeholder titles before the real one.
 
+## Special write paths
+
+Three `MessageWriter` methods bypass the normal `_maybe_write_sender_header`
+flow. Picking the wrong one breaks message attribution silently.
+
+| Method                     | When to use                                                 | Bypasses                               |
+| -------------------------- | ----------------------------------------------------------- | -------------------------------------- |
+| `write_structural_message` | Welcome banner on session open; banner before restore.      | Sender-header dedup (one-shot reset).  |
+| `write_restoring_message`  | Per-message replay during session restore.                  | Timestamps in user header.             |
+| `replay_history_messages`  | Provider switch only — bulk repaint from in-memory history. | Both above (delegates to sub-writers). |
+
+Rules:
+
+- Outside restore and provider-switch, NEVER call these. Use
+  `write_message_chunk` / `write_tool_call_block`.
+- `replay_history_messages` is the only caller that loops over saved
+  messages. It does NOT re-issue ACP `send_prompt`; the new provider sees no
+  prior context.
+- Adding a new bulk-write path means adding a fourth row here and a test.
+
+## TodoList (separate buffer)
+
+`TodoList` lives in its own buffer (`ChatWidget.buf_nrs.todos`) and its own
+window, opened after diagnostics in `WidgetLayout`. Gated by
+`Config.windows.todos.display` (default true).
+
+- Hidden until first **Plan** event arrives.
+- Auto-closes its window via `close_if_all_completed` when every task is
+  done.
+- No keymaps — read-only display.
+- Plan updates and chat chunks target different buffers.
+
 ## Sender classification
 
 `MessageWriter:_maybe_write_sender_header` resolves the sender from
@@ -170,10 +202,8 @@ tool_call              ─┘
 plan                   ───▶ (no header)
 ```
 
-Special write paths bypass `_maybe_write_sender_header`'s normal flow:
-`write_structural_message`, `write_restoring_message`,
-`replay_history_messages`. Read those methods before adding a new
-`sessionUpdate` type — picking the wrong path breaks message attribution.
+Bypass paths: see "Special write paths" above. Read those methods before
+adding a new `sessionUpdate` type.
 
 - Thinking blocks (`agent_thought_chunk`) reuse one extmark in `NS_THINKING`
   across chunks. Any non-thought write must call
@@ -188,7 +218,7 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
 - Setting `foldmethod` / `foldlevel` unconditionally
   - Only `Fold.setup_window` (in `lua/agentic/ui/tool_call_fold.lua`) is allowed
     to write these. The set-handler triggers even on no-op assigns, closing the
-    user's `zo`-opened folds. See ADR 001.
+    user's `zo`-opened folds. See ADR 0001.
 - `vim.schedule` between mutation and `G0zb`
   - Separate tick lets a redraw run with stale topline -> flicker.
 - Replacing the whole tool-call range with `set_lines`
@@ -206,7 +236,7 @@ Special write paths bypass `_maybe_write_sender_header`'s normal flow:
 - Module-level mutable state for per-tab data
   - Cross-tab leakage. See root `AGENTS.md`.
 - Two windows holding the chat buffer concurrently
-  - Breaks fold-state preservation. ADR 001.
+  - Breaks fold-state preservation. ADR 0001.
 - Reopening the hidden chat float without closing the previous one
   - Overwrites the stored winid and leaks the prior window.
 - Re-rendering tool-call body after a diff is set

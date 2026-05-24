@@ -417,6 +417,10 @@ end
 
 --- @param tool_call_block agentic.ui.MessageWriter.ToolCallBlock
 function MessageWriter:write_tool_call_block(tool_call_block)
+    tool_call_block.kind = tool_call_block.kind or "other"
+    tool_call_block.argument = tool_call_block.argument or "Pending"
+    tool_call_block.status = tool_call_block.status or "pending"
+
     if tool_call_block.body then
         tool_call_block.body = JsonFormat.format_lines(tool_call_block.body)
     end
@@ -1166,7 +1170,7 @@ end
 --- @field [3] string hl_group
 
 --- Build the text + highlight segments for the status row (row N) of a block.
---- Pending blocks with an attached PermissionState include inline buttons.
+--- Blocks with an attached PermissionState include inline buttons.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return string text
 --- @return agentic.ui.MessageWriter.StatusSegment[] segments
@@ -1189,7 +1193,7 @@ function MessageWriter:_build_status_row(tracker)
 
     local perm = tracker.permission
 
-    if status ~= "pending" or not perm then
+    if not perm then
         return text, segments
     end
 

@@ -20,7 +20,7 @@ NOTE: Install instructions are in the README.md
 ## Generic ACPClient (no per-provider adapters)
 
 All providers use a **single generic `ACPClient`** (`acp_client.lua`). There are
-no per-provider adapter files.
+no per-provider adapter files. See ADR 0005.
 
 The client parses standard ACP protocol fields and handles provider quirks (e.g.
 `rawInput` fallback for OpenCode) inline via protected methods in `ACPClient`
@@ -117,8 +117,7 @@ Invariants:
   and the rest of `_send_request`-based calls hang forever when the
   provider dies.
 - Reconnect (when `provider_config.reconnect` is true) loops back to
-  `connecting`. `reconnect_count` on the client gates max attempts;
-  the transport's `on_reconnect` callback reinvokes `_connect`.
+  `connecting`. See "Reconnect" section below.
 - `_on_ready` fan-out: callers registered via `when_ready` before the
   client reaches `ready` are flushed (each via `vim.schedule`) at the
   moment of transition. After `ready`, new `when_ready` callers fire
@@ -324,6 +323,9 @@ To handle a new provider quirk, add the fallback logic in
 ```mermaid
 flowchart TD
     P["Provider sends 'session/request_permission'"]
+    C["ACPClient.__handle_request_permission<br/>emits request.toolCall as tool_call_update"]
+    PH["SessionManager:_on_tool_call_update<br/>routes missing tracker to first render"]
+    W["MessageWriter:write_tool_call_block<br/>defaults missing fields to<br/>other(Pending) pending"]
     SM["SessionManager<br/>opens diff preview if request carries a diff"]
     PM["PermissionManager:add_request(request, callback)"]
     Store["Store in pending[tool_call_id]<br/>append to insertion order"]
@@ -340,7 +342,7 @@ flowchart TD
     Adv["_set_focus(next head)"]
     Done["idle"]
 
-    P --> SM --> PM --> Store --> F
+    P --> C --> PH --> W --> SM --> PM --> Store --> F
     F -->|yes| Focus
     F -->|no| Paint
     Focus --> U
@@ -353,6 +355,14 @@ flowchart TD
 
 Multiple permission requests can be pending concurrently (one per tool call).
 Focus tracks the queue head (oldest pending); new arrivals do not steal focus.
+Requests that arrive before their `tool_call` notification are normalized by
+the first-render path: `SessionManager:_on_tool_call_update` routes a missing
+tracker through `MessageWriter:write_tool_call_block`, which defaults missing
+kind/title/status to `other(Pending)` + `pending`. This creates row N before
+`PermissionManager:add_request` paints buttons, without overwriting partial
+updates on existing blocks. Regression:
+`lua/agentic/ui/message_writer.test.lua::"defaults missing initial tool call fields before render"`.
+
 Digit keys `1`..`4` dispatch the focused block's option;
 `Config.keymaps.permission.cycle_next` / `cycle_prev` (default `<C-n>` /
 `<C-p>`) cycle focus between pending blocks. `h` / `l` / `<Left>` / `<Right>`
@@ -372,3 +382,58 @@ requires it, but currently all providers use the default implementations:
 | `__handle_tool_call_update`   | Builds partial, notifies subscriber       |
 | `__handle_request_permission` | Sends result back to provider             |
 | `__handle_session_update`     | Routes by `sessionUpdate` type            |
+
+## Provider switch (UI-only history replay)
+
+`init.lua::apply_provider_switch` destroys the current **SessionManager**,
+swaps `Config.provider`, creates a new `AgentInstance` / **ACP Session**, and
+then calls `MessageWriter:replay_history_messages` to repaint the chat buffer
+from the prior session's history.
+
+The new provider receives ZERO prior context: no `send_prompt` re-injection,
+no bulk history payload. The replay is a UI repaint only.
+
+Do NOT add a fallback that lazily re-sends history to the new provider
+without an explicit user opt-in — it would silently double-bill tokens and
+change perceived behavior.
+
+## Modes, models, thought level (config options dispatch)
+
+`SessionManager:new_session` dispatches on `SessionCreationResponse`:
+
+- `response.configOptions` present -> new path, handled by
+  `AgentConfigOptions:_handle_new_config_options`.
+- otherwise -> legacy path, `response.modes` populates `AgentModes` and
+  `response.models` populates `AgentModels`.
+
+The new path subsumes the legacy fields; both paths are kept because some
+providers still send only `modes`/`models`.
+
+Selectors are keymap-driven (`Config.keymaps.widget.change_mode`,
+`switch_model`, `change_thought_level`) and use `vim.ui.select`. No public
+`init.lua` entry exists for these — direct access is by keymap only.
+
+## Subprocess lifecycle
+
+Every ACP child is spawned with `uv.spawn({ detached = true })` so it leads
+its own session/process group. `transport:stop` signals the whole group via
+`uv.kill(-pid, 15)` then `uv.kill(-pid, 9)` on POSIX (Windows falls back to
+`process:kill`). This catches wrappers that don't forward signals (e.g.
+`codex-acp.js` uses `spawnSync` with no signal handlers, otherwise its native
+grandchild leaks as `PPID 1`). Trade-off: children outlive a hard `kill -9` of
+nvim. See ADR 0006. Regression:
+``lua/agentic/acp/acp_transport.test.lua::"kills descendant processes when wrapper does not forward signals"``.
+
+## Reconnect
+
+`ACPProviderConfig.reconnect` (boolean, default `false`) opts a provider into
+process-exit reconnection. The transport's `on_state_change("disconnected")`
+defers 2s and re-spawns up to `max_reconnect_attempts` times (default 3).
+
+`_drain_pending_callbacks` rejects every pending RPC with `TRANSPORT_ERROR`
+on each `disconnected` / `error` transition, so reconnect does not silently
+strand callers — they see the rejection, the next `send_prompt` succeeds
+against the re-spawned process if reconnect lands.
+
+No provider has `reconnect = true` in `Config.acp_providers` defaults; users
+opt in per-provider in their `setup`.

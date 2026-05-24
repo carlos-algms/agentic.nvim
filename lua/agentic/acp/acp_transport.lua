@@ -47,6 +47,10 @@ function M.create_stdio_transport(config, callbacks)
         stdout = nil,
         --- @type uv.uv_process_t|nil
         process = nil,
+        --- PID of the spawned child; also used as the negative argument to
+        --- uv.kill so we signal the whole process group on stop (POSIX).
+        --- @type integer|nil
+        pid = nil,
     }
 
     --- @param data string
@@ -104,7 +108,11 @@ function M.create_stdio_transport(config, callbacks)
             args = args,
             env = final_env,
             stdio = { stdin, stdout, stderr },
-            detached = false,
+            -- detached = true makes the child a new session/process-group
+            -- leader (setsid). Required so transport:stop can signal the
+            -- whole group via uv.kill(-pid, ...) and reap wrappers that
+            -- don't forward signals (e.g. codex-acp.js spawnSync).
+            detached = true,
         }, function(code, signal)
             local cmd_str = config.command
                 .. (#args > 0 and " " .. table.concat(args, " ") or "")
@@ -169,6 +177,7 @@ function M.create_stdio_transport(config, callbacks)
         end
 
         self.process = handle
+        self.pid = tonumber(pid)
         self.stdin = stdin
         self.stdout = stdout
 
@@ -234,21 +243,34 @@ function M.create_stdio_transport(config, callbacks)
     function transport:stop()
         if self.process and not self.process:is_closing() then
             local process = self.process
+            local pid = self.pid
             self.process = nil
+            self.pid = nil
 
             if not process then
                 return
             end
 
-            -- Try to terminate gracefully
-            pcall(function()
-                process:kill(15)
-            end)
-            -- then force kill, it'll fail harmlessly if already exited
-            pcall(function()
-                process:kill(9)
-            end)
+            -- Signal the whole process group (negative pid on POSIX) so
+            -- wrappers that don't forward signals (e.g. codex-acp.js
+            -- spawnSync) don't leave orphaned grandchildren. Fall back to
+            -- per-pid kill on Windows where process groups work differently.
+            local is_windows = vim.fn.has("win32") == 1
+            if pid and not is_windows then
+                pcall(uv.kill, -pid, 15)
+                pcall(uv.kill, -pid, 9)
+            else
+                pcall(function()
+                    process:kill(15)
+                end)
+                pcall(function()
+                    process:kill(9)
+                end)
+            end
 
+            -- Safe to close the handle here even though the spawn exit
+            -- callback may still fire; libuv tolerates close-after-exit and
+            -- the callback's own close path is guarded by `if self.process`.
             process:close()
         end
 

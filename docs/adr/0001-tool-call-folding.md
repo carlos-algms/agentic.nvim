@@ -1,4 +1,4 @@
-# 001. Tool-call folding and fold-state preservation
+# 0001. Tool-call folding and fold-state preservation
 
 - Status: accepted
 - Last updated: 2026-04-29
@@ -106,13 +106,13 @@ Our case (live transitions on growing blocks) is the harder variant.
 
 ## Changelog
 
-| Date       | Commit  | Change                                           |
-| ---------- | ------- | ------------------------------------------------ |
-| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.        |
-| 2026-04-29 | 28cb6ff | Manual folds + anchor pads + sync scroll.        |
-| 2026-04-29 | 28cb6ff | Hidden chat float preserves fold state.          |
-| 2026-05-03 | -       | Screen-row folding; sync dimensions/wrap.        |
-| 2026-05-15 | -       | Long-title body counts inside body fold range.   |
+| Date       | Commit  | Change                                         |
+| ---------- | ------- | ---------------------------------------------- |
+| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.      |
+| 2026-04-29 | 28cb6ff | Manual folds + anchor pads + sync scroll.      |
+| 2026-04-29 | 28cb6ff | Hidden chat float preserves fold state.        |
+| 2026-05-03 | -       | Screen-row folding; sync dimensions/wrap.      |
+| 2026-05-15 | -       | Long-title body counts inside body fold range. |
 
 ## Sources
 

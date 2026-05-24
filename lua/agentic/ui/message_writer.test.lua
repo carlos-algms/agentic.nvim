@@ -351,6 +351,23 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(status_row_text("row-n-pending"):find("pending"))
         end)
 
+        it("defaults missing initial tool call fields before render", function()
+            writer:write_tool_call_block({
+                tool_call_id = "row-n-missing-fields",
+            })
+
+            local tracker = writer.tool_call_blocks["row-n-missing-fields"]
+            assert.is_not_nil(tracker)
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            assert.equal("other", tracker.kind)
+            assert.equal("Pending", tracker.argument)
+            assert.equal("pending", tracker.status)
+            assert.truthy(get_all_content():find("other(Pending)", 1, true))
+            assert.truthy(
+                status_row_text("row-n-missing-fields"):find("pending")
+            )
+        end)
+
         it(
             "renders inline buttons for pending non-focused permission state",
             function()
@@ -369,6 +386,23 @@ describe("agentic.ui.MessageWriter", function()
             setup_permission_block("row-n-focused", { is_focused = true })
 
             local text = status_row_text("row-n-focused")
+            assert.truthy(text:find("1 "))
+            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("Allow"))
+            assert.truthy(text:find("Reject"))
+        end)
+
+        it("keeps inline buttons when an active update repaints", function()
+            setup_permission_block("row-n-active-update", { is_focused = true })
+
+            writer:update_tool_call_block({
+                tool_call_id = "row-n-active-update",
+                status = "in_progress",
+                body = { "running" },
+            })
+
+            local text = status_row_text("row-n-active-update")
+            assert.truthy(text:find("in_progress"))
             assert.truthy(text:find("1 "))
             assert.truthy(text:find("2 "))
             assert.truthy(text:find("Allow"))

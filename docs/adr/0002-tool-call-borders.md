@@ -1,4 +1,4 @@
-# 002. Tool-call border rendering
+# 0002. Tool-call border rendering
 
 - Status: accepted
 - Last updated: 2026-04-30

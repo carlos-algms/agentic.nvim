@@ -1,4 +1,4 @@
-# 003. Inline permission buttons
+# 0003. Inline permission buttons
 
 - Status: accepted
 - Last updated: 2026-05-15
@@ -129,7 +129,7 @@ On every block-focus transition, `_jump_cursor_to(tool_call_id)`:
    `MessageWriter:get_button_col(id, 1)`.
 3. Sets cursor to `(end_row + 1, first_button_col)` and `zb` anchors row
    N at the window bottom (matches chat auto-scroll convention, see
-   ADR 001).
+   ADR 0001).
 
 Single-pending case: `cycle_next` lands on the same `focused_id`. Instead of
 no-op'ing in `_set_focus` (early return on same id), `_cycle_focus` detects
@@ -168,7 +168,7 @@ Row N stays OUTSIDE the manual fold range. `Fold.close_range` is called with
 `top_pad..bottom_pad`. Row N (trailing / status) at 0-indexed `end_row` is
 not in the fold. Buttons always visible regardless of fold state.
 
-No change to ADR 001's manual-fold contract or anchor-pad invariants.
+No change to ADR 0001's manual-fold contract or anchor-pad invariants.
 
 ## Consequences
 
@@ -194,37 +194,37 @@ No change to ADR 001's manual-fold contract or anchor-pad invariants.
   alternative (silent focus change) loses the visual anchor.
 - Tall edit-kind diffs may scroll row N offscreen at initial render.
   `<C-n>` recovers focus + cursor.
-- ADR 001 (manual folds) and ADR 002 (statuscolumn fences) unchanged.
+- ADR 0001 (manual folds) and ADR 0002 (statuscolumn fences) unchanged.
 
 ## Rejected / superseded alternatives
 
-| Option                                                              | Reason rejected                                                                                                                            |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Sequential queue at chat bottom (previous behavior)                 | Visual disconnect on multi-block, truncated header, reanchor recursion guard.                                                              |
-| Keep bottom prompt + add inline alongside                           | Two UIs, double bookkeeping, ambiguous focus model.                                                                                        |
-| Click / mouse buttons                                               | Pure keyboard fits Vim; mouse handling adds OS-dependent quirks.                                                                           |
-| Single focus level (block OR button)                                | Block-only loses fast direct dispatch via digits; button-only forces manual scrolling to find the right block.                             |
-| Always-on `h` / `l` buffer-local keymaps                            | Hijacks normal cursor navigation while a permission is pending.                                                                            |
-| Autocmd `CursorMoved` install / uninstall keymaps                   | Complex lifecycle (install/uninstall on every move); `expr=true` fall-through is a one-line equivalent.                                    |
-| Snap cursor back to row N (popup-style)                             | Prevents chat scrolling while a prompt is active.                                                                                          |
-| Render agent-supplied `option.name`                                 | Provider inconsistency (Claude / Gemini / Codex send different text for same kind); layout jitter on provider switch.                      |
-| Bracket wrappers `[ Allow ]`                                        | Visual noise next to bg fill; user feedback during iteration.                                                                              |
-| `link = "DiagnosticOk" / "DiagnosticError" / "Comment"` (fg-only)   | Reads as colored text, not buttons. User asked for bg fill.                                                                                |
-| Light-bg / dark-fg button palette                                   | User chose existing dark green / red palette (`status_completed_bg`, `status_failed_bg`) for plugin-wide consistency.                      |
-| `]p` / `[p` block cycle keys                                        | Both right-hand pinky, two-key sequence, awkward; user requested ergonomic alternatives.                                                   |
+| Option                                                              | Reason rejected                                                                                                                             |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sequential queue at chat bottom (previous behavior)                 | Visual disconnect on multi-block, truncated header, reanchor recursion guard.                                                               |
+| Keep bottom prompt + add inline alongside                           | Two UIs, double bookkeeping, ambiguous focus model.                                                                                         |
+| Click / mouse buttons                                               | Pure keyboard fits Vim; mouse handling adds OS-dependent quirks.                                                                            |
+| Single focus level (block OR button)                                | Block-only loses fast direct dispatch via digits; button-only forces manual scrolling to find the right block.                              |
+| Always-on `h` / `l` buffer-local keymaps                            | Hijacks normal cursor navigation while a permission is pending.                                                                             |
+| Autocmd `CursorMoved` install / uninstall keymaps                   | Complex lifecycle (install/uninstall on every move); `expr=true` fall-through is a one-line equivalent.                                     |
+| Snap cursor back to row N (popup-style)                             | Prevents chat scrolling while a prompt is active.                                                                                           |
+| Render agent-supplied `option.name`                                 | Provider inconsistency (Claude / Gemini / Codex send different text for same kind); layout jitter on provider switch.                       |
+| Bracket wrappers `[ Allow ]`                                        | Visual noise next to bg fill; user feedback during iteration.                                                                               |
+| `link = "DiagnosticOk" / "DiagnosticError" / "Comment"` (fg-only)   | Reads as colored text, not buttons. User asked for bg fill.                                                                                 |
+| Light-bg / dark-fg button palette                                   | User chose existing dark green / red palette (`status_completed_bg`, `status_failed_bg`) for plugin-wide consistency.                       |
+| `]p` / `[p` block cycle keys                                        | Both right-hand pinky, two-key sequence, awkward; user requested ergonomic alternatives.                                                    |
 | `]p` / `[p` no-op when target equals current focus (single pending) | Cursor recall use case: user wants `<C-n>` to jump back to row N even with one pending. Fixed by explicit `_jump_cursor_to` in that branch. |
-| Customizable digits / `h` / `l` / `<Left>` / `<Right>` / `<CR>`     | YAGNI; only `cycle_next` / `cycle_prev` are config'd. Per-block keys are conventions.                                                      |
-| Original plan's `Fold.close_range(..., end_row - 1)`                | Off-by-one in plan; existing 1-indexed `end_row` already excludes row N from the fold. Changing would shrink the fold past `bottom_pad`.   |
-| Fold range INCLUDES row N                                           | Buttons hidden when block folded — opposite of the goal.                                                                                   |
-| Sticky cursor (no jump on focus change)                             | Loses visual anchor; user might press a digit thinking the wrong block is focused.                                                         |
+| Customizable digits / `h` / `l` / `<Left>` / `<Right>` / `<CR>`     | YAGNI; only `cycle_next` / `cycle_prev` are config'd. Per-block keys are conventions.                                                       |
+| Original plan's `Fold.close_range(..., end_row - 1)`                | Off-by-one in plan; existing 1-indexed `end_row` already excludes row N from the fold. Changing would shrink the fold past `bottom_pad`.    |
+| Fold range INCLUDES row N                                           | Buttons hidden when block folded — opposite of the goal.                                                                                    |
+| Sticky cursor (no jump on focus change)                             | Loses visual anchor; user might press a digit thinking the wrong block is focused.                                                          |
 
 ## Changelog
 
-| Date       | Commit  | Change                                                                                                                       |
-| ---------- | ------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| 2026-05-13 | initial | Initial implementation per `docs/superpowers/inline-permission-buttons.md`. Concurrent map, head-tracking focus, row N text. |
-| 2026-05-13 | -       | Two-level focus added: `h` / `l` / `<CR>` for buttons; digits kept; static label map; bg-only highlights, brackets removed.  |
-| 2026-05-13 | -       | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                      |
-| 2026-05-13 | -       | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.               |
+| Date       | Commit  | Change                                                                                                                                           |
+| ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-05-13 | initial | Initial implementation per `docs/superpowers/inline-permission-buttons.md`. Concurrent map, head-tracking focus, row N text.                     |
+| 2026-05-13 | -       | Two-level focus added: `h` / `l` / `<CR>` for buttons; digits kept; static label map; bg-only highlights, brackets removed.                      |
+| 2026-05-13 | -       | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                                          |
+| 2026-05-13 | -       | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.                                  |
 | 2026-05-13 | -       | Digits `1`..`4` ungated (fire from anywhere in the chat buffer); only motion / submit keys (`h`/`l`/`<Left>`/`<Right>`/`<CR>`) remain row-gated. |
-| 2026-05-14 | -       | Auto-scroll suppresses follow mode on `NS_STATUS` permission-button rows; no `PermissionManager` focus-row callback.          |
+| 2026-05-14 | -       | Auto-scroll suppresses follow mode on `NS_STATUS` permission-button rows; no `PermissionManager` focus-row callback.                             |

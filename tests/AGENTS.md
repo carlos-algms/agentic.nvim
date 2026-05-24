@@ -1,16 +1,17 @@
 # Testing Guide for agentic.nvim
 
-**Framework:** mini.test with Busted-style emulation
+**Framework:** mini.test with Busted-style emulation (`emulate_busted = true`).
+Bootstrap is automatic; mini.nvim is cloned into `deps/` on first run.
 
-**Why:**
+**Helpers (NOT framework built-ins, NOT luassert):**
 
-- No external dependencies (pure Lua, no hererocks/nlua needed)
-- Built-in child Neovim process support for isolated testing
-- Busted-style syntax via `emulate_busted = true`
-- Automatic bootstrap (clones mini.nvim on first run)
-- Single Neovim process execution model with child processes for isolation
+- `tests.helpers.assert` — Busted/luassert-style API, custom implementation.
+  API surface differs from luassert; see "Assertions" below.
+- `tests.helpers.spy` — spy/stub, custom implementation. No `:call(n)` method;
+  access `spy.calls[n]` directly.
+- `tests.helpers.child` — child Neovim process wrapper for isolated tests.
 
-**Previous framework:** Busted with lazy.nvim's (completely removed)
+**Previous framework:** Busted with lazy.nvim (completely removed).
 
 ## 🚨 MANDATORY: Test-Driven Development (Red/Green)
 
@@ -398,89 +399,15 @@ assert.equal('id', call_args[1])
 assert.equal('function', type(call_args[2]))
 ```
 
-#### 4. Unused Function Parameters in Stubs
-
-Prefix unused parameters with `_` to avoid linting errors:
-
-```lua
--- ❌ WRONG: Linter warns about unused 'sid' parameter
-stub:invokes(function(sid, callback)
-  callback(mock_result)
-end)
-
--- ✅ CORRECT: Use _ prefix for intentionally unused parameters
-stub:invokes(function(_sid, callback)
-  callback(mock_result)
-end)
-```
-
-#### 5. Type Mismatches with Mocked Objects
-
-Use type casts when passing incomplete mock objects:
-
-```lua
--- ❌ WRONG: Type error - table doesn't match SessionManager
-local mock_session = { session_id = "test" }
-SessionRestore.show_picker(1, mock_session)
-
--- ✅ CORRECT: Cast to expected type
-SessionRestore.show_picker(1, mock_session --[[@as agentic.SessionManager]])
-```
-
 ## Test Types
 
-### Unit Tests
-
-- Test individual functions/modules in isolation
-- Heavy use of spies/stubs
-- Fast execution
-- Located next to source: `<module>.test.lua`
-
-### Functional Tests
-
-- Test plugin behavior in real Neovim environment
-- Minimal mocking
-- Tests actual Neovim integration
-- Can be in `tests/functional/` if complex
-
-### Integration Tests
-
-- Test multiple components working together
-- Test external dependencies (ACP providers, etc.)
-- Can be in `tests/integration/` if complex
-- **IMPORTANT:** Mock `transport.lua` to avoid exposing API tokens in tests
-
-## Mocking Transport Layer
-
-When testing ACP providers or any code that makes external requests, always mock
-the transport layer:
-
-```lua
-local assert = require('tests.helpers.assert')
-local spy = require('tests.helpers.spy')
-
-describe('ACP provider', function()
-  local transport_stub
-
-  before_each(function()
-    local transport = require('agentic.acp.transport')
-    transport_stub = spy.stub(transport, 'send')
-    transport_stub:returns({
-      type = 'message',
-      content = 'mocked response',
-    })
-  end)
-
-  after_each(function()
-    transport_stub:revert()
-  end)
-
-  it('sends messages without real API calls', function()
-    -- Test code
-    assert.equal(1, transport_stub.call_count)
-  end)
-end)
-```
+- **Unit** — co-located `<module>.test.lua`. Default choice.
+- **Integration / functional** — `tests/integration/` or `tests/functional/`
+  when a test spans multiple modules or needs real Neovim state across them.
+  No formal distinction between the two folders.
+- **ACP / transport-touching tests** — MUST stub `agentic.acp.acp_transport`
+  (or any module that opens a real subprocess / network call). No real
+  provider subprocess in tests.
 
 ## Important Notes
 
