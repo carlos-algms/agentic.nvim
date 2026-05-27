@@ -974,7 +974,7 @@ colorscheme.
 | `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
 | `AgenticPermissionButtonAllow`    | Focused button (allow kind)                 | `bg=#2d5a3d, bold=true`             |
 | `AgenticPermissionButtonReject`   | Focused button (reject kind)                | `bg=#7a2d2d, bold=true`             |
-| `AgenticPermissionButtonInactive` | Permission button (non-focused button)      | `bg=#3a3a3a`                        |
+| `AgenticPermissionButtonInactive` | Non-focused permission button               | `bg=#3a3a3a`                        |
 | `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
 | `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |
 | `AgenticThinking`                 | Thinking block text in chat buffer          | Links to `Comment`                  |

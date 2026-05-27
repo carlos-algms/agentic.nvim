@@ -1,53 +1,55 @@
 # 0003. Permission buttons
 
+<!-- Filename slug kept for grep stability across history; the subject is
+"Permission buttons" since the inline rendering was dropped. -->
+
 - Status: accepted
 - Last updated: 2026-05-27
-- Related: `lua/agentic/ui/permission_manager.lua`,
-  `lua/agentic/ui/message_writer.lua`, `lua/agentic/ui/AGENTS.md`,
-  `lua/agentic/acp/AGENTS.md`
+- Commits: -
+- Related: -
 
 ## Context
 
-The previous permission UI rendered all buttons inline on row N (the status
-row) of the tool-call block. Buttons sat alongside the status word, joined by
-NBSP characters internally so `'linebreak'` would not split a single button
-across two visual rows. Two failures forced a redesign:
+Inline buttons on row N exhibited two failures and one product gap:
 
 1. **Wrap mid-button.** `'breakat'` defaults to `" ^I!@*-+;:,./?"`. Provider-
    supplied `option.name` strings like `"Always allow bash(...)"` contain `/`,
-   `.`, `-`, so even with NBSP joining internal spaces, the button still broke
+   `.`, `-`, so even with NBSP joining internal spaces the button broke
    mid-text at non-space `breakat` chars. `'breakat'` is a global option
-   (`runtime/doc/options.txt`), so it cannot be scoped to the chat window
-   without affecting every other Neovim window.
-2. **Layout overflow on long labels.** With multiple long labels on a single
-   row, buttons spilled into a second visual row and one button could end up
-   orphaned on its own wrapped line, disconnected from the status word.
-
-The static label map that masked these symptoms (`Allow` / `Allow Always` /
-`Reject` / `Reject Always`) hid the provider's intent (e.g. Claude Code's
-`"Yes, and bypass permissions"`) and produced identical text regardless of
-which provider sent the request.
+   (`runtime/doc/options.txt`); scoping it to the chat window would affect
+   every other Neovim window in the user's session.
+2. **Layout overflow on long labels.** Multiple long labels on a single row
+   spilled into a second visual row; one button could end up orphaned on its
+   own wrapped line, disconnected from the status word.
+3. **Static label map hides provider intent.** The fixed `Allow` / `Allow
+   Always` / `Reject` / `Reject Always` labels discarded provider-supplied
+   text (e.g. Claude Code's `"Yes, and bypass permissions"`) and produced
+   identical text regardless of which provider sent the request.
 
 ## Current decision
 
 One button per real buffer row, stacked between the bottom anchor pad and the
-status row of the tool-call block. The status row carries only the status word
-(`pending`, `in_progress`, `completed`, `failed`). Long labels can wrap within
-their own row but no button ever shares a visual row with another button or
-the status word.
+status row. Each pair of buttons is separated by an empty spacer row, and a
+trailing spacer sits above the status row, giving `K = 2 * N` rendered rows
+for N options (N button rows + N spacer rows). The status row carries only
+the status word (`pending`, `in_progress`, `completed`, `failed`). Long
+labels can wrap within their own row; no button ever shares a visual row
+with another button or the status word.
 
 Layout: See `ui/AGENTS.md` "Tool-call block layout". The buttons-row addendum:
-rows `M+1..M+K` are real text, one per option, outside the fold.
+rows `M+1..M+K` are real text, outside the fold; buttons sit on odd offsets,
+spacers on even offsets.
 
-Render pipeline: `PermissionManager` -> `MessageWriter:repaint_status_row` ->
-`MessageWriter:_build_permission_section` -> `_render_permission_section`.
+Render pipeline: `PermissionManager:repaint_status_row` callers ->
+`MessageWriter:repaint_status_row` -> `MessageWriter:_build_permission_section`
+-> `MessageWriter:_render_permission_section`.
 
 ```mermaid
 flowchart TD
     Add["add_request(req, cb)"]
     Map["pending[tool_call_id] = req<br/>append to _order"]
     First{first pending?}
-    Focus["_set_focus(id)<br/>install per-block keymaps<br/>jump cursor to button row 1 + zb"]
+    Focus["_set_focus(id)<br/>install per-block keymaps<br/>anchor status row at window bottom (zb), then place cursor on button row 1"]
     Paint["repaint_status_row<br/>(non-focused state)"]
     Cycle["cycle_next / cycle_prev<br/>(default <C-n> / <C-p>)"]
     Btn["h / l / k / j / <Left> / <Right> / <Up> / <Down>"]
@@ -80,7 +82,9 @@ many buttons are currently rendered.
 ### Render bookkeeping
 
 `tracker._rendered_button_count` (written only by
-`MessageWriter:_render_permission_section`) tracks rows for the next repaint.
+`MessageWriter:_render_permission_section`) tracks the K rendered rows
+(buttons + spacers) for the next repaint. Despite the field name it counts
+rows, not buttons; `K = 2 * N`.
 
 ### Provider-supplied labels
 
@@ -121,8 +125,11 @@ chat buffer.
 
 ### Cursor placement
 
-`_jump_cursor_to(id)` lands on button row 1 (fallback `end_row`); cycles call
-`_jump_cursor_to_button(id, idx)`. Both anchor with `zb`.
+`PermissionManager:_jump_cursor_to(id)` anchors the status row at window
+bottom (`zb`) and then places the cursor on button row 1 (fallback
+`end_row`). `PermissionManager:_jump_cursor_to_button(id, idx)` (cycle path)
+moves the cursor only; it does NOT re-anchor, since re-anchoring on every
+cycle would scroll buttons out of view.
 
 ### Auto-scroll suppression
 
@@ -156,17 +163,14 @@ special-case needed. ADR 0001's contract is unchanged.
 
 - `MessageWriter:_build_permission_section` and
   `_render_permission_section` own the per-row rendering; the older
-  `_build_status_row` is deleted in the same refactor (Task 7 of the
-  implementation plan).
+  `_build_status_row` is deleted.
 - `MessageWriter:get_button_row(id, index)` replaces `get_button_col(id, index)`
   for cursor placement. Buttons are real text at col 0 on their own row;
   cursor lands at `(row + 1, 0)`.
-- `tracker._rendered_button_count` lags the rendered state by one
-  `repaint_status_row` tick. Do not read it outside the render path.
 - `_check_auto_scroll` cost: O(N_blocks) in the worst case (one extmark
-  lookup per pending block). The tracker scan short-circuits on
-  `tracker.permission` so resolved blocks cost nothing; typically only one
-  block is pending at any time.
+  lookup per pending block). The tracker scan short-circuits when no
+  permission rows are rendered (`_rendered_button_count == 0`), so resolved
+  blocks cost nothing; typically only one block is pending at any time.
 - Wrap behaviour: long labels wrap to multiple visual rows within their own
   buffer line. No truncation. If a single provider label is genuinely too
   long for the window width, the user sees a soft-wrapped multi-row button.
@@ -201,6 +205,8 @@ special-case needed. ADR 0001's contract is unchanged.
 | Original plan's `Fold.close_range(..., end_row - 1)`                  | Off-by-one in plan; existing 1-indexed `end_row` already excludes row N from the fold.                                                                      |
 | Fold range INCLUDES row N                                             | Buttons hidden when block folded.                                                                                                                           |
 | Sticky cursor (no jump on focus change)                               | Loses visual anchor; user might press a digit thinking the wrong block is focused.                                                                          |
+| Render agent-supplied `option.name` inline on row N (NBSP-joined)     | Superseded by per-row stacking (this ADR). Same `breakat` failure as the inline decision; left here for traceability.                                       |
+| `]p` / `[p` no-op when target equals current focus (single pending)   | Superseded: cycle keys now jump cursor back onto the focused row even when focus does not change (see `PermissionManager:_cycle_focus`).                    |
 
 ## Changelog
 

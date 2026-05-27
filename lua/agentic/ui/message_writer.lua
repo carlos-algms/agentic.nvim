@@ -353,12 +353,13 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
     end
 
     for tool_call_id, tracker in pairs(self.tool_call_blocks) do
-        if tracker.permission then
-            --- @diagnostic disable-next-line: invisible
-            local rendered = tracker._rendered_button_count or 0
-            if rendered > 0 then
-                local end_row = self:get_block_end_row(tool_call_id)
-                if end_row == row then
+        --- @diagnostic disable-next-line: invisible
+        local rendered = tracker._rendered_button_count or 0
+        if rendered > 0 then
+            local end_row = self:get_block_end_row(tool_call_id)
+            if end_row then
+                local first = end_row - rendered
+                if row >= first and row <= end_row then
                     return true
                 end
             end
@@ -598,6 +599,10 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
         -- Slice ends at bottom_pad so buttons + status row stay put.
+        -- INVARIANT: k_buttons must match the number of rendered rows between
+        -- bottom_pad_row and old_end_row. Only _render_permission_section
+        -- writes inside that range; if any other path inserts/deletes rows
+        -- there, this slice corrupts the block.
         --- @diagnostic disable-next-line: invisible
         local k_buttons = tracker._rendered_button_count or 0
         local bottom_pad_row = old_end_row - k_buttons - 1
@@ -971,6 +976,13 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
+    -- Rendered K rows = N buttons + N spacers = 2 * N. When k disagrees with
+    -- 2 * n_buttons, state is mid-resize (sorted_options updated but no
+    -- repaint yet). Bail rather than land on a spacer or the status row.
+    if k ~= 2 * n_buttons then
+        return nil
+    end
+
     local end_row = self:get_block_end_row(tool_call_id)
     if not end_row then
         return nil
@@ -1248,6 +1260,9 @@ function MessageWriter:_build_permission_section(tracker)
         if not label or label == "" then
             label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
         end
+        -- Provider-supplied name: strip newlines so set_lines does not throw
+        -- and the row still reads as a single button.
+        label = label:gsub("[\r\n]", " ")
 
         local btn_icon = permission_icons[option.kind] or ""
 
@@ -1339,6 +1354,10 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
                 min_bottom_pad_row = min_bottom_pad_row,
             }
         )
+        -- Stale k_old vs buffer state: reset so the next repaint recomputes
+        -- bottom_pad_row from scratch instead of compounding the error.
+        --- @diagnostic disable-next-line: invisible
+        tracker._rendered_button_count = 0
         return
     end
 
@@ -1356,9 +1375,10 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
 
     local new_status_row = bottom_pad_row + k_new + 1
 
+    local mutation_ok = true
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
         if k_old > 0 then
-            pcall(
+            local ok = pcall(
                 vim.api.nvim_buf_set_lines,
                 bufnr,
                 bottom_pad_row + 1,
@@ -1366,10 +1386,14 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
                 false,
                 {}
             )
+            if not ok then
+                mutation_ok = false
+                return
+            end
         end
 
         if k_new > 0 then
-            pcall(
+            local ok = pcall(
                 vim.api.nvim_buf_set_lines,
                 bufnr,
                 bottom_pad_row + 1,
@@ -1377,6 +1401,10 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
                 false,
                 section.button_lines
             )
+            if not ok then
+                mutation_ok = false
+                return
+            end
         end
 
         -- Use set_text (not set_lines) for the status row so any NS_STATUS
@@ -1388,7 +1416,7 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
             new_status_row + 1,
             false
         )[1] or ""
-        pcall(
+        local ok = pcall(
             vim.api.nvim_buf_set_text,
             bufnr,
             new_status_row,
@@ -1397,7 +1425,16 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
             #existing,
             { section.status_text }
         )
+        if not ok then
+            mutation_ok = false
+        end
     end)
+
+    if not mutation_ok then
+        -- Half-applied edit: skip the count update so the next repaint
+        -- recomputes from a known-stale baseline rather than from k_new.
+        return
+    end
 
     if not vim.api.nvim_buf_is_valid(self.bufnr) then
         return

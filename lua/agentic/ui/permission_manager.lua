@@ -151,7 +151,7 @@ function PermissionManager:add_request(request, callback)
     end
 end
 
---- @param direction integer 1 = right (l), -1 = left (h)
+--- @param direction integer 1 = forward, -1 = backward (wraps both ways)
 --- @protected
 function PermissionManager:_cycle_button(direction)
     if not self.focused_id then
@@ -197,6 +197,11 @@ function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
     local button_row =
         self.message_writer:get_button_row(tool_call_id, button_index)
     if not button_row then
+        return
+    end
+
+    local line_count = vim.api.nvim_buf_line_count(self.message_writer.bufnr)
+    if button_row + 1 > line_count then
         return
     end
 
@@ -301,8 +306,9 @@ end
 
 --- Set focus to new_id (may be nil to clear focus). Repaints the previously
 --- focused block (if still pending) and the new focused block, rotates the
---- focus keymaps (digits + h/l/<CR>), and jumps the cursor to the new
---- focused row. Resets focused_button_index to 1 on every block-focus change.
+--- focus keymaps (digits + cycle keys + <CR>), and jumps the cursor to the
+--- new focused row. Resets focused_button_index to 1 on every block-focus
+--- change.
 --- @param new_id string|nil
 --- @protected
 function PermissionManager:_set_focus(new_id)
@@ -468,7 +474,8 @@ end
 
 --- True when the cursor sits on the focused block's status row or on any
 --- of its rendered button rows. Cycle keys and `<CR>` only fire on those
---- rows; elsewhere the gate falls through to default motion.
+--- rows; elsewhere (including spacer rows between buttons or before status)
+--- the gate falls through to default motion.
 --- @return boolean
 function PermissionManager:_cursor_on_focused_row()
     if not self.focused_id then
@@ -485,12 +492,24 @@ function PermissionManager:_cursor_on_focused_row()
     end
     local cursor_row = vim.api.nvim_win_get_cursor(winid)[1]
 
-    local first_button_row = self.message_writer:get_button_row(
-        self.focused_id,
-        1
-    ) or end_row
+    -- Status row (0-indexed end_row -> 1-indexed end_row + 1).
+    if cursor_row == end_row + 1 then
+        return true
+    end
 
-    return cursor_row >= first_button_row + 1 and cursor_row <= end_row + 1
+    local pending = self.pending[self.focused_id]
+    if not pending then
+        return false
+    end
+
+    for i = 1, #pending.sorted_options do
+        local btn_row = self.message_writer:get_button_row(self.focused_id, i)
+        if btn_row and cursor_row == btn_row + 1 then
+            return true
+        end
+    end
+
+    return false
 end
 
 function PermissionManager:_remove_focus_keymaps()
@@ -558,7 +577,9 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")
     end)
-    pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
+    if target_row ~= end_row then
+        pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
+    end
 end
 
 return PermissionManager

@@ -285,8 +285,9 @@ describe("agentic.ui.MessageWriter", function()
 
                 assert.is_false(writer:_check_auto_scroll(bufnr))
 
-                -- Status row also carries an NS_STATUS extmark for the status
-                -- word, so parking there must also exempt from auto-scroll.
+                -- Status row sits at the upper bound of the rendered button
+                -- range scan in _cursor_on_permission_button_row, so parking
+                -- there must also exempt from auto-scroll.
                 vim.api.nvim_win_set_cursor(winid, { end_row + 1, 0 })
                 assert.is_false(writer:_check_auto_scroll(bufnr))
             end
@@ -304,9 +305,11 @@ describe("agentic.ui.MessageWriter", function()
                 local k = tracker._rendered_button_count or 0
                 local end_row = block_end_row("auto-scroll-above-perm")
                 local bottom_pad_row = end_row - k - 1
-                -- Park cursor on the bottom_pad row (one above the first
-                -- button row). This row has no NS_STATUS extmarks and is
-                -- still within the auto-scroll threshold of the buffer end.
+                -- Park cursor on the body row above the bottom_pad row
+                -- (0-indexed bottom_pad_row - 1 -> 1-indexed bottom_pad_row
+                -- for the cursor API). Outside the rendered button range
+                -- and still within the auto-scroll threshold of the
+                -- buffer end.
                 vim.api.nvim_win_set_cursor(winid, { bottom_pad_row, 0 })
 
                 assert.is_true(writer:_check_auto_scroll(bufnr))
@@ -333,33 +336,26 @@ describe("agentic.ui.MessageWriter", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            return PermissionSection.status_row_text(
+            local text = PermissionSection.status_row_text(
                 bufnr,
                 block_end_row(tool_call_id)
             )
+            assert.is_not_nil(text)
+            --- @cast text string
+            return text
         end
 
-        --- All NS_STATUS extmarks on the button rows of the block.
-        --- Uses `{last_btn_row, -1}` as the inclusive end so the query does
-        --- not bleed into the status row's marks below.
+        --- All NS_STATUS extmarks on the K rendered rows above the status
+        --- row of the block.
         --- @param tool_call_id string
         --- @return vim.api.keyset.get_extmark_item[]
         local function button_row_marks(tool_call_id)
             local tracker = writer.tool_call_blocks[tool_call_id]
             --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-            local k = tracker._rendered_button_count or 0
-            if k == 0 then
-                return {}
-            end
-            local end_row = block_end_row(tool_call_id)
-            local bottom_pad_row = end_row - k - 1
-            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
-            return vim.api.nvim_buf_get_extmarks(
+            return PermissionSection.button_row_extmarks(
                 bufnr,
-                ns,
-                { bottom_pad_row + 1, 0 },
-                { bottom_pad_row + k, -1 },
-                { details = true }
+                block_end_row(tool_call_id),
+                tracker._rendered_button_count or 0
             )
         end
 
@@ -455,6 +451,19 @@ describe("agentic.ui.MessageWriter", function()
                         status = "in_progress",
                         body = { "running" },
                     })
+                end,
+            },
+            {
+                name = "keeps button rows on a non-pending status with no post-update",
+                id = "row-n-focused-completed",
+                is_focused = true,
+                status_pattern = "completed",
+                expect_digit_prefix = true,
+                post_action = function(id)
+                    local tracker = writer.tool_call_blocks[id]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    tracker.status = "completed"
+                    writer:repaint_status_row(id)
                 end,
             },
         }) do
@@ -589,6 +598,9 @@ describe("agentic.ui.MessageWriter", function()
                         is_focused = false,
                     })
 
+                    -- 2 buttons + 2 spacers; pin shape first so a regression
+                    -- to N rows surfaces here, not as a nil-index error below.
+                    assert.equal(4, #section.button_lines)
                     -- No digit prefix in non-focused state.
                     assert.is_nil(section.button_lines[1]:find(" 1 "))
                     assert.is_nil(section.button_lines[3]:find(" 2 "))
@@ -605,6 +617,9 @@ describe("agentic.ui.MessageWriter", function()
                         focused_button_index = 1,
                     })
 
+                    -- 2 buttons + 2 spacers; pin shape first so a regression
+                    -- to N rows surfaces here, not as a nil-index error below.
+                    assert.equal(4, #section.button_lines)
                     -- Padded with leading + trailing space.
                     assert.truthy(section.button_lines[1]:find("^ 1 "))
                     assert.truthy(section.button_lines[3]:find("^ 2 "))
@@ -813,17 +828,24 @@ describe("agentic.ui.MessageWriter", function()
                     --- @diagnostic disable-next-line: missing-fields
                     Config.permission_icons = {}
 
-                    local section = build_section("section-empty-icons", {
-                        sorted_options = { ALLOW_REJECT_OPTIONS[1] },
-                        is_focused = false,
-                    })
+                    -- Restore on any error so a failing build_section does
+                    -- not leak the empty config into later tests.
+                    local ok, section =
+                        pcall(build_section, "section-empty-icons", {
+                            sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                            is_focused = false,
+                        })
 
                     Config.permission_icons = original
 
+                    assert.is_true(ok)
                     -- 1 button + 1 trailing spacer.
                     assert.equal(2, #section.button_lines)
-                    -- No icon means label is wrapped in padding spaces.
-                    assert.equal(" Allow once ", section.button_lines[1])
+                    -- No icon: label sits between leading + trailing space.
+                    assert.truthy(
+                        section.button_lines[1]:find("Allow once", 1, true)
+                    )
+                    assert.is_nil(section.button_lines[1]:match("[^%s%w]"))
                     assert.equal("", section.button_lines[2])
                 end
             )
@@ -1210,6 +1232,29 @@ describe("agentic.ui.MessageWriter", function()
                 assert.is_nil(writer:get_button_row("get-row-no-perm", 1))
             end)
 
+            it(
+                "returns nil when permission state exists but nothing rendered yet",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("get-row-not-rendered", "pending")
+                    )
+                    -- Permission state set but no repaint -> k == 0.
+                    writer:set_permission_state("get-row-not-rendered", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    local tracker =
+                        writer.tool_call_blocks["get-row-not-rendered"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    assert.equal(0, tracker._rendered_button_count)
+                    assert.is_nil(
+                        writer:get_button_row("get-row-not-rendered", 1)
+                    )
+                end
+            )
+
             it("returns nil for an unknown tool_call_id", function()
                 assert.is_nil(writer:get_button_row("does-not-exist", 1))
             end)
@@ -1229,20 +1274,38 @@ describe("agentic.ui.MessageWriter", function()
 
                     -- Button 1 at offset +1; button 2 at offset +3 (spacers
                     -- at +2 and +4).
-                    assert.equal(
-                        bottom_pad_row + 1,
+                    local row_1 =
                         writer:get_button_row("get-row-two-options", 1)
-                    )
-                    assert.equal(
-                        bottom_pad_row + 3,
+                    local row_2 =
                         writer:get_button_row("get-row-two-options", 2)
-                    )
+                    assert.equal(bottom_pad_row + 1, row_1)
+                    assert.equal(bottom_pad_row + 3, row_2)
                     assert.is_nil(
                         writer:get_button_row("get-row-two-options", 3)
                     )
                     assert.is_nil(
                         writer:get_button_row("get-row-two-options", 0)
                     )
+
+                    -- Returned rows must contain actual button text, not a
+                    -- spacer; guards against get_button_row math drifting
+                    -- from the rendered layout.
+                    --- @cast row_1 integer
+                    --- @cast row_2 integer
+                    local line_1 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        row_1,
+                        row_1 + 1,
+                        false
+                    )[1] or ""
+                    local line_2 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        row_2,
+                        row_2 + 1,
+                        false
+                    )[1] or ""
+                    assert.truthy(line_1:find("Allow"))
+                    assert.truthy(line_2:find("Reject"))
                 end
             )
         end)

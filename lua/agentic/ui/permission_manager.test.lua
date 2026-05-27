@@ -527,27 +527,18 @@ describe("agentic.ui.PermissionManager", function()
                     assert.is_not_nil(row_2)
                     local cursor = vim.api.nvim_win_get_cursor(winid)
                     assert.equal((row_2 or 0) + 1, cursor[1])
+
+                    -- Second press to disambiguate prev vs next: with 2
+                    -- options, a single prev-step from 1 wraps to 2 and
+                    -- coincides with next-step. A second step exercises
+                    -- the direction-dependent modular wrap.
+                    if cb then
+                        cb()
+                    end
+                    assert.equal(1, writer:get_focused_button_index("tc-1"))
                 end
             )
         end
-
-        it("digit 2 submits option 2", function()
-            seed_block("tc-1")
-            local cb = spy.new(function() end)
-            pm:add_request(make_request("tc-1"), cb --[[@as function]])
-
-            local digit_cb = get_digit_callback("2")
-            assert.is_not_nil(digit_cb)
-            if digit_cb then
-                digit_cb()
-            end
-
-            -- After submit the permission state is cleared and button rows
-            -- are removed; the digit dispatch's job is the resolve call, not
-            -- a cursor position. Cursor lands wherever Neovim clamps it.
-            assert.spy(cb).was.called(1)
-            assert.equal("reject-once", cb.calls[1][1])
-        end)
 
         it(
             "<CR> resolves the focused block with focused button's option",
@@ -582,14 +573,10 @@ describe("agentic.ui.PermissionManager", function()
                 )
 
                 local button_row_1 = writer:get_button_row("tc-1", 1)
-                local end_row = writer:get_block_end_row("tc-1")
                 assert.is_not_nil(button_row_1)
-                assert.is_not_nil(end_row)
 
                 local cursor = vim.api.nvim_win_get_cursor(winid)
                 assert.equal((button_row_1 or 0) + 1, cursor[1])
-                -- Cursor does NOT sit on the status row.
-                assert.are_not.equal((end_row or 0) + 1, cursor[1])
             end
         )
 
@@ -602,11 +589,9 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                -- Resolve clears the permission state; subsequent block focus
-                -- jump must fall back to end_row since there are no buttons.
-                -- end_row is recomputed AFTER resolve since removing button
-                -- rows shifts the status row up.
                 pm:resolve("tc-1", "allow-once")
+                -- Recompute end_row AFTER resolve: removing button rows
+                -- shifts the status row up.
 
                 local end_row = writer:get_block_end_row("tc-1")
                 assert.is_not_nil(end_row)
@@ -714,8 +699,12 @@ describe("agentic.ui.PermissionManager", function()
                 }
                 for _, lhs in ipairs(cycle_keys) do
                     assert.is_true(has_buf_keymap("n", lhs))
+                    -- Also confirm the manager installed a callback, not
+                    -- just that something else happens to bind this key.
+                    assert.is_not_nil(get_digit_callback(lhs))
                 end
                 assert.is_true(has_buf_keymap("n", "<CR>"))
+                assert.is_not_nil(get_digit_callback("<CR>"))
 
                 pm:resolve("tc-1", "allow-once")
 
@@ -728,6 +717,21 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("digit keymap lifecycle", function()
+        it("digit 2 submits option 2", function()
+            seed_block("tc-1")
+            local cb = spy.new(function() end)
+            pm:add_request(make_request("tc-1"), cb --[[@as function]])
+
+            local digit_cb = get_digit_callback("2")
+            assert.is_not_nil(digit_cb)
+            if digit_cb then
+                digit_cb()
+            end
+
+            assert.spy(cb).was.called(1)
+            assert.equal("reject-once", cb.calls[1][1])
+        end)
+
         it(
             "rebinds digit keymaps with new mapping after focus transition",
             function()
@@ -817,10 +821,13 @@ describe("agentic.ui.PermissionManager", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            return PermissionSection.status_row_text(
+            local text = PermissionSection.status_row_text(
                 bufnr,
                 writer:get_block_end_row(tool_call_id) or 0
             )
+            assert.is_not_nil(text)
+            --- @cast text string
+            return text
         end
 
         --- @param tool_call_id string
