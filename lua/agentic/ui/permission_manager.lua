@@ -200,11 +200,11 @@ function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
         return
     end
 
+    -- Cycle keys only fire when the cursor sits on the focused permission
+    -- section, so the section is already on-screen; no `zb` needed.
+    -- Re-anchoring here would scroll the viewport on every cycle, hiding
+    -- buttons below the cursor row.
     pcall(vim.api.nvim_win_set_cursor, winid, { button_row + 1, 0 })
-    -- `zb` matches the chat auto-scroll convention (`G0zb`).
-    vim.api.nvim_win_call(winid, function()
-        vim.cmd("noautocmd normal! zb")
-    end)
 end
 
 --- Resolve the focused block with its currently focused button's option.
@@ -550,10 +550,15 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
     local target_row = self.message_writer:get_button_row(tool_call_id, 1)
         or end_row
 
-    pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
+    -- Anchor the STATUS ROW at window bottom (matches chat auto-scroll
+    -- convention), THEN place cursor on the target button. Anchoring at the
+    -- cursor row would hide button rows + status below the cursor when
+    -- target_row is button 1.
+    pcall(vim.api.nvim_win_set_cursor, winid, { end_row + 1, 0 })
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")
     end)
+    pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
 end
 
 return PermissionManager
