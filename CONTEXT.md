@@ -158,8 +158,8 @@ A provider-initiated `session/request_permission` event tied to a specific
 
 **PermissionManager**:
 Per-**Tabpage** owner of pending **Permission Requests**, focus state, per-block
-keymaps. Renders inline buttons on row N of the focused **Tool Call Block**.
-See ADR 0003.
+keymaps. Buttons render one-per-row between bottom_pad and the status row of
+the focused **Tool Call Block** (not inline on row N). See ADR 0003.
 
 ### Message chunks
 

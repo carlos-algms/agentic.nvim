@@ -264,7 +264,7 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it(
-            "returns false when cursor is parked on a permission button row",
+            "returns false when cursor is on any permission row (button or status)",
             function()
                 setup_permission_block("auto-scroll-permission-row", {
                     is_focused = false,
@@ -283,6 +283,32 @@ describe("agentic.ui.MessageWriter", function()
                 })
 
                 assert.is_false(writer:_check_auto_scroll(bufnr))
+
+                -- Status row also carries an NS_STATUS extmark for the status
+                -- word, so parking there must also exempt from auto-scroll.
+                vim.api.nvim_win_set_cursor(winid, { end_row + 1, 0 })
+                assert.is_false(writer:_check_auto_scroll(bufnr))
+            end
+        )
+
+        it(
+            "returns true when cursor sits above the permission rows in the block body",
+            function()
+                setup_permission_block("auto-scroll-above-perm", {
+                    is_focused = false,
+                })
+                local tracker =
+                    writer.tool_call_blocks["auto-scroll-above-perm"]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                local k = tracker._rendered_button_count or 0
+                local end_row = block_end_row("auto-scroll-above-perm")
+                local bottom_pad_row = end_row - k - 1
+                -- Park cursor on the bottom_pad row (one above the first
+                -- button row). This row has no NS_STATUS extmarks and is
+                -- still within the auto-scroll threshold of the buffer end.
+                vim.api.nvim_win_set_cursor(winid, { bottom_pad_row, 0 })
+
+                assert.is_true(writer:_check_auto_scroll(bufnr))
             end
         )
 
@@ -403,7 +429,7 @@ describe("agentic.ui.MessageWriter", function()
         end
 
         it(
-            "renders one button row per option for pending non-focused permission state",
+            "renders buttons one per row for pending non-focused permission state",
             function()
                 setup_permission_block("row-n-inactive", { is_focused = false })
 
@@ -422,21 +448,24 @@ describe("agentic.ui.MessageWriter", function()
             end
         )
 
-        it("renders button rows with digit prefixes when focused", function()
-            setup_permission_block("row-n-focused", { is_focused = true })
+        it(
+            "renders buttons one per row with digit prefixes when focused",
+            function()
+                setup_permission_block("row-n-focused", { is_focused = true })
 
-            local status_text = status_row_text("row-n-focused")
-            assert.truthy(status_text:find("pending"))
-            assert.is_nil(status_text:find("Allow"))
-            assert.is_nil(status_text:find("Reject"))
+                local status_text = status_row_text("row-n-focused")
+                assert.truthy(status_text:find("pending"))
+                assert.is_nil(status_text:find("Allow"))
+                assert.is_nil(status_text:find("Reject"))
 
-            local rows = button_row_lines("row-n-focused")
-            assert.equal(2, #rows)
-            assert.truthy(rows[1]:find("^1 "))
-            assert.truthy(rows[2]:find("^2 "))
-            assert.truthy(rows[1]:find("Allow"))
-            assert.truthy(rows[2]:find("Reject"))
-        end)
+                local rows = button_row_lines("row-n-focused")
+                assert.equal(2, #rows)
+                assert.truthy(rows[1]:find("^1 "))
+                assert.truthy(rows[2]:find("^2 "))
+                assert.truthy(rows[1]:find("Allow"))
+                assert.truthy(rows[2]:find("Reject"))
+            end
+        )
 
         it("keeps button rows when an active update repaints", function()
             setup_permission_block("row-n-active-update", { is_focused = true })

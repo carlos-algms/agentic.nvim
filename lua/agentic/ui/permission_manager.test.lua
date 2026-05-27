@@ -46,7 +46,7 @@ describe("agentic.ui.PermissionManager", function()
         }
     end
 
-    --- Write a tool call block so the writer can resolve its row N.
+    --- Write a tool call block so the writer can resolve its permission rows.
     --- @param tool_call_id string
     local function seed_block(tool_call_id)
         writer:write_tool_call_block({

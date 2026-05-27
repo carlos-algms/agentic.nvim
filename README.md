@@ -690,12 +690,14 @@ your setup:
       },
 
       -- Keybindings to cycle focus between pending permission blocks.
-      -- Once a block is focused, per-block keys work on its row N:
-      --   h / <Left>  : focus previous button
-      --   l / <Right> : focus next button
-      --   <CR>        : submit focused button
-      --   1..4        : submit option N directly
-      -- Per-block keys only fire when the cursor is on the focused row.
+      -- Once a block is focused, per-block keys cycle the stacked button
+      -- rows (one button per row, rendered between bottom_pad and the
+      -- status row):
+      --   h / <Left> / k / <Up>    : focus previous button
+      --   l / <Right> / j / <Down> : focus next button
+      --   <CR>                     : submit focused button
+      --   1..4                     : submit option N directly
+      -- Per-block keys only fire while a block is focused.
       permission = {
         cycle_next = "<C-n>",
         cycle_prev = "<C-p>",
@@ -970,8 +972,8 @@ colorscheme.
 | `AgenticStatusPending`            | Pending tool call status indicator          | `bg=#5f4d8f`                        |
 | `AgenticStatusCompleted`          | Completed tool call status indicator        | `bg=#2d5a3d`                        |
 | `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
-| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)  | `bg=#2d5a3d, bold=true`             |
-| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus) | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonAllow`    | Focused allow button (focused button)       | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused reject button (focused button)      | `bg=#7a2d2d, bold=true`             |
 | `AgenticPermissionButtonInactive` | All non-focused permission buttons          | `bg=#3a3a3a`                        |
 | `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
 | `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |

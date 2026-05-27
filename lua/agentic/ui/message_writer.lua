@@ -329,6 +329,11 @@ function MessageWriter:_append_lines(lines)
     end
 end
 
+--- True when `cursor_line` sits on any row of a pending permission section
+--- (the K stacked button rows OR the status row that owns those buttons).
+--- Button rows carry `PERMISSION_BUTTON_*` extmarks in `NS_STATUS`; the
+--- status row of a pending block carries the status-word hl instead, so a
+--- per-tracker lookup covers it.
 --- @param cursor_line integer 1-indexed window cursor row
 --- @return boolean
 function MessageWriter:_cursor_on_permission_button_row(cursor_line)
@@ -354,6 +359,24 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
         end
     end
 
+    -- Status row of a pending block: no `PERMISSION_BUTTON_*` hl on the
+    -- status word itself, so scan trackers for any block whose status row
+    -- equals `row` AND which currently has rendered button rows above it.
+    -- Short-circuit on `tracker.permission` so resolved/non-pending blocks
+    -- skip the extmark lookup in `get_block_end_row`.
+    for tool_call_id, tracker in pairs(self.tool_call_blocks) do
+        if tracker.permission then
+            --- @diagnostic disable-next-line: invisible
+            local rendered = tracker._rendered_button_count or 0
+            if rendered > 0 then
+                local end_row = self:get_block_end_row(tool_call_id)
+                if end_row == row then
+                    return true
+                end
+            end
+        end
+    end
+
     return false
 end
 
@@ -373,6 +396,12 @@ function MessageWriter:_check_auto_scroll(bufnr)
 
     local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
 
+    -- Permission rows (status row + each rendered button row) all carry
+    -- NS_STATUS extmarks with PERMISSION_BUTTON_* highlight groups. Treat
+    -- any of them as a sticky-cursor anchor so a streaming agent update
+    -- below does not yank focus away from the user mid-decision. With the
+    -- stacked-row layout from `_render_permission_section`, button rows
+    -- are first-class permission rows -- not just the status row.
     if self:_cursor_on_permission_button_row(cursor_line) then
         return false
     end
