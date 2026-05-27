@@ -52,6 +52,7 @@ local TITLE_FENCE = "`````"
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
 --- @field permission? agentic.ui.MessageWriter.PermissionState
+--- @field _rendered_button_count? integer Count of button rows currently rendered between bottom_pad and status row. Nil treated as 0. Only written by `_render_permission_section` after the buffer mutation; do not read outside the render path (it lags `permission` state until the next `repaint_status_row`).
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -456,6 +457,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
                 id = tool_call_block.extmark_id,
                 end_row = end_row,
                 right_gravity = false,
+                end_right_gravity = true,
             })
 
         self.tool_call_blocks[tool_call_block.tool_call_id] = tool_call_block
@@ -615,6 +617,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             id = tracker.extmark_id,
             end_row = new_end_row,
             right_gravity = false,
+            end_right_gravity = true,
         })
 
         self:_apply_status_highlights_if_present(tracker)
@@ -960,9 +963,10 @@ function MessageWriter:get_button_row(_tool_call_id, _index)
     return nil
 end
 
---- Recompute and write the status row (row N) for the given tool call block.
---- Used by both the writer itself (initial render / updates) and the
---- PermissionManager when toggling buttons / focus.
+--- Recompute and write the permission section (button rows + status row)
+--- for the given tool call block. Used by both the writer itself (initial
+--- render / updates) and the PermissionManager when toggling buttons /
+--- focus.
 --- @param tool_call_id string
 function MessageWriter:repaint_status_row(tool_call_id)
     local tracker = self.tool_call_blocks[tool_call_id]
@@ -977,8 +981,8 @@ function MessageWriter:repaint_status_row(tool_call_id)
         return
     end
 
-    local text, hl_segments = self:_build_status_row(tracker)
-    self:_render_status_row(end_row, text, hl_segments)
+    local section = self:_build_permission_section(tracker)
+    self:_render_permission_section(tracker, end_row, section)
 end
 
 --- Return the 0-indexed last row of the block, or nil when no block tracker
@@ -1375,6 +1379,141 @@ function MessageWriter:_render_status_row(row, text, hl_segments)
             hl_group = seg[3],
         })
     end
+end
+
+--- Render a permission section (button rows + status row) into the buffer.
+--- Maintains the block's `_rendered_button_count` so the next repaint can
+--- delete the previously rendered rows before inserting the new set.
+--- `end_right_gravity = true` on the block extmark keeps `end_row`
+--- attached to the status row when buttons are inserted at
+--- `bottom_pad_row + 1`; the delete path shrinks the range because the
+--- removed rows fall inside the extmark span, gravity does not affect
+--- that side of the operation.
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @param end_row integer 0-indexed status row before this repaint
+--- @param section agentic.ui.MessageWriter.PermissionSection
+function MessageWriter:_render_permission_section(tracker, end_row, section)
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    local k_old = tracker._rendered_button_count or 0
+    local k_new = #section.button_lines
+    local bottom_pad_row = end_row - k_old - 1
+
+    local block_start_row = self:_get_block_start_row(tracker.tool_call_id)
+    -- Floor at header + top_pad = start_row + 2. If the computed
+    -- bottom_pad_row falls into header / top_pad / body, _rendered_button_count
+    -- is stale (mid-resize race) and the delete/insert would corrupt the
+    -- block. Bail without touching the buffer.
+    local min_bottom_pad_row = (block_start_row or 0)
+        + ToolCallBlocks.HEADER_HEIGHT
+    if bottom_pad_row < min_bottom_pad_row then
+        Logger.debug(
+            "Permission section: bottom_pad_row inside block body; skip",
+            {
+                end_row = end_row,
+                k_old = k_old,
+                bottom_pad_row = bottom_pad_row,
+                min_bottom_pad_row = min_bottom_pad_row,
+            }
+        )
+        return
+    end
+
+    -- Clear NS_STATUS over the prior section range BEFORE line operations.
+    -- NS_STATUS extmarks on the prior button rows + status row use default
+    -- gravity and would otherwise be dragged into the new layout by the
+    -- subsequent insert / delete.
+    pcall(
+        vim.api.nvim_buf_clear_namespace,
+        self.bufnr,
+        NS_STATUS,
+        bottom_pad_row + 1,
+        end_row + 1
+    )
+
+    local new_status_row = bottom_pad_row + k_new + 1
+
+    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
+        if k_old > 0 then
+            pcall(
+                vim.api.nvim_buf_set_lines,
+                bufnr,
+                bottom_pad_row + 1,
+                bottom_pad_row + 1 + k_old,
+                false,
+                {}
+            )
+        end
+
+        if k_new > 0 then
+            pcall(
+                vim.api.nvim_buf_set_lines,
+                bufnr,
+                bottom_pad_row + 1,
+                bottom_pad_row + 1,
+                false,
+                section.button_lines
+            )
+        end
+
+        -- Use set_text (not set_lines) for the status row so any NS_STATUS
+        -- extmarks anchored on the status row by mid-line column are not
+        -- redrawn by a full-line replace.
+        local existing = vim.api.nvim_buf_get_lines(
+            bufnr,
+            new_status_row,
+            new_status_row + 1,
+            false
+        )[1] or ""
+        pcall(
+            vim.api.nvim_buf_set_text,
+            bufnr,
+            new_status_row,
+            0,
+            new_status_row,
+            #existing,
+            { section.status_text }
+        )
+    end)
+
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
+    for i, line_segments in ipairs(section.button_segments_per_line) do
+        local btn_row = bottom_pad_row + i
+        for _, seg in ipairs(line_segments) do
+            vim.api.nvim_buf_set_extmark(
+                self.bufnr,
+                NS_STATUS,
+                btn_row,
+                seg[1],
+                {
+                    end_col = seg[2],
+                    hl_group = seg[3],
+                }
+            )
+        end
+    end
+
+    for _, seg in ipairs(section.status_segments) do
+        vim.api.nvim_buf_set_extmark(
+            self.bufnr,
+            NS_STATUS,
+            new_status_row,
+            seg[1],
+            {
+                end_col = seg[2],
+                hl_group = seg[3],
+            }
+        )
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    tracker._rendered_button_count = k_new
 end
 
 --- Sets or updates a thinking highlight extmark over the given line range.

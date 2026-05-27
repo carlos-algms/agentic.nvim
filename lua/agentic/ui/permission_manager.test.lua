@@ -397,7 +397,6 @@ describe("agentic.ui.PermissionManager", function()
                 )
 
                 local end_row = writer:get_block_end_row("tc-only")
-                local first_btn_col = writer:get_button_col("tc-only", 1)
                 assert.is_not_nil(end_row)
 
                 -- Move cursor away from the focused row.
@@ -406,9 +405,10 @@ describe("agentic.ui.PermissionManager", function()
                 pm:_cycle_focus(1)
 
                 assert.equal("tc-only", pm.focused_id)
+                -- Task 4 will move the landing target to the first button row;
+                -- Task 3 keeps the legacy row-N jump.
                 local cursor = vim.api.nvim_win_get_cursor(winid)
                 assert.equal((end_row or 0) + 1, cursor[1])
-                assert.equal(first_btn_col, cursor[2])
             end
         )
 
@@ -497,31 +497,28 @@ describe("agentic.ui.PermissionManager", function()
             end
         end)
 
-        it(
-            "l moves cursor to the start col of the newly focused button",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
+        it("l moves cursor to the focused block's row N", function()
+            seed_block("tc-1")
+            pm:add_request(
+                make_request("tc-1"),
+                spy.new(function() end) --[[@as function]]
+            )
 
-                local end_row = writer:get_block_end_row("tc-1")
-                assert.is_not_nil(end_row)
+            local end_row = writer:get_block_end_row("tc-1")
+            assert.is_not_nil(end_row)
 
-                local l_cb = get_digit_callback("l")
-                assert.is_not_nil(l_cb)
-                if l_cb then
-                    l_cb()
-                end
-
-                local expected_col = writer:get_button_col("tc-1", 2)
-                assert.is_not_nil(expected_col)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((end_row or 0) + 1, cursor[1])
-                assert.equal(expected_col, cursor[2])
+            local l_cb = get_digit_callback("l")
+            assert.is_not_nil(l_cb)
+            if l_cb then
+                l_cb()
             end
-        )
+
+            -- Task 4 will move the cursor to the focused button row.
+            -- Task 3 keeps the legacy row-N jump; column is clamped to
+            -- the status row length.
+            local cursor = vim.api.nvim_win_get_cursor(winid)
+            assert.equal((end_row or 0) + 1, cursor[1])
+        end)
 
         it("h cycles button focus backward and wraps", function()
             seed_block("tc-1")
@@ -563,23 +560,24 @@ describe("agentic.ui.PermissionManager", function()
             end
         )
 
-        it("places cursor on first button column on block focus", function()
-            seed_block("tc-1")
-            pm:add_request(
-                make_request("tc-1"),
-                spy.new(function() end) --[[@as function]]
-            )
+        it(
+            "places cursor on row N of the focused block on block focus",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
 
-            local end_row = writer:get_block_end_row("tc-1")
-            local first_btn_col = writer:get_button_col("tc-1", 1)
-            assert.is_not_nil(end_row)
-            assert.is_not_nil(first_btn_col)
-            assert.is_true((first_btn_col or 0) > 0)
+                local end_row = writer:get_block_end_row("tc-1")
+                assert.is_not_nil(end_row)
 
-            local cursor = vim.api.nvim_win_get_cursor(winid)
-            assert.equal((end_row or 0) + 1, cursor[1])
-            assert.equal(first_btn_col, cursor[2])
-        end)
+                -- Task 4 will move the landing target to the first button row;
+                -- Task 3 keeps the legacy row-N jump.
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((end_row or 0) + 1, cursor[1])
+            end
+        )
 
         it(
             "<Left> / <Right> are installed and cycle button focus when on row",
@@ -783,28 +781,60 @@ describe("agentic.ui.PermissionManager", function()
                 or ""
         end
 
-        it("strips buttons from row N as soon as the user resolves", function()
-            seed_block("tc-only")
-            local cb = spy.new(function() end)
-            pm:add_request(make_request("tc-only"), cb --[[@as function]])
-
-            assert.truthy(status_row_text("tc-only"):find("Allow"))
-
-            local digit_cb = get_digit_callback("1")
-            assert.is_not_nil(digit_cb)
-            if digit_cb then
-                digit_cb()
+        --- @param tool_call_id string
+        --- @return string[]
+        local function button_row_lines(tool_call_id)
+            local tracker = writer.tool_call_blocks[tool_call_id]
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            local k = tracker._rendered_button_count or 0
+            if k == 0 then
+                return {}
             end
-
-            assert.spy(cb).was.called(1)
-            local text = status_row_text("tc-only")
-            assert.is_nil(text:find("Allow"))
-            assert.is_nil(text:find("Reject"))
-            assert.truthy(text:find("pending"))
-        end)
+            local end_row = writer:get_block_end_row(tool_call_id) or 0
+            local bottom_pad_row = end_row - k - 1
+            return vim.api.nvim_buf_get_lines(
+                bufnr,
+                bottom_pad_row + 1,
+                bottom_pad_row + 1 + k,
+                false
+            )
+        end
 
         it(
-            "strips buttons from a non-focused block when it is resolved",
+            "strips button rows from the block as soon as the user resolves",
+            function()
+                seed_block("tc-only")
+                local cb = spy.new(function() end)
+                pm:add_request(make_request("tc-only"), cb --[[@as function]])
+
+                local rows_before = button_row_lines("tc-only")
+                assert.is_true(#rows_before > 0)
+                local found_allow = false
+                for _, line in ipairs(rows_before) do
+                    if line:find("Allow") then
+                        found_allow = true
+                        break
+                    end
+                end
+                assert.is_true(found_allow)
+
+                local digit_cb = get_digit_callback("1")
+                assert.is_not_nil(digit_cb)
+                if digit_cb then
+                    digit_cb()
+                end
+
+                assert.spy(cb).was.called(1)
+                assert.equal(0, #button_row_lines("tc-only"))
+                local text = status_row_text("tc-only")
+                assert.is_nil(text:find("Allow"))
+                assert.is_nil(text:find("Reject"))
+                assert.truthy(text:find("pending"))
+            end
+        )
+
+        it(
+            "strips button rows from a non-focused block when it is resolved",
             function()
                 seed_block("tc-1")
                 seed_block("tc-2")
@@ -819,6 +849,7 @@ describe("agentic.ui.PermissionManager", function()
 
                 pm:resolve("tc-2", nil)
 
+                assert.equal(0, #button_row_lines("tc-2"))
                 local text = status_row_text("tc-2")
                 assert.is_nil(text:find("Allow"))
                 assert.is_nil(text:find("Reject"))
