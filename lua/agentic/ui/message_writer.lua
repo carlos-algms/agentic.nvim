@@ -14,8 +14,8 @@ local NS_DIFF_HIGHLIGHTS =
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
--- Static label map keyed by PermissionOptionKind
--- Agent-supplied option.name is intentionally discarded
+-- Fallback labels keyed by PermissionOptionKind. Used when the agent does
+-- not supply option.name (nil or empty).
 local PERMISSION_OPTION_LABELS = {
     allow_once = "Allow",
     allow_always = "Allow Always",
@@ -1200,18 +1200,31 @@ function MessageWriter:_build_status_row(tracker)
     local permission_icons = Config.permission_icons or {}
     local focused_btn = perm.focused_button_index
 
+    -- U+00A0 NBSP. Used inside button text so 'linebreak' won't split a
+    -- button across two visual rows. The inter-button separator stays a
+    -- regular space, which remains the only allowed break point.
+    local NBSP = "\194\160"
+    --- @param s string
+    local function nbsp(s)
+        return (s:gsub(" ", NBSP))
+    end
+
     for i, option in ipairs(perm.sorted_options) do
-        local label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
+        local provider_name = option.name
+        if not provider_name or provider_name == "" then
+            provider_name = PERMISSION_OPTION_LABELS[option.kind] or option.kind
+        end
+        local label = nbsp(provider_name)
         local btn_icon = permission_icons[option.kind] or ""
         local body = ""
 
         if perm.is_focused then
-            body = string.format("%d %s %s", i, btn_icon, label)
+            body = i .. NBSP .. btn_icon .. NBSP .. label
         else
-            body = string.format("%s %s", btn_icon, label)
+            body = btn_icon .. NBSP .. label
         end
 
-        local btn = " " .. body .. " "
+        local btn = NBSP .. body .. NBSP
 
         text = text .. "  "
         local start_col = #text

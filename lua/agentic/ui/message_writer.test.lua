@@ -386,8 +386,11 @@ describe("agentic.ui.MessageWriter", function()
             setup_permission_block("row-n-focused", { is_focused = true })
 
             local text = status_row_text("row-n-focused")
-            assert.truthy(text:find("1 "))
-            assert.truthy(text:find("2 "))
+            -- Inside a button, tokens are NBSP-joined (see NBSP rationale in
+            -- _build_status_row). The digit prefix is followed by NBSP.
+            local NBSP = "\194\160"
+            assert.truthy(text:find("1" .. NBSP))
+            assert.truthy(text:find("2" .. NBSP))
             assert.truthy(text:find("Allow"))
             assert.truthy(text:find("Reject"))
         end)
@@ -402,9 +405,10 @@ describe("agentic.ui.MessageWriter", function()
             })
 
             local text = status_row_text("row-n-active-update")
+            local NBSP = "\194\160"
             assert.truthy(text:find("in_progress"))
-            assert.truthy(text:find("1 "))
-            assert.truthy(text:find("2 "))
+            assert.truthy(text:find("1" .. NBSP))
+            assert.truthy(text:find("2" .. NBSP))
             assert.truthy(text:find("Allow"))
             assert.truthy(text:find("Reject"))
         end)
@@ -477,6 +481,167 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_nil(text:find("%["))
             assert.is_nil(text:find("%]"))
             assert.truthy(text:find("Allow"))
+        end)
+
+        describe("button label wrapping (NBSP)", function()
+            -- U+00A0 NBSP, 2 bytes in UTF-8 (\xC2\xA0).
+            local NBSP = "\194\160"
+
+            it(
+                "uses provider option.name and joins internal spaces with NBSP",
+                function()
+                    setup_permission_block("row-n-nbsp-name", {
+                        sorted_options = {
+                            {
+                                optionId = "allow-always",
+                                name = "Allow Always",
+                                kind = "allow_always",
+                            },
+                        },
+                        is_focused = false,
+                    })
+
+                    local text = status_row_text("row-n-nbsp-name")
+                    assert.truthy(text:find("Allow" .. NBSP .. "Always"))
+                    assert.is_nil(text:find("Allow Always", 1, true))
+                end
+            )
+
+            it(
+                "joins index, icon, and label tokens with NBSP when focused",
+                function()
+                    setup_permission_block("row-n-nbsp-focused", {
+                        sorted_options = {
+                            {
+                                optionId = "allow-always",
+                                name = "Allow Always",
+                                kind = "allow_always",
+                            },
+                        },
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    local text = status_row_text("row-n-nbsp-focused")
+                    -- "1<NBSP>...<NBSP>Allow<NBSP>Always"
+                    assert.truthy(text:find("1" .. NBSP))
+                    assert.truthy(
+                        text:find(NBSP .. "Allow" .. NBSP .. "Always")
+                    )
+                end
+            )
+
+            it("pads each button with NBSP, not regular spaces", function()
+                setup_permission_block("row-n-nbsp-pad", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow",
+                            kind = "allow_once",
+                        },
+                    },
+                    is_focused = false,
+                })
+
+                local text = status_row_text("row-n-nbsp-pad")
+                -- Button is " <icon> Allow " with all spaces -> NBSP.
+                assert.truthy(text:find(NBSP .. "Allow" .. NBSP))
+            end)
+
+            it("keeps the inter-button separator as regular spaces", function()
+                setup_permission_block("row-n-nbsp-sep", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-once",
+                            name = "Allow",
+                            kind = "allow_once",
+                        },
+                        {
+                            optionId = "reject-once",
+                            name = "Reject",
+                            kind = "reject_once",
+                        },
+                    },
+                    is_focused = false,
+                })
+
+                local text = status_row_text("row-n-nbsp-sep")
+                -- Two regular spaces between the two buttons must survive.
+                assert.truthy(text:find("  "))
+            end)
+
+            it("falls back to the static label when name is nil", function()
+                setup_permission_block("row-n-nbsp-nil", {
+                    sorted_options = {
+                        {
+                            optionId = "allow-always",
+                            name = nil,
+                            kind = "allow_always",
+                        },
+                    },
+                    is_focused = false,
+                })
+
+                local text = status_row_text("row-n-nbsp-nil")
+                assert.truthy(text:find("Allow" .. NBSP .. "Always"))
+            end)
+
+            it("falls back to the static label when name is empty", function()
+                setup_permission_block("row-n-nbsp-empty", {
+                    sorted_options = {
+                        {
+                            optionId = "reject-always",
+                            name = "",
+                            kind = "reject_always",
+                        },
+                    },
+                    is_focused = false,
+                })
+
+                local text = status_row_text("row-n-nbsp-empty")
+                assert.truthy(text:find("Reject" .. NBSP .. "Always"))
+            end)
+
+            it(
+                "get_button_col returns the byte col of the NBSP padding before the button",
+                function()
+                    setup_permission_block("row-n-nbsp-col", {
+                        sorted_options = {
+                            {
+                                optionId = "allow-once",
+                                name = "Allow",
+                                kind = "allow_once",
+                            },
+                            {
+                                optionId = "reject-once",
+                                name = "Reject",
+                                kind = "reject_once",
+                            },
+                        },
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    local text = status_row_text("row-n-nbsp-col")
+                    local col_1 = writer:get_button_col("row-n-nbsp-col", 1)
+                    local col_2 = writer:get_button_col("row-n-nbsp-col", 2)
+                    assert.is_not_nil(col_1)
+                    assert.is_not_nil(col_2)
+
+                    -- Each focused button body starts with "<NBSP>1<NBSP>" / "<NBSP>2<NBSP>".
+                    -- get_button_col points at the leading NBSP of the button.
+                    --- @cast col_1 integer
+                    --- @cast col_2 integer
+                    assert.equal(
+                        NBSP .. "1" .. NBSP,
+                        text:sub(col_1 + 1, col_1 + #NBSP + 1 + #NBSP)
+                    )
+                    assert.equal(
+                        NBSP .. "2" .. NBSP,
+                        text:sub(col_2 + 1, col_2 + #NBSP + 1 + #NBSP)
+                    )
+                end
+            )
         end)
 
         it(
