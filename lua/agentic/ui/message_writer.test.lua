@@ -719,13 +719,16 @@ describe("agentic.ui.MessageWriter", function()
                     --- @diagnostic disable-next-line: missing-fields
                     Config.permission_icons = {}
 
-                    local section = build_section("section-empty-icons", {
-                        sorted_options = { ALLOW_REJECT_OPTIONS[1] },
-                        is_focused = false,
-                    })
+                    local ok, section_or_err =
+                        pcall(build_section, "section-empty-icons", {
+                            sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                            is_focused = false,
+                        })
 
                     Config.permission_icons = original
 
+                    assert.is_true(ok)
+                    local section = section_or_err
                     assert.equal(1, #section.button_lines)
                     -- No icon means the label is the line content.
                     assert.equal("Allow once", section.button_lines[1])
