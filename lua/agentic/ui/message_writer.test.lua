@@ -1140,7 +1140,7 @@ describe("agentic.ui.MessageWriter", function()
             )
         end)
 
-        describe("get_button_row (Task 1 stub)", function()
+        describe("get_button_row", function()
             it("returns nil when the block has no permission state", function()
                 writer:write_tool_call_block(
                     make_tool_call_block("get-row-no-perm", "pending")
@@ -1152,6 +1152,35 @@ describe("agentic.ui.MessageWriter", function()
             it("returns nil for an unknown tool_call_id", function()
                 assert.is_nil(writer:get_button_row("does-not-exist", 1))
             end)
+
+            it(
+                "returns the buffer row of each rendered button after repaint",
+                function()
+                    setup_permission_block(
+                        "get-row-two-options",
+                        { is_focused = true }
+                    )
+
+                    local end_row = block_end_row("get-row-two-options")
+                    --- @cast end_row integer
+                    local bottom_pad_row = end_row - 2 - 1
+
+                    assert.equal(
+                        bottom_pad_row + 1,
+                        writer:get_button_row("get-row-two-options", 1)
+                    )
+                    assert.equal(
+                        bottom_pad_row + 2,
+                        writer:get_button_row("get-row-two-options", 2)
+                    )
+                    assert.is_nil(
+                        writer:get_button_row("get-row-two-options", 3)
+                    )
+                    assert.is_nil(
+                        writer:get_button_row("get-row-two-options", 0)
+                    )
+                end
+            )
         end)
     end)
 

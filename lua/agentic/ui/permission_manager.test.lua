@@ -288,7 +288,7 @@ describe("agentic.ui.PermissionManager", function()
         )
 
         it(
-            "jumps the cursor to row N of the new focused block on focus change",
+            "jumps the cursor to the first button row of the new focused block on focus change",
             function()
                 seed_block("tc-1")
                 seed_block("tc-2")
@@ -302,14 +302,13 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                local end_row_2 = writer:get_block_end_row("tc-2")
-                assert.is_not_nil(end_row_2)
-
                 pm:_cycle_focus(1)
                 assert.equal("tc-2", pm.focused_id)
 
+                local button_row_1 = writer:get_button_row("tc-2", 1)
+                assert.is_not_nil(button_row_1)
                 local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal(end_row_2 + 1, cursor[1])
+                assert.equal((button_row_1 or 0) + 1, cursor[1])
             end
         )
     end)
@@ -388,7 +387,7 @@ describe("agentic.ui.PermissionManager", function()
         end)
 
         it(
-            "cycle_next / cycle_prev jumps cursor to the focused row even with only one pending block",
+            "cycle_next / cycle_prev jumps cursor to the first button row even with only one pending block",
             function()
                 seed_block("tc-only")
                 pm:add_request(
@@ -396,19 +395,16 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
-                local end_row = writer:get_block_end_row("tc-only")
-                assert.is_not_nil(end_row)
-
                 -- Move cursor away from the focused row.
                 vim.api.nvim_win_set_cursor(winid, { 1, 0 })
 
                 pm:_cycle_focus(1)
 
                 assert.equal("tc-only", pm.focused_id)
-                -- Task 4 will move the landing target to the first button row;
-                -- Task 3 keeps the legacy row-N jump.
+                local button_row_1 = writer:get_button_row("tc-only", 1)
+                assert.is_not_nil(button_row_1)
                 local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((end_row or 0) + 1, cursor[1])
+                assert.equal((button_row_1 or 0) + 1, cursor[1])
             end
         )
 
@@ -497,45 +493,185 @@ describe("agentic.ui.PermissionManager", function()
             end
         end)
 
-        it("l moves cursor to the focused block's row N", function()
-            seed_block("tc-1")
-            pm:add_request(
-                make_request("tc-1"),
-                spy.new(function() end) --[[@as function]]
-            )
+        it(
+            "l moves cursor to button-row-2 from focus index 1 with two options",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
 
-            local end_row = writer:get_block_end_row("tc-1")
-            assert.is_not_nil(end_row)
+                local l_cb = get_digit_callback("l")
+                assert.is_not_nil(l_cb)
+                if l_cb then
+                    l_cb()
+                end
 
-            local l_cb = get_digit_callback("l")
-            assert.is_not_nil(l_cb)
-            if l_cb then
-                l_cb()
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+                assert.equal(0, cursor[2])
             end
+        )
 
-            -- Task 4 will move the cursor to the focused button row.
-            -- Task 3 keeps the legacy row-N jump; column is clamped to
-            -- the status row length.
-            local cursor = vim.api.nvim_win_get_cursor(winid)
-            assert.equal((end_row or 0) + 1, cursor[1])
-        end)
+        it(
+            "j moves cursor to button-row-2 from focus index 1 (next)",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
 
-        it("h cycles button focus backward and wraps", function()
-            seed_block("tc-1")
-            pm:add_request(
-                make_request("tc-1"),
-                spy.new(function() end) --[[@as function]]
-            )
+                local j_cb = get_digit_callback("j")
+                assert.is_not_nil(j_cb)
+                if j_cb then
+                    j_cb()
+                end
 
-            local h_cb = get_digit_callback("h")
-            assert.is_not_nil(h_cb)
-            if h_cb then
-                h_cb() -- wraps from 1 to last (2)
                 assert.equal(2, writer:get_focused_button_index("tc-1"))
-                h_cb()
-                assert.equal(1, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+                assert.equal(0, cursor[2])
             end
+        )
+
+        it(
+            "<Down> moves cursor to button-row-2 from focus index 1 (next)",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local down_cb = get_digit_callback("<Down>")
+                assert.is_not_nil(down_cb)
+                if down_cb then
+                    down_cb()
+                end
+
+                assert.equal(2, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "k wraps to button-row-2 from focus index 1 (prev with two options)",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local k_cb = get_digit_callback("k")
+                assert.is_not_nil(k_cb)
+                if k_cb then
+                    k_cb()
+                end
+
+                assert.equal(2, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "<Up> wraps to button-row-2 from focus index 1 (prev with two options)",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local up_cb = get_digit_callback("<Up>")
+                assert.is_not_nil(up_cb)
+                if up_cb then
+                    up_cb()
+                end
+
+                assert.equal(2, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+            end
+        )
+
+        it("digit 2 submits option 2", function()
+            seed_block("tc-1")
+            local cb = spy.new(function() end)
+            pm:add_request(make_request("tc-1"), cb --[[@as function]])
+
+            local digit_cb = get_digit_callback("2")
+            assert.is_not_nil(digit_cb)
+            if digit_cb then
+                digit_cb()
+            end
+
+            -- After submit the permission state is cleared and button rows
+            -- are removed; the digit dispatch's job is the resolve call, not
+            -- a cursor position. Cursor lands wherever Neovim clamps it.
+            assert.spy(cb).was.called(1)
+            assert.equal("reject-once", cb.calls[1][1])
         end)
+
+        it(
+            "h wraps focus from button 1 to button 2 and moves cursor",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local h_cb = get_digit_callback("h")
+                assert.is_not_nil(h_cb)
+                if h_cb then
+                    h_cb()
+                end
+
+                assert.equal(2, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "<Left> wraps focus from button 1 to button 2 and moves cursor",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local left_cb = get_digit_callback("<Left>")
+                assert.is_not_nil(left_cb)
+                if left_cb then
+                    left_cb()
+                end
+
+                assert.equal(2, writer:get_focused_button_index("tc-1"))
+                local row_2 = writer:get_button_row("tc-1", 2)
+                assert.is_not_nil(row_2)
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((row_2 or 0) + 1, cursor[1])
+            end
+        )
 
         it(
             "<CR> resolves the focused block with focused button's option",
@@ -561,7 +697,7 @@ describe("agentic.ui.PermissionManager", function()
         )
 
         it(
-            "places cursor on row N of the focused block on block focus",
+            "places cursor on the first button row of the focused block on block focus",
             function()
                 seed_block("tc-1")
                 pm:add_request(
@@ -569,11 +705,40 @@ describe("agentic.ui.PermissionManager", function()
                     spy.new(function() end) --[[@as function]]
                 )
 
+                local button_row_1 = writer:get_button_row("tc-1", 1)
+                local end_row = writer:get_block_end_row("tc-1")
+                assert.is_not_nil(button_row_1)
+                assert.is_not_nil(end_row)
+
+                local cursor = vim.api.nvim_win_get_cursor(winid)
+                assert.equal((button_row_1 or 0) + 1, cursor[1])
+                -- Cursor does NOT sit on the status row.
+                assert.are_not.equal((end_row or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "block focus on a block without pending permission falls back to end_row",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                -- Resolve clears the permission state; subsequent block focus
+                -- jump must fall back to end_row since there are no buttons.
+                -- end_row is recomputed AFTER resolve since removing button
+                -- rows shifts the status row up.
+                pm:resolve("tc-1", "allow-once")
+
                 local end_row = writer:get_block_end_row("tc-1")
                 assert.is_not_nil(end_row)
 
-                -- Task 4 will move the landing target to the first button row;
-                -- Task 3 keeps the legacy row-N jump.
+                -- Move cursor away, then call _jump_cursor_to directly.
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+                pm:_jump_cursor_to("tc-1")
+
                 local cursor = vim.api.nvim_win_get_cursor(winid)
                 assert.equal((end_row or 0) + 1, cursor[1])
             end
@@ -653,22 +818,37 @@ describe("agentic.ui.PermissionManager", function()
             end
         )
 
-        it("h / l / <CR> removed when no block is focused", function()
-            seed_block("tc-1")
-            pm:add_request(
-                make_request("tc-1"),
-                spy.new(function() end) --[[@as function]]
-            )
-            assert.is_true(has_buf_keymap("n", "h"))
-            assert.is_true(has_buf_keymap("n", "l"))
-            assert.is_true(has_buf_keymap("n", "<CR>"))
+        it(
+            "all eight cycle keys + <CR> removed when no block is focused",
+            function()
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+                local cycle_keys = {
+                    "h",
+                    "l",
+                    "j",
+                    "k",
+                    "<Left>",
+                    "<Right>",
+                    "<Up>",
+                    "<Down>",
+                }
+                for _, lhs in ipairs(cycle_keys) do
+                    assert.is_true(has_buf_keymap("n", lhs))
+                end
+                assert.is_true(has_buf_keymap("n", "<CR>"))
 
-            pm:resolve("tc-1", "allow-once")
+                pm:resolve("tc-1", "allow-once")
 
-            assert.is_false(has_buf_keymap("n", "h"))
-            assert.is_false(has_buf_keymap("n", "l"))
-            assert.is_false(has_buf_keymap("n", "<CR>"))
-        end)
+                for _, lhs in ipairs(cycle_keys) do
+                    assert.is_false(has_buf_keymap("n", lhs))
+                end
+                assert.is_false(has_buf_keymap("n", "<CR>"))
+            end
+        )
     end)
 
     describe("digit keymap lifecycle", function()

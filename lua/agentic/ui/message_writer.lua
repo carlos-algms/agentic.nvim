@@ -954,13 +954,30 @@ function MessageWriter:get_button_col(tool_call_id, index)
 end
 
 --- 0-indexed buffer row of the Nth permission button for the given block.
---- Task 1 stub: always returns nil. Task 4 implements row resolution from
---- the rendered button count.
---- @param _tool_call_id string
---- @param _index integer 1-indexed button position
+--- Buttons live between `bottom_pad` and the status row, one per line, in
+--- the same order as `permission.sorted_options`. `K` is the rendered
+--- button count tracked by `_render_permission_section`.
+--- @param tool_call_id string
+--- @param index integer 1-indexed button position
 --- @return integer|nil row 0-indexed buffer row of the Nth permission button, or nil
-function MessageWriter:get_button_row(_tool_call_id, _index)
-    return nil
+function MessageWriter:get_button_row(tool_call_id, index)
+    local tracker = self.tool_call_blocks[tool_call_id]
+    if not tracker or not tracker.permission then
+        return nil
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    local k = tracker._rendered_button_count or 0
+    if k == 0 or index < 1 or index > k then
+        return nil
+    end
+
+    local end_row = self:get_block_end_row(tool_call_id)
+    if not end_row then
+        return nil
+    end
+
+    return (end_row - k - 1) + index
 end
 
 --- Recompute and write the permission section (button rows + status row)

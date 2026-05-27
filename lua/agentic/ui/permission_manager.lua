@@ -197,22 +197,24 @@ end
 --- @param button_index integer 1-indexed
 --- @protected
 function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
-    local row = self.message_writer:get_block_end_row(tool_call_id)
-    if not row then
-        return
-    end
-
     local winid = self:_find_visible_chat_winid()
     if not winid then
         return
     end
 
-    local col = self.message_writer:get_button_col(tool_call_id, button_index)
-    if not col then
+    local button_row =
+        self.message_writer:get_button_row(tool_call_id, button_index)
+    if not button_row then
         return
     end
 
-    pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
+    pcall(vim.api.nvim_win_set_cursor, winid, { button_row + 1, 0 })
+    -- `zb` matches the chat auto-scroll convention (`G0zb`); without it the
+    -- focused button row can disappear above the viewport when buttons cluster
+    -- near the bottom of the window.
+    vim.api.nvim_win_call(winid, function()
+        vim.cmd("noautocmd normal! zb")
+    end)
 end
 
 --- Resolve the focused block with its currently focused button's option.
@@ -447,14 +449,14 @@ function PermissionManager:_install_focus_keymaps(pending)
         self:_cycle_button(1)
     end
 
-    for _, lhs in ipairs({ "h", "<Left>" }) do
+    for _, lhs in ipairs({ "h", "<Left>", "k", "<Up>" }) do
         BufHelpers.keymap_set(bufnr, "n", lhs, gated(lhs, prev_button), {
             desc = "Permission: focus previous button",
             expr = true,
         })
     end
 
-    for _, lhs in ipairs({ "l", "<Right>" }) do
+    for _, lhs in ipairs({ "l", "<Right>", "j", "<Down>" }) do
         BufHelpers.keymap_set(bufnr, "n", lhs, gated(lhs, next_button), {
             desc = "Permission: focus next button",
             expr = true,
@@ -490,13 +492,16 @@ function PermissionManager:_find_visible_chat_winid()
     return nil
 end
 
+--- True when the cursor sits on the focused block's status row or on any
+--- of its rendered button rows. Cycle keys and `<CR>` only fire on those
+--- rows; elsewhere the gate falls through to default motion.
 --- @return boolean
 function PermissionManager:_cursor_on_focused_row()
     if not self.focused_id then
         return false
     end
-    local row = self.message_writer:get_block_end_row(self.focused_id)
-    if not row then
+    local end_row = self.message_writer:get_block_end_row(self.focused_id)
+    if not end_row then
         return false
     end
 
@@ -505,7 +510,13 @@ function PermissionManager:_cursor_on_focused_row()
         return false
     end
     local cursor_row = vim.api.nvim_win_get_cursor(winid)[1]
-    return cursor_row == row + 1
+
+    local first_button_row = self.message_writer:get_button_row(
+        self.focused_id,
+        1
+    ) or end_row
+
+    return cursor_row >= first_button_row + 1 and cursor_row <= end_row + 1
 end
 
 function PermissionManager:_remove_focus_keymaps()
@@ -517,7 +528,17 @@ function PermissionManager:_remove_focus_keymaps()
     for i = 1, MAX_DIGIT_KEYS do
         BufHelpers.keymap_del(bufnr, "n", tostring(i))
     end
-    for _, lhs in ipairs({ "h", "l", "<Left>", "<Right>", "<CR>" }) do
+    for _, lhs in ipairs({
+        "h",
+        "l",
+        "j",
+        "k",
+        "<Left>",
+        "<Right>",
+        "<Up>",
+        "<Down>",
+        "<CR>",
+    }) do
         BufHelpers.keymap_del(bufnr, "n", lhs)
     end
 end
@@ -535,8 +556,8 @@ end
 
 --- @param tool_call_id string
 function PermissionManager:_jump_cursor_to(tool_call_id)
-    local row = self.message_writer:get_block_end_row(tool_call_id)
-    if not row then
+    local end_row = self.message_writer:get_block_end_row(tool_call_id)
+    if not end_row then
         return
     end
 
@@ -546,16 +567,19 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
     end
 
     local line_count = vim.api.nvim_buf_line_count(self.message_writer.bufnr)
-    if row + 1 > line_count then
+    if end_row + 1 > line_count then
         return
     end
 
-    --- @diagnostic disable-next-line: invisible
-    local col = self.message_writer:get_button_col(tool_call_id, 1) or 0
-    pcall(vim.api.nvim_win_set_cursor, winid, { row + 1, col })
+    -- Land on button row 1 when the block has a pending permission; otherwise
+    -- fall back to the block end_row (status row).
+    local target_row = self.message_writer:get_button_row(tool_call_id, 1)
+        or end_row
+
+    pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
     -- `zb` (not `zz`) matches the chat auto-scroll convention (`G0zb`),
-    -- anchoring row N near the bottom of the window where the user expects
-    -- new chat content to live.
+    -- anchoring the focused row near the bottom of the window where the user
+    -- expects new chat content to live.
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")
     end)
