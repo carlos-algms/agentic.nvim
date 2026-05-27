@@ -438,13 +438,15 @@ describe("agentic.ui.MessageWriter", function()
                 assert.is_nil(status_text:find("Allow"))
                 assert.is_nil(status_text:find("Reject"))
 
+                -- 2 buttons + 1 spacer between them.
                 local rows = button_row_lines("row-n-inactive")
-                assert.equal(2, #rows)
+                assert.equal(3, #rows)
+                assert.equal("", rows[2])
                 assert.truthy(rows[1]:find("Allow"))
-                assert.truthy(rows[2]:find("Reject"))
+                assert.truthy(rows[3]:find("Reject"))
                 -- non-focused: no digit prefix
-                assert.is_nil(rows[1]:find("^1 "))
-                assert.is_nil(rows[2]:find("^2 "))
+                assert.is_nil(rows[1]:find(" 1 "))
+                assert.is_nil(rows[3]:find(" 2 "))
             end
         )
 
@@ -459,11 +461,12 @@ describe("agentic.ui.MessageWriter", function()
                 assert.is_nil(status_text:find("Reject"))
 
                 local rows = button_row_lines("row-n-focused")
-                assert.equal(2, #rows)
-                assert.truthy(rows[1]:find("^1 "))
-                assert.truthy(rows[2]:find("^2 "))
+                assert.equal(3, #rows)
+                assert.equal("", rows[2])
+                assert.truthy(rows[1]:find("^ 1 "))
+                assert.truthy(rows[3]:find("^ 2 "))
                 assert.truthy(rows[1]:find("Allow"))
-                assert.truthy(rows[2]:find("Reject"))
+                assert.truthy(rows[3]:find("Reject"))
             end
         )
 
@@ -480,11 +483,12 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(status_text:find("in_progress"))
 
             local rows = button_row_lines("row-n-active-update")
-            assert.equal(2, #rows)
-            assert.truthy(rows[1]:find("^1 "))
-            assert.truthy(rows[2]:find("^2 "))
+            assert.equal(3, #rows)
+            assert.equal("", rows[2])
+            assert.truthy(rows[1]:find("^ 1 "))
+            assert.truthy(rows[3]:find("^ 2 "))
             assert.truthy(rows[1]:find("Allow"))
-            assert.truthy(rows[2]:find("Reject"))
+            assert.truthy(rows[3]:find("Reject"))
         end)
 
         for _, case in ipairs({
@@ -584,12 +588,14 @@ describe("agentic.ui.MessageWriter", function()
                         is_focused = false,
                     })
 
-                    assert.equal(2, #section.button_lines)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, #section.button_lines)
+                    assert.equal("", section.button_lines[2])
                     -- No digit prefix in non-focused state.
-                    assert.is_nil(section.button_lines[1]:find("^1 "))
-                    assert.is_nil(section.button_lines[2]:find("^2 "))
+                    assert.is_nil(section.button_lines[1]:find(" 1 "))
+                    assert.is_nil(section.button_lines[3]:find(" 2 "))
                     assert.truthy(section.button_lines[1]:find("Allow once"))
-                    assert.truthy(section.button_lines[2]:find("Reject once"))
+                    assert.truthy(section.button_lines[3]:find("Reject once"))
                 end
             )
 
@@ -601,11 +607,14 @@ describe("agentic.ui.MessageWriter", function()
                         focused_button_index = 1,
                     })
 
-                    assert.equal(2, #section.button_lines)
-                    assert.truthy(section.button_lines[1]:find("^1 "))
-                    assert.truthy(section.button_lines[2]:find("^2 "))
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, #section.button_lines)
+                    assert.equal("", section.button_lines[2])
+                    -- Padded with leading + trailing space.
+                    assert.truthy(section.button_lines[1]:find("^ 1 "))
+                    assert.truthy(section.button_lines[3]:find("^ 2 "))
                     assert.truthy(section.button_lines[1]:find("Allow once"))
-                    assert.truthy(section.button_lines[2]:find("Reject once"))
+                    assert.truthy(section.button_lines[3]:find("Reject once"))
                 end
             )
 
@@ -634,35 +643,48 @@ describe("agentic.ui.MessageWriter", function()
                                 focused_button_index = case.index,
                             })
 
-                        assert.equal(2, #section.button_segments_per_line)
-                        for i, line in ipairs(section.button_lines) do
+                        -- 2 buttons + 1 spacer between them.
+                        assert.equal(3, #section.button_segments_per_line)
+                        -- Spacer at index 2 has no segments.
+                        assert.equal(0, #section.button_segments_per_line[2])
+
+                        for _, i in ipairs({ 1, 3 }) do
                             local segs = section.button_segments_per_line[i]
+                            local line = section.button_lines[i]
                             assert.equal(1, #segs)
                             assert.equal(0, segs[1][1])
                             assert.equal(#line, segs[1][2])
                         end
 
+                        -- Button index 1 -> line 1; button index 2 -> line 3.
+                        local focused_line_idx = case.index == 1 and 1 or 3
+                        local other_line_idx = case.index == 1 and 3 or 1
+
                         local focused_seg =
-                            section.button_segments_per_line[case.index][1]
+                            section.button_segments_per_line[focused_line_idx][1]
                         assert.equal(case.focused_hl, focused_seg[3])
 
-                        local other_index = case.index == 1 and 2 or 1
                         local other_seg =
-                            section.button_segments_per_line[other_index][1]
+                            section.button_segments_per_line[other_line_idx][1]
                         assert.equal(case.unfocused_hl, other_seg[3])
                     end
                 )
             end
 
             it(
-                "uses the inactive hl group on every line when not focused",
+                "uses the inactive hl group on every button line when not focused",
                 function()
                     local section = build_section("section-hl-inactive", {
                         is_focused = false,
                     })
 
-                    assert.equal(2, #section.button_segments_per_line)
-                    for _, segs in ipairs(section.button_segments_per_line) do
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, #section.button_segments_per_line)
+                    -- Spacer has no segments.
+                    assert.equal(0, #section.button_segments_per_line[2])
+
+                    for _, i in ipairs({ 1, 3 }) do
+                        local segs = section.button_segments_per_line[i]
                         assert.equal(1, #segs)
                         assert.equal(
                             "AgenticPermissionButtonInactive",
@@ -777,12 +799,20 @@ describe("agentic.ui.MessageWriter", function()
                         focused_button_index = 3,
                     })
 
-                    assert.equal(4, #section.button_lines)
-                    assert.equal(4, #section.button_segments_per_line)
+                    -- 4 buttons + 3 spacers between them.
+                    assert.equal(7, #section.button_lines)
+                    assert.equal(7, #section.button_segments_per_line)
+                    -- Buttons at indices 1, 3, 5, 7; spacers at 2, 4, 6.
                     for i = 1, 4 do
+                        local line_idx = (i - 1) * 2 + 1
                         assert.truthy(
-                            section.button_lines[i]:find("^" .. i .. " ")
+                            section.button_lines[line_idx]:find(
+                                "^ " .. i .. " "
+                            )
                         )
+                    end
+                    for _, spacer_idx in ipairs({ 2, 4, 6 }) do
+                        assert.equal("", section.button_lines[spacer_idx])
                     end
                 end
             )
@@ -805,8 +835,8 @@ describe("agentic.ui.MessageWriter", function()
                     assert.is_true(ok)
                     local section = section_or_err
                     assert.equal(1, #section.button_lines)
-                    -- No icon means the label is the line content.
-                    assert.equal("Allow once", section.button_lines[1])
+                    -- No icon means label is wrapped in padding spaces.
+                    assert.equal(" Allow once ", section.button_lines[1])
                 end
             )
 
@@ -846,21 +876,23 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker =
                         writer.tool_call_blocks["render-first-paint"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(2, tracker._rendered_button_count)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, tracker._rendered_button_count)
 
                     local end_row_after = block_end_row("render-first-paint")
-                    assert.equal(end_row_before + 2, end_row_after)
+                    assert.equal(end_row_before + 3, end_row_after)
 
                     local lines = vim.api.nvim_buf_get_lines(
                         bufnr,
-                        end_row_after - 2,
+                        end_row_after - 3,
                         end_row_after + 1,
                         false
                     )
-                    assert.equal(3, #lines)
+                    assert.equal(4, #lines)
                     assert.truthy(lines[1]:find("Allow"))
-                    assert.truthy(lines[2]:find("Reject"))
-                    assert.truthy(lines[3]:find("pending"))
+                    assert.equal("", lines[2])
+                    assert.truthy(lines[3]:find("Reject"))
+                    assert.truthy(lines[4]:find("pending"))
                 end
             )
 
@@ -875,7 +907,8 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker = writer.tool_call_blocks["render-extmarks"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
                     local k = tracker._rendered_button_count
-                    assert.equal(2, k)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, k)
 
                     local status_text = vim.api.nvim_buf_get_lines(
                         bufnr,
@@ -899,11 +932,9 @@ describe("agentic.ui.MessageWriter", function()
                     assert.equal(1, #marks_on_status)
 
                     local first_btn_row = end_row - k
-                    for i = 0, k - 1 do
-                        local btn_row = first_btn_row + i
-                        -- Use `{btn_row, -1}` as the end position so the
-                        -- inclusive `nvim_buf_get_extmarks` range does not
-                        -- bleed into the next row's marks.
+                    -- Button rows at offsets 0 and 2 (1 is the spacer).
+                    for _, offset in ipairs({ 0, 2 }) do
+                        local btn_row = first_btn_row + offset
                         local marks = vim.api.nvim_buf_get_extmarks(
                             bufnr,
                             ns,
@@ -913,6 +944,16 @@ describe("agentic.ui.MessageWriter", function()
                         )
                         assert.equal(1, #marks)
                     end
+
+                    -- Spacer row carries no segments.
+                    local spacer_marks = vim.api.nvim_buf_get_extmarks(
+                        bufnr,
+                        ns,
+                        { first_btn_row + 1, 0 },
+                        { first_btn_row + 1, -1 },
+                        { details = true }
+                    )
+                    assert.equal(0, #spacer_marks)
                 end
             )
 
@@ -931,7 +972,8 @@ describe("agentic.ui.MessageWriter", function()
                     writer:repaint_status_row("render-gravity")
 
                     local after = block_end_row("render-gravity")
-                    assert.equal(before + 2, after)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(before + 3, after)
 
                     -- end_row must be the new status row (the last line of the block).
                     local lines = vim.api.nvim_buf_get_lines(
@@ -952,14 +994,16 @@ describe("agentic.ui.MessageWriter", function()
                     })
 
                     local end_row = block_end_row("render-focus-switch")
+                    -- 2 buttons + 1 spacer: button rows at -3 and -1.
                     local rows_before = vim.api.nvim_buf_get_lines(
                         bufnr,
-                        end_row - 2,
+                        end_row - 3,
                         end_row,
                         false
                     )
-                    assert.is_nil(rows_before[1]:find("^1 "))
-                    assert.is_nil(rows_before[2]:find("^2 "))
+                    assert.is_nil(rows_before[1]:find(" 1 "))
+                    assert.equal("", rows_before[2])
+                    assert.is_nil(rows_before[3]:find(" 2 "))
 
                     writer:set_permission_state("render-focus-switch", {
                         sorted_options = ALLOW_REJECT_OPTIONS,
@@ -971,12 +1015,13 @@ describe("agentic.ui.MessageWriter", function()
                     end_row = block_end_row("render-focus-switch")
                     local rows_after = vim.api.nvim_buf_get_lines(
                         bufnr,
-                        end_row - 2,
+                        end_row - 3,
                         end_row,
                         false
                     )
-                    assert.truthy(rows_after[1]:find("^1 "))
-                    assert.truthy(rows_after[2]:find("^2 "))
+                    assert.truthy(rows_after[1]:find("^ 1 "))
+                    assert.equal("", rows_after[2])
+                    assert.truthy(rows_after[3]:find("^ 2 "))
 
                     -- Status row still only has the status word.
                     local status_text = vim.api.nvim_buf_get_lines(
@@ -1007,7 +1052,8 @@ describe("agentic.ui.MessageWriter", function()
                     assert.equal(0, tracker._rendered_button_count)
 
                     local end_row_after = block_end_row("render-clear")
-                    assert.equal(end_row_with_buttons - 2, end_row_after)
+                    -- 2 buttons + 1 spacer removed.
+                    assert.equal(end_row_with_buttons - 3, end_row_after)
 
                     local status_text = vim.api.nvim_buf_get_lines(
                         bufnr,
@@ -1031,7 +1077,7 @@ describe("agentic.ui.MessageWriter", function()
                     local end_row_1 = block_end_row("render-idempotent")
                     local lines_1 = vim.api.nvim_buf_get_lines(
                         bufnr,
-                        end_row_1 - 2,
+                        end_row_1 - 3,
                         end_row_1 + 1,
                         false
                     )
@@ -1043,7 +1089,7 @@ describe("agentic.ui.MessageWriter", function()
 
                     local lines_2 = vim.api.nvim_buf_get_lines(
                         bufnr,
-                        end_row_2 - 2,
+                        end_row_2 - 3,
                         end_row_2 + 1,
                         false
                     )
@@ -1051,7 +1097,8 @@ describe("agentic.ui.MessageWriter", function()
 
                     local tracker = writer.tool_call_blocks["render-idempotent"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(2, tracker._rendered_button_count)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(3, tracker._rendered_button_count)
                 end
             )
 
@@ -1078,8 +1125,9 @@ describe("agentic.ui.MessageWriter", function()
                     local a_end_after = block_end_row("render-multi-a")
                     local b_end_after = block_end_row("render-multi-b")
 
-                    assert.equal(a_end_before + 2, a_end_after)
-                    assert.equal(b_end_before + 2, b_end_after)
+                    -- 2 buttons + 1 spacer between them.
+                    assert.equal(a_end_before + 3, a_end_after)
+                    assert.equal(b_end_before + 3, b_end_after)
 
                     -- Block B unchanged: status row still carries the
                     -- status word and no button text.
@@ -1192,14 +1240,16 @@ describe("agentic.ui.MessageWriter", function()
 
                     local end_row = block_end_row("get-row-two-options")
                     --- @cast end_row integer
-                    local bottom_pad_row = end_row - 2 - 1
+                    -- 2 buttons + 1 spacer between them = 3 rendered rows.
+                    local bottom_pad_row = end_row - 3 - 1
 
+                    -- Button 1 at offset +1; button 2 at offset +3 (spacer at +2).
                     assert.equal(
                         bottom_pad_row + 1,
                         writer:get_button_row("get-row-two-options", 1)
                     )
                     assert.equal(
-                        bottom_pad_row + 2,
+                        bottom_pad_row + 3,
                         writer:get_button_row("get-row-two-options", 2)
                     )
                     assert.is_nil(

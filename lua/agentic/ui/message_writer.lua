@@ -978,7 +978,14 @@ function MessageWriter:get_button_row(tool_call_id, index)
 
     --- @diagnostic disable-next-line: invisible
     local k = tracker._rendered_button_count or 0
-    if k == 0 or index < 1 or index > k then
+    if k == 0 then
+        return nil
+    end
+
+    -- K rendered rows = N buttons + (N - 1) spacers = 2N - 1 -> N = (K + 1) / 2.
+    -- Button N maps to row offset (N - 1) * 2 from the first button row.
+    local n_buttons = math.floor((k + 1) / 2)
+    if index < 1 or index > n_buttons then
         return nil
     end
 
@@ -987,7 +994,8 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
-    return (end_row - k - 1) + index
+    local first_button_row = end_row - k
+    return first_button_row + (index - 1) * 2
 end
 
 --- Recompute and write the permission section (button rows + status row)
@@ -1242,6 +1250,13 @@ function MessageWriter:_build_permission_section(tracker)
     local focused_btn = perm.focused_button_index
 
     for i, option in ipairs(perm.sorted_options) do
+        -- Empty spacer row between buttons for visual separation. The spacer
+        -- carries no highlight segment so the bg fill ends at the button row.
+        if i > 1 then
+            table.insert(section.button_lines, "")
+            table.insert(section.button_segments_per_line, {})
+        end
+
         local label = option.name
         if not label or label == "" then
             label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
@@ -1259,7 +1274,9 @@ function MessageWriter:_build_permission_section(tracker)
         end
         table.insert(tokens, label)
 
-        local line = table.concat(tokens, " ")
+        -- Leading + trailing space inside the highlighted span so the bg
+        -- fill reads as a button, not as colored text.
+        local line = " " .. table.concat(tokens, " ") .. " "
 
         local hl_group
         local is_button_focused = perm.is_focused and i == focused_btn
@@ -1304,29 +1321,6 @@ function MessageWriter:_build_status_word(tracker)
     }
 
     return text, segments
-end
-
---- Write text and apply highlight segments at the given row in NS_STATUS.
---- @param row integer 0-indexed row
---- @param text string
---- @param hl_segments agentic.ui.MessageWriter.StatusSegment[]
-function MessageWriter:_render_status_row(row, text, hl_segments)
-    if not vim.api.nvim_buf_is_valid(self.bufnr) then
-        return
-    end
-
-    BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        pcall(vim.api.nvim_buf_set_lines, bufnr, row, row + 1, false, { text })
-    end)
-
-    pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, NS_STATUS, row, row + 1)
-
-    for _, seg in ipairs(hl_segments) do
-        vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, row, seg[1], {
-            end_col = seg[2],
-            hl_group = seg[3],
-        })
-    end
 end
 
 --- Render a permission section (button rows + status row) into the buffer.
