@@ -963,25 +963,6 @@ function MessageWriter:get_focused_button_index(tool_call_id)
     return tracker.permission.focused_button_index
 end
 
---- @param tool_call_id string
---- @param index integer 1-indexed button position
---- @return integer|nil col 0-indexed start column of the Nth permission button, or nil
-function MessageWriter:get_button_col(tool_call_id, index)
-    local tracker = self.tool_call_blocks[tool_call_id]
-    if not tracker or not tracker.permission then
-        return nil
-    end
-
-    local _, segments = self:_build_status_row(tracker)
-    -- segments[1] is the status word; segments[1 + i] is the i-th button.
-    local seg = segments[1 + index]
-    if not seg then
-        return nil
-    end
-
-    return seg[1]
-end
-
 --- 0-indexed buffer row of the Nth permission button for the given block.
 --- Buttons live between `bottom_pad` and the status row, one per line, in
 --- the same order as `permission.sorted_options`. `K` is the rendered
@@ -1301,8 +1282,7 @@ function MessageWriter:_build_permission_section(tracker)
 end
 
 --- Build the bare status-word text + single highlight segment for a block.
---- Used by `_build_permission_section`; the legacy `_build_status_row`
---- composes the same word inline with the buttons and is removed in Task 7.
+--- Used by `_build_permission_section` to compose the status row.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return string text
 --- @return agentic.ui.MessageWriter.StatusSegment[] segments
@@ -1322,84 +1302,6 @@ function MessageWriter:_build_status_word(tracker)
     local segments = {
         { 0, #text, Theme.get_status_hl_group(status) },
     }
-
-    return text, segments
-end
-
---- Build the text + highlight segments for the status row (row N) of a block.
---- Blocks with an attached PermissionState include inline buttons.
---- @param tracker agentic.ui.MessageWriter.ToolCallBlock
---- @return string text
---- @return agentic.ui.MessageWriter.StatusSegment[] segments
-function MessageWriter:_build_status_row(tracker)
-    local status = tracker.status
-
-    if not status or status == "" then
-        return "", {}
-    end
-
-    local icons = Config.status_icons or {}
-    local icon = icons[status] or ""
-    local status_label = icon ~= "" and (icon .. " " .. status) or status
-
-    local text = " " .. status_label .. " "
-    --- @type agentic.ui.MessageWriter.StatusSegment[]
-    local segments = {
-        { 0, #text, Theme.get_status_hl_group(status) },
-    }
-
-    local perm = tracker.permission
-
-    if not perm then
-        return text, segments
-    end
-
-    local permission_icons = Config.permission_icons or {}
-    local focused_btn = perm.focused_button_index
-
-    -- U+00A0 NBSP. Used inside button text so 'linebreak' won't split a
-    -- button across two visual rows. The inter-button separator stays a
-    -- regular space, which remains the only allowed break point.
-    local NBSP = "\194\160"
-    --- @param s string
-    local function nbsp(s)
-        return (s:gsub(" ", NBSP))
-    end
-
-    for i, option in ipairs(perm.sorted_options) do
-        local provider_name = option.name
-        if not provider_name or provider_name == "" then
-            provider_name = PERMISSION_OPTION_LABELS[option.kind] or option.kind
-        end
-        local label = nbsp(provider_name)
-        local btn_icon = permission_icons[option.kind] or ""
-        local body = ""
-
-        if perm.is_focused then
-            body = i .. NBSP .. btn_icon .. NBSP .. label
-        else
-            body = btn_icon .. NBSP .. label
-        end
-
-        local btn = NBSP .. body .. NBSP
-
-        text = text .. "  "
-        local start_col = #text
-        text = text .. btn
-        local end_col = #text
-
-        local is_button_focused = perm.is_focused and i == focused_btn
-        local hl_group
-
-        if not is_button_focused then
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
-        elseif option.kind == "allow_once" or option.kind == "allow_always" then
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
-        else
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
-        end
-        table.insert(segments, { start_col, end_col, hl_group })
-    end
 
     return text, segments
 end
