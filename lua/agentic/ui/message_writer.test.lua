@@ -662,6 +662,63 @@ describe("agentic.ui.MessageWriter", function()
                 assert.truthy(text:find("pending"))
             end
         )
+
+        describe("_build_permission_section (Task 1 stub)", function()
+            it(
+                "returns the no-permission shape for a completed block",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("section-completed", "completed")
+                    )
+
+                    local tracker = writer.tool_call_blocks["section-completed"]
+                    assert.is_not_nil(tracker)
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local section = writer:_build_permission_section(tracker)
+
+                    assert.is_table(section.button_lines)
+                    assert.equal(0, #section.button_lines)
+                    assert.is_table(section.button_segments_per_line)
+                    assert.equal(0, #section.button_segments_per_line)
+                    assert.equal("string", type(section.status_text))
+                    assert.truthy(section.status_text:find("completed"))
+                    assert.is_table(section.status_segments)
+                    assert.is_true(#section.status_segments >= 1)
+                end
+            )
+
+            it(
+                "returns the no-permission shape for a pending block without permission state",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("section-pending", "pending")
+                    )
+
+                    local tracker = writer.tool_call_blocks["section-pending"]
+                    assert.is_not_nil(tracker)
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local section = writer:_build_permission_section(tracker)
+
+                    assert.equal(0, #section.button_lines)
+                    assert.equal(0, #section.button_segments_per_line)
+                    assert.truthy(section.status_text:find("pending"))
+                end
+            )
+        end)
+
+        describe("get_button_row (Task 1 stub)", function()
+            it("returns nil when the block has no permission state", function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("get-row-no-perm", "pending")
+                )
+
+                assert.is_nil(writer:get_button_row("get-row-no-perm", 1))
+            end)
+
+            it("returns nil for an unknown tool_call_id", function()
+                assert.is_nil(writer:get_button_row("does-not-exist", 1))
+            end)
+        end)
     end)
 
     describe("_prepare_block_lines", function()

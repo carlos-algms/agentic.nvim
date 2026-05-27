@@ -950,6 +950,16 @@ function MessageWriter:get_button_col(tool_call_id, index)
     return seg[1]
 end
 
+--- 0-indexed buffer row of the Nth permission button for the given block.
+--- Task 1 stub: always returns nil. Task 4 implements row resolution from
+--- the rendered button count.
+--- @param _tool_call_id string
+--- @param _index integer 1-indexed button position
+--- @return integer|nil row 0-indexed buffer row of the Nth permission button, or nil
+function MessageWriter:get_button_row(_tool_call_id, _index)
+    return nil
+end
+
 --- Recompute and write the status row (row N) for the given tool call block.
 --- Used by both the writer itself (initial render / updates) and the
 --- PermissionManager when toggling buttons / focus.
@@ -1168,6 +1178,30 @@ end
 --- @field [1] integer start_col 0-indexed inclusive
 --- @field [2] integer end_col 0-indexed exclusive
 --- @field [3] string hl_group
+
+--- @class agentic.ui.MessageWriter.PermissionSection
+--- @field button_lines string[]
+--- @field button_segments_per_line agentic.ui.MessageWriter.StatusSegment[][]
+--- @field status_text string
+--- @field status_segments agentic.ui.MessageWriter.StatusSegment[]
+
+--- Build the permission section (button rows + status row) for a block.
+--- Task 1 stub: delegates to `_build_status_row` and returns the no-row
+--- shape (`button_lines = {}`, `button_segments_per_line = {}`). Later
+--- tasks replace the inline-button build with per-row construction.
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @return agentic.ui.MessageWriter.PermissionSection section
+function MessageWriter:_build_permission_section(tracker)
+    local status_text, status_segments = self:_build_status_row(tracker)
+    --- @type agentic.ui.MessageWriter.PermissionSection
+    local section = {
+        button_lines = {},
+        button_segments_per_line = {},
+        status_text = status_text,
+        status_segments = status_segments,
+    }
+    return section
+end
 
 --- Build the text + highlight segments for the status row (row N) of a block.
 --- Blocks with an attached PermissionState include inline buttons.
