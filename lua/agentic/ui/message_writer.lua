@@ -615,16 +615,28 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
+        -- Buttons (if any) live BETWEEN bottom_pad and the status row. The
+        -- body slice must end at bottom_pad to leave bottom_pad + buttons +
+        -- status untouched. Pre-permission `old_end_row - 1` was bottom_pad;
+        -- with K rendered button rows it shifts up by K.
+        --- @diagnostic disable-next-line: invisible
+        local k_buttons = tracker._rendered_button_count or 0
+        local bottom_pad_row = old_end_row - k_buttons - 1
+
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row + ToolCallBlocks.HEADER_HEIGHT,
-            old_end_row - 1,
+            bottom_pad_row,
             false,
             body_lines
         )
 
-        local new_end_row = start_row + #new_lines - 1
+        -- After the slice, the buffer holds: header + new_body + bottom_pad +
+        -- K_buttons rendered button rows + status. `#new_lines` accounts for
+        -- header + body + 2 pads (bottom_pad + status); add K_buttons for the
+        -- preserved button section.
+        local new_end_row = start_row + #new_lines - 1 + k_buttons
 
         pcall(
             vim.api.nvim_buf_clear_namespace,
@@ -982,9 +994,10 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
-    -- K rendered rows = N buttons + (N - 1) spacers = 2N - 1 -> N = (K + 1) / 2.
+    -- K rendered rows = N buttons + N spacers (one between each pair + one
+    -- trailing before the status row) = 2N -> N = K / 2.
     -- Button N maps to row offset (N - 1) * 2 from the first button row.
-    local n_buttons = math.floor((k + 1) / 2)
+    local n_buttons = math.floor(k / 2)
     if index < 1 or index > n_buttons then
         return nil
     end
@@ -1293,6 +1306,12 @@ function MessageWriter:_build_permission_section(tracker)
             section.button_segments_per_line,
             { { 0, #line, hl_group } }
         )
+    end
+
+    -- Trailing spacer between the last button and the status row.
+    if #section.button_lines > 0 then
+        table.insert(section.button_lines, "")
+        table.insert(section.button_segments_per_line, {})
     end
 
     return section
