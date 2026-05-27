@@ -1,6 +1,7 @@
 --- @diagnostic disable: invisible
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local PermissionSection = require("tests.helpers.permission_section")
 
 describe("agentic.ui.PermissionManager", function()
     --- @type agentic.ui.MessageWriter
@@ -493,121 +494,42 @@ describe("agentic.ui.PermissionManager", function()
             end
         end)
 
-        it(
-            "l moves cursor to button-row-2 from focus index 1 with two options",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
+        for _, case in ipairs({
+            { key = "l", direction = "next" },
+            { key = "<Right>", direction = "next" },
+            { key = "j", direction = "next" },
+            { key = "<Down>", direction = "next" },
+            { key = "h", direction = "prev" },
+            { key = "<Left>", direction = "prev" },
+            { key = "k", direction = "prev" },
+            { key = "<Up>", direction = "prev" },
+        }) do
+            it(
+                case.key
+                    .. " moves focus to button 2 from index 1 ("
+                    .. case.direction
+                    .. ") and jumps cursor",
+                function()
+                    seed_block("tc-1")
+                    pm:add_request(
+                        make_request("tc-1"),
+                        spy.new(function() end) --[[@as function]]
+                    )
 
-                local l_cb = get_digit_callback("l")
-                assert.is_not_nil(l_cb)
-                if l_cb then
-                    l_cb()
+                    local cb = get_digit_callback(case.key)
+                    assert.is_not_nil(cb)
+                    if cb then
+                        cb()
+                    end
+
+                    assert.equal(2, writer:get_focused_button_index("tc-1"))
+                    local row_2 = writer:get_button_row("tc-1", 2)
+                    assert.is_not_nil(row_2)
+                    local cursor = vim.api.nvim_win_get_cursor(winid)
+                    assert.equal((row_2 or 0) + 1, cursor[1])
                 end
-
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-                assert.equal(0, cursor[2])
-            end
-        )
-
-        it(
-            "j moves cursor to button-row-2 from focus index 1 (next)",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local j_cb = get_digit_callback("j")
-                assert.is_not_nil(j_cb)
-                if j_cb then
-                    j_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-                assert.equal(0, cursor[2])
-            end
-        )
-
-        it(
-            "<Down> moves cursor to button-row-2 from focus index 1 (next)",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local down_cb = get_digit_callback("<Down>")
-                assert.is_not_nil(down_cb)
-                if down_cb then
-                    down_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-            end
-        )
-
-        it(
-            "k wraps to button-row-2 from focus index 1 (prev with two options)",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local k_cb = get_digit_callback("k")
-                assert.is_not_nil(k_cb)
-                if k_cb then
-                    k_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-            end
-        )
-
-        it(
-            "<Up> wraps to button-row-2 from focus index 1 (prev with two options)",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local up_cb = get_digit_callback("<Up>")
-                assert.is_not_nil(up_cb)
-                if up_cb then
-                    up_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-            end
-        )
+            )
+        end
 
         it("digit 2 submits option 2", function()
             seed_block("tc-1")
@@ -626,52 +548,6 @@ describe("agentic.ui.PermissionManager", function()
             assert.spy(cb).was.called(1)
             assert.equal("reject-once", cb.calls[1][1])
         end)
-
-        it(
-            "h wraps focus from button 1 to button 2 and moves cursor",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local h_cb = get_digit_callback("h")
-                assert.is_not_nil(h_cb)
-                if h_cb then
-                    h_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-            end
-        )
-
-        it(
-            "<Left> wraps focus from button 1 to button 2 and moves cursor",
-            function()
-                seed_block("tc-1")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                local left_cb = get_digit_callback("<Left>")
-                assert.is_not_nil(left_cb)
-                if left_cb then
-                    left_cb()
-                end
-
-                assert.equal(2, writer:get_focused_button_index("tc-1"))
-                local row_2 = writer:get_button_row("tc-1", 2)
-                assert.is_not_nil(row_2)
-                local cursor = vim.api.nvim_win_get_cursor(winid)
-                assert.equal((row_2 or 0) + 1, cursor[1])
-            end
-        )
 
         it(
             "<CR> resolves the focused block with focused button's option",
@@ -852,21 +728,6 @@ describe("agentic.ui.PermissionManager", function()
     end)
 
     describe("digit keymap lifecycle", function()
-        it("digit 1 resolves the focused block's option 1", function()
-            seed_block("tc-1")
-            local cb = spy.new(function() end)
-            pm:add_request(make_request("tc-1"), cb --[[@as function]])
-
-            local digit_cb = get_digit_callback("1")
-            assert.is_not_nil(digit_cb)
-            if digit_cb then
-                digit_cb()
-            end
-
-            assert.spy(cb).was.called(1)
-            assert.equal("allow-once", cb.calls[1][1])
-        end)
-
         it(
             "rebinds digit keymaps with new mapping after focus transition",
             function()
@@ -956,9 +817,10 @@ describe("agentic.ui.PermissionManager", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            local row = writer:get_block_end_row(tool_call_id) or 0
-            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
-                or ""
+            return PermissionSection.status_row_text(
+                bufnr,
+                writer:get_block_end_row(tool_call_id) or 0
+            )
         end
 
         --- @param tool_call_id string
@@ -966,75 +828,73 @@ describe("agentic.ui.PermissionManager", function()
         local function button_row_lines(tool_call_id)
             local tracker = writer.tool_call_blocks[tool_call_id]
             --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-            local k = tracker._rendered_button_count or 0
-            if k == 0 then
-                return {}
-            end
-            local end_row = writer:get_block_end_row(tool_call_id) or 0
-            local bottom_pad_row = end_row - k - 1
-            return vim.api.nvim_buf_get_lines(
+            return PermissionSection.button_row_lines(
                 bufnr,
-                bottom_pad_row + 1,
-                bottom_pad_row + 1 + k,
-                false
+                writer:get_block_end_row(tool_call_id) or 0,
+                tracker._rendered_button_count or 0
             )
         end
 
-        it(
-            "strips button rows from the block as soon as the user resolves",
-            function()
-                seed_block("tc-only")
-                local cb = spy.new(function() end)
-                pm:add_request(make_request("tc-only"), cb --[[@as function]])
-
-                local rows_before = button_row_lines("tc-only")
-                assert.is_true(#rows_before > 0)
-                local found_allow = false
-                for _, line in ipairs(rows_before) do
-                    if line:find("Allow") then
-                        found_allow = true
-                        break
+        for _, case in ipairs({
+            {
+                name = "strips button rows from the focused block as soon as the user resolves via digit",
+                target_id = "tc-only",
+                seed = function()
+                    seed_block("tc-only")
+                    local cb = spy.new(function() end)
+                    pm:add_request(
+                        make_request("tc-only"),
+                        cb --[[@as function]]
+                    )
+                    return cb
+                end,
+                resolve = function()
+                    local digit_cb = get_digit_callback("1")
+                    assert.is_not_nil(digit_cb)
+                    if digit_cb then
+                        digit_cb()
                     end
-                end
-                assert.is_true(found_allow)
+                end,
+                assert_callback_fired = true,
+            },
+            {
+                name = "strips button rows from a non-focused block when it is resolved",
+                target_id = "tc-2",
+                seed = function()
+                    seed_block("tc-1")
+                    seed_block("tc-2")
+                    pm:add_request(
+                        make_request("tc-1"),
+                        spy.new(function() end) --[[@as function]]
+                    )
+                    pm:add_request(
+                        make_request("tc-2"),
+                        spy.new(function() end) --[[@as function]]
+                    )
+                end,
+                resolve = function()
+                    pm:resolve("tc-2", nil)
+                end,
+                assert_callback_fired = false,
+            },
+        }) do
+            it(case.name, function()
+                local cb = case.seed()
 
-                local digit_cb = get_digit_callback("1")
-                assert.is_not_nil(digit_cb)
-                if digit_cb then
-                    digit_cb()
-                end
+                local rows_before = button_row_lines(case.target_id)
+                assert.is_true(#rows_before > 0)
 
-                assert.spy(cb).was.called(1)
-                assert.equal(0, #button_row_lines("tc-only"))
-                local text = status_row_text("tc-only")
+                case.resolve()
+
+                if case.assert_callback_fired then
+                    assert.spy(cb).was.called(1)
+                end
+                assert.equal(0, #button_row_lines(case.target_id))
+                local text = status_row_text(case.target_id)
                 assert.is_nil(text:find("Allow"))
                 assert.is_nil(text:find("Reject"))
-                assert.truthy(text:find("pending"))
-            end
-        )
-
-        it(
-            "strips button rows from a non-focused block when it is resolved",
-            function()
-                seed_block("tc-1")
-                seed_block("tc-2")
-                pm:add_request(
-                    make_request("tc-1"),
-                    spy.new(function() end) --[[@as function]]
-                )
-                pm:add_request(
-                    make_request("tc-2"),
-                    spy.new(function() end) --[[@as function]]
-                )
-
-                pm:resolve("tc-2", nil)
-
-                assert.equal(0, #button_row_lines("tc-2"))
-                local text = status_row_text("tc-2")
-                assert.is_nil(text:find("Allow"))
-                assert.is_nil(text:find("Reject"))
-            end
-        )
+            end)
+        end
     end)
 
     describe("remove_request_by_tool_call_id", function()

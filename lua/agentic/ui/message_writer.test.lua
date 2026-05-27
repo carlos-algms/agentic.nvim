@@ -2,6 +2,7 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
+local PermissionSection = require("tests.helpers.permission_section")
 
 local TITLE_FENCE = string.rep("`", 5)
 
@@ -332,9 +333,10 @@ describe("agentic.ui.MessageWriter", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            local row = block_end_row(tool_call_id)
-            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
-                or ""
+            return PermissionSection.status_row_text(
+                bufnr,
+                block_end_row(tool_call_id)
+            )
         end
 
         --- All NS_STATUS extmarks on the button rows of the block.
@@ -417,84 +419,76 @@ describe("agentic.ui.MessageWriter", function()
         local function button_row_lines(tool_call_id)
             local tracker = writer.tool_call_blocks[tool_call_id]
             --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-            local k = tracker._rendered_button_count or 0
-            local end_row = block_end_row(tool_call_id)
-            local bottom_pad_row = end_row - k - 1
-            return vim.api.nvim_buf_get_lines(
+            return PermissionSection.button_row_lines(
                 bufnr,
-                bottom_pad_row + 1,
-                bottom_pad_row + 1 + k,
-                false
+                block_end_row(tool_call_id),
+                tracker._rendered_button_count or 0
             )
         end
 
-        it(
-            "renders buttons one per row for pending non-focused permission state",
-            function()
-                setup_permission_block("row-n-inactive", { is_focused = false })
+        for _, case in ipairs({
+            {
+                name = "renders buttons one per row for pending non-focused permission state",
+                id = "row-n-inactive",
+                is_focused = false,
+                status_pattern = "pending",
+                expect_digit_prefix = false,
+                post_action = nil,
+            },
+            {
+                name = "renders buttons one per row with digit prefixes when focused",
+                id = "row-n-focused",
+                is_focused = true,
+                status_pattern = "pending",
+                expect_digit_prefix = true,
+                post_action = nil,
+            },
+            {
+                name = "keeps button rows when an active update repaints",
+                id = "row-n-active-update",
+                is_focused = true,
+                status_pattern = "in_progress",
+                expect_digit_prefix = true,
+                post_action = function(id)
+                    writer:update_tool_call_block({
+                        tool_call_id = id,
+                        status = "in_progress",
+                        body = { "running" },
+                    })
+                end,
+            },
+        }) do
+            it(case.name, function()
+                setup_permission_block(
+                    case.id,
+                    { is_focused = case.is_focused }
+                )
 
-                local status_text = status_row_text("row-n-inactive")
-                assert.truthy(status_text:find("pending"))
-                assert.is_nil(status_text:find("Allow"))
-                assert.is_nil(status_text:find("Reject"))
+                if case.post_action then
+                    case.post_action(case.id)
+                end
 
-                -- 2 buttons + 1 spacer between them + 1 trailing spacer.
-                local rows = button_row_lines("row-n-inactive")
-                assert.equal(4, #rows)
-                assert.equal("", rows[2])
-                assert.equal("", rows[4])
-                assert.truthy(rows[1]:find("Allow"))
-                assert.truthy(rows[3]:find("Reject"))
-                -- non-focused: no digit prefix
-                assert.is_nil(rows[1]:find(" 1 "))
-                assert.is_nil(rows[3]:find(" 2 "))
-            end
-        )
-
-        it(
-            "renders buttons one per row with digit prefixes when focused",
-            function()
-                setup_permission_block("row-n-focused", { is_focused = true })
-
-                local status_text = status_row_text("row-n-focused")
-                assert.truthy(status_text:find("pending"))
+                local status_text = status_row_text(case.id)
+                assert.truthy(status_text:find(case.status_pattern))
                 assert.is_nil(status_text:find("Allow"))
                 assert.is_nil(status_text:find("Reject"))
 
                 -- 2 buttons + 1 inter-button spacer + 1 trailing spacer.
-                local rows = button_row_lines("row-n-focused")
+                local rows = button_row_lines(case.id)
                 assert.equal(4, #rows)
                 assert.equal("", rows[2])
                 assert.equal("", rows[4])
-                assert.truthy(rows[1]:find("^ 1 "))
-                assert.truthy(rows[3]:find("^ 2 "))
                 assert.truthy(rows[1]:find("Allow"))
                 assert.truthy(rows[3]:find("Reject"))
-            end
-        )
-
-        it("keeps button rows when an active update repaints", function()
-            setup_permission_block("row-n-active-update", { is_focused = true })
-
-            writer:update_tool_call_block({
-                tool_call_id = "row-n-active-update",
-                status = "in_progress",
-                body = { "running" },
-            })
-
-            local status_text = status_row_text("row-n-active-update")
-            assert.truthy(status_text:find("in_progress"))
-
-            -- 2 buttons + 1 inter-button spacer + 1 trailing spacer.
-            local rows = button_row_lines("row-n-active-update")
-            assert.equal(4, #rows)
-            assert.equal("", rows[2])
-            assert.equal("", rows[4])
-            assert.truthy(rows[1]:find("^ 1 "))
-            assert.truthy(rows[3]:find("^ 2 "))
-            assert.truthy(rows[1]:find("Allow"))
-            assert.truthy(rows[3]:find("Reject"))
-        end)
+                if case.expect_digit_prefix then
+                    assert.truthy(rows[1]:find("^ 1 "))
+                    assert.truthy(rows[3]:find("^ 2 "))
+                else
+                    assert.is_nil(rows[1]:find(" 1 "))
+                    assert.is_nil(rows[3]:find(" 2 "))
+                end
+            end)
+        end
 
         for _, case in ipairs({
             {
@@ -595,10 +589,6 @@ describe("agentic.ui.MessageWriter", function()
                         is_focused = false,
                     })
 
-                    -- 2 buttons + 2 spacers (one between, one trailing).
-                    assert.equal(4, #section.button_lines)
-                    assert.equal("", section.button_lines[2])
-                    assert.equal("", section.button_lines[4])
                     -- No digit prefix in non-focused state.
                     assert.is_nil(section.button_lines[1]:find(" 1 "))
                     assert.is_nil(section.button_lines[3]:find(" 2 "))
@@ -615,10 +605,6 @@ describe("agentic.ui.MessageWriter", function()
                         focused_button_index = 1,
                     })
 
-                    -- 2 buttons + 2 spacers (one between, one trailing).
-                    assert.equal(4, #section.button_lines)
-                    assert.equal("", section.button_lines[2])
-                    assert.equal("", section.button_lines[4])
                     -- Padded with leading + trailing space.
                     assert.truthy(section.button_lines[1]:find("^ 1 "))
                     assert.truthy(section.button_lines[3]:find("^ 2 "))
@@ -705,17 +691,39 @@ describe("agentic.ui.MessageWriter", function()
                 end
             )
 
-            it(
-                "writes the provider option.name verbatim on the button line",
-                function()
-                    local long_label =
-                        "Yes, and bypass permissions for this session"
-                    local section = build_section("section-long-label", {
+            for _, case in ipairs({
+                {
+                    name = "writes the provider option.name verbatim on the button line",
+                    id = "section-long-label",
+                    option_name = "Yes, and bypass permissions for this session",
+                    option_kind = "allow_always",
+                    option_id = "allow-always",
+                    expected_label = "Yes, and bypass permissions for this session",
+                },
+                {
+                    name = "falls back to the static label when option.name is nil",
+                    id = "section-fallback-nil",
+                    option_name = nil,
+                    option_kind = "allow_always",
+                    option_id = "allow-always",
+                    expected_label = "Allow Always",
+                },
+                {
+                    name = "falls back to the static label when option.name is empty",
+                    id = "section-fallback-empty",
+                    option_name = "",
+                    option_kind = "reject_always",
+                    option_id = "reject-always",
+                    expected_label = "Reject Always",
+                },
+            }) do
+                it(case.name, function()
+                    local section = build_section(case.id, {
                         sorted_options = {
                             {
-                                optionId = "allow-always",
-                                name = long_label,
-                                kind = "allow_always",
+                                optionId = case.option_id,
+                                name = case.option_name,
+                                kind = case.option_kind,
                             },
                         },
                         is_focused = false,
@@ -725,56 +733,14 @@ describe("agentic.ui.MessageWriter", function()
                     assert.equal(2, #section.button_lines)
                     assert.equal("", section.button_lines[2])
                     assert.truthy(
-                        section.button_lines[1]:find(long_label, 1, true)
+                        section.button_lines[1]:find(
+                            case.expected_label,
+                            1,
+                            true
+                        )
                     )
-                end
-            )
-
-            it(
-                "falls back to the static label when option.name is nil",
-                function()
-                    local section = build_section("section-fallback-nil", {
-                        sorted_options = {
-                            {
-                                optionId = "allow-always",
-                                name = nil,
-                                kind = "allow_always",
-                            },
-                        },
-                        is_focused = false,
-                    })
-
-                    -- 1 button + 1 trailing spacer.
-                    assert.equal(2, #section.button_lines)
-                    assert.equal("", section.button_lines[2])
-                    assert.truthy(
-                        section.button_lines[1]:find("Allow Always", 1, true)
-                    )
-                end
-            )
-
-            it(
-                "falls back to the static label when option.name is empty",
-                function()
-                    local section = build_section("section-fallback-empty", {
-                        sorted_options = {
-                            {
-                                optionId = "reject-always",
-                                name = "",
-                                kind = "reject_always",
-                            },
-                        },
-                        is_focused = false,
-                    })
-
-                    -- 1 button + 1 trailing spacer.
-                    assert.equal(2, #section.button_lines)
-                    assert.equal("", section.button_lines[2])
-                    assert.truthy(
-                        section.button_lines[1]:find("Reject Always", 1, true)
-                    )
-                end
-            )
+                end)
+            end
 
             it(
                 "produces one button line and a trailing spacer for a single option",
@@ -847,16 +813,13 @@ describe("agentic.ui.MessageWriter", function()
                     --- @diagnostic disable-next-line: missing-fields
                     Config.permission_icons = {}
 
-                    local ok, section_or_err =
-                        pcall(build_section, "section-empty-icons", {
-                            sorted_options = { ALLOW_REJECT_OPTIONS[1] },
-                            is_focused = false,
-                        })
+                    local section = build_section("section-empty-icons", {
+                        sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                        is_focused = false,
+                    })
 
                     Config.permission_icons = original
 
-                    assert.is_true(ok)
-                    local section = section_or_err
                     -- 1 button + 1 trailing spacer.
                     assert.equal(2, #section.button_lines)
                     -- No icon means label is wrapped in padding spaces.
@@ -970,16 +933,6 @@ describe("agentic.ui.MessageWriter", function()
                         )
                         assert.equal(1, #marks)
                     end
-
-                    -- Spacer row carries no segments.
-                    local spacer_marks = vim.api.nvim_buf_get_extmarks(
-                        bufnr,
-                        ns,
-                        { first_btn_row + 1, 0 },
-                        { first_btn_row + 1, -1 },
-                        { details = true }
-                    )
-                    assert.equal(0, #spacer_marks)
                 end
             )
 

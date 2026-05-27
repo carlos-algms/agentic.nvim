@@ -36,24 +36,11 @@ status row of the tool-call block. The status row carries only the status word
 their own row but no button ever shares a visual row with another button or
 the status word.
 
-Layout for a pending block with K options:
+Layout: See `ui/AGENTS.md` "Tool-call block layout". The buttons-row addendum:
+rows `M+1..M+K` are real text, one per option, outside the fold.
 
-```text
-row 0          header
-row 1          "" top_pad      fold start
-row 2..M-1     body
-row M          "" bottom_pad   fold end
-row M+1..M+K   button rows
-row M+K+1      status row      status word only
-```
-
-Render pipeline:
-`PermissionManager` -> `MessageWriter:repaint_status_row` ->
-`MessageWriter:_build_permission_section` builds
-`{ button_lines, button_segments_per_line, status_text, status_segments }` ->
-`MessageWriter:_render_permission_section(tracker, end_row, section)` deletes
-the prior K rows and inserts the new K in one buffer transaction, rewrites
-the status row, and re-applies NS_STATUS extmark segments.
+Render pipeline: `PermissionManager` -> `MessageWriter:repaint_status_row` ->
+`MessageWriter:_build_permission_section` -> `_render_permission_section`.
 
 ```mermaid
 flowchart TD
@@ -92,10 +79,8 @@ many buttons are currently rendered.
 
 ### Render bookkeeping
 
-`tracker._rendered_button_count` stores the K currently rendered for the
-block. `_render_permission_section` reads it to delete the prior section
-before inserting the new one, then writes the post-render count. The field is
-internal to the render path; only `_render_permission_section` writes it.
+`tracker._rendered_button_count` (written only by
+`MessageWriter:_render_permission_section`) tracks rows for the next repaint.
 
 ### Provider-supplied labels
 
@@ -126,38 +111,26 @@ layout.
 
 ### Row-gated per-block keymaps
 
-Motion / submit keymaps use `expr = true`. On any row of the focused block's
-permission section (button rows OR status row) they fire the action and
-return `""`. Off-row they return the original key, which is replayed with
-`noremap` and falls through to default Neovim behavior. `_cursor_on_focused_row`
-gates the keymap by checking the cursor row against
+Motion / submit keymaps use `expr = true`. On-row they fire the action and
+return `""`; off-row they return the original key (replayed via `noremap`).
+Gating in `PermissionManager:_cursor_on_focused_row` covers
 `[get_button_row(id, 1) .. end_row + 1]`.
 
-Digit keys `1`..`4` are NOT row-gated: they fire from anywhere in the chat
-buffer. Direct dispatch is the whole point of digit shortcuts; gating them
-would force the user to scroll to the block first.
+Digit keys `1`..`4` are NOT row-gated: direct dispatch from anywhere in the
+chat buffer.
 
 ### Cursor placement
 
-On every block-focus transition, `_jump_cursor_to(tool_call_id)`:
-
-1. Resolves the block's `end_row` via its range extmark.
-2. Resolves the first button row via
-   `MessageWriter:get_button_row(id, 1)`.
-3. Sets cursor to `(button_row + 1, 0)` (or `end_row + 1` if no buttons
-   are rendered) and `zb` anchors the row at the window bottom.
-
-On every cycle (`h`/`j`/etc.), `_jump_cursor_to_button(id, idx)` moves cursor
-to the focused button's row with the same `zb` anchor.
+`_jump_cursor_to(id)` lands on button row 1 (fallback `end_row`); cycles call
+`_jump_cursor_to_button(id, idx)`. Both anchor with `zb`.
 
 ### Auto-scroll suppression
 
 `MessageWriter:_check_auto_scroll` stops following new output when the cursor
-row contains a permission-button extmark in `NS_STATUS` OR matches the status
-row of any block whose `tracker.permission` is non-nil. The dual check covers
-both axes: button rows (highlight extmark) and the pending status row (no
-button hl on the status word itself). The tracker scan short-circuits on
-`tracker.permission`, so resolved blocks skip the extmark lookup.
+sits on a permission-button row OR on a pending block's status row. Dual
+check: button rows carry `NS_STATUS` button-hl extmarks; the status row of a
+pending block does not, so we additionally scan trackers (short-circuiting on
+`tracker.permission`).
 
 ### Highlight groups
 
@@ -176,11 +149,8 @@ consistency with the `pending` / `completed` / `failed` pills.
 
 ### Fold interaction
 
-Button rows live BELOW bottom_pad and BELOW the fold end. `Fold.close_range`
-folds 0-indexed `top_pad..bottom_pad`. Button rows and the status row are
-outside the fold. Buttons always visible regardless of fold state.
-
-No change to ADR 0001's manual-fold contract or anchor-pad invariants.
+Button rows live outside the fold (below `bottom_pad`); no fold-management
+special-case needed. ADR 0001's contract is unchanged.
 
 ## Consequences
 

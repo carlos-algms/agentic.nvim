@@ -14,8 +14,6 @@ local NS_DIFF_HIGHLIGHTS =
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
--- Fallback labels keyed by PermissionOptionKind. Used when the agent does
--- not supply option.name (nil or empty).
 local PERMISSION_OPTION_LABELS = {
     allow_once = "Allow",
     allow_always = "Allow Always",
@@ -52,7 +50,7 @@ local TITLE_FENCE = "`````"
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
 --- @field permission? agentic.ui.MessageWriter.PermissionState
---- @field _rendered_button_count? integer Count of button rows currently rendered between bottom_pad and status row. Nil treated as 0. Only written by `_render_permission_section` after the buffer mutation; do not read outside the render path (it lags `permission` state until the next `repaint_status_row`).
+--- @field _rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -329,11 +327,6 @@ function MessageWriter:_append_lines(lines)
     end
 end
 
---- True when `cursor_line` sits on any row of a pending permission section
---- (the K stacked button rows OR the status row that owns those buttons).
---- Button rows carry `PERMISSION_BUTTON_*` extmarks in `NS_STATUS`; the
---- status row of a pending block carries the status-word hl instead, so a
---- per-tracker lookup covers it.
 --- @param cursor_line integer 1-indexed window cursor row
 --- @return boolean
 function MessageWriter:_cursor_on_permission_button_row(cursor_line)
@@ -359,11 +352,6 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
         end
     end
 
-    -- Status row of a pending block: no `PERMISSION_BUTTON_*` hl on the
-    -- status word itself, so scan trackers for any block whose status row
-    -- equals `row` AND which currently has rendered button rows above it.
-    -- Short-circuit on `tracker.permission` so resolved/non-pending blocks
-    -- skip the extmark lookup in `get_block_end_row`.
     for tool_call_id, tracker in pairs(self.tool_call_blocks) do
         if tracker.permission then
             --- @diagnostic disable-next-line: invisible
@@ -396,12 +384,6 @@ function MessageWriter:_check_auto_scroll(bufnr)
 
     local cursor_line = vim.api.nvim_win_get_cursor(winid)[1]
 
-    -- Permission rows (status row + each rendered button row) all carry
-    -- NS_STATUS extmarks with PERMISSION_BUTTON_* highlight groups. Treat
-    -- any of them as a sticky-cursor anchor so a streaming agent update
-    -- below does not yank focus away from the user mid-decision. With the
-    -- stacked-row layout from `_render_permission_section`, button rows
-    -- are first-class permission rows -- not just the status row.
     if self:_cursor_on_permission_button_row(cursor_line) then
         return false
     end
@@ -615,10 +597,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
-        -- Buttons (if any) live BETWEEN bottom_pad and the status row. The
-        -- body slice must end at bottom_pad to leave bottom_pad + buttons +
-        -- status untouched. Pre-permission `old_end_row - 1` was bottom_pad;
-        -- with K rendered button rows it shifts up by K.
+        -- Slice ends at bottom_pad so buttons + status row stay put.
         --- @diagnostic disable-next-line: invisible
         local k_buttons = tracker._rendered_button_count or 0
         local bottom_pad_row = old_end_row - k_buttons - 1
@@ -632,10 +611,6 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             body_lines
         )
 
-        -- After the slice, the buffer holds: header + new_body + bottom_pad +
-        -- K_buttons rendered button rows + status. `#new_lines` accounts for
-        -- header + body + 2 pads (bottom_pad + status); add K_buttons for the
-        -- preserved button section.
         local new_end_row = start_row + #new_lines - 1 + k_buttons
 
         pcall(
@@ -976,9 +951,6 @@ function MessageWriter:get_focused_button_index(tool_call_id)
 end
 
 --- 0-indexed buffer row of the Nth permission button for the given block.
---- Buttons live between `bottom_pad` and the status row, one per line, in
---- the same order as `permission.sorted_options`. `K` is the rendered
---- button count tracked by `_render_permission_section`.
 --- @param tool_call_id string
 --- @param index integer 1-indexed button position
 --- @return integer|nil row 0-indexed buffer row of the Nth permission button, or nil
@@ -994,10 +966,7 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
-    -- K rendered rows = N buttons + N spacers (one between each pair + one
-    -- trailing before the status row) = 2N -> N = K / 2.
-    -- Button N maps to row offset (N - 1) * 2 from the first button row.
-    local n_buttons = math.floor(k / 2)
+    local n_buttons = #tracker.permission.sorted_options
     if index < 1 or index > n_buttons then
         return nil
     end
@@ -1237,10 +1206,6 @@ end
 --- @field status_text string
 --- @field status_segments agentic.ui.MessageWriter.StatusSegment[]
 
---- Build the permission section (button rows + status row) for a block.
---- `status_text` carries only the status word; button text lives on
---- `button_lines`, one entry per option. Each row has a single full-row
---- highlight segment in `button_segments_per_line[i]`.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return agentic.ui.MessageWriter.PermissionSection section
 function MessageWriter:_build_permission_section(tracker)
@@ -1259,15 +1224,24 @@ function MessageWriter:_build_permission_section(tracker)
         return section
     end
 
+    local function push_spacer()
+        table.insert(section.button_lines, "")
+        table.insert(section.button_segments_per_line, {})
+    end
+
+    --- @param line string
+    --- @param segments agentic.ui.MessageWriter.StatusSegment[]
+    local function push_button(line, segments)
+        table.insert(section.button_lines, line)
+        table.insert(section.button_segments_per_line, segments)
+    end
+
     local permission_icons = Config.permission_icons or {}
     local focused_btn = perm.focused_button_index
 
     for i, option in ipairs(perm.sorted_options) do
-        -- Empty spacer row between buttons for visual separation. The spacer
-        -- carries no highlight segment so the bg fill ends at the button row.
         if i > 1 then
-            table.insert(section.button_lines, "")
-            table.insert(section.button_segments_per_line, {})
+            push_spacer()
         end
 
         local label = option.name
@@ -1287,8 +1261,7 @@ function MessageWriter:_build_permission_section(tracker)
         end
         table.insert(tokens, label)
 
-        -- Leading + trailing space inside the highlighted span so the bg
-        -- fill reads as a button, not as colored text.
+        -- Padding spaces extend the bg fill so the row reads as a button.
         local line = " " .. table.concat(tokens, " ") .. " "
 
         local hl_group
@@ -1301,17 +1274,11 @@ function MessageWriter:_build_permission_section(tracker)
             hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
         end
 
-        table.insert(section.button_lines, line)
-        table.insert(
-            section.button_segments_per_line,
-            { { 0, #line, hl_group } }
-        )
+        push_button(line, { { 0, #line, hl_group } })
     end
 
-    -- Trailing spacer between the last button and the status row.
     if #section.button_lines > 0 then
-        table.insert(section.button_lines, "")
-        table.insert(section.button_segments_per_line, {})
+        push_spacer()
     end
 
     return section
@@ -1342,14 +1309,6 @@ function MessageWriter:_build_status_word(tracker)
     return text, segments
 end
 
---- Render a permission section (button rows + status row) into the buffer.
---- Maintains the block's `_rendered_button_count` so the next repaint can
---- delete the previously rendered rows before inserting the new set.
---- `end_right_gravity = true` on the block extmark keeps `end_row`
---- attached to the status row when buttons are inserted at
---- `bottom_pad_row + 1`; the delete path shrinks the range because the
---- removed rows fall inside the extmark span, gravity does not affect
---- that side of the operation.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @param end_row integer 0-indexed status row before this repaint
 --- @param section agentic.ui.MessageWriter.PermissionSection

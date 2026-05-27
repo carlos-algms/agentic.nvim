@@ -972,9 +972,9 @@ colorscheme.
 | `AgenticStatusPending`            | Pending tool call status indicator          | `bg=#5f4d8f`                        |
 | `AgenticStatusCompleted`          | Completed tool call status indicator        | `bg=#2d5a3d`                        |
 | `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
-| `AgenticPermissionButtonAllow`    | Focused allow button (focused button)       | `bg=#2d5a3d, bold=true`             |
-| `AgenticPermissionButtonReject`   | Focused reject button (focused button)      | `bg=#7a2d2d, bold=true`             |
-| `AgenticPermissionButtonInactive` | All non-focused permission buttons          | `bg=#3a3a3a`                        |
+| `AgenticPermissionButtonAllow`    | Focused button (allow kind)                 | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused button (reject kind)                | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonInactive` | Permission button (non-focused button)      | `bg=#3a3a3a`                        |
 | `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
 | `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |
 | `AgenticThinking`                 | Thinking block text in chat buffer          | Links to `Comment`                  |

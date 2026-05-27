@@ -2,13 +2,7 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 
--- Priority order for permission option kinds based on ACP tool-calls documentation
--- Lower number = higher priority (appears first)
--- Order from https://agentclientprotocol.com/protocol/tool-calls.md:
--- 1. allow_once - Allow this operation only this time
--- 2. allow_always - Allow this operation and remember the choice
--- 3. reject_once - Reject this operation only this time
--- 4. reject_always - Reject this operation and remember the choice
+-- See https://agentclientprotocol.com/protocol/tool-calls.md
 local PERMISSION_KIND_PRIORITY = {
     allow_once = 1,
     allow_always = 2,
@@ -157,8 +151,6 @@ function PermissionManager:add_request(request, callback)
     end
 end
 
---- Move button focus within the currently focused block. Wraps. No-op when
---- no block is focused or it has zero options.
 --- @param direction integer 1 = right (l), -1 = left (h)
 --- @protected
 function PermissionManager:_cycle_button(direction)
@@ -209,9 +201,7 @@ function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
     end
 
     pcall(vim.api.nvim_win_set_cursor, winid, { button_row + 1, 0 })
-    -- `zb` matches the chat auto-scroll convention (`G0zb`); without it the
-    -- focused button row can disappear above the viewport when buttons cluster
-    -- near the bottom of the window.
+    -- `zb` matches the chat auto-scroll convention (`G0zb`).
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")
     end)
@@ -263,13 +253,8 @@ function PermissionManager:resolve(tool_call_id, option_id)
 
     self.message_writer:set_permission_state(tool_call_id, nil)
 
-    -- Repaint BEFORE the callback so the user sees the buttons gone
-    -- immediately. The callback hits the ACP provider; any subsequent
-    -- agent update arrives on a later tick (notifications cross
-    -- `vim.schedule`), so no UI race. _set_focus below cannot do this
-    -- repaint for us because it skips the old-id branch once the id has
-    -- been removed from `pending`, and skips the new-id branch when there
-    -- is no next head.
+    -- Repaint BEFORE callback: avoids UI race; _set_focus below would skip
+    -- this id since it is no longer in `pending`.
     self.message_writer:repaint_status_row(tool_call_id)
 
     pcall(request.callback, option_id)
@@ -397,22 +382,11 @@ function PermissionManager:_cycle_focus(direction)
     self:_set_focus(target_id)
 end
 
---- Install the per-block focus keymaps: digits 1..N for direct dispatch,
---- h / l / <Left> / <Right> for button-focus cycling, and <CR> for submit.
---- Digits fire from anywhere in the chat buffer (direct dispatch is the whole
---- point of inline permissions). Motion / submit keys are `expr = true` and
---- only fire on the focused block's row N; off-row they return the original
---- key so the user can navigate / count normally.
+--- See ADR 0003. Row-gated `expr=true` keymaps with `vim.schedule` defer
+--- (expr-keymaps run inside textlock).
 --- @param pending agentic.ui.PermissionManager.PermissionRequest
 --- @protected
 function PermissionManager:_install_focus_keymaps(pending)
-    --- Build an expr-keymap callback that runs `action` only when the cursor
-    --- is on the focused row. Off-row, returns `fallback_keys` (typed via
-    --- noremap), giving the user normal cursor / count behavior.
-    --- On-row, defers the action via `vim.schedule` because expr-keymaps run
-    --- inside textlock and cannot call `nvim_buf_set_lines` directly. Without
-    --- the defer, the row-N text rewrite in `repaint_status_row` silently
-    --- fails and the button labels stay visible (only their highlights drop).
     --- @param fallback_keys string
     --- @param action fun()
     --- @return fun(): string
@@ -577,9 +551,6 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
         or end_row
 
     pcall(vim.api.nvim_win_set_cursor, winid, { target_row + 1, 0 })
-    -- `zb` (not `zz`) matches the chat auto-scroll convention (`G0zb`),
-    -- anchoring the focused row near the bottom of the window where the user
-    -- expects new chat content to live.
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")
     end)

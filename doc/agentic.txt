@@ -516,12 +516,12 @@ These keybindings are automatically set in Agentic buffers:
   [t                     n       Previous tool call
   ]c                     n       Next diff hunk
   [c                     n       Previous diff hunk
-  <C-n>                     n       Cycle to next pending permission block
-  <C-p>                     n       Cycle to previous pending permission block
-  h / <Left> / k / <Up>     n       Focus previous permission button
-  l / <Right> / j / <Down>  n       Focus next permission button
-  <CR>                      n       Submit focused permission button
-  1..4                      n       Submit permission option directly
+  <C-n>                    n       Cycle to next pending permission block
+  <C-p>                    n       Cycle to previous pending permission block
+  h / <Left> / k / <Up>    n       Focus previous permission button
+  l / <Right> / j / <Down> n       Focus next permission button
+  <CR>                     n       Submit focused permission button
+  1..4                     n       Submit permission option directly
 
                                         *agentic-keymaps-customizing*
 Customizing keymaps ~
