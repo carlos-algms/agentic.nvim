@@ -1186,13 +1186,14 @@ end
 --- @field status_segments agentic.ui.MessageWriter.StatusSegment[]
 
 --- Build the permission section (button rows + status row) for a block.
---- Task 1 stub: delegates to `_build_status_row` and returns the no-row
---- shape (`button_lines = {}`, `button_segments_per_line = {}`). Later
---- tasks replace the inline-button build with per-row construction.
+--- `status_text` carries only the status word; button text lives on
+--- `button_lines`, one entry per option. Each row has a single full-row
+--- highlight segment in `button_segments_per_line[i]`.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return agentic.ui.MessageWriter.PermissionSection section
 function MessageWriter:_build_permission_section(tracker)
-    local status_text, status_segments = self:_build_status_row(tracker)
+    local status_text, status_segments = self:_build_status_word(tracker)
+
     --- @type agentic.ui.MessageWriter.PermissionSection
     local section = {
         button_lines = {},
@@ -1200,7 +1201,79 @@ function MessageWriter:_build_permission_section(tracker)
         status_text = status_text,
         status_segments = status_segments,
     }
+
+    local perm = tracker.permission
+    if not perm then
+        return section
+    end
+
+    local permission_icons = Config.permission_icons or {}
+    local focused_btn = perm.focused_button_index
+
+    for i, option in ipairs(perm.sorted_options) do
+        local label = option.name
+        if not label or label == "" then
+            label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
+        end
+
+        local btn_icon = permission_icons[option.kind] or ""
+
+        --- @type string[]
+        local tokens = {}
+        if perm.is_focused then
+            table.insert(tokens, tostring(i))
+        end
+        if btn_icon ~= "" then
+            table.insert(tokens, btn_icon)
+        end
+        table.insert(tokens, label)
+
+        local line = table.concat(tokens, " ")
+
+        local hl_group
+        local is_button_focused = perm.is_focused and i == focused_btn
+        if not is_button_focused then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
+        elseif option.kind == "allow_once" or option.kind == "allow_always" then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
+        else
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
+        end
+
+        table.insert(section.button_lines, line)
+        table.insert(
+            section.button_segments_per_line,
+            { { 0, #line, hl_group } }
+        )
+    end
+
     return section
+end
+
+--- Build the bare status-word text + single highlight segment for a block.
+--- Used by `_build_permission_section`; the legacy `_build_status_row`
+--- composes the same word inline with the buttons and is removed in Task 7.
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @return string text
+--- @return agentic.ui.MessageWriter.StatusSegment[] segments
+function MessageWriter:_build_status_word(tracker)
+    local status = tracker.status
+
+    if not status or status == "" then
+        return "", {}
+    end
+
+    local icons = Config.status_icons or {}
+    local icon = icons[status] or ""
+    local status_label = icon ~= "" and (icon .. " " .. status) or status
+    local text = " " .. status_label .. " "
+
+    --- @type agentic.ui.MessageWriter.StatusSegment[]
+    local segments = {
+        { 0, #text, Theme.get_status_hl_group(status) },
+    }
+
+    return text, segments
 end
 
 --- Build the text + highlight segments for the status row (row N) of a block.

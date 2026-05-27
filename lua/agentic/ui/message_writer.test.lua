@@ -483,129 +483,199 @@ describe("agentic.ui.MessageWriter", function()
             assert.truthy(text:find("Allow"))
         end)
 
-        describe("button label wrapping (NBSP)", function()
-            -- U+00A0 NBSP, 2 bytes in UTF-8 (\xC2\xA0).
-            local NBSP = "\194\160"
+        describe("_build_permission_section button rows", function()
+            --- @param id string
+            --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
+            --- @return agentic.ui.MessageWriter.PermissionSection
+            local function build_section(id, state)
+                writer:write_tool_call_block(
+                    make_tool_call_block(id, "pending")
+                )
+                writer:set_permission_state(id, {
+                    sorted_options = state.sorted_options
+                        or ALLOW_REJECT_OPTIONS,
+                    is_focused = state.is_focused,
+                    focused_button_index = state.focused_button_index,
+                })
+                local tracker = writer.tool_call_blocks[id]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                return writer:_build_permission_section(tracker)
+            end
 
             it(
-                "uses provider option.name and joins internal spaces with NBSP",
+                "builds one button line per option without digit prefix when not focused",
                 function()
-                    setup_permission_block("row-n-nbsp-name", {
+                    local section = build_section("section-non-focused", {
+                        is_focused = false,
+                    })
+
+                    assert.equal(2, #section.button_lines)
+                    -- No digit prefix in non-focused state.
+                    assert.is_nil(section.button_lines[1]:find("^1 "))
+                    assert.is_nil(section.button_lines[2]:find("^2 "))
+                    assert.truthy(section.button_lines[1]:find("Allow once"))
+                    assert.truthy(section.button_lines[2]:find("Reject once"))
+                end
+            )
+
+            it(
+                "prefixes each line with the 1-indexed digit when focused",
+                function()
+                    local section = build_section("section-focused", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    assert.equal(2, #section.button_lines)
+                    assert.truthy(section.button_lines[1]:find("^1 "))
+                    assert.truthy(section.button_lines[2]:find("^2 "))
+                    assert.truthy(section.button_lines[1]:find("Allow once"))
+                    assert.truthy(section.button_lines[2]:find("Reject once"))
+                end
+            )
+
+            for _, case in ipairs({
+                {
+                    index = 1,
+                    focused_hl = "AgenticPermissionButtonAllow",
+                    unfocused_hl = "AgenticPermissionButtonInactive",
+                    label = "allow",
+                },
+                {
+                    index = 2,
+                    focused_hl = "AgenticPermissionButtonReject",
+                    unfocused_hl = "AgenticPermissionButtonInactive",
+                    label = "reject",
+                },
+            }) do
+                it(
+                    "emits one full-row segment per button line for the focused "
+                        .. case.label
+                        .. " button",
+                    function()
+                        local section =
+                            build_section("section-hl-" .. case.label, {
+                                is_focused = true,
+                                focused_button_index = case.index,
+                            })
+
+                        assert.equal(2, #section.button_segments_per_line)
+                        for i, line in ipairs(section.button_lines) do
+                            local segs = section.button_segments_per_line[i]
+                            assert.equal(1, #segs)
+                            assert.equal(0, segs[1][1])
+                            assert.equal(#line, segs[1][2])
+                        end
+
+                        local focused_seg =
+                            section.button_segments_per_line[case.index][1]
+                        assert.equal(case.focused_hl, focused_seg[3])
+
+                        local other_index = case.index == 1 and 2 or 1
+                        local other_seg =
+                            section.button_segments_per_line[other_index][1]
+                        assert.equal(case.unfocused_hl, other_seg[3])
+                    end
+                )
+            end
+
+            it(
+                "uses the inactive hl group on every line when not focused",
+                function()
+                    local section = build_section("section-hl-inactive", {
+                        is_focused = false,
+                    })
+
+                    assert.equal(2, #section.button_segments_per_line)
+                    for _, segs in ipairs(section.button_segments_per_line) do
+                        assert.equal(1, #segs)
+                        assert.equal(
+                            "AgenticPermissionButtonInactive",
+                            segs[1][3]
+                        )
+                    end
+                end
+            )
+
+            it(
+                "writes the provider option.name verbatim on the button line",
+                function()
+                    local long_label =
+                        "Yes, and bypass permissions for this session"
+                    local section = build_section("section-long-label", {
                         sorted_options = {
                             {
                                 optionId = "allow-always",
-                                name = "Allow Always",
+                                name = long_label,
                                 kind = "allow_always",
                             },
                         },
                         is_focused = false,
                     })
 
-                    local text = status_row_text("row-n-nbsp-name")
-                    assert.truthy(text:find("Allow" .. NBSP .. "Always"))
-                    assert.is_nil(text:find("Allow Always", 1, true))
-                end
-            )
-
-            it(
-                "joins index, icon, and label tokens with NBSP when focused",
-                function()
-                    setup_permission_block("row-n-nbsp-focused", {
-                        sorted_options = {
-                            {
-                                optionId = "allow-always",
-                                name = "Allow Always",
-                                kind = "allow_always",
-                            },
-                        },
-                        is_focused = true,
-                        focused_button_index = 1,
-                    })
-
-                    local text = status_row_text("row-n-nbsp-focused")
-                    -- "1<NBSP>...<NBSP>Allow<NBSP>Always"
-                    assert.truthy(text:find("1" .. NBSP))
+                    assert.equal(1, #section.button_lines)
                     assert.truthy(
-                        text:find(NBSP .. "Allow" .. NBSP .. "Always")
+                        section.button_lines[1]:find(long_label, 1, true)
                     )
                 end
             )
 
-            it("pads each button with NBSP, not regular spaces", function()
-                setup_permission_block("row-n-nbsp-pad", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow",
-                            kind = "allow_once",
+            it(
+                "falls back to the static label when option.name is nil",
+                function()
+                    local section = build_section("section-fallback-nil", {
+                        sorted_options = {
+                            {
+                                optionId = "allow-always",
+                                name = nil,
+                                kind = "allow_always",
+                            },
                         },
-                    },
+                        is_focused = false,
+                    })
+
+                    assert.equal(1, #section.button_lines)
+                    assert.truthy(
+                        section.button_lines[1]:find("Allow Always", 1, true)
+                    )
+                end
+            )
+
+            it(
+                "falls back to the static label when option.name is empty",
+                function()
+                    local section = build_section("section-fallback-empty", {
+                        sorted_options = {
+                            {
+                                optionId = "reject-always",
+                                name = "",
+                                kind = "reject_always",
+                            },
+                        },
+                        is_focused = false,
+                    })
+
+                    assert.equal(1, #section.button_lines)
+                    assert.truthy(
+                        section.button_lines[1]:find("Reject Always", 1, true)
+                    )
+                end
+            )
+
+            it("produces one button line for a single option", function()
+                local section = build_section("section-single", {
+                    sorted_options = { ALLOW_REJECT_OPTIONS[1] },
                     is_focused = false,
                 })
 
-                local text = status_row_text("row-n-nbsp-pad")
-                -- Button is " <icon> Allow " with all spaces -> NBSP.
-                assert.truthy(text:find(NBSP .. "Allow" .. NBSP))
-            end)
-
-            it("keeps the inter-button separator as regular spaces", function()
-                setup_permission_block("row-n-nbsp-sep", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-once",
-                            name = "Allow",
-                            kind = "allow_once",
-                        },
-                        {
-                            optionId = "reject-once",
-                            name = "Reject",
-                            kind = "reject_once",
-                        },
-                    },
-                    is_focused = false,
-                })
-
-                local text = status_row_text("row-n-nbsp-sep")
-                -- Two regular spaces between the two buttons must survive.
-                assert.truthy(text:find("  "))
-            end)
-
-            it("falls back to the static label when name is nil", function()
-                setup_permission_block("row-n-nbsp-nil", {
-                    sorted_options = {
-                        {
-                            optionId = "allow-always",
-                            name = nil,
-                            kind = "allow_always",
-                        },
-                    },
-                    is_focused = false,
-                })
-
-                local text = status_row_text("row-n-nbsp-nil")
-                assert.truthy(text:find("Allow" .. NBSP .. "Always"))
-            end)
-
-            it("falls back to the static label when name is empty", function()
-                setup_permission_block("row-n-nbsp-empty", {
-                    sorted_options = {
-                        {
-                            optionId = "reject-always",
-                            name = "",
-                            kind = "reject_always",
-                        },
-                    },
-                    is_focused = false,
-                })
-
-                local text = status_row_text("row-n-nbsp-empty")
-                assert.truthy(text:find("Reject" .. NBSP .. "Always"))
+                assert.equal(1, #section.button_lines)
+                assert.equal(1, #section.button_segments_per_line)
             end)
 
             it(
-                "get_button_col returns the byte col of the NBSP padding before the button",
+                "produces one button line per option for four options",
                 function()
-                    setup_permission_block("row-n-nbsp-col", {
+                    local section = build_section("section-four", {
                         sorted_options = {
                             {
                                 optionId = "allow-once",
@@ -613,32 +683,68 @@ describe("agentic.ui.MessageWriter", function()
                                 kind = "allow_once",
                             },
                             {
+                                optionId = "allow-always",
+                                name = "Allow Always",
+                                kind = "allow_always",
+                            },
+                            {
                                 optionId = "reject-once",
                                 name = "Reject",
                                 kind = "reject_once",
                             },
+                            {
+                                optionId = "reject-always",
+                                name = "Reject Always",
+                                kind = "reject_always",
+                            },
                         },
                         is_focused = true,
-                        focused_button_index = 1,
+                        focused_button_index = 3,
                     })
 
-                    local text = status_row_text("row-n-nbsp-col")
-                    local col_1 = writer:get_button_col("row-n-nbsp-col", 1)
-                    local col_2 = writer:get_button_col("row-n-nbsp-col", 2)
-                    assert.is_not_nil(col_1)
-                    assert.is_not_nil(col_2)
+                    assert.equal(4, #section.button_lines)
+                    assert.equal(4, #section.button_segments_per_line)
+                    for i = 1, 4 do
+                        assert.truthy(
+                            section.button_lines[i]:find("^" .. i .. " ")
+                        )
+                    end
+                end
+            )
 
-                    -- Each focused button body starts with "<NBSP>1<NBSP>" / "<NBSP>2<NBSP>".
-                    -- get_button_col points at the leading NBSP of the button.
-                    --- @cast col_1 integer
-                    --- @cast col_2 integer
-                    assert.equal(
-                        NBSP .. "1" .. NBSP,
-                        text:sub(col_1 + 1, col_1 + #NBSP + 1 + #NBSP)
+            it(
+                "uses an empty icon when permission_icons config is empty",
+                function()
+                    local original = Config.permission_icons
+                    --- @diagnostic disable-next-line: missing-fields
+                    Config.permission_icons = {}
+
+                    local section = build_section("section-empty-icons", {
+                        sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                        is_focused = false,
+                    })
+
+                    Config.permission_icons = original
+
+                    assert.equal(1, #section.button_lines)
+                    -- No icon means the label is the line content.
+                    assert.equal("Allow once", section.button_lines[1])
+                end
+            )
+
+            it(
+                "carries the status word in status_text and excludes button text",
+                function()
+                    local section = build_section("section-status-text", {
+                        is_focused = false,
+                    })
+
+                    assert.truthy(section.status_text:find("pending"))
+                    assert.is_nil(
+                        section.status_text:find("Allow once", 1, true)
                     )
-                    assert.equal(
-                        NBSP .. "2" .. NBSP,
-                        text:sub(col_2 + 1, col_2 + #NBSP + 1 + #NBSP)
+                    assert.is_nil(
+                        section.status_text:find("Reject once", 1, true)
                     )
                 end
             )
