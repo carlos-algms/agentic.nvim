@@ -27,12 +27,47 @@ end
 --- Detect the host platform for clipboard image operations.
 --- @return agentic.ui.ClipboardImage.Platform platform
 function M.get_platform()
-    return "unknown"
+    if vim.fn.has("mac") == 1 then
+        return "mac"
+    end
+
+    if vim.fn.has("win32") == 1 then
+        return "win"
+    end
+
+    if vim.fn.has("wsl") == 1 and vim.fn.executable("powershell.exe") == 1 then
+        return "win"
+    end
+
+    local wayland = vim.env.WAYLAND_DISPLAY
+    if wayland and wayland ~= "" then
+        return "linux_wayland"
+    end
+
+    return "linux_x11"
 end
 
 --- Check whether the host platform's clipboard tools are reachable.
 --- @return boolean supported
 function M.is_supported()
+    local platform = M.get_platform()
+
+    if platform == "mac" then
+        return true
+    end
+
+    if platform == "win" then
+        return vim.fn.executable("powershell.exe") == 1
+    end
+
+    if platform == "linux_wayland" then
+        return vim.fn.executable("wl-paste") == 1
+    end
+
+    if platform == "linux_x11" then
+        return vim.fn.executable("xclip") == 1
+    end
+
     return false
 end
 
