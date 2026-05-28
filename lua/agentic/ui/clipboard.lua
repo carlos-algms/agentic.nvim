@@ -9,12 +9,6 @@ local M = {}
 --- @field is_cursor_in_widget fun(): boolean Callback to check if cursor is in a Chat widget buffer
 --- @field on_paste fun(file_path: string): boolean Callback when file is pasted, returns success
 
---- Check whether the host platform's clipboard image tools are available.
---- @return boolean
-function M.is_clipboard_tool_available()
-    return ClipboardImage.is_supported()
-end
-
 --- Show a floating message guiding the user to install the missing
 --- clipboard tooling for their platform.
 function M.show_clipboard_tool_missing_message()
