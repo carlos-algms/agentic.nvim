@@ -325,31 +325,238 @@ describe("ClipboardImage", function()
             assert.equal(0, run_stub.call_count)
         end)
 
-        it("includes the powershell preamble for the win branch", function()
+        it(
+            "includes the powershell preamble for the win branch (has_image)",
+            function()
+                force_platform("win")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+                ClipboardImage.has_image()
+                assert.equal(1, run_stub.call_count)
+                local cmd = run_stub.calls[1][1]
+                assert.equal("powershell.exe", cmd[1])
+                assert.equal("-NoProfile", cmd[2])
+                assert.equal("-Command", cmd[3])
+                assert.is_true(
+                    cmd[4]:find(
+                        "Add-Type -AssemblyName System.Windows.Forms",
+                        1,
+                        true
+                    ) ~= nil
+                )
+                assert.is_true(
+                    cmd[4]:find(
+                        "[System.Windows.Forms.Clipboard]::ContainsImage",
+                        1,
+                        true
+                    ) ~= nil
+                )
+            end
+        )
+    end)
+
+    describe("save", function()
+        --- @type TestStub
+        local run_stub
+        --- @type TestStub
+        local shellescape_stub
+        --- @type TestStub
+        local fs_stat_stub
+
+        before_each(function()
+            run_stub = spy.stub(ClipboardImage, "_run")
+            shellescape_stub = spy.stub(vim.fn, "shellescape")
+            shellescape_stub:invokes(function(s)
+                return "'" .. s .. "'"
+            end)
+            fs_stat_stub = spy.stub(vim.uv, "fs_stat")
+            fs_stat_stub:returns({ size = 1234, type = "file" })
+        end)
+
+        after_each(function()
+            run_stub:revert()
+            shellescape_stub:revert()
+            fs_stat_stub:revert()
+        end)
+
+        --- @param platform "mac"|"win"|"linux_wayland"|"linux_x11"|"unknown"
+        local function force_platform(platform)
+            has_stub:invokes(function(feature)
+                if platform == "mac" and feature == "mac" then
+                    return 1
+                end
+                if platform == "win" and feature == "win32" then
+                    return 1
+                end
+                if
+                    (platform == "linux_wayland" or platform == "linux_x11")
+                    and feature == "linux"
+                then
+                    return 1
+                end
+                return 0
+            end)
+            if platform == "linux_wayland" then
+                vim.env.WAYLAND_DISPLAY = "wayland-0"
+            else
+                vim.env.WAYLAND_DISPLAY = nil
+            end
+        end
+
+        it(
+            "mac happy path returns true and runs osascript with PNGf script",
+            function()
+                force_platform("mac")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+
+                local ok, err = ClipboardImage.save("/tmp/img.png")
+                assert.is_true(ok)
+                assert.is_nil(err)
+                assert.equal(1, run_stub.call_count)
+                local cmd = run_stub.calls[1][1]
+                assert.equal("osascript", cmd[1])
+                assert.equal("-e", cmd[2])
+                assert.is_true(cmd[3]:find("/tmp/img.png", 1, true) ~= nil)
+                assert.is_true(cmd[3]:find("«class PNGf»", 1, true) ~= nil)
+            end
+        )
+
+        it("mac returns (false, err) when _run fails", function()
+            force_platform("mac")
+            run_stub:invokes(function()
+                return false, "error: bad clipboard"
+            end)
+            local ok, err = ClipboardImage.save("/tmp/img.png")
+            assert.is_false(ok)
+            assert.equal("error: bad clipboard", err)
+        end)
+
+        it(
+            "win happy path returns true and PS argv contains Add-Type preamble",
+            function()
+                force_platform("win")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+
+                local ok, err = ClipboardImage.save("C:\\tmp\\img.png")
+                assert.is_true(ok)
+                assert.is_nil(err)
+                local cmd = run_stub.calls[1][1]
+                assert.equal("powershell.exe", cmd[1])
+                assert.equal("-NoProfile", cmd[2])
+                assert.equal("-Command", cmd[3])
+                assert.is_true(
+                    cmd[4]:find(
+                        "Add-Type -AssemblyName System.Windows.Forms",
+                        1,
+                        true
+                    ) ~= nil
+                )
+                assert.is_true(
+                    cmd[4]:find(
+                        "[System.Windows.Forms.Clipboard]::GetImage",
+                        1,
+                        true
+                    ) ~= nil
+                )
+            end
+        )
+
+        it("win escapes single quotes in path", function()
             force_platform("win")
             run_stub:invokes(function()
                 return true, ""
             end)
-            ClipboardImage.has_image()
-            assert.equal(1, run_stub.call_count)
+
+            ClipboardImage.save("C:\\tmp\\don't.png")
             local cmd = run_stub.calls[1][1]
-            assert.equal("powershell.exe", cmd[1])
-            assert.equal("-NoProfile", cmd[2])
-            assert.equal("-Command", cmd[3])
-            assert.is_true(
-                cmd[4]:find(
-                    "Add-Type -AssemblyName System.Windows.Forms",
-                    1,
-                    true
-                ) ~= nil
-            )
-            assert.is_true(
-                cmd[4]:find(
-                    "[System.Windows.Forms.Clipboard]::ContainsImage",
-                    1,
-                    true
-                ) ~= nil
-            )
+            assert.is_true(cmd[4]:find("don''t.png", 1, true) ~= nil)
         end)
+
+        it(
+            "linux_wayland uses shell string with wl-paste and escaped path",
+            function()
+                force_platform("linux_wayland")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+
+                local ok = ClipboardImage.save("/tmp/img.png")
+                assert.is_true(ok)
+                local cmd = run_stub.calls[1][1]
+                assert.equal("string", type(cmd))
+                assert.is_true(
+                    cmd:find("wl-paste --type image/png >", 1, true) ~= nil
+                )
+                assert.is_true(cmd:find("'/tmp/img.png'", 1, true) ~= nil)
+            end
+        )
+
+        it("linux_x11 uses shell string with xclip and escaped path", function()
+            force_platform("linux_x11")
+            run_stub:invokes(function()
+                return true, ""
+            end)
+
+            local ok = ClipboardImage.save("/tmp/img.png")
+            assert.is_true(ok)
+            local cmd = run_stub.calls[1][1]
+            assert.equal("string", type(cmd))
+            assert.is_true(
+                cmd:find(
+                    "xclip -selection clipboard -t image/png -o >",
+                    1,
+                    true
+                ) ~= nil
+            )
+            assert.is_true(cmd:find("'/tmp/img.png'", 1, true) ~= nil)
+        end)
+
+        it(
+            "returns (false, empty-file message) when output file is zero bytes",
+            function()
+                force_platform("linux_x11")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+                fs_stat_stub:returns({ size = 0, type = "file" })
+
+                local ok, err = ClipboardImage.save("/tmp/img.png")
+                assert.is_false(ok)
+                assert.is_not_nil(err)
+                assert.is_true(err ~= nil and err:find("empty", 1, true) ~= nil)
+            end
+        )
+
+        it(
+            "returns (false, empty-file message) when fs_stat returns nil",
+            function()
+                force_platform("linux_x11")
+                run_stub:invokes(function()
+                    return true, ""
+                end)
+                fs_stat_stub:returns(nil)
+
+                local ok, err = ClipboardImage.save("/tmp/img.png")
+                assert.is_false(ok)
+                assert.is_not_nil(err)
+            end
+        )
+
+        it(
+            "unknown platform returns (false, unsupported platform) without calling _run",
+            function()
+                force_platform("unknown")
+
+                local ok, err = ClipboardImage.save("/tmp/img.png")
+                assert.is_false(ok)
+                assert.equal("unsupported platform", err)
+                assert.equal(0, run_stub.call_count)
+            end
+        )
     end)
 end)

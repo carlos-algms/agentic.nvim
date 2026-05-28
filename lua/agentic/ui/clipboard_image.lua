@@ -120,13 +120,68 @@ function M.has_image()
     return false
 end
 
+local MAC_SAVE_SCRIPT_TEMPLATE = table.concat({
+    "set png to the clipboard as «class PNGf»",
+    'set f to open for access POSIX file "%s" with write permission',
+    "set eof of f to 0",
+    "write png to f",
+    "close access f",
+}, "\n")
+
+local WIN_SAVE_PS_TEMPLATE = table.concat({
+    "Add-Type -AssemblyName System.Windows.Forms;",
+    "Add-Type -AssemblyName System.Drawing;",
+    "$img = [System.Windows.Forms.Clipboard]::GetImage();",
+    "if ($img) {",
+    "  $img.Save('%s', [System.Drawing.Imaging.ImageFormat]::Png);",
+    "  exit 0",
+    "} else { exit 1 }",
+}, " ")
+
 --- Save the clipboard PNG image to the given path.
 --- @param path string
 --- @return boolean ok
 --- @return string|nil err
 function M.save(path)
-    local _ = path
-    return false, "not implemented"
+    local platform = M.get_platform()
+
+    if platform == "unknown" then
+        return false, "unsupported platform"
+    end
+
+    local ok, stdout
+    if platform == "mac" then
+        local script = string.format(MAC_SAVE_SCRIPT_TEMPLATE, path)
+        ok, stdout = M._run({ "osascript", "-e", script })
+    elseif platform == "win" then
+        local ps_path = path:gsub("'", "''")
+        local ps = string.format(WIN_SAVE_PS_TEMPLATE, ps_path)
+        ok, stdout = M._run({
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            ps,
+        })
+    elseif platform == "linux_wayland" then
+        ok, stdout =
+            M._run("wl-paste --type image/png > " .. vim.fn.shellescape(path))
+    elseif platform == "linux_x11" then
+        ok, stdout = M._run(
+            "xclip -selection clipboard -t image/png -o > "
+                .. vim.fn.shellescape(path)
+        )
+    end
+
+    if not ok then
+        return false, stdout ~= "" and stdout or "save failed"
+    end
+
+    local stat = vim.uv.fs_stat(path)
+    if not stat or stat.size == 0 then
+        return false, "clipboard write produced empty file"
+    end
+
+    return true, nil
 end
 
 return M
