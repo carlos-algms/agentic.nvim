@@ -127,12 +127,10 @@ function M.check()
     -- Check optional dependencies
     vim_health.start("Optional Dependencies")
     local Clipboard = require("agentic.ui.clipboard")
-    if Clipboard.is_img_clip_installed() then
-        vim_health.ok("hakonharnes/img-clip.nvim: installed")
+    if Clipboard.is_clipboard_tool_available() then
+        vim_health.ok("Clipboard image paste: supported")
     else
-        vim_health.info(
-            "hakonharnes/img-clip.nvim: not installed (optional - enables image pasting from clipboard)"
-        )
+        vim_health.info("Clipboard image paste: not available")
     end
 end
 
