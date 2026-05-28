@@ -1422,12 +1422,10 @@ describe("agentic.SessionManager", function()
 
                 -- image files render as markdown image tags so the chat
                 -- buffer (markdown filetype) can display them inline.
-                assert.is_not_nil(
-                    text:find("  %- !%[photo%.png%]%(/tmp/photo%.png%)", 1)
-                )
+                assert.is_not_nil(text:find("  %- !%[%]%(/tmp/photo%.png%)", 1))
                 -- extension match is case-insensitive.
                 assert.is_not_nil(
-                    text:find("  %- !%[diagram%.SVG%]%(/tmp/diagram%.SVG%)", 1)
+                    text:find("  %- !%[%]%(/tmp/diagram%.SVG%)", 1)
                 )
                 -- non-image files keep the original @-mention bullet.
                 assert.is_not_nil(text:find("  %- @/tmp/code%.lua", 1))

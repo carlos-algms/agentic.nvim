@@ -841,11 +841,7 @@ function SessionManager:_handle_input_submit(input_text)
             -- Image files render as markdown image tags so the chat
             -- buffer (markdown filetype) can display them inline.
             if FileSystem.IMAGE_MIMES[ext] then
-                line = string.format(
-                    "  - ![%s](%s)",
-                    FileSystem.base_name(file_path),
-                    smart_path
-                )
+                line = string.format("  - ![](%s)", smart_path)
             else
                 line = string.format("  - @%s", smart_path)
             end
