@@ -835,10 +835,22 @@ function SessionManager:_handle_input_submit(input_text)
         for _, file_path in ipairs(files) do
             table.insert(prompt, ACPPayloads.create_file_content(file_path))
 
-            table.insert(
-                message_lines,
-                string.format("  - @%s", FileSystem.to_smart_path(file_path))
-            )
+            local smart_path = FileSystem.to_smart_path(file_path)
+            local ext = FileSystem.get_file_extension(file_path)
+            local line
+            -- Image files render as markdown image tags so the chat
+            -- buffer (markdown filetype) can display them inline.
+            if FileSystem.IMAGE_MIMES[ext] then
+                line = string.format(
+                    "  - ![%s](%s)",
+                    FileSystem.base_name(file_path),
+                    smart_path
+                )
+            else
+                line = string.format("  - @%s", smart_path)
+            end
+
+            table.insert(message_lines, line)
         end
     end
 
