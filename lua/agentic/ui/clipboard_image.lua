@@ -36,11 +36,11 @@ function M.get_platform()
         return "win"
     end
 
-    if vim.fn.has("wsl") == 1 and vim.fn.executable("powershell.exe") == 1 then
+    if vim.fn.has("wsl") == 1 then
         return "wsl"
     end
 
-    if vim.fn.has("linux") == 1 or vim.fn.has("wsl") == 1 then
+    if vim.fn.has("linux") == 1 then
         local wayland = vim.env.WAYLAND_DISPLAY
         if wayland and wayland ~= "" then
             return "linux_wayland"

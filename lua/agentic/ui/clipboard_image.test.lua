@@ -41,42 +41,31 @@ describe("ClipboardImage", function()
             assert.equal("win", ClipboardImage.get_platform())
         end)
 
-        it(
-            "returns 'wsl' when has('wsl') is 1 and powershell.exe is on PATH",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "wsl" and 1 or 0
-                end)
-                executable_stub:invokes(function(name)
-                    return name == "powershell.exe" and 1 or 0
-                end)
-                assert.equal("wsl", ClipboardImage.get_platform())
-            end
-        )
+        it("returns 'wsl' when has('wsl') is 1", function()
+            has_stub:invokes(function(feature)
+                return feature == "wsl" and 1 or 0
+            end)
+            assert.equal("wsl", ClipboardImage.get_platform())
+            assert.equal(0, executable_stub.call_count)
+        end)
 
-        it(
-            "returns 'linux_x11' when has('wsl') is 1 but powershell.exe missing and no Wayland",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "wsl" and 1 or 0
-                end)
-                executable_stub:returns(0)
-                vim.env.WAYLAND_DISPLAY = nil
-                assert.equal("linux_x11", ClipboardImage.get_platform())
-            end
-        )
+        it("returns 'wsl' when powershell.exe is missing", function()
+            has_stub:invokes(function(feature)
+                return feature == "wsl" and 1 or 0
+            end)
+            executable_stub:returns(0)
+            vim.env.WAYLAND_DISPLAY = nil
+            assert.equal("wsl", ClipboardImage.get_platform())
+        end)
 
-        it(
-            "returns 'linux_wayland' when has('wsl') is 1 but powershell.exe missing and WAYLAND_DISPLAY set",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "wsl" and 1 or 0
-                end)
-                executable_stub:returns(0)
-                vim.env.WAYLAND_DISPLAY = "wayland-0"
-                assert.equal("linux_wayland", ClipboardImage.get_platform())
-            end
-        )
+        it("returns 'wsl' when WAYLAND_DISPLAY is set", function()
+            has_stub:invokes(function(feature)
+                return feature == "wsl" and 1 or 0
+            end)
+            executable_stub:returns(0)
+            vim.env.WAYLAND_DISPLAY = "wayland-0"
+            assert.equal("wsl", ClipboardImage.get_platform())
+        end)
 
         it(
             "returns 'linux_wayland' on Linux when WAYLAND_DISPLAY is set",
@@ -157,6 +146,16 @@ describe("ClipboardImage", function()
             end)
             executable_stub:invokes(function(name)
                 return name == "powershell.exe" and 1 or 0
+            end)
+            assert.is_false(ClipboardImage.is_supported())
+        end)
+
+        it("returns false on wsl when powershell.exe is missing", function()
+            has_stub:invokes(function(feature)
+                return feature == "wsl" and 1 or 0
+            end)
+            executable_stub:invokes(function(name)
+                return name == "wslpath" and 1 or 0
             end)
             assert.is_false(ClipboardImage.is_supported())
         end)

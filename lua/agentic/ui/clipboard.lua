@@ -33,6 +33,18 @@ function M.show_clipboard_tool_missing_message()
             "",
             "Upstream: https://github.com/astrand/xclip",
         }
+    elseif platform == "win" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Ensure `powershell.exe` is available in PATH.",
+        }
+    elseif platform == "wsl" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Ensure Windows interop is enabled and `powershell.exe` and `wslpath` are available.",
+        }
     else
         body = {
             "# Clipboard image paste unavailable",

@@ -786,13 +786,12 @@ first with `scp`, `SFTP`, or your usual file-transfer workflow, then attach the
 remote file path using the `@...` notation.
 
 Pasting screenshots from your clipboard works out of the box on macOS, Windows,
-and WSL when Windows interop is enabled. On Linux, you need one small CLI
-dependency:
+and WSL when Windows interop and `wslpath` are available. On Linux, you need one
+small CLI dependency:
 
 - **macOS**: no extra install. Uses the system `osascript`.
 - **Windows**: no extra install. Uses the bundled `powershell.exe`.
-- **WSL**: no extra install when Windows interop is enabled. Otherwise, use the
-  Linux clipboard tooling below.
+- **WSL**: no extra install when Windows interop and `wslpath` are available.
 - **Linux (Wayland)**: install `wl-clipboard` (provides `wl-paste`).
   - Debian/Ubuntu: `sudo apt install wl-clipboard`
   - Arch: `sudo pacman -S wl-clipboard`
@@ -1231,7 +1230,8 @@ This will check:
 - Current ACP provider installation (We don't install them for security reasons)
 - Optional ACP providers (so you know which ones are available and can use at
   any time)
-- Clipboard image paste tooling (`powershell.exe`, `wl-paste`, or `xclip`)
+- Clipboard image paste tooling (`powershell.exe`, `wslpath`, `wl-paste`, or
+  `xclip`)
 - Node.js and package managers (Most of the ACP CLIs require Node.js to install
   and run, some have native binaries too, we don't have control over that, it up
   to the Creators)
@@ -1280,8 +1280,7 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
-[claude-agent-acp-releases]:
-  https://github.com/agentclientprotocol/claude-agent-acp/releases
+[claude-agent-acp-releases]: https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -1291,10 +1290,8 @@ the the acknowledgments 😊.
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
 [mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
-[preview-diff-side-by-side-image]:
-  https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
-[preview-diff-inline-image]:
-  https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[preview-diff-side-by-side-image]: https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
+[preview-diff-inline-image]: https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
 [cline]: https://github.com/cline/cline
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline

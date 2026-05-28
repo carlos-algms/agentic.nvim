@@ -146,7 +146,19 @@ function M.check()
                 "Clipboard image paste: supported through Windows interop"
             )
         else
-            vim_health.warn("Clipboard image paste: wslpath not found")
+            local has_powershell = vim.fn.executable("powershell.exe") == 1
+            local has_wslpath = vim.fn.executable("wslpath") == 1
+            if not has_powershell and not has_wslpath then
+                vim_health.warn(
+                    "Clipboard image paste: PowerShell interop (powershell.exe) and wslpath not found"
+                )
+            elseif not has_powershell then
+                vim_health.warn(
+                    "Clipboard image paste: PowerShell interop (powershell.exe) not found"
+                )
+            else
+                vim_health.warn("Clipboard image paste: wslpath not found")
+            end
         end
     elseif platform == "linux_wayland" then
         if supported then

@@ -153,9 +153,9 @@ Provider install commands (always check official docs):
     OR `npm i -g pi-acp`
 
 Clipboard image paste works out of the box on macOS, Windows, and WSL
-when Windows interop is enabled. On Linux, install `wl-clipboard`
-(Wayland) or `xclip` (X11). See |agentic-images|. Drag-and-drop works
-without any extra tool if your terminal supports it.
+when Windows interop and `wslpath` are available. On Linux, install
+`wl-clipboard` (Wayland) or `xclip` (X11). See |agentic-images|.
+Drag-and-drop works without any extra tool if your terminal supports it.
 
 ==============================================================================
 INSTALLATION                                      *agentic-installation*
@@ -652,7 +652,8 @@ Clipboard paste uses native OS tooling:
 
   - macOS: works out of the box (uses `osascript`).
   - Windows: works out of the box (uses bundled `powershell.exe`).
-  - WSL: works out of the box when Windows interop is enabled.
+  - WSL: works out of the box when Windows interop and `wslpath` are
+    available.
   - Linux (Wayland): install `wl-clipboard` (provides `wl-paste`).
   - Linux (X11): install `xclip`.
 
@@ -1036,7 +1037,8 @@ Run `:checkhealth agentic` to verify:
   - Current ACP provider installation
   - Optional ACP providers availability
   - Node.js and package managers
-  - Clipboard image paste tooling
+  - Clipboard image paste tooling (`powershell.exe`, `wslpath`,
+    `wl-paste`, or `xclip`)
 
 ==============================================================================
 DEBUG                                                    *agentic-debug*
