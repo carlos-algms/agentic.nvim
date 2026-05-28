@@ -391,9 +391,9 @@ end
 
 - Neovim v0.11.5+ (verify APIs match this version or newer)
 - LuaJIT 2.1 (bundled, based on Lua 5.1)
-- Optional: [img-clip.nvim](https://github.com/hakonharnes/img-clip.nvim) for
-  clipboard screenshot pasting (drag-and-drop is a terminal feature, no plugin
-  needed)
+- Optional on Linux: `wl-clipboard` (Wayland) or `xclip` (X11) for clipboard
+  image paste. macOS and Windows use native OS tooling and need no extra
+  install. Drag-and-drop is unchanged — it is a terminal feature.
 
 ### Lua restrictions
 
