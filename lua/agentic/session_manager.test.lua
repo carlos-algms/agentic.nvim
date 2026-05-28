@@ -1410,6 +1410,8 @@ describe("agentic.SessionManager", function()
             function()
                 local session, write_message_spy = make_session({
                     "/tmp/photo.png",
+                    "/tmp/photo with spaces).png",
+                    "/tmp/photo <draft>.png",
                     "/tmp/code.lua",
                     "/tmp/diagram.SVG",
                 })
@@ -1422,10 +1424,18 @@ describe("agentic.SessionManager", function()
 
                 -- image files render as markdown image tags so the chat
                 -- buffer (markdown filetype) can display them inline.
-                assert.is_not_nil(text:find("  %- !%[%]%(/tmp/photo%.png%)", 1))
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo.png>)", 1, true)
+                )
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo with spaces).png>)", 1, true)
+                )
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo \\<draft\\>.png>)", 1, true)
+                )
                 -- extension match is case-insensitive.
                 assert.is_not_nil(
-                    text:find("  %- !%[%]%(/tmp/diagram%.SVG%)", 1)
+                    text:find("  - ![](</tmp/diagram.SVG>)", 1, true)
                 )
                 -- non-image files keep the original @-mention bullet.
                 assert.is_not_nil(text:find("  %- @/tmp/code%.lua", 1))

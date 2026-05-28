@@ -140,6 +140,14 @@ function M.check()
                 "Clipboard image paste: powershell.exe not found in PATH"
             )
         end
+    elseif platform == "wsl" then
+        if supported then
+            vim_health.ok(
+                "Clipboard image paste: supported through Windows interop"
+            )
+        else
+            vim_health.warn("Clipboard image paste: wslpath not found")
+        end
     elseif platform == "linux_wayland" then
         if supported then
             vim_health.ok("Clipboard image paste: wl-paste found")
@@ -150,7 +158,9 @@ function M.check()
         end
     elseif platform == "linux_x11" then
         if supported then
-            vim_health.ok("Clipboard image paste: xclip found")
+            vim_health.ok(
+                "Clipboard image paste: xclip found (clipboard access depends on session)"
+            )
         else
             vim_health.warn(
                 "Clipboard image paste: xclip not found - install xclip"

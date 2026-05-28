@@ -26,6 +26,13 @@ local FILE_MUTATING_KINDS = {
     move = true,
 }
 
+--- @param destination string
+--- @return string escaped_destination
+local function escape_markdown_link_destination(destination)
+    local escaped = destination:gsub("([<>])", "\\%1")
+    return escaped
+end
+
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
 --- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
@@ -841,7 +848,10 @@ function SessionManager:_handle_input_submit(input_text)
             -- Image files render as markdown image tags so the chat
             -- buffer (markdown filetype) can display them inline.
             if FileSystem.IMAGE_MIMES[ext] then
-                line = string.format("  - ![](%s)", smart_path)
+                line = string.format(
+                    "  - ![](<%s>)",
+                    escape_markdown_link_destination(smart_path)
+                )
             else
                 line = string.format("  - @%s", smart_path)
             end

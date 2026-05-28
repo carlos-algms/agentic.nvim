@@ -42,7 +42,7 @@ describe("ClipboardImage", function()
         end)
 
         it(
-            "returns 'win' when has('wsl') is 1 and powershell.exe is on PATH",
+            "returns 'wsl' when has('wsl') is 1 and powershell.exe is on PATH",
             function()
                 has_stub:invokes(function(feature)
                     return feature == "wsl" and 1 or 0
@@ -50,7 +50,7 @@ describe("ClipboardImage", function()
                 executable_stub:invokes(function(name)
                     return name == "powershell.exe" and 1 or 0
                 end)
-                assert.equal("win", ClipboardImage.get_platform())
+                assert.equal("wsl", ClipboardImage.get_platform())
             end
         )
 
@@ -138,6 +138,30 @@ describe("ClipboardImage", function()
         end)
 
         it(
+            "returns true on wsl when powershell.exe and wslpath are available",
+            function()
+                has_stub:invokes(function(feature)
+                    return feature == "wsl" and 1 or 0
+                end)
+                executable_stub:invokes(function(name)
+                    return (name == "powershell.exe" or name == "wslpath") and 1
+                        or 0
+                end)
+                assert.is_true(ClipboardImage.is_supported())
+            end
+        )
+
+        it("returns false on wsl when wslpath is missing", function()
+            has_stub:invokes(function(feature)
+                return feature == "wsl" and 1 or 0
+            end)
+            executable_stub:invokes(function(name)
+                return name == "powershell.exe" and 1 or 0
+            end)
+            assert.is_false(ClipboardImage.is_supported())
+        end)
+
+        it(
             "returns true on linux_wayland when wl-paste is available",
             function()
                 has_stub:invokes(function(feature)
@@ -199,13 +223,16 @@ describe("ClipboardImage", function()
             run_stub:revert()
         end)
 
-        --- @param platform "mac"|"win"|"linux_wayland"|"linux_x11"|"unknown"
+        --- @param platform "mac"|"win"|"wsl"|"linux_wayland"|"linux_x11"|"unknown"
         local function force_platform(platform)
             has_stub:invokes(function(feature)
                 if platform == "mac" and feature == "mac" then
                     return 1
                 end
                 if platform == "win" and feature == "win32" then
+                    return 1
+                end
+                if platform == "wsl" and feature == "wsl" then
                     return 1
                 end
                 if
@@ -380,13 +407,16 @@ describe("ClipboardImage", function()
             fs_stat_stub:revert()
         end)
 
-        --- @param platform "mac"|"win"|"linux_wayland"|"linux_x11"|"unknown"
+        --- @param platform "mac"|"win"|"wsl"|"linux_wayland"|"linux_x11"|"unknown"
         local function force_platform(platform)
             has_stub:invokes(function(feature)
                 if platform == "mac" and feature == "mac" then
                     return 1
                 end
                 if platform == "win" and feature == "win32" then
+                    return 1
+                end
+                if platform == "wsl" and feature == "wsl" then
                     return 1
                 end
                 if
@@ -478,42 +508,88 @@ describe("ClipboardImage", function()
         end)
 
         it(
+            "wsl converts the powershell save argument and stats the linux path",
+            function()
+                force_platform("wsl")
+                executable_stub:invokes(function(name)
+                    return name == "powershell.exe" and 1 or 0
+                end)
+                run_stub:invokes(function(cmd)
+                    if cmd[1] == "wslpath" then
+                        return true,
+                            [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]]
+                                .. "\n"
+                    end
+                    return true, ""
+                end)
+
+                local ok, err = ClipboardImage.save("/tmp/pasted image.png")
+                assert.is_true(ok)
+                assert.is_nil(err)
+
+                assert.equal(2, run_stub.call_count)
+                assert.same(
+                    { "wslpath", "-w", "/tmp/pasted image.png" },
+                    run_stub.calls[1][1]
+                )
+                local cmd = run_stub.calls[2][1]
+                assert.equal("powershell.exe", cmd[1])
+                assert.is_true(
+                    cmd[4]:find(
+                        [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]],
+                        1,
+                        true
+                    ) ~= nil
+                )
+                assert.is_true(
+                    cmd[4]:find("/tmp/pasted image.png", 1, true) == nil
+                )
+                assert.equal("/tmp/pasted image.png", fs_stat_stub.calls[1][1])
+            end
+        )
+
+        it(
             "linux_wayland uses shell string with wl-paste and escaped path",
             function()
                 force_platform("linux_wayland")
+                shellescape_stub:invokes(function(path)
+                    return "SHELL_ESCAPED:" .. path
+                end)
                 run_stub:invokes(function()
                     return true, ""
                 end)
 
-                local ok = ClipboardImage.save("/tmp/img.png")
+                local path = "/tmp/img with ' quote.png"
+                local ok = ClipboardImage.save(path)
                 assert.is_true(ok)
                 local cmd = run_stub.calls[1][1]
                 assert.equal("string", type(cmd))
-                assert.is_true(
-                    cmd:find("wl-paste --type image/png >", 1, true) ~= nil
+                assert.equal(
+                    "wl-paste --type image/png > SHELL_ESCAPED:" .. path,
+                    cmd
                 )
-                assert.is_true(cmd:find("'/tmp/img.png'", 1, true) ~= nil)
             end
         )
 
         it("linux_x11 uses shell string with xclip and escaped path", function()
             force_platform("linux_x11")
+            shellescape_stub:invokes(function(path)
+                return "SHELL_ESCAPED:" .. path
+            end)
             run_stub:invokes(function()
                 return true, ""
             end)
 
-            local ok = ClipboardImage.save("/tmp/img.png")
+            local path = "/tmp/img with ' quote.png"
+            local ok = ClipboardImage.save(path)
             assert.is_true(ok)
             local cmd = run_stub.calls[1][1]
             assert.equal("string", type(cmd))
-            assert.is_true(
-                cmd:find(
-                    "xclip -selection clipboard -t image/png -o >",
-                    1,
-                    true
-                ) ~= nil
+            assert.equal(
+                "xclip -selection clipboard -t image/png -o > SHELL_ESCAPED:"
+                    .. path,
+                cmd
             )
-            assert.is_true(cmd:find("'/tmp/img.png'", 1, true) ~= nil)
         end)
 
         it(

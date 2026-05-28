@@ -8,6 +8,7 @@ local M = {}
 --- @alias agentic.ui.ClipboardImage.Platform
 --- | "mac"
 --- | "win"
+--- | "wsl"
 --- | "linux_wayland"
 --- | "linux_x11"
 --- | "unknown"
@@ -36,7 +37,7 @@ function M.get_platform()
     end
 
     if vim.fn.has("wsl") == 1 and vim.fn.executable("powershell.exe") == 1 then
-        return "win"
+        return "wsl"
     end
 
     if vim.fn.has("linux") == 1 or vim.fn.has("wsl") == 1 then
@@ -61,6 +62,11 @@ function M.is_supported()
 
     if platform == "win" then
         return vim.fn.executable("powershell.exe") == 1
+    end
+
+    if platform == "wsl" then
+        return vim.fn.executable("powershell.exe") == 1
+            and vim.fn.executable("wslpath") == 1
     end
 
     if platform == "linux_wayland" then
@@ -90,7 +96,7 @@ function M.has_image()
         return ok and stdout:find("«class PNGf»", 1, true) ~= nil
     end
 
-    if platform == "win" then
+    if platform == "win" or platform == "wsl" then
         local ok = M._run({
             "powershell.exe",
             "-NoProfile",
@@ -138,6 +144,23 @@ local WIN_SAVE_PS_TEMPLATE = table.concat({
     "} else { exit 1 }",
 }, " ")
 
+--- @param path string
+--- @return string|nil win_path
+--- @return string|nil err
+local function to_wsl_windows_path(path)
+    local ok, stdout = M._run({ "wslpath", "-w", path })
+    if not ok then
+        return nil, stdout ~= "" and stdout or "wslpath failed"
+    end
+
+    local win_path = stdout:gsub("[\r\n]+$", "")
+    if win_path == "" then
+        return nil, "wslpath produced empty path"
+    end
+
+    return win_path, nil
+end
+
 --- Save the clipboard PNG image to the given path.
 --- @param path string
 --- @return boolean ok
@@ -153,8 +176,17 @@ function M.save(path)
     if platform == "mac" then
         local script = string.format(MAC_SAVE_SCRIPT_TEMPLATE, path)
         ok, stdout = M._run({ "osascript", "-e", script })
-    elseif platform == "win" then
-        local ps_path = path:gsub("'", "''")
+    elseif platform == "win" or platform == "wsl" then
+        local save_path = path
+        if platform == "wsl" then
+            local win_path, convert_err = to_wsl_windows_path(path)
+            if not win_path then
+                return false, convert_err
+            end
+            save_path = win_path
+        end
+
+        local ps_path = save_path:gsub("'", "''")
         local ps = string.format(WIN_SAVE_PS_TEMPLATE, ps_path)
         ok, stdout = M._run({
             "powershell.exe",

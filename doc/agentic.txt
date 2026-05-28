@@ -152,10 +152,10 @@ Provider install commands (always check official docs):
     `pnpm add -g pi-acp`
     OR `npm i -g pi-acp`
 
-Clipboard image paste works out of the box on macOS and Windows. On
-Linux, install `wl-clipboard` (Wayland) or `xclip` (X11). See
-|agentic-images|. Drag-and-drop works without any extra tool if your
-terminal supports it.
+Clipboard image paste works out of the box on macOS, Windows, and WSL
+when Windows interop is enabled. On Linux, install `wl-clipboard`
+(Wayland) or `xclip` (X11). See |agentic-images|. Drag-and-drop works
+without any extra tool if your terminal supports it.
 
 ==============================================================================
 INSTALLATION                                      *agentic-installation*
@@ -642,11 +642,17 @@ Image and screenshot support ~
                                                      *agentic-images*
 Drag-and-drop images into the prompt buffer or paste from clipboard.
 Drag-and-drop works with any terminal that supports it.
+In SSH/headless sessions, image paste and drag-and-drop
+usually do not reach remote Neovim.
+Agentic does not copy local files into the remote filesystem.
+Upload the image first with `scp`, `SFTP,` or your usual file-transfer
+workflow, then attach the remote file path.
 
 Clipboard paste uses native OS tooling:
 
   - macOS: works out of the box (uses `osascript`).
-  - Windows / WSL: works out of the box (uses bundled `powershell.exe`).
+  - Windows: works out of the box (uses bundled `powershell.exe`).
+  - WSL: works out of the box when Windows interop is enabled.
   - Linux (Wayland): install `wl-clipboard` (provides `wl-paste`).
   - Linux (X11): install `xclip`.
 
@@ -1030,6 +1036,7 @@ Run `:checkhealth agentic` to verify:
   - Current ACP provider installation
   - Optional ACP providers availability
   - Node.js and package managers
+  - Clipboard image paste tooling
 
 ==============================================================================
 DEBUG                                                    *agentic-debug*
