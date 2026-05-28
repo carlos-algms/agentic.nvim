@@ -124,13 +124,40 @@ function M.check()
         end
     end
 
-    -- Check optional dependencies
-    vim_health.start("Optional Dependencies")
-    local Clipboard = require("agentic.ui.clipboard")
-    if Clipboard.is_clipboard_tool_available() then
-        vim_health.ok("Clipboard image paste: supported")
+    -- Clipboard image paste tooling
+    vim_health.start("Clipboard Image Paste")
+    local ClipboardImage = require("agentic.ui.clipboard_image")
+    local platform = ClipboardImage.get_platform()
+    local supported = ClipboardImage.is_supported()
+
+    if platform == "mac" then
+        vim_health.ok("Clipboard image paste: supported (no extra deps)")
+    elseif platform == "win" then
+        if supported then
+            vim_health.ok("Clipboard image paste: supported (no extra deps)")
+        else
+            vim_health.warn(
+                "Clipboard image paste: powershell.exe not found in PATH"
+            )
+        end
+    elseif platform == "linux_wayland" then
+        if supported then
+            vim_health.ok("Clipboard image paste: wl-paste found")
+        else
+            vim_health.warn(
+                "Clipboard image paste: wl-paste not found - install wl-clipboard"
+            )
+        end
+    elseif platform == "linux_x11" then
+        if supported then
+            vim_health.ok("Clipboard image paste: xclip found")
+        else
+            vim_health.warn(
+                "Clipboard image paste: xclip not found - install xclip"
+            )
+        end
     else
-        vim_health.info("Clipboard image paste: not available")
+        vim_health.warn("Clipboard image paste: platform not detected")
     end
 end
 
