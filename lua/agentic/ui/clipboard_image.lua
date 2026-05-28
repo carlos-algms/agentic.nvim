@@ -39,12 +39,15 @@ function M.get_platform()
         return "win"
     end
 
-    local wayland = vim.env.WAYLAND_DISPLAY
-    if wayland and wayland ~= "" then
-        return "linux_wayland"
+    if vim.fn.has("linux") == 1 or vim.fn.has("wsl") == 1 then
+        local wayland = vim.env.WAYLAND_DISPLAY
+        if wayland and wayland ~= "" then
+            return "linux_wayland"
+        end
+        return "linux_x11"
     end
 
-    return "linux_x11"
+    return "unknown"
 end
 
 --- Check whether the host platform's clipboard tools are reachable.

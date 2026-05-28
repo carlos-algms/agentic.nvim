@@ -81,7 +81,9 @@ describe("ClipboardImage", function()
         it(
             "returns 'linux_wayland' on Linux when WAYLAND_DISPLAY is set",
             function()
-                has_stub:returns(0)
+                has_stub:invokes(function(feature)
+                    return feature == "linux" and 1 or 0
+                end)
                 vim.env.WAYLAND_DISPLAY = "wayland-0"
                 assert.equal("linux_wayland", ClipboardImage.get_platform())
             end
@@ -90,9 +92,20 @@ describe("ClipboardImage", function()
         it(
             "returns 'linux_x11' on Linux when WAYLAND_DISPLAY is unset",
             function()
-                has_stub:returns(0)
+                has_stub:invokes(function(feature)
+                    return feature == "linux" and 1 or 0
+                end)
                 vim.env.WAYLAND_DISPLAY = nil
                 assert.equal("linux_x11", ClipboardImage.get_platform())
+            end
+        )
+
+        it(
+            "returns 'unknown' on a host that is neither mac, win, nor Linux",
+            function()
+                has_stub:returns(0)
+                vim.env.WAYLAND_DISPLAY = nil
+                assert.equal("unknown", ClipboardImage.get_platform())
             end
         )
     end)
@@ -127,7 +140,9 @@ describe("ClipboardImage", function()
         it(
             "returns true on linux_wayland when wl-paste is available",
             function()
-                has_stub:returns(0)
+                has_stub:invokes(function(feature)
+                    return feature == "linux" and 1 or 0
+                end)
                 vim.env.WAYLAND_DISPLAY = "wayland-0"
                 executable_stub:invokes(function(name)
                     return name == "wl-paste" and 1 or 0
@@ -137,14 +152,18 @@ describe("ClipboardImage", function()
         )
 
         it("returns false on linux_wayland when wl-paste is missing", function()
-            has_stub:returns(0)
+            has_stub:invokes(function(feature)
+                return feature == "linux" and 1 or 0
+            end)
             vim.env.WAYLAND_DISPLAY = "wayland-0"
             executable_stub:returns(0)
             assert.is_false(ClipboardImage.is_supported())
         end)
 
         it("returns true on linux_x11 when xclip is available", function()
-            has_stub:returns(0)
+            has_stub:invokes(function(feature)
+                return feature == "linux" and 1 or 0
+            end)
             vim.env.WAYLAND_DISPLAY = nil
             executable_stub:invokes(function(name)
                 return name == "xclip" and 1 or 0
@@ -153,9 +172,17 @@ describe("ClipboardImage", function()
         end)
 
         it("returns false on linux_x11 when xclip is missing", function()
-            has_stub:returns(0)
+            has_stub:invokes(function(feature)
+                return feature == "linux" and 1 or 0
+            end)
             vim.env.WAYLAND_DISPLAY = nil
             executable_stub:returns(0)
+            assert.is_false(ClipboardImage.is_supported())
+        end)
+
+        it("returns false when platform is unknown", function()
+            has_stub:returns(0)
+            vim.env.WAYLAND_DISPLAY = nil
             assert.is_false(ClipboardImage.is_supported())
         end)
     end)
