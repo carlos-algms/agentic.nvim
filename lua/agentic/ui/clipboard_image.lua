@@ -74,9 +74,49 @@ function M.is_supported()
     return false
 end
 
+local WIN_HAS_IMAGE_PS = table.concat({
+    "Add-Type -AssemblyName System.Windows.Forms;",
+    "if ([System.Windows.Forms.Clipboard]::ContainsImage()) { exit 0 }",
+    "else { exit 1 }",
+}, " ")
+
 --- Check whether the system clipboard currently contains a PNG image.
 --- @return boolean has_image
 function M.has_image()
+    local platform = M.get_platform()
+
+    if platform == "mac" then
+        local ok, stdout = M._run({ "osascript", "-e", "clipboard info" })
+        return ok and stdout:find("«class PNGf»", 1, true) ~= nil
+    end
+
+    if platform == "win" then
+        local ok = M._run({
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            WIN_HAS_IMAGE_PS,
+        })
+        return ok
+    end
+
+    if platform == "linux_wayland" then
+        local ok, stdout = M._run({ "wl-paste", "--list-types" })
+        return ok and stdout:find("image/png", 1, true) ~= nil
+    end
+
+    if platform == "linux_x11" then
+        local ok, stdout = M._run({
+            "xclip",
+            "-selection",
+            "clipboard",
+            "-t",
+            "TARGETS",
+            "-o",
+        })
+        return ok and stdout:find("image/png", 1, true) ~= nil
+    end
+
     return false
 end
 
