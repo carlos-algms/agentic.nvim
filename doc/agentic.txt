@@ -646,8 +646,8 @@ Drag-and-drop works with any terminal that supports it.
 In SSH/headless sessions, image paste and drag-and-drop
 usually do not reach remote Neovim.
 Agentic does not copy local files into the remote filesystem.
-Upload the image first with `scp`, `SFTP,` or your usual file-transfer
-workflow, then attach the remote file path.
+Upload the image first with `scp`, `SFTP`, or your usual file-transfer
+workflow, then attach the remote file path using the `@` file picker.
 
 Clipboard paste uses native OS tooling:
 
