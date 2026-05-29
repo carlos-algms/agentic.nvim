@@ -153,8 +153,9 @@ Provider install commands (always check official docs):
     OR `npm i -g pi-acp`
 
 Clipboard image paste works out of the box on macOS, Windows, and WSL
-when Windows interop and `wslpath` are available. On Linux, install
-`wl-clipboard` (Wayland) or `xclip` (X11). See |agentic-images|.
+when Windows interop and `wslpath` are available. On Linux, you need
+one small CLI dependency (`wl-clipboard` or `xclip`). See
+|agentic-images| for per-distro install commands.
 Drag-and-drop works without any extra tool if your terminal supports it.
 
 ==============================================================================
@@ -655,7 +656,13 @@ Clipboard paste uses native OS tooling:
   - WSL: works out of the box when Windows interop and `wslpath` are
     available.
   - Linux (Wayland): install `wl-clipboard` (provides `wl-paste`).
+    - Debian/Ubuntu: `sudo apt install wl-clipboard`
+    - Arch:          `sudo pacman -S wl-clipboard`
+    - Fedora:        `sudo dnf install wl-clipboard`
   - Linux (X11): install `xclip`.
+    - Debian/Ubuntu: `sudo apt install xclip`
+    - Arch:          `sudo pacman -S xclip`
+    - Fedora:        `sudo dnf install xclip`
 
 Then press `<localleader>p` in the Prompt buffer to paste the image.
 
