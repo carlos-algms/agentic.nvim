@@ -26,187 +26,145 @@ describe("ClipboardImage", function()
         vim.env.WAYLAND_DISPLAY = original_wayland
     end)
 
+    --- @param feature_name string|nil has() feature returning 1; nil = none
+    local function stub_has(feature_name)
+        has_stub:invokes(function(feature)
+            return feature == feature_name and 1 or 0
+        end)
+    end
+
+    --- @param available table<string, boolean> executable names returning 1
+    local function stub_executables(available)
+        executable_stub:invokes(function(name)
+            return available[name] and 1 or 0
+        end)
+    end
+
+    --- @param platform agentic.ui.ClipboardImage.Platform
+    local function force_platform(platform)
+        if platform == "mac" then
+            stub_has("mac")
+        elseif platform == "win" then
+            stub_has("win32")
+        elseif platform == "wsl" then
+            stub_has("wsl")
+        elseif platform == "linux_wayland" or platform == "linux_x11" then
+            stub_has("linux")
+        else
+            stub_has(nil)
+        end
+        vim.env.WAYLAND_DISPLAY = platform == "linux_wayland" and "wayland-0"
+            or nil
+    end
+
     describe("get_platform", function()
-        it("returns 'mac' when has('mac') is 1", function()
-            has_stub:invokes(function(feature)
-                return feature == "mac" and 1 or 0
-            end)
-            assert.equal("mac", ClipboardImage.get_platform())
+        local cases = {
+            { name = "mac", has = "mac", expected = "mac" },
+            { name = "win", has = "win32", expected = "win" },
+            { name = "wsl", has = "wsl", expected = "wsl" },
+            {
+                name = "linux_wayland when WAYLAND_DISPLAY set",
+                has = "linux",
+                wayland = "wayland-0",
+                expected = "linux_wayland",
+            },
+            {
+                name = "linux_x11 when WAYLAND_DISPLAY unset",
+                has = "linux",
+                expected = "linux_x11",
+            },
+            { name = "unknown otherwise", has = nil, expected = "unknown" },
+        }
+
+        it("returns expected platform for each case", function()
+            for _, case in ipairs(cases) do
+                stub_has(case.has)
+                vim.env.WAYLAND_DISPLAY = case.wayland
+                local actual = ClipboardImage.get_platform()
+                if actual ~= case.expected then
+                    error(
+                        "case '"
+                            .. case.name
+                            .. "': expected "
+                            .. tostring(case.expected)
+                            .. ", got "
+                            .. tostring(actual)
+                    )
+                end
+            end
         end)
 
-        it("returns 'win' when has('win32') is 1", function()
-            has_stub:invokes(function(feature)
-                return feature == "win32" and 1 or 0
-            end)
-            assert.equal("win", ClipboardImage.get_platform())
-        end)
-
-        it("returns 'wsl' when has('wsl') is 1", function()
-            has_stub:invokes(function(feature)
-                return feature == "wsl" and 1 or 0
-            end)
+        it("ignores WAYLAND_DISPLAY for non-linux platforms", function()
+            stub_has("wsl")
+            vim.env.WAYLAND_DISPLAY = "wayland-0"
             assert.equal("wsl", ClipboardImage.get_platform())
             assert.equal(0, executable_stub.call_count)
         end)
-
-        it("returns 'wsl' when powershell.exe is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "wsl" and 1 or 0
-            end)
-            executable_stub:returns(0)
-            vim.env.WAYLAND_DISPLAY = nil
-            assert.equal("wsl", ClipboardImage.get_platform())
-        end)
-
-        it("returns 'wsl' when WAYLAND_DISPLAY is set", function()
-            has_stub:invokes(function(feature)
-                return feature == "wsl" and 1 or 0
-            end)
-            executable_stub:returns(0)
-            vim.env.WAYLAND_DISPLAY = "wayland-0"
-            assert.equal("wsl", ClipboardImage.get_platform())
-        end)
-
-        it(
-            "returns 'linux_wayland' on Linux when WAYLAND_DISPLAY is set",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "linux" and 1 or 0
-                end)
-                vim.env.WAYLAND_DISPLAY = "wayland-0"
-                assert.equal("linux_wayland", ClipboardImage.get_platform())
-            end
-        )
-
-        it(
-            "returns 'linux_x11' on Linux when WAYLAND_DISPLAY is unset",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "linux" and 1 or 0
-                end)
-                vim.env.WAYLAND_DISPLAY = nil
-                assert.equal("linux_x11", ClipboardImage.get_platform())
-            end
-        )
-
-        it(
-            "returns 'unknown' on a host that is neither mac, win, nor Linux",
-            function()
-                has_stub:returns(0)
-                vim.env.WAYLAND_DISPLAY = nil
-                assert.equal("unknown", ClipboardImage.get_platform())
-            end
-        )
     end)
 
     describe("is_supported", function()
-        it("returns true on mac without probing executables", function()
-            has_stub:invokes(function(feature)
-                return feature == "mac" and 1 or 0
+        local cases = {
+            { platform = "mac", available = {}, expected = true },
+            {
+                platform = "win",
+                available = { ["powershell.exe"] = true },
+                expected = true,
+            },
+            { platform = "win", available = {}, expected = false },
+            {
+                platform = "wsl",
+                available = { ["powershell.exe"] = true, wslpath = true },
+                expected = true,
+            },
+            {
+                platform = "wsl",
+                available = { ["powershell.exe"] = true },
+                expected = false,
+            },
+            {
+                platform = "wsl",
+                available = { wslpath = true },
+                expected = false,
+            },
+            {
+                platform = "linux_wayland",
+                available = { ["wl-paste"] = true },
+                expected = true,
+            },
+            {
+                platform = "linux_wayland",
+                available = {},
+                expected = false,
+            },
+            {
+                platform = "linux_x11",
+                available = { xclip = true },
+                expected = true,
+            },
+            { platform = "linux_x11", available = {}, expected = false },
+            { platform = "unknown", available = {}, expected = false },
+        }
+
+        for _, case in ipairs(cases) do
+            local avail_keys = vim.tbl_keys(case.available)
+            table.sort(avail_keys)
+            local desc = case.platform
+                .. " -> "
+                .. tostring(case.expected)
+                .. " (available: "
+                .. (#avail_keys > 0 and table.concat(avail_keys, ",") or "none")
+                .. ")"
+            it(desc, function()
+                force_platform(case.platform)
+                stub_executables(case.available)
+                assert.equal(case.expected, ClipboardImage.is_supported())
             end)
-            assert.is_true(ClipboardImage.is_supported())
+        end
+
+        it("does not probe executables on mac", function()
+            force_platform("mac")
+            ClipboardImage.is_supported()
             assert.equal(0, executable_stub.call_count)
-        end)
-
-        it("returns true on win when powershell.exe is available", function()
-            has_stub:invokes(function(feature)
-                return feature == "win32" and 1 or 0
-            end)
-            executable_stub:invokes(function(name)
-                return name == "powershell.exe" and 1 or 0
-            end)
-            assert.is_true(ClipboardImage.is_supported())
-        end)
-
-        it("returns false on win when powershell.exe is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "win32" and 1 or 0
-            end)
-            executable_stub:returns(0)
-            assert.is_false(ClipboardImage.is_supported())
-        end)
-
-        it(
-            "returns true on wsl when powershell.exe and wslpath are available",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "wsl" and 1 or 0
-                end)
-                executable_stub:invokes(function(name)
-                    return (name == "powershell.exe" or name == "wslpath") and 1
-                        or 0
-                end)
-                assert.is_true(ClipboardImage.is_supported())
-            end
-        )
-
-        it("returns false on wsl when wslpath is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "wsl" and 1 or 0
-            end)
-            executable_stub:invokes(function(name)
-                return name == "powershell.exe" and 1 or 0
-            end)
-            assert.is_false(ClipboardImage.is_supported())
-        end)
-
-        it("returns false on wsl when powershell.exe is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "wsl" and 1 or 0
-            end)
-            executable_stub:invokes(function(name)
-                return name == "wslpath" and 1 or 0
-            end)
-            assert.is_false(ClipboardImage.is_supported())
-        end)
-
-        it(
-            "returns true on linux_wayland when wl-paste is available",
-            function()
-                has_stub:invokes(function(feature)
-                    return feature == "linux" and 1 or 0
-                end)
-                vim.env.WAYLAND_DISPLAY = "wayland-0"
-                executable_stub:invokes(function(name)
-                    return name == "wl-paste" and 1 or 0
-                end)
-                assert.is_true(ClipboardImage.is_supported())
-            end
-        )
-
-        it("returns false on linux_wayland when wl-paste is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "linux" and 1 or 0
-            end)
-            vim.env.WAYLAND_DISPLAY = "wayland-0"
-            executable_stub:returns(0)
-            assert.is_false(ClipboardImage.is_supported())
-        end)
-
-        it("returns true on linux_x11 when xclip is available", function()
-            has_stub:invokes(function(feature)
-                return feature == "linux" and 1 or 0
-            end)
-            vim.env.WAYLAND_DISPLAY = nil
-            executable_stub:invokes(function(name)
-                return name == "xclip" and 1 or 0
-            end)
-            assert.is_true(ClipboardImage.is_supported())
-        end)
-
-        it("returns false on linux_x11 when xclip is missing", function()
-            has_stub:invokes(function(feature)
-                return feature == "linux" and 1 or 0
-            end)
-            vim.env.WAYLAND_DISPLAY = nil
-            executable_stub:returns(0)
-            assert.is_false(ClipboardImage.is_supported())
-        end)
-
-        it("returns false when platform is unknown", function()
-            has_stub:returns(0)
-            vim.env.WAYLAND_DISPLAY = nil
-            assert.is_false(ClipboardImage.is_supported())
         end)
     end)
 
@@ -221,33 +179,6 @@ describe("ClipboardImage", function()
         after_each(function()
             run_stub:revert()
         end)
-
-        --- @param platform "mac"|"win"|"wsl"|"linux_wayland"|"linux_x11"|"unknown"
-        local function force_platform(platform)
-            has_stub:invokes(function(feature)
-                if platform == "mac" and feature == "mac" then
-                    return 1
-                end
-                if platform == "win" and feature == "win32" then
-                    return 1
-                end
-                if platform == "wsl" and feature == "wsl" then
-                    return 1
-                end
-                if
-                    (platform == "linux_wayland" or platform == "linux_x11")
-                    and feature == "linux"
-                then
-                    return 1
-                end
-                return 0
-            end)
-            if platform == "linux_wayland" then
-                vim.env.WAYLAND_DISPLAY = "wayland-0"
-            else
-                vim.env.WAYLAND_DISPLAY = nil
-            end
-        end
 
         local cases = {
             {
@@ -339,8 +270,7 @@ describe("ClipboardImage", function()
 
                 if case.expected_argv then
                     assert.equal(1, run_stub.call_count)
-                    local cmd = run_stub.calls[1][1]
-                    assert.same(case.expected_argv, cmd)
+                    assert.same(case.expected_argv, run_stub.calls[1][1])
                 end
             end)
         end
@@ -351,35 +281,32 @@ describe("ClipboardImage", function()
             assert.equal(0, run_stub.call_count)
         end)
 
-        it(
-            "includes the powershell preamble for the win branch (has_image)",
-            function()
-                force_platform("win")
-                run_stub:invokes(function()
-                    return true, ""
-                end)
-                ClipboardImage.has_image()
-                assert.equal(1, run_stub.call_count)
-                local cmd = run_stub.calls[1][1]
-                assert.equal("powershell.exe", cmd[1])
-                assert.equal("-NoProfile", cmd[2])
-                assert.equal("-Command", cmd[3])
-                assert.is_true(
-                    cmd[4]:find(
-                        "Add-Type -AssemblyName System.Windows.Forms",
-                        1,
-                        true
-                    ) ~= nil
-                )
-                assert.is_true(
-                    cmd[4]:find(
-                        "[System.Windows.Forms.Clipboard]::ContainsImage",
-                        1,
-                        true
-                    ) ~= nil
-                )
-            end
-        )
+        it("win argv includes powershell ContainsImage preamble", function()
+            force_platform("win")
+            run_stub:invokes(function()
+                return true, ""
+            end)
+            ClipboardImage.has_image()
+            local cmd = run_stub.calls[1][1]
+            assert.same(
+                { "powershell.exe", "-NoProfile", "-Command" },
+                { cmd[1], cmd[2], cmd[3] }
+            )
+            assert.is_true(
+                cmd[4]:find(
+                    "Add-Type -AssemblyName System.Windows.Forms",
+                    1,
+                    true
+                ) ~= nil
+            )
+            assert.is_true(
+                cmd[4]:find(
+                    "[System.Windows.Forms.Clipboard]::ContainsImage",
+                    1,
+                    true
+                ) ~= nil
+            )
+        end)
     end)
 
     describe("save", function()
@@ -406,52 +333,20 @@ describe("ClipboardImage", function()
             fs_stat_stub:revert()
         end)
 
-        --- @param platform "mac"|"win"|"wsl"|"linux_wayland"|"linux_x11"|"unknown"
-        local function force_platform(platform)
-            has_stub:invokes(function(feature)
-                if platform == "mac" and feature == "mac" then
-                    return 1
-                end
-                if platform == "win" and feature == "win32" then
-                    return 1
-                end
-                if platform == "wsl" and feature == "wsl" then
-                    return 1
-                end
-                if
-                    (platform == "linux_wayland" or platform == "linux_x11")
-                    and feature == "linux"
-                then
-                    return 1
-                end
-                return 0
+        it("mac happy path runs osascript with PNGf script", function()
+            force_platform("mac")
+            run_stub:invokes(function()
+                return true, ""
             end)
-            if platform == "linux_wayland" then
-                vim.env.WAYLAND_DISPLAY = "wayland-0"
-            else
-                vim.env.WAYLAND_DISPLAY = nil
-            end
-        end
 
-        it(
-            "mac happy path returns true and runs osascript with PNGf script",
-            function()
-                force_platform("mac")
-                run_stub:invokes(function()
-                    return true, ""
-                end)
-
-                local ok, err = ClipboardImage.save("/tmp/img.png")
-                assert.is_true(ok)
-                assert.is_nil(err)
-                assert.equal(1, run_stub.call_count)
-                local cmd = run_stub.calls[1][1]
-                assert.equal("osascript", cmd[1])
-                assert.equal("-e", cmd[2])
-                assert.is_true(cmd[3]:find("/tmp/img.png", 1, true) ~= nil)
-                assert.is_true(cmd[3]:find("«class PNGf»", 1, true) ~= nil)
-            end
-        )
+            local ok, err = ClipboardImage.save("/tmp/img.png")
+            assert.is_true(ok)
+            assert.is_nil(err)
+            local cmd = run_stub.calls[1][1]
+            assert.same({ "osascript", "-e" }, { cmd[1], cmd[2] })
+            assert.is_true(cmd[3]:find("/tmp/img.png", 1, true) ~= nil)
+            assert.is_true(cmd[3]:find("«class PNGf»", 1, true) ~= nil)
+        end)
 
         it("mac returns (false, err) when _run fails", function()
             force_platform("mac")
@@ -463,167 +358,132 @@ describe("ClipboardImage", function()
             assert.equal("error: bad clipboard", err)
         end)
 
-        it(
-            "win happy path returns true and PS argv contains Add-Type preamble",
-            function()
-                force_platform("win")
-                run_stub:invokes(function()
-                    return true, ""
-                end)
-
-                local ok, err = ClipboardImage.save("C:\\tmp\\img.png")
-                assert.is_true(ok)
-                assert.is_nil(err)
-                local cmd = run_stub.calls[1][1]
-                assert.equal("powershell.exe", cmd[1])
-                assert.equal("-NoProfile", cmd[2])
-                assert.equal("-Command", cmd[3])
-                assert.is_true(
-                    cmd[4]:find(
-                        "Add-Type -AssemblyName System.Windows.Forms",
-                        1,
-                        true
-                    ) ~= nil
-                )
-                assert.is_true(
-                    cmd[4]:find(
-                        "[System.Windows.Forms.Clipboard]::GetImage",
-                        1,
-                        true
-                    ) ~= nil
-                )
-            end
-        )
-
-        it("win escapes single quotes in path", function()
+        it("win argv contains GetImage preamble and escapes quotes", function()
             force_platform("win")
             run_stub:invokes(function()
                 return true, ""
             end)
 
-            ClipboardImage.save("C:\\tmp\\don't.png")
+            local ok, err = ClipboardImage.save("C:\\tmp\\don't.png")
+            assert.is_true(ok)
+            assert.is_nil(err)
             local cmd = run_stub.calls[1][1]
+            assert.same(
+                { "powershell.exe", "-NoProfile", "-Command" },
+                { cmd[1], cmd[2], cmd[3] }
+            )
+            assert.is_true(
+                cmd[4]:find(
+                    "Add-Type -AssemblyName System.Windows.Forms",
+                    1,
+                    true
+                ) ~= nil
+            )
+            assert.is_true(
+                cmd[4]:find(
+                    "[System.Windows.Forms.Clipboard]::GetImage",
+                    1,
+                    true
+                ) ~= nil
+            )
             assert.is_true(cmd[4]:find("don''t.png", 1, true) ~= nil)
         end)
 
-        it(
-            "wsl converts the powershell save argument and stats the linux path",
-            function()
-                force_platform("wsl")
-                executable_stub:invokes(function(name)
-                    return name == "powershell.exe" and 1 or 0
-                end)
-                run_stub:invokes(function(cmd)
-                    if cmd[1] == "wslpath" then
-                        return true,
-                            [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]]
-                                .. "\n"
-                    end
-                    return true, ""
-                end)
-
-                local ok, err = ClipboardImage.save("/tmp/pasted image.png")
-                assert.is_true(ok)
-                assert.is_nil(err)
-
-                assert.equal(2, run_stub.call_count)
-                assert.same(
-                    { "wslpath", "-w", "/tmp/pasted image.png" },
-                    run_stub.calls[1][1]
-                )
-                local cmd = run_stub.calls[2][1]
-                assert.equal("powershell.exe", cmd[1])
-                assert.is_true(
-                    cmd[4]:find(
-                        [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]],
-                        1,
-                        true
-                    ) ~= nil
-                )
-                assert.is_true(
-                    cmd[4]:find("/tmp/pasted image.png", 1, true) == nil
-                )
-                assert.equal("/tmp/pasted image.png", fs_stat_stub.calls[1][1])
-            end
-        )
-
-        it(
-            "linux_wayland uses shell string with wl-paste and escaped path",
-            function()
-                force_platform("linux_wayland")
-                shellescape_stub:invokes(function(path)
-                    return "SHELL_ESCAPED:" .. path
-                end)
-                run_stub:invokes(function()
-                    return true, ""
-                end)
-
-                local path = "/tmp/img with ' quote.png"
-                local ok = ClipboardImage.save(path)
-                assert.is_true(ok)
-                local cmd = run_stub.calls[1][1]
-                assert.equal("string", type(cmd))
-                assert.equal(
-                    "wl-paste --type image/png > SHELL_ESCAPED:" .. path,
-                    cmd
-                )
-            end
-        )
-
-        it("linux_x11 uses shell string with xclip and escaped path", function()
-            force_platform("linux_x11")
-            shellescape_stub:invokes(function(path)
-                return "SHELL_ESCAPED:" .. path
-            end)
-            run_stub:invokes(function()
+        it("wsl converts path via wslpath and stats the linux path", function()
+            force_platform("wsl")
+            stub_executables({ ["powershell.exe"] = true })
+            run_stub:invokes(function(cmd)
+                if cmd[1] == "wslpath" then
+                    return true,
+                        [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]] .. "\n"
+                end
                 return true, ""
             end)
 
-            local path = "/tmp/img with ' quote.png"
-            local ok = ClipboardImage.save(path)
+            local ok, err = ClipboardImage.save("/tmp/pasted image.png")
             assert.is_true(ok)
-            local cmd = run_stub.calls[1][1]
-            assert.equal("string", type(cmd))
-            assert.equal(
-                "xclip -selection clipboard -t image/png -o > SHELL_ESCAPED:"
-                    .. path,
-                cmd
+            assert.is_nil(err)
+
+            assert.equal(2, run_stub.call_count)
+            assert.same(
+                { "wslpath", "-w", "/tmp/pasted image.png" },
+                run_stub.calls[1][1]
             )
+            local cmd = run_stub.calls[2][1]
+            assert.equal("powershell.exe", cmd[1])
+            assert.is_true(
+                cmd[4]:find(
+                    [[\\wsl.localhost\Ubuntu\tmp\pasted image.png]],
+                    1,
+                    true
+                ) ~= nil
+            )
+            assert.is_true(cmd[4]:find("/tmp/pasted image.png", 1, true) == nil)
+            assert.equal("/tmp/pasted image.png", fs_stat_stub.calls[1][1])
         end)
 
-        it(
-            "returns (false, empty-file message) when output file is zero bytes",
-            function()
+        local shell_cases = {
+            {
+                platform = "linux_wayland",
+                expected_prefix = "wl-paste --type image/png > ",
+            },
+            {
+                platform = "linux_x11",
+                expected_prefix = "xclip -selection clipboard -t image/png -o > ",
+            },
+        }
+
+        for _, case in ipairs(shell_cases) do
+            it(
+                case.platform .. " uses shell string with escaped path",
+                function()
+                    force_platform(case.platform)
+                    shellescape_stub:invokes(function(p)
+                        return "SHELL_ESCAPED:" .. p
+                    end)
+                    run_stub:invokes(function()
+                        return true, ""
+                    end)
+
+                    local path = "/tmp/img with ' quote.png"
+                    local ok = ClipboardImage.save(path)
+                    assert.is_true(ok)
+                    local cmd = run_stub.calls[1][1]
+                    assert.equal("string", type(cmd))
+                    assert.equal(
+                        case.expected_prefix .. "SHELL_ESCAPED:" .. path,
+                        cmd
+                    )
+                end
+            )
+        end
+
+        local empty_file_cases = {
+            { name = "zero bytes", stat = { size = 0, type = "file" } },
+            { name = "fs_stat returns nil", stat = nil },
+        }
+
+        for _, case in ipairs(empty_file_cases) do
+            it("returns (false, empty-file) when " .. case.name, function()
                 force_platform("linux_x11")
                 run_stub:invokes(function()
                     return true, ""
                 end)
-                fs_stat_stub:returns({ size = 0, type = "file" })
+                fs_stat_stub:returns(case.stat)
 
                 local ok, err = ClipboardImage.save("/tmp/img.png")
                 assert.is_false(ok)
                 assert.is_not_nil(err)
-                assert.is_true(err ~= nil and err:find("empty", 1, true) ~= nil)
-            end
-        )
+                if case.stat then
+                    assert.is_true(
+                        err ~= nil and err:find("empty", 1, true) ~= nil
+                    )
+                end
+            end)
+        end
 
         it(
-            "returns (false, empty-file message) when fs_stat returns nil",
-            function()
-                force_platform("linux_x11")
-                run_stub:invokes(function()
-                    return true, ""
-                end)
-                fs_stat_stub:returns(nil)
-
-                local ok, err = ClipboardImage.save("/tmp/img.png")
-                assert.is_false(ok)
-                assert.is_not_nil(err)
-            end
-        )
-
-        it(
-            "unknown platform returns (false, unsupported platform) without calling _run",
+            "unknown platform returns (false, unsupported) without _run",
             function()
                 force_platform("unknown")
 
