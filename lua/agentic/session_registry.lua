@@ -45,13 +45,14 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
 end
 
 --- Destroys any existing session for the given tab page and creates a new one
+--- Note: Actually detaches (not destroys) to keep session alive in pool
 --- @param tab_page_id integer|nil
 --- @return agentic.SessionManager|nil
 function SessionRegistry.new_session(tab_page_id)
     tab_page_id = tab_page_id ~= nil and tab_page_id
         or vim.api.nvim_get_current_tabpage()
 
-    SessionRegistry.destroy_session(tab_page_id)
+    SessionRegistry.detach_session(tab_page_id)
 
     local new_session = SessionRegistry.get_session_for_tab_page(tab_page_id)
     return new_session
@@ -95,9 +96,12 @@ function SessionRegistry.detach_session(tab_page_id)
     SessionRegistry.sessions[tab_page_id] = nil
     session:detach()
 
-    if session.session_id then
-        SessionRegistry.pool[session.session_id] = session
+    -- If session doesn't have a session_id yet (ephemeral), generate one
+    if not session.session_id then
+        session.session_id = SessionRegistry._generate_ephemeral_id()
     end
+
+    SessionRegistry.pool[session.session_id] = session
 
     return session
 end
@@ -114,6 +118,9 @@ function SessionRegistry.attach_session(session_id, tab_page_id)
     if not session then
         return false
     end
+
+    -- Detach any existing session on this tab page first
+    SessionRegistry.detach_session(tab_page_id)
 
     SessionRegistry.pool[session_id] = nil
     SessionRegistry.sessions[tab_page_id] = session
@@ -136,9 +143,45 @@ function SessionRegistry.destroy_closed_sessions()
 
     for tab_page_id in pairs(SessionRegistry.sessions) do
         if not valid[tab_page_id] then
-            SessionRegistry.destroy_session(tab_page_id)
+            SessionRegistry.detach_session(tab_page_id)
         end
     end
+end
+
+--- Prunes idle sessions from the pool based on pool_ttl config
+function SessionRegistry.prune_idle_sessions()
+    local Config = require("agentic.config")
+    local ttl = Config.settings.pool_ttl
+
+    -- If TTL is 0, keep all sessions until Neovim exits
+    if ttl <= 0 then
+        return
+    end
+
+    local now = os.time()
+    local idle_threshold = now - ttl
+
+    for session_id, session in pairs(SessionRegistry.pool) do
+        -- Keep sessions that are currently generating
+        if not session.is_generating then
+            -- Check if session has been idle beyond TTL
+            if session.last_activity and session.last_activity < idle_threshold then
+                SessionRegistry.pool[session_id] = nil
+                local ok, err = pcall(function()
+                    session:destroy()
+                end)
+                if not ok then
+                    Logger.debug("Session destroy error during prune:", err)
+                end
+            end
+        end
+    end
+end
+
+--- Generates a unique session ID for ephemeral (unsaved) sessions
+--- @return string
+function SessionRegistry._generate_ephemeral_id()
+    return "ephemeral_" .. os.time() .. "_" .. math.random(1000, 9999)
 end
 
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any

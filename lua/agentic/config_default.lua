@@ -215,6 +215,7 @@
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
+--- @field pool_ttl integer Time in seconds to keep idle sessions in the pool (0 = keep until Neovim exits)
 
 --- Nested partial types for user config overrides
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
@@ -576,6 +577,7 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
+        pool_ttl = 0, -- 0 = keep until Neovim exits
     },
 
     provider_switcher = {

@@ -72,6 +72,7 @@ end
 --- @field _connection_error boolean
 --- @field _session_ready_callbacks fun()[]
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
+--- @field last_activity integer Unix timestamp of last activity (for pool TTL)
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -127,6 +128,7 @@ function SessionManager:new(tab_page_id)
         history_to_send = nil,
         _session_ready_callbacks = {},
         _header_refresh_scheduled = false,
+        last_activity = os.time(),
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
@@ -914,6 +916,7 @@ function SessionManager:_handle_input_submit(input_text)
     local tab_page_id = self.tab_page_id
 
     self.is_generating = true
+    self.last_activity = os.time()
 
     self.agent:send_prompt(self.session_id, prompt, function(response, err)
         vim.schedule(function()
@@ -923,6 +926,7 @@ function SessionManager:_handle_input_submit(input_text)
             end
 
             self.is_generating = false
+            self.last_activity = os.time()
 
             local finish_message = string.format(
                 "\n### %s %s\n-----",
@@ -1062,6 +1066,7 @@ function SessionManager:new_session(opts)
         self.session_id = response.sessionId
         self.chat_history.session_id = response.sessionId
         self.chat_history.timestamp = os.time()
+        self.last_activity = os.time()
 
         if response.configOptions then
             Logger.debug("Provider announce configOptions")
@@ -1384,6 +1389,7 @@ end
 --- the ACP process. The session can be reattached to a different tab later.
 function SessionManager:detach()
     self.widget:hide()
+    self.last_activity = os.time()
 end
 
 --- Binds this session to a new tab page and shows the widget.
@@ -1391,6 +1397,7 @@ end
 function SessionManager:attach(tab_page_id)
     self.tab_page_id = tab_page_id
     self.widget:show()
+    self.last_activity = os.time()
 end
 
 --- Load an existing ACP session by ID, subscribing to its updates
