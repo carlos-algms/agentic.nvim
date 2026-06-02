@@ -5,8 +5,10 @@ local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
+--- @field pool table<string, agentic.SessionManager> Strong map: session_id -> detached SessionManager
 local SessionRegistry = {
     sessions = setmetatable({}, { __mode = "v" }),
+    pool = {},
 }
 
 --- @param tab_page_id integer|nil
@@ -64,6 +66,9 @@ function SessionRegistry.destroy_session(tab_page_id)
 
     if session then
         SessionRegistry.sessions[tab_page_id] = nil
+        if session.session_id then
+            SessionRegistry.pool[session.session_id] = nil
+        end
 
         local ok, err = pcall(function()
             session:destroy()
@@ -72,6 +77,54 @@ function SessionRegistry.destroy_session(tab_page_id)
             Logger.debug("Session destroy error:", err)
         end
     end
+end
+
+--- Detaches the session from its tab page, keeping the ACP process alive in the pool.
+--- The session can be reattached later via attach_session().
+--- @param tab_page_id integer|nil
+--- @return agentic.SessionManager|nil session the detached session, or nil if none existed
+function SessionRegistry.detach_session(tab_page_id)
+    tab_page_id = tab_page_id ~= nil and tab_page_id
+        or vim.api.nvim_get_current_tabpage()
+    local session = SessionRegistry.sessions[tab_page_id]
+
+    if not session then
+        return nil
+    end
+
+    SessionRegistry.sessions[tab_page_id] = nil
+    session:detach()
+
+    if session.session_id then
+        SessionRegistry.pool[session.session_id] = session
+    end
+
+    return session
+end
+
+--- Attaches a pooled session to a tab page, replacing any existing session there.
+--- @param session_id string
+--- @param tab_page_id integer|nil
+--- @return boolean attached true if the session was found in the pool and attached
+function SessionRegistry.attach_session(session_id, tab_page_id)
+    tab_page_id = tab_page_id ~= nil and tab_page_id
+        or vim.api.nvim_get_current_tabpage()
+
+    local session = SessionRegistry.pool[session_id]
+    if not session then
+        return false
+    end
+
+    SessionRegistry.pool[session_id] = nil
+    SessionRegistry.sessions[tab_page_id] = session
+    session:attach(tab_page_id)
+    return true
+end
+
+--- Returns all live sessions from the pool (keyed by session_id).
+--- @return table<string, agentic.SessionManager>
+function SessionRegistry.get_pool()
+    return SessionRegistry.pool
 end
 
 --- Destroys sessions whose tabpage is no longer in nvim_list_tabpages()

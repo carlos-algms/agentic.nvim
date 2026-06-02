@@ -1380,6 +1380,19 @@ function SessionManager:destroy()
     end
 end
 
+--- Hides the widget and unbinds this session from its tab page without stopping
+--- the ACP process. The session can be reattached to a different tab later.
+function SessionManager:detach()
+    self.widget:hide()
+end
+
+--- Binds this session to a new tab page and shows the widget.
+--- @param tab_page_id integer
+function SessionManager:attach(tab_page_id)
+    self.tab_page_id = tab_page_id
+    self.widget:show()
+end
+
 --- Load an existing ACP session by ID, subscribing to its updates
 --- @param session_id string
 --- @param title string|nil

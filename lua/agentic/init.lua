@@ -323,6 +323,41 @@ function Agentic.restore_session_by_id(session_id)
     end)
 end
 
+--- Show a picker listing all live (pooled) sessions. Selecting one attaches it
+--- to the current tab page, detaching the current session into the pool first.
+function Agentic.list_sessions()
+    local pool = SessionRegistry.get_pool()
+    local items = {}
+    for session_id, session in pairs(pool) do
+        local status = session.is_generating and "running" or "idle"
+        local title = session.chat_history and session.chat_history.title
+            or session_id
+        table.insert(items, {
+            display = string.format("[%s] %s", status, title),
+            session_id = session_id,
+        })
+    end
+
+    if #items == 0 then
+        Logger.notify("No background sessions", vim.log.levels.INFO)
+        return
+    end
+
+    vim.ui.select(items, {
+        prompt = "Background sessions (select to switch):",
+        format_item = function(item)
+            return item.display
+        end,
+    }, function(choice)
+        if not choice then
+            return
+        end
+        local tab_id = vim.api.nvim_get_current_tabpage()
+        SessionRegistry.detach_session(tab_id)
+        SessionRegistry.attach_session(choice.session_id, tab_id)
+    end)
+end
+
 --- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
