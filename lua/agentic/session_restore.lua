@@ -1,5 +1,4 @@
 local Logger = require("agentic.utils.logger")
-local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestore
 local SessionRestore = {}
@@ -69,47 +68,23 @@ function SessionRestore.show_picker(current_session)
             end
 
             vim.schedule(function()
-                local pool = SessionRegistry.get_pool()
                 vim.ui.select(items, {
                     prompt = "Select session to restore:",
                     format_item = function(item)
-                        local label = item.display
-                        if pool[item.session_id] then
-                            label = label .. " [live]"
-                        end
-                        return label
+                        return item.display
                     end,
                 }, function(choice)
                     if not choice then
                         return
                     end
 
-                    local tab_id = vim.api.nvim_get_current_tabpage()
-
-                    -- If selected session is already live in the pool, detach current
-                    -- and attach the pooled one without reloading from the ACP provider.
-                    if pool[choice.session_id] then
-                        SessionRegistry.detach_session(tab_id)
-                        SessionRegistry.attach_session(
-                            choice.session_id,
-                            tab_id
-                        )
-                        return
-                    end
-
                     with_conflict_check(current_session, function()
-                        -- Detach (not destroy) current session so it stays in pool
-                        SessionRegistry.detach_session(tab_id)
-                        local new_session =
-                            SessionRegistry.get_session_for_tab_page(tab_id)
-                        if new_session then
-                            new_session:load_acp_session(
-                                choice.session_id,
-                                choice.title,
-                                choice.updated_at
-                            )
-                            new_session.widget:show()
-                        end
+                        current_session:load_acp_session(
+                            choice.session_id,
+                            choice.title,
+                            choice.updated_at
+                        )
+                        current_session.widget:show()
                     end)
                 end)
             end)

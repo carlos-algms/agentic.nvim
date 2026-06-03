@@ -344,7 +344,7 @@ function Agentic.list_sessions()
     end
 
     vim.ui.select(items, {
-        prompt = "Background sessions (select to switch):",
+        prompt = "Session switcher:",
         format_item = function(item)
             return item.display
         end,
@@ -354,7 +354,14 @@ function Agentic.list_sessions()
         end
         local tab_id = vim.api.nvim_get_current_tabpage()
         SessionRegistry.detach_session(tab_id)
-        SessionRegistry.attach_session(choice.session_id, tab_id)
+        local attached =
+            SessionRegistry.attach_session(choice.session_id, tab_id)
+        if not attached then
+            Logger.notify(
+                "Session is no longer available (may have been claimed by another tab)",
+                vim.log.levels.WARN
+            )
+        end
     end)
 end
 

@@ -4,8 +4,12 @@ local DefaultConfig = require("agentic.config_default")
 local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.SessionRegistry
---- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
---- @field pool table<string, agentic.SessionManager> Strong map: session_id -> detached SessionManager
+--- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> active SessionManager (one per visible tab)
+--- @field pool table<string, agentic.SessionManager> Strong map: session_id -> detached SessionManager (hidden, ACP process kept alive)
+---
+--- `sessions` is the "foreground" map — sessions currently bound to a tab page and visible.
+--- `pool` is the "background" map — sessions that were detached (widget hidden, ACP alive) so the
+--- user can switch back to them later. A session is in exactly one of the two maps at a time.
 local SessionRegistry = {
     sessions = setmetatable({}, { __mode = "v" }),
     pool = {},
@@ -107,6 +111,8 @@ function SessionRegistry.detach_session(tab_page_id)
 end
 
 --- Attaches a pooled session to a tab page, replacing any existing session there.
+--- If the session was claimed by another tab between the picker opening and the
+--- selection (concurrent use), this is a no-op and returns false.
 --- @param session_id string
 --- @param tab_page_id integer|nil
 --- @return boolean attached true if the session was found in the pool and attached
@@ -116,6 +122,10 @@ function SessionRegistry.attach_session(session_id, tab_page_id)
 
     local session = SessionRegistry.pool[session_id]
     if not session then
+        -- Session was already claimed (e.g. concurrent picker in another tab) or never pooled
+        Logger.debug(
+            "attach_session: session not in pool, skipping: " .. session_id
+        )
         return false
     end
 
