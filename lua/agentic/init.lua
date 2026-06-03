@@ -413,8 +413,6 @@ function Agentic.setup(opts)
         group = cleanup_group,
         callback = function()
             AgentInstance:cleanup_all()
-            -- Clean up idle sessions from pool on exit
-            SessionRegistry.prune_idle_sessions()
         end,
         desc = "Cleanup Agentic processes on exit",
     })
@@ -426,24 +424,9 @@ function Agentic.setup(opts)
         group = cleanup_group,
         callback = function()
             SessionRegistry.destroy_closed_sessions()
-            -- Also prune idle sessions when tabs close
-            SessionRegistry.prune_idle_sessions()
         end,
         desc = "Cleanup Agentic processes on tab close",
     })
-
-    -- Periodic pruning of idle sessions (every 5 minutes)
-    vim.defer_fn(function()
-        -- Only set up timer if TTL is configured and non-zero
-        if Config.settings.pool_ttl and Config.settings.pool_ttl > 0 then
-            local prune_timer = vim.uv.new_timer()
-            if prune_timer then
-                prune_timer:start(300000, 300000, function()
-                    SessionRegistry.prune_idle_sessions()
-                end)
-            end
-        end
-    end, 100)
 
     if Config.image_paste.enabled then
         local function get_current_session()
