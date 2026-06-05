@@ -3,32 +3,6 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.SessionRestore
 local SessionRestore = {}
 
---- Truncate a string to at most `max_bytes` bytes without splitting a UTF-8 character.
---- @param s string
---- @param max_bytes number
---- @return string
-local function utf8_truncate(s, max_bytes)
-    if #s <= max_bytes then
-        return s
-    end
-    local i = max_bytes
-    while i > 0 do
-        local start_off = vim.str_utf_start(s, i)
-        if start_off == 0 then
-            -- i is at a char boundary; check the full char fits
-            local end_off = vim.str_utf_end(s, i)
-            if i + end_off <= max_bytes then
-                return s:sub(1, i + end_off)
-            end
-            i = i - 1
-        else
-            -- i is inside a multi-byte char; jump to its start then back up
-            i = i + start_off - 1
-        end
-    end
-    return ""
-end
-
 --- Checks if the current session has messages or we can safely restore into it if it's empty
 --- @param current_session agentic.SessionManager|nil
 --- @return boolean has_conflict
@@ -85,10 +59,11 @@ function SessionRestore.show_picker(current_session)
                         and s.updatedAt:sub(1, 16):gsub("T", " ")
                     or "unknown date"
                 local title = s.title or "(no title)"
-                title = utf8_truncate(
-                    title:gsub("\r\n", " "):gsub("\r", " "):gsub("\n", " "),
-                    80
-                )
+                title = title
+                    :gsub("\r\n", " ")
+                    :gsub("\r", " ")
+                    :gsub("\n", " ")
+                    :sub(1, 80)
                 table.insert(items, {
                     display = string.format("%s - %s", date, title),
                     session_id = s.sessionId,
