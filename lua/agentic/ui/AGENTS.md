@@ -30,8 +30,9 @@ SessionManager (per tab)
         │                       (lives in agentic.utils, not ui)
         ├── ToolBlockBorder     ╭ │ ╰ fence glyphs via statuscolumn — ADR 0002
         └── PermissionManager   pending map + focus state; rebinds per-block
-                                keymaps on focus transition. Row N rendering
-                                owned by MessageWriter (repaint_status_row)
+                                keymaps on focus transition. Button row +
+                                status row rendering owned by MessageWriter
+                                (repaint_status_row -> _render_permission_section)
 ```
 
 ## Lifecycle
@@ -127,11 +128,18 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
   (self-assign cache invalidation, `BufEnter` reapply, etc.), read the
   rejected-alternatives table in ADR 0001 — every obvious workaround has been
   tried and documented.
-- Permission buttons live on row N (status line) of each pending block; row N
-  is outside the fold range, and digit keymaps are bound only while a block is
-  focused. Buttons are rendered as real text via
-  `MessageWriter:_render_status_row`; status word + button labels are
-  highlighted via extmark column ranges in `NS_STATUS`.
+- Permission buttons live one-per-row between `bottom_pad` and the status row
+  of each pending block, with empty spacer rows between buttons and one
+  trailing spacer above the status row (`K = 2 * N` rendered rows for N
+  options). Those rows are outside the fold range alongside the status row,
+  and digit keymaps are bound only while a block is focused
+  (`permission_manager.test.lua::digit keymap lifecycle::"rebinds digit keymaps with new mapping after focus transition"`).
+- Cycle keys (`h`/`l`/`j`/`k`/arrows) and `<CR>` are row-gated: they fire
+  only when the cursor sits on a button row or on the status row of the
+  focused block. Spacer rows fall through to default motion.
+- `tracker._rendered_button_count` lags the rendered state by one
+  `repaint_status_row` tick. Read it ONLY from the render path (the writer
+  itself, never from `PermissionManager` or external code).
 - Foreign buffers in widget windows are redirected via `BufferGuard`
   (`lua/agentic/ui/buffer_guard.lua`) to a non-widget window in the same
   tabpage.
@@ -145,16 +153,24 @@ or in the linked ADR — failures are not inlined here to avoid duplication.
 ## Tool-call block layout
 
 ```text
-row 0    header           rewritten on every update, NOT folded
-row 1    "" top_pad       fold start anchor
-row 2..  body             replaced on every update
-row N-1  "" bottom_pad    fold end anchor
-row N    status + buttons real text, outside fold, written by
-                          MessageWriter:_render_status_row
+row 0          header         rewritten on every update, NOT folded
+row 1          "" top_pad     fold start anchor
+row 2..M-1     body           replaced on every update
+row M          "" bottom_pad  fold end anchor
+row M+1..M+K   permission     K rows: N button rows + N empty spacer rows
+                              (interleaved; trailing spacer above the
+                              status row). K = 0 when no permission is
+                              pending. Outside the fold.
+row M+K+1      status row     real text, outside the fold.
 ```
 
+`K` counts rows, not buttons (`K = 2 * N` for N options). All of `M+1..M+K+1`
+is rendered together by `MessageWriter:_render_permission_section`.
+
 Pads are unconditional. Header is rewritten unconditionally because providers
-send placeholder titles before the real one.
+send placeholder titles before the real one. Permission rows only appear
+while a request is pending on the block; otherwise K = 0 and the status row
+sits directly below `bottom_pad`.
 
 ## Special write paths
 
@@ -251,12 +267,15 @@ adding a new `sessionUpdate` type.
   - `vim.t` returns copies; nested edits do not persist. Read via
     `WindowDecoration.get_headers_state`, mutate, write back via
     `set_headers_state`.
-- Overwriting row N while a permission request is pending
+- Overwriting the status row or button rows while a permission request is
+  pending (K = rendered permission rows, see "Tool-call block layout")
   - `MessageWriter:update_tool_call_block` ends up calling
-    `repaint_status_row(tracker.tool_call_id)`. The repaint reads
-    `tracker.permission` (the state stored by `PermissionManager`), so updates
-    that arrive while buttons are visible re-render the buttons rather than
-    wipe them. If you bypass `repaint_status_row` and write to row N directly,
+    `repaint_status_row(tracker.tool_call_id)`, which delegates to
+    `_render_permission_section`. The renderer reads `tracker.permission`
+    (the state stored by `PermissionManager`) and rewrites the K rows
+    plus the status row in one transaction, so updates that arrive while
+    buttons are visible re-render the buttons rather than wipe them. If you
+    bypass `_render_permission_section` and write to those rows directly,
     buttons disappear until the next focus event triggers a repaint.
 - Direct `nvim_buf_set_name` for widget buffers
   - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
@@ -276,14 +295,17 @@ change.
   `tool_call_fold.test.lua::should_fold::"folds when screen-row count exceeds threshold"`.
 - Fold counts wrapped rows, not buffer lines (one mega-line still folds) —
   `tool_call_fold.test.lua::should_fold::"folds a single buffer line that wraps past the threshold"`.
-- Row N is real text rendered per state —
+- Status row + permission rows are real text rendered per state —
   `message_writer.test.lua::status row::"writes the status word as real text at row N for non-pending blocks"`,
-  `..::"renders inline buttons for pending non-focused permission state"`,
-  `..::"renders inline buttons with digit prefixes when focused"`.
+  `..::"renders buttons one per row for pending non-focused permission state"`,
+  `..::"renders buttons one per row with digit prefixes when focused"`.
+- Block range extmark grows by K on permission render
+  (`end_right_gravity = true` regression) —
+  `message_writer.test.lua::status row::_build_permission_section button rows::"extmark end_row grows by K on permission render (end_right_gravity regression)"`.
 - Focus transition triggers exactly 2 status-row repaints (old + new) —
   `permission_manager.test.lua::bracket cycle::"focus transition triggers exactly 2 status-row repaints"`.
 - Digit keymap dispatches the focused block's option —
-  `permission_manager.test.lua::digit keymap lifecycle::"digit 1 resolves the focused block's option 1"`,
+  `permission_manager.test.lua::digit keymap lifecycle::"digit 2 submits option 2"`,
   `..::"rebinds digit keymaps with new mapping after focus transition"`.
 - Bracket cycle wraps and no-ops when pending is empty —
   `permission_manager.test.lua::bracket cycle::"forward cycle wraps to first"`,

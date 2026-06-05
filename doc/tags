@@ -6,6 +6,7 @@ agentic-config-diff-preview	agentic.txt	/*agentic-config-diff-preview*
 agentic-config-headers	agentic.txt	/*agentic-config-headers*
 agentic-config-hooks	agentic.txt	/*agentic-config-hooks*
 agentic-config-provider	agentic.txt	/*agentic-config-provider*
+agentic-config-provider-switcher	agentic.txt	/*agentic-config-provider-switcher*
 agentic-config-settings	agentic.txt	/*agentic-config-settings*
 agentic-config-windows	agentic.txt	/*agentic-config-windows*
 agentic-configuration	agentic.txt	/*agentic-configuration*

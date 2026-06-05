@@ -14,8 +14,6 @@ local NS_DIFF_HIGHLIGHTS =
 local NS_STATUS = vim.api.nvim_create_namespace("agentic_status_footer")
 local NS_THINKING = vim.api.nvim_create_namespace("agentic_thinking")
 
--- Static label map keyed by PermissionOptionKind
--- Agent-supplied option.name is intentionally discarded
 local PERMISSION_OPTION_LABELS = {
     allow_once = "Allow",
     allow_always = "Allow Always",
@@ -52,6 +50,7 @@ local TITLE_FENCE = "`````"
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
 --- @field permission? agentic.ui.MessageWriter.PermissionState
+--- @field _rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -353,6 +352,20 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
         end
     end
 
+    for tool_call_id, tracker in pairs(self.tool_call_blocks) do
+        --- @diagnostic disable-next-line: invisible
+        local rendered = tracker._rendered_button_count or 0
+        if rendered > 0 then
+            local end_row = self:get_block_end_row(tool_call_id)
+            if end_row then
+                local first = end_row - rendered
+                if row >= first and row <= end_row then
+                    return true
+                end
+            end
+        end
+    end
+
     return false
 end
 
@@ -456,6 +469,7 @@ function MessageWriter:write_tool_call_block(tool_call_block)
                 id = tool_call_block.extmark_id,
                 end_row = end_row,
                 right_gravity = false,
+                end_right_gravity = true,
             })
 
         self.tool_call_blocks[tool_call_block.tool_call_id] = tool_call_block
@@ -584,16 +598,25 @@ function MessageWriter:update_tool_call_block(tool_call_block)
 
         local new_lines, highlight_ranges = self:_prepare_block_lines(tracker)
 
+        -- Slice ends at bottom_pad so buttons + status row stay put.
+        -- INVARIANT: k_buttons must match the number of rendered rows between
+        -- bottom_pad_row and old_end_row. Only _render_permission_section
+        -- writes inside that range; if any other path inserts/deletes rows
+        -- there, this slice corrupts the block.
+        --- @diagnostic disable-next-line: invisible
+        local k_buttons = tracker._rendered_button_count or 0
+        local bottom_pad_row = old_end_row - k_buttons - 1
+
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
         vim.api.nvim_buf_set_lines(
             bufnr,
             start_row + ToolCallBlocks.HEADER_HEIGHT,
-            old_end_row - 1,
+            bottom_pad_row,
             false,
             body_lines
         )
 
-        local new_end_row = start_row + #new_lines - 1
+        local new_end_row = start_row + #new_lines - 1 + k_buttons
 
         pcall(
             vim.api.nvim_buf_clear_namespace,
@@ -615,6 +638,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
             id = tracker.extmark_id,
             end_row = new_end_row,
             right_gravity = false,
+            end_right_gravity = true,
         })
 
         self:_apply_status_highlights_if_present(tracker)
@@ -931,28 +955,47 @@ function MessageWriter:get_focused_button_index(tool_call_id)
     return tracker.permission.focused_button_index
 end
 
+--- 0-indexed buffer row of the Nth permission button for the given block.
 --- @param tool_call_id string
 --- @param index integer 1-indexed button position
---- @return integer|nil col 0-indexed start column of the Nth permission button, or nil
-function MessageWriter:get_button_col(tool_call_id, index)
+--- @return integer|nil row 0-indexed buffer row of the Nth permission button, or nil
+function MessageWriter:get_button_row(tool_call_id, index)
     local tracker = self.tool_call_blocks[tool_call_id]
     if not tracker or not tracker.permission then
         return nil
     end
 
-    local _, segments = self:_build_status_row(tracker)
-    -- segments[1] is the status word; segments[1 + i] is the i-th button.
-    local seg = segments[1 + index]
-    if not seg then
+    --- @diagnostic disable-next-line: invisible
+    local k = tracker._rendered_button_count or 0
+    if k == 0 then
         return nil
     end
 
-    return seg[1]
+    local n_buttons = #tracker.permission.sorted_options
+    if index < 1 or index > n_buttons then
+        return nil
+    end
+
+    -- Rendered K rows = N buttons + N spacers = 2 * N. When k disagrees with
+    -- 2 * n_buttons, state is mid-resize (sorted_options updated but no
+    -- repaint yet). Bail rather than land on a spacer or the status row.
+    if k ~= 2 * n_buttons then
+        return nil
+    end
+
+    local end_row = self:get_block_end_row(tool_call_id)
+    if not end_row then
+        return nil
+    end
+
+    local first_button_row = end_row - k
+    return first_button_row + (index - 1) * 2
 end
 
---- Recompute and write the status row (row N) for the given tool call block.
---- Used by both the writer itself (initial render / updates) and the
---- PermissionManager when toggling buttons / focus.
+--- Recompute and write the permission section (button rows + status row)
+--- for the given tool call block. Used by both the writer itself (initial
+--- render / updates) and the PermissionManager when toggling buttons /
+--- focus.
 --- @param tool_call_id string
 function MessageWriter:repaint_status_row(tool_call_id)
     local tracker = self.tool_call_blocks[tool_call_id]
@@ -967,8 +1010,8 @@ function MessageWriter:repaint_status_row(tool_call_id)
         return
     end
 
-    local text, hl_segments = self:_build_status_row(tracker)
-    self:_render_status_row(end_row, text, hl_segments)
+    local section = self:_build_permission_section(tracker)
+    self:_render_permission_section(tracker, end_row, section)
 end
 
 --- Return the 0-indexed last row of the block, or nil when no block tracker
@@ -1169,12 +1212,99 @@ end
 --- @field [2] integer end_col 0-indexed exclusive
 --- @field [3] string hl_group
 
---- Build the text + highlight segments for the status row (row N) of a block.
---- Blocks with an attached PermissionState include inline buttons.
+--- @class agentic.ui.MessageWriter.PermissionSection
+--- @field button_lines string[]
+--- @field button_segments_per_line agentic.ui.MessageWriter.StatusSegment[][]
+--- @field status_text string
+--- @field status_segments agentic.ui.MessageWriter.StatusSegment[]
+
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @return agentic.ui.MessageWriter.PermissionSection section
+function MessageWriter:_build_permission_section(tracker)
+    local status_text, status_segments = self:_build_status_word(tracker)
+
+    --- @type agentic.ui.MessageWriter.PermissionSection
+    local section = {
+        button_lines = {},
+        button_segments_per_line = {},
+        status_text = status_text,
+        status_segments = status_segments,
+    }
+
+    local perm = tracker.permission
+    if not perm then
+        return section
+    end
+
+    local function push_spacer()
+        table.insert(section.button_lines, "")
+        table.insert(section.button_segments_per_line, {})
+    end
+
+    --- @param line string
+    --- @param segments agentic.ui.MessageWriter.StatusSegment[]
+    local function push_button(line, segments)
+        table.insert(section.button_lines, line)
+        table.insert(section.button_segments_per_line, segments)
+    end
+
+    local permission_icons = Config.permission_icons or {}
+    local focused_btn = perm.focused_button_index
+
+    for i, option in ipairs(perm.sorted_options) do
+        if i > 1 then
+            push_spacer()
+        end
+
+        local label = option.name
+        if not label or label == "" then
+            label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
+        end
+        -- Provider-supplied name: strip newlines so set_lines does not throw
+        -- and the row still reads as a single button.
+        label = label:gsub("[\r\n]", " ")
+
+        local btn_icon = permission_icons[option.kind] or ""
+
+        --- @type string[]
+        local tokens = {}
+        if perm.is_focused then
+            table.insert(tokens, tostring(i))
+        end
+        if btn_icon ~= "" then
+            table.insert(tokens, btn_icon)
+        end
+        table.insert(tokens, label)
+
+        -- Padding spaces extend the bg fill so the row reads as a button.
+        local line = " " .. table.concat(tokens, " ") .. " "
+
+        local hl_group
+        local is_button_focused = perm.is_focused and i == focused_btn
+        if not is_button_focused then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
+        elseif option.kind == "allow_once" or option.kind == "allow_always" then
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
+        else
+            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
+        end
+
+        push_button(line, { { 0, #line, hl_group } })
+    end
+
+    if #section.button_lines > 0 then
+        push_spacer()
+    end
+
+    return section
+end
+
+--- Build the bare status-word text + single highlight segment for a block.
+--- Used by `_build_permission_section` to compose the status row.
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @return string text
 --- @return agentic.ui.MessageWriter.StatusSegment[] segments
-function MessageWriter:_build_status_row(tracker)
+function MessageWriter:_build_status_word(tracker)
     local status = tracker.status
 
     if not status or status == "" then
@@ -1184,77 +1314,163 @@ function MessageWriter:_build_status_row(tracker)
     local icons = Config.status_icons or {}
     local icon = icons[status] or ""
     local status_label = icon ~= "" and (icon .. " " .. status) or status
-
     local text = " " .. status_label .. " "
+
     --- @type agentic.ui.MessageWriter.StatusSegment[]
     local segments = {
         { 0, #text, Theme.get_status_hl_group(status) },
     }
 
-    local perm = tracker.permission
-
-    if not perm then
-        return text, segments
-    end
-
-    local permission_icons = Config.permission_icons or {}
-    local focused_btn = perm.focused_button_index
-
-    for i, option in ipairs(perm.sorted_options) do
-        local label = PERMISSION_OPTION_LABELS[option.kind] or option.kind
-        local btn_icon = permission_icons[option.kind] or ""
-        local body = ""
-
-        if perm.is_focused then
-            body = string.format("%d %s %s", i, btn_icon, label)
-        else
-            body = string.format("%s %s", btn_icon, label)
-        end
-
-        local btn = " " .. body .. " "
-
-        text = text .. "  "
-        local start_col = #text
-        text = text .. btn
-        local end_col = #text
-
-        local is_button_focused = perm.is_focused and i == focused_btn
-        local hl_group
-
-        if not is_button_focused then
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_INACTIVE
-        elseif option.kind == "allow_once" or option.kind == "allow_always" then
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_ALLOW
-        else
-            hl_group = Theme.HL_GROUPS.PERMISSION_BUTTON_REJECT
-        end
-        table.insert(segments, { start_col, end_col, hl_group })
-    end
-
     return text, segments
 end
 
---- Write text and apply highlight segments at the given row in NS_STATUS.
---- @param row integer 0-indexed row
---- @param text string
---- @param hl_segments agentic.ui.MessageWriter.StatusSegment[]
-function MessageWriter:_render_status_row(row, text, hl_segments)
+--- @param tracker agentic.ui.MessageWriter.ToolCallBlock
+--- @param end_row integer 0-indexed status row before this repaint
+--- @param section agentic.ui.MessageWriter.PermissionSection
+function MessageWriter:_render_permission_section(tracker, end_row, section)
     if not vim.api.nvim_buf_is_valid(self.bufnr) then
         return
     end
 
+    --- @diagnostic disable-next-line: invisible
+    local k_old = tracker._rendered_button_count or 0
+    local k_new = #section.button_lines
+    local bottom_pad_row = end_row - k_old - 1
+
+    local block_start_row = self:_get_block_start_row(tracker.tool_call_id)
+    -- Floor at header + top_pad = start_row + 2. If the computed
+    -- bottom_pad_row falls into header / top_pad / body, _rendered_button_count
+    -- is stale (mid-resize race) and the delete/insert would corrupt the
+    -- block. Bail without touching the buffer.
+    local min_bottom_pad_row = (block_start_row or 0)
+        + ToolCallBlocks.HEADER_HEIGHT
+    if bottom_pad_row < min_bottom_pad_row then
+        Logger.debug(
+            "Permission section: bottom_pad_row inside block body; skip",
+            {
+                end_row = end_row,
+                k_old = k_old,
+                bottom_pad_row = bottom_pad_row,
+                min_bottom_pad_row = min_bottom_pad_row,
+            }
+        )
+        -- Stale k_old vs buffer state: reset so the next repaint recomputes
+        -- bottom_pad_row from scratch instead of compounding the error.
+        --- @diagnostic disable-next-line: invisible
+        tracker._rendered_button_count = 0
+        return
+    end
+
+    -- Clear NS_STATUS over the prior section range BEFORE line operations.
+    -- NS_STATUS extmarks on the prior button rows + status row use default
+    -- gravity and would otherwise be dragged into the new layout by the
+    -- subsequent insert / delete.
+    pcall(
+        vim.api.nvim_buf_clear_namespace,
+        self.bufnr,
+        NS_STATUS,
+        bottom_pad_row + 1,
+        end_row + 1
+    )
+
+    local new_status_row = bottom_pad_row + k_new + 1
+
+    local mutation_ok = true
     BufHelpers.with_modifiable(self.bufnr, function(bufnr)
-        pcall(vim.api.nvim_buf_set_lines, bufnr, row, row + 1, false, { text })
+        if k_old > 0 then
+            local ok = pcall(
+                vim.api.nvim_buf_set_lines,
+                bufnr,
+                bottom_pad_row + 1,
+                bottom_pad_row + 1 + k_old,
+                false,
+                {}
+            )
+            if not ok then
+                mutation_ok = false
+                return
+            end
+        end
+
+        if k_new > 0 then
+            local ok = pcall(
+                vim.api.nvim_buf_set_lines,
+                bufnr,
+                bottom_pad_row + 1,
+                bottom_pad_row + 1,
+                false,
+                section.button_lines
+            )
+            if not ok then
+                mutation_ok = false
+                return
+            end
+        end
+
+        -- Use set_text (not set_lines) for the status row so any NS_STATUS
+        -- extmarks anchored on the status row by mid-line column are not
+        -- redrawn by a full-line replace.
+        local existing = vim.api.nvim_buf_get_lines(
+            bufnr,
+            new_status_row,
+            new_status_row + 1,
+            false
+        )[1] or ""
+        local ok = pcall(
+            vim.api.nvim_buf_set_text,
+            bufnr,
+            new_status_row,
+            0,
+            new_status_row,
+            #existing,
+            { section.status_text }
+        )
+        if not ok then
+            mutation_ok = false
+        end
     end)
 
-    pcall(vim.api.nvim_buf_clear_namespace, self.bufnr, NS_STATUS, row, row + 1)
-
-    for _, seg in ipairs(hl_segments) do
-        vim.api.nvim_buf_set_extmark(self.bufnr, NS_STATUS, row, seg[1], {
-            end_col = seg[2],
-            hl_group = seg[3],
-        })
+    if not mutation_ok then
+        -- Half-applied edit: skip the count update so the next repaint
+        -- recomputes from a known-stale baseline rather than from k_new.
+        return
     end
+
+    if not vim.api.nvim_buf_is_valid(self.bufnr) then
+        return
+    end
+
+    for i, line_segments in ipairs(section.button_segments_per_line) do
+        local btn_row = bottom_pad_row + i
+        for _, seg in ipairs(line_segments) do
+            vim.api.nvim_buf_set_extmark(
+                self.bufnr,
+                NS_STATUS,
+                btn_row,
+                seg[1],
+                {
+                    end_col = seg[2],
+                    hl_group = seg[3],
+                }
+            )
+        end
+    end
+
+    for _, seg in ipairs(section.status_segments) do
+        vim.api.nvim_buf_set_extmark(
+            self.bufnr,
+            NS_STATUS,
+            new_status_row,
+            seg[1],
+            {
+                end_col = seg[2],
+                hl_group = seg[3],
+            }
+        )
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    tracker._rendered_button_count = k_new
 end
 
 --- Sets or updates a thinking highlight extmark over the given line range.

@@ -74,6 +74,20 @@ function SessionRegistry.destroy_session(tab_page_id)
     end
 end
 
+--- Destroys sessions whose tabpage is no longer in nvim_list_tabpages()
+function SessionRegistry.destroy_closed_sessions()
+    local valid = {}
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        valid[tab] = true
+    end
+
+    for tab_page_id in pairs(SessionRegistry.sessions) do
+        if not valid[tab_page_id] then
+            SessionRegistry.destroy_session(tab_page_id)
+        end
+    end
+end
+
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
 function SessionRegistry.select_provider(on_selected)
     local available_providers = ACPHealth.get_default_provider_names()
@@ -83,10 +97,10 @@ function SessionRegistry.select_provider(on_selected)
     --- @field installed boolean
 
     --- @type _ProviderStatus[]
-    local sorted_providers = {}
+    local healthy_providers = {}
 
     --- @type _ProviderStatus[]
-    local not_installed = {}
+    local unhealthy_providers = {}
 
     for _, provider_name in ipairs(available_providers) do
         local provider_config = Config.acp_providers[provider_name]
@@ -94,22 +108,42 @@ function SessionRegistry.select_provider(on_selected)
             provider_config
             and ACPHealth.is_command_available(provider_config.command)
         then
-            sorted_providers[#sorted_providers + 1] = {
+            healthy_providers[#healthy_providers + 1] = {
                 name = provider_name,
                 installed = true,
             }
         else
-            not_installed[#not_installed + 1] = {
+            unhealthy_providers[#unhealthy_providers + 1] = {
                 name = provider_name,
                 installed = false,
             }
         end
     end
 
-    vim.list_extend(sorted_providers, not_installed)
+    local function sort_by_name(left, right)
+        return left.name < right.name
+    end
 
-    vim.ui.select(sorted_providers, {
+    table.sort(healthy_providers, sort_by_name)
+    table.sort(unhealthy_providers, sort_by_name)
+
+    local providers = healthy_providers
+    if not Config.provider_switcher.hide_unhealthy_providers then
+        vim.list_extend(providers, unhealthy_providers)
+    elseif #providers == 0 then
+        Logger.notify(
+            "No healthy providers found. Showing unavailable providers."
+        )
+        providers = unhealthy_providers
+    end
+
+    vim.ui.select(providers, {
         prompt = "Select an ACP provider for the new session:",
+        snacks = {
+            sort = {
+                fields = { "installed", "score:desc", "idx" },
+            },
+        },
         --- @param item _ProviderStatus
         format_item = function(item)
             local label = item.name
