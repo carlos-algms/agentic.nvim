@@ -223,6 +223,35 @@ describe("SessionRestore", function()
             })
         end
 
+        it(
+            "truncates title at a UTF-8 character boundary",
+            function()
+                -- 79 ASCII chars + "é" (2 bytes) straddles byte 80;
+                -- sub(1,80) would yield a broken half-char, utf8_truncate stops before it
+                local long_title = string.rep("a", 79)
+                    .. "\xC3\xA9"
+                    .. "extra"
+                local session = create_acp_session({
+                    sessions = {
+                        {
+                            sessionId = "utf8-test",
+                            title = long_title,
+                            updatedAt = "2026-01-01T00:00:00Z",
+                        },
+                    },
+                })
+
+                SessionRestore.show_picker(
+                    session --[[@as agentic.SessionManager]]
+                )
+
+                local items = vim_ui_select_stub.calls[1][1]
+                -- display = "date - title"; title must be 79 a's, not more
+                local displayed_title = items[1].display:match("^.+%- (.+)$")
+                assert.equal(string.rep("a", 79), displayed_title)
+            end
+        )
+
         it("uses ACP list with formatted sessions", function()
             local session = create_acp_session()
 
