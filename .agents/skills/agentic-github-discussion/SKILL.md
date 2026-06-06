@@ -1,5 +1,5 @@
 ---
-name: github-discussion
+name: agentic-github-discussion
 description: Use when creating, listing, or managing GitHub discussions in carlos-algms/agentic.nvim repository
 ---
 
@@ -13,20 +13,20 @@ Manage discussions in **carlos-algms/agentic.nvim** via GraphQL API.
 
 ### Categories
 
-| Category       | ID                     |
-| -------------- | ---------------------- |
-| Announcements  | `DIC_kwDOQXqKi84C1alq` |
-| General        | `DIC_kwDOQXqKi84C1alr` |
-| Ideas          | `DIC_kwDOQXqKi84C1alt` |
-| Polls          | `DIC_kwDOQXqKi84C1alv` |
-| Q&A            | `DIC_kwDOQXqKi84C1als` |
-| **Research**   | `DIC_kwDOQXqKi84C1alw` |
-| Show and tell  | `DIC_kwDOQXqKi84C1alu` |
+| Category      | ID                     |
+| ------------- | ---------------------- |
+| Announcements | `DIC_kwDOQXqKi84C1alq` |
+| General       | `DIC_kwDOQXqKi84C1alr` |
+| Ideas         | `DIC_kwDOQXqKi84C1alt` |
+| Polls         | `DIC_kwDOQXqKi84C1alv` |
+| Q&A           | `DIC_kwDOQXqKi84C1als` |
+| **Research**  | `DIC_kwDOQXqKi84C1alw` |
+| Show and tell | `DIC_kwDOQXqKi84C1alu` |
 
 ### Labels
 
-| Label            | ID                         |
-| ---------------- | -------------------------- |
+| Label            | ID                          |
+| ---------------- | --------------------------- |
 | bug              | `LA_kwDOQXqKi88AAAACQBotaQ` |
 | documentation    | `LA_kwDOQXqKi88AAAACQBoteg` |
 | duplicate        | `LA_kwDOQXqKi88AAAACQBotgw` |
@@ -42,7 +42,7 @@ Manage discussions in **carlos-algms/agentic.nvim** via GraphQL API.
 
 Default category: **Research**
 
-Override: `/github-discussion Ideas` or `/github-discussion Q&A`
+Override: `/agentic-github-discussion Ideas` or `/agentic-github-discussion Q&A`
 
 ## Create Discussion
 

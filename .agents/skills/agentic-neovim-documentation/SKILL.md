@@ -1,5 +1,5 @@
 ---
-name: neovim-documentation
+name: agentic-neovim-documentation
 description:
   Use when neovim documentation is needed for the current task or the user asks
   for specific neovim features or neovim lua apis. It gives instructions on how
