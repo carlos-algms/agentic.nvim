@@ -125,16 +125,25 @@ describe("FilePicker:scan_files", function()
             assert.is_true(#files_fd > 0)
             assert.is_true(#files_git > 0)
 
+            -- git ls-files emits tracked symlinks-to-directories as a single
+            -- entry (e.g. ".claude/skills/"), which to_smart_path renders with
+            -- a trailing slash. rg/fd list the files *through* the symlink and
+            -- never emit the bare entry, so drop trailing-slash words to keep
+            -- the cross-command comparison symmetric.
+            local function words_without_dirs(files)
+                local words = {}
+                for _, f in ipairs(files) do
+                    if not f.word:match("/$") then
+                        table.insert(words, f.word)
+                    end
+                end
+                return words
+            end
+
             -- Extract just the word (filename) for comparison
-            local words_rg = vim.tbl_map(function(f)
-                return f.word
-            end, files_rg)
-            local words_fd = vim.tbl_map(function(f)
-                return f.word
-            end, files_fd)
-            local words_git = vim.tbl_map(function(f)
-                return f.word
-            end, files_git)
+            local words_rg = words_without_dirs(files_rg)
+            local words_fd = words_without_dirs(files_fd)
+            local words_git = words_without_dirs(files_git)
 
             local rg_only, fd_only = table_diff(words_rg, words_fd)
             assert.are.same(rg_only, fd_only)
@@ -142,8 +151,8 @@ describe("FilePicker:scan_files", function()
             local fd_only2, git_only = table_diff(words_fd, words_git)
             assert.are.same(fd_only2, git_only)
 
-            assert.are.equal(#files_rg, #files_fd)
-            assert.are.equal(#files_fd, #files_git)
+            assert.are.equal(#words_rg, #words_fd)
+            assert.are.equal(#words_fd, #words_git)
         end)
 
         it("should use glob fallback when all commands fail", function()
