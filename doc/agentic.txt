@@ -524,7 +524,7 @@ Permission keymaps (active while a permission request is pending):
 
   Key                        Mode    Description ~
   <C-n>                      n       Cycle to next pending permission block
-  <C-p>                      n       Cycle to previous pending permission block
+  <C-p>                      n       Cycle to prior pending permission block
   h / <Left> / k / <Up>      n       Focus previous permission button
   l / <Right> / j / <Down>   n       Focus next permission button
   <CR>                       n       Submit focused permission button
