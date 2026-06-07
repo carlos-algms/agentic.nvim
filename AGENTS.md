@@ -41,14 +41,12 @@ not a trigger.
 
 ### grill-with-docs override
 
-`grill-with-docs` skill ships a minimal ADR template.
-Path + 4-digit numbering match this repo; the template does NOT.
-Use `docs/adr/README.md` verbatim.
-Keep the `Rejected / superseded alternatives` table and `Changelog`.
+`grill-with-docs` skill ships a minimal ADR template. Path + 4-digit numbering
+match this repo; the template does NOT. Use `docs/adr/README.md` verbatim. Keep
+the `Rejected / superseded alternatives` table and `Changelog`.
 
-`CONTEXT.md`: glossary only, no implementation.
-Populate incrementally as overloaded terms surface.
-Not a spec, scratchpad, or design doc.
+`CONTEXT.md`: glossary only, no implementation. Populate incrementally as
+overloaded terms surface. Not a spec, scratchpad, or design doc.
 
 ## Anti-staleness rules for AGENTS.md files
 
@@ -122,8 +120,8 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   instances. Load `agentic-runtime-safety` for the full architecture.
 - **FORBIDDEN: global keymaps, and direct `vim.keymap.set`/`vim.keymap.del` with
   `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
-  `BufHelpers.keymap_del`. Load `agentic-runtime-safety` for the Neovim
-  `buffer` -> `buf` compatibility rationale.
+  `BufHelpers.keymap_del`. Load `agentic-runtime-safety` for the Neovim `buffer`
+  -> `buf` compatibility rationale.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
   `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
