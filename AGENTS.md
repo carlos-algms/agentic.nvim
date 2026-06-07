@@ -176,6 +176,11 @@ Bug fixes and behavioral changes: failing test BEFORE the fix. Non-negotiable.
 Only exception: pure refactors, formatting, docs - call out explicitly in the
 PR.
 
+During the red/green loop, run `make test-file FILE=<path>` only; never
+`make validate` between iterations. After all `.lua` edits, run `make validate`
+and fix until it passes - the task is not done until it does. Pre-commit gate,
+not a per-test step.
+
 Full workflow, red/green steps, helpers, conventions, async traps, and
 mark-count checks live in the `agentic-testing` skill. Load it before creating,
 editing, or reviewing tests. Do not guess conventions from other projects, e.g:

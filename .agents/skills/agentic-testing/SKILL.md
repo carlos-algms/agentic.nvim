@@ -21,11 +21,12 @@ For every bug fix or behavioral change:
 
 1. Bootstrap missing symbols first so the test loads.
 2. Write the failing assertion.
-3. Run the focused test and confirm it fails for behavior, not setup:
+3. Run the focused test with `make test-file FILE=<path>` and confirm it fails
+   for behavior, not setup:
    1. wrong: missing module, nil method, syntax error, unresolved import
    2. right: value/state/output mismatch
 4. Implement the minimum code to pass.
-5. Run the focused test.
+5. Re-run `make test-file FILE=<path>`.
 6. Run the relevant full check.
 7. After adding or changing tests, run `make test` and verify reported marks for
    the changed file match the number of `it()` blocks.
@@ -41,6 +42,11 @@ make test
 ```bash
 make test-file FILE=lua/agentic/acp/agent_modes.test.lua
 ```
+
+Use `make test-file FILE=<path>` for the red/green inner loop; it runs one file
+in seconds. Never run `make validate` between iterations. After all `.lua`
+edits, run `make validate` and fix until it passes - the task is not done until
+it does. Pre-commit gate, not a per-test step.
 
 For Lua or test changes, root `AGENTS.md` requires `make validate` after the
 focused checks.
