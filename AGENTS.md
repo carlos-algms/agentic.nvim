@@ -22,7 +22,7 @@ lua files, or adding, updating, or creating unit tests.
 
 The Skills contain good practices, code standards, architecture flows, etc...,
 that might not align with your training data.  
-I'ts mandatory to load the skills before assuming your solution is right.
+It's mandatory to load the skills before assuming your solution is right.
 
 ## Domain glossary — lazy read
 
