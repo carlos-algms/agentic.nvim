@@ -13,6 +13,17 @@ Read these before touching the matching area:
   folding, auto-scroll, permission reanchor, traps
 - `tests/AGENTS.md` - test framework, TDD workflow, assertions, helpers
 
+## Skill driven
+
+This project splits instructions and repetitive workflows into skills.
+
+**MANDATORY**: Load the related skill before suggesting a solution, writing to
+lua files, or adding, updating, or creating unit tests.
+
+The Skills contain good practices, code standards, architecture flows, etc...,
+that might not align with your training data.  
+I'ts mandatory to load the skills before assuming your solution is right.
+
 ## Domain glossary — lazy read
 
 `CONTEXT.md` (repo root) defines overloaded terms (Session, Agent, Provider,
