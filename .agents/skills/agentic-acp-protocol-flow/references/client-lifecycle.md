@@ -8,9 +8,7 @@ stateDiagram-v2
     disconnected --> connecting: _connect()
     connecting --> connected: spawn ok, pipes open
     connected --> initializing: send initialize
-    initializing --> authenticating: auth_method set
-    initializing --> ready: no auth required
-    authenticating --> ready: auth response ok
+    initializing --> ready: initialize response (auth, if any, sent in-state)
     disconnected --> connecting: reconnect when enabled
 
     state "any state" as any

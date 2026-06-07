@@ -10,12 +10,12 @@ local assert = require("tests.helpers.assert")
 
 Common API:
 
-- `assert.equal(expected, actual)`
-- `assert.same(expected, actual)`
-- `assert.are.equal(expected, actual)`
-- `assert.are.same(expected, actual)`
-- `assert.are_not.equal(expected, actual)`
-- `assert.is_not.equal(expected, actual)`
+- `assert.equal(actual, expected)`
+- `assert.same(actual, expected)`
+- `assert.are.equal(actual, expected)`
+- `assert.are.same(actual, expected)`
+- `assert.are_not.equal(actual, expected)`
+- `assert.is_not.equal(actual, expected)`
 - `assert.is_nil(value)`
 - `assert.is_not_nil(value)`
 - `assert.is_true(value)`

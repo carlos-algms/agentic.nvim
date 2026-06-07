@@ -162,7 +162,7 @@ writing or editing any `.lua` file.
 
 ### Plugin requirements
 
-- Neovim v0.11.5+ (verify APIs match this version or newer)
+- Neovim v0.11.0+ (verify APIs match this version or newer)
 - LuaJIT 2.1 (bundled, based on Lua 5.1)
 - Optional on Linux: `wl-clipboard` (Wayland) or `xclip` (X11) for clipboard
   image paste. macOS and Windows use native OS tooling and need no extra

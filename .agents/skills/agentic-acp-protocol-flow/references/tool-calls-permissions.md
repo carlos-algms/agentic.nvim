@@ -2,15 +2,33 @@
 
 ## Session update routing
 
-| `sessionUpdate` value   | Routed to                                 |
-| ----------------------- | ----------------------------------------- |
-| `"tool_call"`           | `__handle_tool_call` -> subscriber        |
-| `"tool_call_update"`    | `__handle_tool_call_update` -> subscriber |
-| `"agent_message_chunk"` | `MessageWriter:write_message_chunk()`     |
-| `"agent_thought_chunk"` | `MessageWriter:write_message_chunk()`     |
-| `"plan"`                | `TodoList.render()`                       |
-| `"request_permission"`  | `PermissionManager`                       |
-| others                  | `subscriber.on_session_update()`          |
+Routing is two-layered. `ACPClient:__handle_session_update` (acp_client.lua)
+handles only tool-call updates directly; every other value is forwarded verbatim
+to `subscriber.on_session_update(update)`. `SessionManager:_on_session_update`
+(session_manager.lua) is that subscriber and dispatches by `sessionUpdate` value
+to the UI.
+
+Layer 1 - `ACPClient:__handle_session_update`:
+
+| `sessionUpdate` value | Routed to                                            |
+| --------------------- | ---------------------------------------------------- |
+| `"tool_call"`         | `__handle_tool_call` -> `on_tool_call`               |
+| `"tool_call_update"`  | `__handle_tool_call_update` -> `on_tool_call_update` |
+| any other value       | `subscriber.on_session_update(update)`               |
+
+Layer 2 - `SessionManager:_on_session_update`:
+
+| `sessionUpdate` value   | Routed to                                |
+| ----------------------- | ---------------------------------------- |
+| `"agent_message_chunk"` | `MessageWriter:write_message_chunk()`    |
+| `"agent_thought_chunk"` | `MessageWriter:write_message_chunk()`    |
+| `"user_message_chunk"`  | `MessageWriter`                          |
+| `"plan"`                | `TodoList:render(update.entries)`        |
+| other update types      | handled per type (commands, modes, etc.) |
+
+`request_permission` is NOT a `sessionUpdate` value. It is the JSON-RPC method
+`session/request_permission`, handled separately by
+`ACPClient:__handle_request_permission` -> `subscriber.on_request_permission`.
 
 ## Tool-call lifecycle
 

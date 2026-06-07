@@ -8,7 +8,7 @@ local assert = require("tests.helpers.assert")
 local Child = require("tests.helpers.child")
 
 describe("integration", function()
-    local child = Child.new()
+    local child = Child:new()
 
     before_each(function()
         child.setup()
