@@ -861,7 +861,17 @@ File picker ~
   --- @type agentic.PartialUserConfig
   opts = {
     file_picker = {
-      enabled = true,  -- Enable @ file completion
+      -- Enable @ file completion
+      enabled = true,
+      -- When false, disables automatic completion triggering on @,
+      -- use <C-x><C-o> to trigger manual completion.
+      auto_trigger = true,
+    },
+
+    slash_commands = {
+      -- When false, disables automatic completion triggering on /.
+      -- Use <C-x><C-u> to trigger manual completion.
+      auto_trigger = true,
     },
   }
 <

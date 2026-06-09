@@ -168,7 +168,10 @@
 
 --- @class agentic.UserConfig.FilePicker
 --- @field enabled boolean
-
+--- @field auto_trigger boolean When false, disables automatic completion triggering on @
+--- Slash command completion configuration
+--- @class agentic.UserConfig.SlashCommands
+--- @field auto_trigger boolean When false, disables automatic completion triggering on /
 --- @class agentic.UserConfig.ImagePaste
 --- @field enabled boolean Enable image drag-and-drop to add images to referenced files
 
@@ -230,6 +233,7 @@
 --- @class (partial) agentic.PartialUserConfig.PermissionIcons: agentic.UserConfig.PermissionIcons
 --- @class (partial) agentic.PartialUserConfig.ChatIcons: agentic.UserConfig.ChatIcons
 --- @class (partial) agentic.PartialUserConfig.MessageIcons: agentic.UserConfig.MessageIcons
+--- @class (partial) agentic.PartialUserConfig.SlashCommands: agentic.UserConfig.SlashCommands
 --- @class (partial) agentic.PartialUserConfig.FilePicker: agentic.UserConfig.FilePicker
 --- @class (partial) agentic.PartialUserConfig.ImagePaste: agentic.UserConfig.ImagePaste
 --- @class (partial) agentic.PartialUserConfig.AutoScroll: agentic.UserConfig.AutoScroll
@@ -268,6 +272,7 @@
 --- @field chat_icons? agentic.PartialUserConfig.ChatIcons
 --- @field message_icons? agentic.PartialUserConfig.MessageIcons
 --- @field file_picker? agentic.PartialUserConfig.FilePicker
+--- @field slash_commands? agentic.PartialUserConfig.SlashCommands
 --- @field image_paste? agentic.PartialUserConfig.ImagePaste
 --- @field auto_scroll? agentic.PartialUserConfig.AutoScroll
 --- @field diff_preview? agentic.PartialUserConfig.DiffPreview
@@ -289,6 +294,7 @@
 --- @field chat_icons agentic.UserConfig.ChatIcons
 --- @field message_icons agentic.UserConfig.MessageIcons
 --- @field file_picker agentic.UserConfig.FilePicker
+--- @field slash_commands agentic.UserConfig.SlashCommands
 --- @field image_paste agentic.UserConfig.ImagePaste
 --- @field auto_scroll agentic.UserConfig.AutoScroll
 --- @field diff_preview agentic.UserConfig.DiffPreview
@@ -526,6 +532,11 @@ local ConfigDefault = {
 
     file_picker = {
         enabled = true,
+        auto_trigger = true,
+    },
+
+    slash_commands = {
+        auto_trigger = true,
     },
 
     image_paste = {

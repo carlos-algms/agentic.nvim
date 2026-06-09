@@ -1,4 +1,5 @@
 local States = require("agentic.states")
+local Config = require("agentic.config")
 
 --- Neovim completion item structure (vim.fn.complete() dictionary format)
 --- For complete list of properties, see |complete-items| in insert.txt help manual
@@ -78,6 +79,10 @@ function SlashCommands.setup_completion(bufnr)
     -- CRITICAL: v:lua syntax does NOT support parens in require call
     vim.bo[bufnr].completefunc =
         "v:lua.require'agentic.acp.slash_commands'.complete_func"
+
+    if not Config.slash_commands.auto_trigger then
+        return
+    end
 
     vim.api.nvim_create_autocmd("TextChangedI", {
         buffer = bufnr,

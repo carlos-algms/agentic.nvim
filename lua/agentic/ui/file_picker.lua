@@ -77,6 +77,10 @@ function FilePicker:_setup_completion(bufnr)
         }
     )
 
+    if not Config.file_picker.auto_trigger then
+        return
+    end
+
     local last_at_pos = nil
 
     vim.api.nvim_create_autocmd("TextChangedI", {
@@ -298,6 +302,10 @@ function FilePicker.complete_func(findstart, _base)
         if not instance then
             Logger.debug("[FilePicker] No instance found for buffer:", bufnr)
             return {}
+        end
+
+        if #instance._files == 0 then
+            instance:scan_files()
         end
 
         -- Return all files - Neovim handles fuzzy filtering

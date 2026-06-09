@@ -209,6 +209,57 @@ describe("FilePicker:scan_files", function()
     end)
 end)
 
+describe("FilePicker auto_trigger", function()
+    local Config = require("agentic.config")
+
+    --- @type TestStub
+    local create_autocmd_stub
+    local original_auto_trigger
+    local original_enabled
+
+    before_each(function()
+        original_auto_trigger = Config.file_picker.auto_trigger
+        original_enabled = Config.file_picker.enabled
+        Config.file_picker.enabled = true
+        create_autocmd_stub = spy.stub(vim.api, "nvim_create_autocmd")
+    end)
+
+    after_each(function()
+        Config.file_picker.auto_trigger = original_auto_trigger
+        Config.file_picker.enabled = original_enabled
+        create_autocmd_stub:revert()
+    end)
+
+    local function textchangedi_call_count()
+        local count = 0
+        for _, call in ipairs(create_autocmd_stub.calls) do
+            if call[1] == "TextChangedI" then
+                count = count + 1
+            end
+        end
+        return count
+    end
+
+    it("registers TextChangedI autocmd when auto_trigger is true", function()
+        Config.file_picker.auto_trigger = true
+        local buf = vim.api.nvim_create_buf(false, true)
+        FilePicker:new(buf)
+        assert.equal(1, textchangedi_call_count())
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    it(
+        "does not register TextChangedI autocmd when auto_trigger is false",
+        function()
+            Config.file_picker.auto_trigger = false
+            local buf = vim.api.nvim_create_buf(false, true)
+            FilePicker:new(buf)
+            assert.equal(0, textchangedi_call_count())
+            vim.api.nvim_buf_delete(buf, { force = true })
+        end
+    )
+end)
+
 describe("FilePicker keymap fallback", function()
     local child = require("tests.helpers.child").new()
 

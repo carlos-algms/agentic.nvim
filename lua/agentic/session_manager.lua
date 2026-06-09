@@ -176,7 +176,10 @@ function SessionManager:new(tab_page_id)
 
     self.permission_manager = PermissionManager:new(self.message_writer)
 
-    FilePicker:new(self.widget.buf_nrs.input)
+    -- Keep a strong reference so the instance isn't garbage collected.
+    -- instances_by_buffer holds only weak values, and without auto_trigger
+    -- there's no autocmd closure to otherwise keep it alive.
+    self.file_picker = FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
