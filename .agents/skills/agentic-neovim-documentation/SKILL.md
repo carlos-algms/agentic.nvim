@@ -1,5 +1,5 @@
 ---
-name: neovim-documentation
+name: agentic-neovim-documentation
 description:
   Use when neovim documentation is needed for the current task or the user asks
   for specific neovim features or neovim lua apis. It gives instructions on how
@@ -11,6 +11,10 @@ description:
 
 **CRITICAL**: Do NOT run `nvim --headless` or any other `nvim` command to read
 help documentation. Use direct file access instead.
+
+Exception: regenerating helptags after a vimdoc edit is allowed and required by
+`AGENTS.md` — `timeout 5 nvim --headless -c "helptags doc/" -c "quit"`. That
+writes tags, it does not read docs.
 
 **Why:** Running `nvim` commands can hang, cause race conditions, or interfere
 with development environment.

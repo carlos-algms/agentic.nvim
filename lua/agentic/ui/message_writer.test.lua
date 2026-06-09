@@ -2,6 +2,7 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
+local PermissionSection = require("tests.helpers.permission_section")
 
 local TITLE_FENCE = string.rep("`", 5)
 
@@ -264,17 +265,54 @@ describe("agentic.ui.MessageWriter", function()
         end)
 
         it(
-            "returns false when cursor is parked on a permission button row",
+            "returns false when cursor is on any permission row (button or status)",
             function()
                 setup_permission_block("auto-scroll-permission-row", {
                     is_focused = false,
                 })
+                local tracker =
+                    writer.tool_call_blocks["auto-scroll-permission-row"]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                local k = tracker._rendered_button_count or 0
+                assert.is_true(k > 0)
+                local end_row = block_end_row("auto-scroll-permission-row")
+                local first_button_row = end_row - k
+                -- Park cursor on the first button row (1-indexed for the API).
                 vim.api.nvim_win_set_cursor(winid, {
-                    block_end_row("auto-scroll-permission-row") + 1,
+                    first_button_row + 1,
                     0,
                 })
 
                 assert.is_false(writer:_check_auto_scroll(bufnr))
+
+                -- Status row sits at the upper bound of the rendered button
+                -- range scan in _cursor_on_permission_button_row, so parking
+                -- there must also exempt from auto-scroll.
+                vim.api.nvim_win_set_cursor(winid, { end_row + 1, 0 })
+                assert.is_false(writer:_check_auto_scroll(bufnr))
+            end
+        )
+
+        it(
+            "returns true when cursor sits above the permission rows in the block body",
+            function()
+                setup_permission_block("auto-scroll-above-perm", {
+                    is_focused = false,
+                })
+                local tracker =
+                    writer.tool_call_blocks["auto-scroll-above-perm"]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                local k = tracker._rendered_button_count or 0
+                local end_row = block_end_row("auto-scroll-above-perm")
+                local bottom_pad_row = end_row - k - 1
+                -- Park cursor on the body row above the bottom_pad row
+                -- (0-indexed bottom_pad_row - 1 -> 1-indexed bottom_pad_row
+                -- for the cursor API). Outside the rendered button range
+                -- and still within the auto-scroll threshold of the
+                -- buffer end.
+                vim.api.nvim_win_set_cursor(winid, { bottom_pad_row, 0 })
+
+                assert.is_true(writer:_check_auto_scroll(bufnr))
             end
         )
 
@@ -298,22 +336,26 @@ describe("agentic.ui.MessageWriter", function()
         --- @param tool_call_id string
         --- @return string
         local function status_row_text(tool_call_id)
-            local row = block_end_row(tool_call_id)
-            return vim.api.nvim_buf_get_lines(bufnr, row, row + 1, false)[1]
-                or ""
+            local text = PermissionSection.status_row_text(
+                bufnr,
+                block_end_row(tool_call_id)
+            )
+            assert.is_not_nil(text)
+            --- @cast text string
+            return text
         end
 
+        --- All NS_STATUS extmarks on the K rendered rows above the status
+        --- row of the block.
         --- @param tool_call_id string
         --- @return vim.api.keyset.get_extmark_item[]
-        local function status_marks(tool_call_id)
-            local row = block_end_row(tool_call_id)
-            local ns = vim.api.nvim_create_namespace("agentic_status_footer")
-            return vim.api.nvim_buf_get_extmarks(
+        local function button_row_marks(tool_call_id)
+            local tracker = writer.tool_call_blocks[tool_call_id]
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            return PermissionSection.button_row_extmarks(
                 bufnr,
-                ns,
-                { row, 0 },
-                { row + 1, 0 },
-                { details = true }
+                block_end_row(tool_call_id),
+                tracker._rendered_button_count or 0
             )
         end
 
@@ -368,46 +410,94 @@ describe("agentic.ui.MessageWriter", function()
             )
         end)
 
-        it(
-            "renders inline buttons for pending non-focused permission state",
-            function()
-                setup_permission_block("row-n-inactive", { is_focused = false })
+        --- @param tool_call_id string
+        --- @return string[]
+        local function button_row_lines(tool_call_id)
+            local tracker = writer.tool_call_blocks[tool_call_id]
+            --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+            return PermissionSection.button_row_lines(
+                bufnr,
+                block_end_row(tool_call_id),
+                tracker._rendered_button_count or 0
+            )
+        end
 
-                local text = status_row_text("row-n-inactive")
-                assert.truthy(text:find("pending"))
-                assert.truthy(text:find("Allow"))
-                assert.truthy(text:find("Reject"))
-                -- non-focused: no digit prefix
-                assert.is_nil(text:find("1 "))
-            end
-        )
+        for _, case in ipairs({
+            {
+                name = "renders buttons one per row for pending non-focused permission state",
+                id = "row-n-inactive",
+                is_focused = false,
+                status_pattern = "pending",
+                expect_digit_prefix = false,
+                post_action = nil,
+            },
+            {
+                name = "renders buttons one per row with digit prefixes when focused",
+                id = "row-n-focused",
+                is_focused = true,
+                status_pattern = "pending",
+                expect_digit_prefix = true,
+                post_action = nil,
+            },
+            {
+                name = "keeps button rows when an active update repaints",
+                id = "row-n-active-update",
+                is_focused = true,
+                status_pattern = "in_progress",
+                expect_digit_prefix = true,
+                post_action = function(id)
+                    writer:update_tool_call_block({
+                        tool_call_id = id,
+                        status = "in_progress",
+                        body = { "running" },
+                    })
+                end,
+            },
+            {
+                name = "keeps button rows on a non-pending status with no post-update",
+                id = "row-n-focused-completed",
+                is_focused = true,
+                status_pattern = "completed",
+                expect_digit_prefix = true,
+                post_action = function(id)
+                    local tracker = writer.tool_call_blocks[id]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    tracker.status = "completed"
+                    writer:repaint_status_row(id)
+                end,
+            },
+        }) do
+            it(case.name, function()
+                setup_permission_block(
+                    case.id,
+                    { is_focused = case.is_focused }
+                )
 
-        it("renders inline buttons with digit prefixes when focused", function()
-            setup_permission_block("row-n-focused", { is_focused = true })
+                if case.post_action then
+                    case.post_action(case.id)
+                end
 
-            local text = status_row_text("row-n-focused")
-            assert.truthy(text:find("1 "))
-            assert.truthy(text:find("2 "))
-            assert.truthy(text:find("Allow"))
-            assert.truthy(text:find("Reject"))
-        end)
+                local status_text = status_row_text(case.id)
+                assert.truthy(status_text:find(case.status_pattern))
+                assert.is_nil(status_text:find("Allow"))
+                assert.is_nil(status_text:find("Reject"))
 
-        it("keeps inline buttons when an active update repaints", function()
-            setup_permission_block("row-n-active-update", { is_focused = true })
-
-            writer:update_tool_call_block({
-                tool_call_id = "row-n-active-update",
-                status = "in_progress",
-                body = { "running" },
-            })
-
-            local text = status_row_text("row-n-active-update")
-            assert.truthy(text:find("in_progress"))
-            assert.truthy(text:find("1 "))
-            assert.truthy(text:find("2 "))
-            assert.truthy(text:find("Allow"))
-            assert.truthy(text:find("Reject"))
-        end)
+                -- 2 buttons + 1 inter-button spacer + 1 trailing spacer.
+                local rows = button_row_lines(case.id)
+                assert.equal(4, #rows)
+                assert.equal("", rows[2])
+                assert.equal("", rows[4])
+                assert.truthy(rows[1]:find("Allow"))
+                assert.truthy(rows[3]:find("Reject"))
+                if case.expect_digit_prefix then
+                    assert.truthy(rows[1]:find("^ 1 "))
+                    assert.truthy(rows[3]:find("^ 2 "))
+                else
+                    assert.is_nil(rows[1]:find(" 1 "))
+                    assert.is_nil(rows[3]:find(" 2 "))
+                end
+            end)
+        end
 
         for _, case in ipairs({
             {
@@ -428,7 +518,7 @@ describe("agentic.ui.MessageWriter", function()
                     .. case.label
                     .. " hl only on the focused "
                     .. case.label
-                    .. " button (focused_button_index = "
+                    .. " button row (focused_button_index = "
                     .. case.index
                     .. ")",
                 function()
@@ -438,7 +528,7 @@ describe("agentic.ui.MessageWriter", function()
                         focused_button_index = case.index,
                     })
 
-                    local marks = status_marks(id)
+                    local marks = button_row_marks(id)
                     assert.equal(1, count_hl_marks(marks, case.focused_hl))
                     assert.equal(0, count_hl_marks(marks, case.unfocused_hl))
                     -- The non-focused button stays inactive.
@@ -451,14 +541,14 @@ describe("agentic.ui.MessageWriter", function()
         end
 
         it(
-            "applies inactive highlight group for non-focused permission buttons",
+            "applies inactive highlight group on every button row when not focused",
             function()
                 setup_permission_block(
                     "row-n-hl-inactive",
                     { is_focused = false }
                 )
 
-                local marks = status_marks("row-n-hl-inactive")
+                local marks = button_row_marks("row-n-hl-inactive")
                 assert.equal(
                     2,
                     count_hl_marks(marks, "AgenticPermissionButtonInactive")
@@ -473,30 +563,752 @@ describe("agentic.ui.MessageWriter", function()
                 focused_button_index = 1,
             })
 
-            local text = status_row_text("row-n-nobracket")
-            assert.is_nil(text:find("%["))
-            assert.is_nil(text:find("%]"))
-            assert.truthy(text:find("Allow"))
+            -- 1 button + 1 trailing spacer.
+            local rows = button_row_lines("row-n-nobracket")
+            assert.equal(2, #rows)
+            assert.equal("", rows[2])
+            assert.is_nil(rows[1]:find("%["))
+            assert.is_nil(rows[1]:find("%]"))
+            assert.truthy(rows[1]:find("Allow"))
+        end)
+
+        describe("_build_permission_section button rows", function()
+            --- @param id string
+            --- @param state { is_focused: boolean, focused_button_index?: integer, sorted_options?: table[] }
+            --- @return agentic.ui.MessageWriter.PermissionSection
+            local function build_section(id, state)
+                writer:write_tool_call_block(
+                    make_tool_call_block(id, "pending")
+                )
+                writer:set_permission_state(id, {
+                    sorted_options = state.sorted_options
+                        or ALLOW_REJECT_OPTIONS,
+                    is_focused = state.is_focused,
+                    focused_button_index = state.focused_button_index,
+                })
+                local tracker = writer.tool_call_blocks[id]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                return writer:_build_permission_section(tracker)
+            end
+
+            it(
+                "builds one button line per option without digit prefix when not focused",
+                function()
+                    local section = build_section("section-non-focused", {
+                        is_focused = false,
+                    })
+
+                    -- 2 buttons + 2 spacers; pin shape first so a regression
+                    -- to N rows surfaces here, not as a nil-index error below.
+                    assert.equal(4, #section.button_lines)
+                    -- No digit prefix in non-focused state.
+                    assert.is_nil(section.button_lines[1]:find(" 1 "))
+                    assert.is_nil(section.button_lines[3]:find(" 2 "))
+                    assert.truthy(section.button_lines[1]:find("Allow once"))
+                    assert.truthy(section.button_lines[3]:find("Reject once"))
+                end
+            )
+
+            it(
+                "prefixes each line with the 1-indexed digit when focused",
+                function()
+                    local section = build_section("section-focused", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    -- 2 buttons + 2 spacers; pin shape first so a regression
+                    -- to N rows surfaces here, not as a nil-index error below.
+                    assert.equal(4, #section.button_lines)
+                    -- Padded with leading + trailing space.
+                    assert.truthy(section.button_lines[1]:find("^ 1 "))
+                    assert.truthy(section.button_lines[3]:find("^ 2 "))
+                    assert.truthy(section.button_lines[1]:find("Allow once"))
+                    assert.truthy(section.button_lines[3]:find("Reject once"))
+                end
+            )
+
+            for _, case in ipairs({
+                {
+                    index = 1,
+                    focused_hl = "AgenticPermissionButtonAllow",
+                    unfocused_hl = "AgenticPermissionButtonInactive",
+                    label = "allow",
+                },
+                {
+                    index = 2,
+                    focused_hl = "AgenticPermissionButtonReject",
+                    unfocused_hl = "AgenticPermissionButtonInactive",
+                    label = "reject",
+                },
+            }) do
+                it(
+                    "emits one full-row segment per button line for the focused "
+                        .. case.label
+                        .. " button",
+                    function()
+                        local section =
+                            build_section("section-hl-" .. case.label, {
+                                is_focused = true,
+                                focused_button_index = case.index,
+                            })
+
+                        -- 2 buttons + 2 spacers (between + trailing).
+                        assert.equal(4, #section.button_segments_per_line)
+                        -- Spacers at indices 2 and 4 have no segments.
+                        assert.equal(0, #section.button_segments_per_line[2])
+                        assert.equal(0, #section.button_segments_per_line[4])
+
+                        for _, i in ipairs({ 1, 3 }) do
+                            local segs = section.button_segments_per_line[i]
+                            local line = section.button_lines[i]
+                            assert.equal(1, #segs)
+                            assert.equal(0, segs[1][1])
+                            assert.equal(#line, segs[1][2])
+                        end
+
+                        -- Button index 1 -> line 1; button index 2 -> line 3.
+                        local focused_line_idx = case.index == 1 and 1 or 3
+                        local other_line_idx = case.index == 1 and 3 or 1
+
+                        local focused_seg =
+                            section.button_segments_per_line[focused_line_idx][1]
+                        assert.equal(case.focused_hl, focused_seg[3])
+
+                        local other_seg =
+                            section.button_segments_per_line[other_line_idx][1]
+                        assert.equal(case.unfocused_hl, other_seg[3])
+                    end
+                )
+            end
+
+            it(
+                "uses the inactive hl group on every button line when not focused",
+                function()
+                    local section = build_section("section-hl-inactive", {
+                        is_focused = false,
+                    })
+
+                    -- 2 buttons + 2 spacers (between + trailing).
+                    assert.equal(4, #section.button_segments_per_line)
+                    -- Spacers at indices 2 and 4 have no segments.
+                    assert.equal(0, #section.button_segments_per_line[2])
+                    assert.equal(0, #section.button_segments_per_line[4])
+
+                    for _, i in ipairs({ 1, 3 }) do
+                        local segs = section.button_segments_per_line[i]
+                        assert.equal(1, #segs)
+                        assert.equal(
+                            "AgenticPermissionButtonInactive",
+                            segs[1][3]
+                        )
+                    end
+                end
+            )
+
+            for _, case in ipairs({
+                {
+                    name = "writes the provider option.name verbatim on the button line",
+                    id = "section-long-label",
+                    option_name = "Yes, and bypass permissions for this session",
+                    option_kind = "allow_always",
+                    option_id = "allow-always",
+                    expected_label = "Yes, and bypass permissions for this session",
+                },
+                {
+                    name = "falls back to the static label when option.name is nil",
+                    id = "section-fallback-nil",
+                    option_name = nil,
+                    option_kind = "allow_always",
+                    option_id = "allow-always",
+                    expected_label = "Allow Always",
+                },
+                {
+                    name = "falls back to the static label when option.name is empty",
+                    id = "section-fallback-empty",
+                    option_name = "",
+                    option_kind = "reject_always",
+                    option_id = "reject-always",
+                    expected_label = "Reject Always",
+                },
+            }) do
+                it(case.name, function()
+                    local section = build_section(case.id, {
+                        sorted_options = {
+                            {
+                                optionId = case.option_id,
+                                name = case.option_name,
+                                kind = case.option_kind,
+                            },
+                        },
+                        is_focused = false,
+                    })
+
+                    -- 1 button + 1 trailing spacer.
+                    assert.equal(2, #section.button_lines)
+                    assert.equal("", section.button_lines[2])
+                    assert.truthy(
+                        section.button_lines[1]:find(
+                            case.expected_label,
+                            1,
+                            true
+                        )
+                    )
+                end)
+            end
+
+            it(
+                "produces one button line and a trailing spacer for a single option",
+                function()
+                    local section = build_section("section-single", {
+                        sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                        is_focused = false,
+                    })
+
+                    -- 1 button + 1 trailing spacer.
+                    assert.equal(2, #section.button_lines)
+                    assert.equal(2, #section.button_segments_per_line)
+                    assert.equal("", section.button_lines[2])
+                    assert.equal(0, #section.button_segments_per_line[2])
+                end
+            )
+
+            it(
+                "produces one button line per option for four options",
+                function()
+                    local section = build_section("section-four", {
+                        sorted_options = {
+                            {
+                                optionId = "allow-once",
+                                name = "Allow",
+                                kind = "allow_once",
+                            },
+                            {
+                                optionId = "allow-always",
+                                name = "Allow Always",
+                                kind = "allow_always",
+                            },
+                            {
+                                optionId = "reject-once",
+                                name = "Reject",
+                                kind = "reject_once",
+                            },
+                            {
+                                optionId = "reject-always",
+                                name = "Reject Always",
+                                kind = "reject_always",
+                            },
+                        },
+                        is_focused = true,
+                        focused_button_index = 3,
+                    })
+
+                    -- 4 buttons + 4 spacers (between each pair + trailing).
+                    assert.equal(8, #section.button_lines)
+                    assert.equal(8, #section.button_segments_per_line)
+                    -- Buttons at indices 1, 3, 5, 7; spacers at 2, 4, 6, 8.
+                    for i = 1, 4 do
+                        local line_idx = (i - 1) * 2 + 1
+                        assert.truthy(
+                            section.button_lines[line_idx]:find(
+                                "^ " .. i .. " "
+                            )
+                        )
+                    end
+                    for _, spacer_idx in ipairs({ 2, 4, 6, 8 }) do
+                        assert.equal("", section.button_lines[spacer_idx])
+                    end
+                end
+            )
+
+            it(
+                "uses an empty icon when permission_icons config is empty",
+                function()
+                    local original = Config.permission_icons
+                    --- @diagnostic disable-next-line: missing-fields
+                    Config.permission_icons = {}
+
+                    -- Restore on any error so a failing build_section does
+                    -- not leak the empty config into later tests.
+                    local ok, section =
+                        pcall(build_section, "section-empty-icons", {
+                            sorted_options = { ALLOW_REJECT_OPTIONS[1] },
+                            is_focused = false,
+                        })
+
+                    Config.permission_icons = original
+
+                    assert.is_true(ok)
+                    -- 1 button + 1 trailing spacer.
+                    assert.equal(2, #section.button_lines)
+                    -- No icon: label sits between leading + trailing space.
+                    assert.truthy(
+                        section.button_lines[1]:find("Allow once", 1, true)
+                    )
+                    assert.is_nil(section.button_lines[1]:match("[^%s%w]"))
+                    assert.equal("", section.button_lines[2])
+                end
+            )
+
+            it(
+                "carries the status word in status_text and excludes button text",
+                function()
+                    local section = build_section("section-status-text", {
+                        is_focused = false,
+                    })
+
+                    assert.truthy(section.status_text:find("pending"))
+                    assert.is_nil(
+                        section.status_text:find("Allow once", 1, true)
+                    )
+                    assert.is_nil(
+                        section.status_text:find("Reject once", 1, true)
+                    )
+                end
+            )
+
+            -- Task 3: render path + repaint_status_row wiring.
+
+            it(
+                "inserts K button rows between bottom_pad and the status row on first paint",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("render-first-paint", "pending")
+                    )
+                    local end_row_before = block_end_row("render-first-paint")
+
+                    writer:set_permission_state("render-first-paint", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = false,
+                    })
+                    writer:repaint_status_row("render-first-paint")
+
+                    local tracker =
+                        writer.tool_call_blocks["render-first-paint"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    -- 2 buttons + 2 spacers (between + trailing).
+                    assert.equal(4, tracker._rendered_button_count)
+
+                    local end_row_after = block_end_row("render-first-paint")
+                    assert.equal(end_row_before + 4, end_row_after)
+
+                    local lines = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row_after - 4,
+                        end_row_after + 1,
+                        false
+                    )
+                    assert.equal(5, #lines)
+                    assert.truthy(lines[1]:find("Allow"))
+                    assert.equal("", lines[2])
+                    assert.truthy(lines[3]:find("Reject"))
+                    assert.equal("", lines[4])
+                    assert.truthy(lines[5]:find("pending"))
+                end
+            )
+
+            it(
+                "renders status row with status word only and one NS_STATUS extmark per row",
+                function()
+                    setup_permission_block("render-extmarks", {
+                        is_focused = false,
+                    })
+
+                    local end_row = block_end_row("render-extmarks")
+                    local tracker = writer.tool_call_blocks["render-extmarks"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local k = tracker._rendered_button_count
+                    -- 2 buttons + 2 spacers (between + trailing).
+                    assert.equal(4, k)
+
+                    local status_text = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row,
+                        end_row + 1,
+                        false
+                    )[1]
+                    assert.truthy(status_text:find("pending"))
+                    assert.is_nil(status_text:find("Allow"))
+                    assert.is_nil(status_text:find("Reject"))
+
+                    local ns =
+                        vim.api.nvim_create_namespace("agentic_status_footer")
+                    local marks_on_status = vim.api.nvim_buf_get_extmarks(
+                        bufnr,
+                        ns,
+                        { end_row, 0 },
+                        { end_row, -1 },
+                        { details = true }
+                    )
+                    assert.equal(1, #marks_on_status)
+
+                    local first_btn_row = end_row - k
+                    -- Button rows at offsets 0 and 2 (1 is the spacer).
+                    for _, offset in ipairs({ 0, 2 }) do
+                        local btn_row = first_btn_row + offset
+                        local marks = vim.api.nvim_buf_get_extmarks(
+                            bufnr,
+                            ns,
+                            { btn_row, 0 },
+                            { btn_row, -1 },
+                            { details = true }
+                        )
+                        assert.equal(1, #marks)
+                    end
+                end
+            )
+
+            it(
+                "extmark end_row grows by K on permission render (end_right_gravity regression)",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("render-gravity", "pending")
+                    )
+                    local before = block_end_row("render-gravity")
+
+                    writer:set_permission_state("render-gravity", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = false,
+                    })
+                    writer:repaint_status_row("render-gravity")
+
+                    local after = block_end_row("render-gravity")
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer.
+                    assert.equal(before + 4, after)
+
+                    -- end_row must be the new status row (the last line of the block).
+                    local lines = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        after,
+                        after + 1,
+                        false
+                    )
+                    assert.truthy(lines[1]:find("pending"))
+                end
+            )
+
+            it(
+                "rewrites button rows with digit prefix on switch to focused",
+                function()
+                    setup_permission_block("render-focus-switch", {
+                        is_focused = false,
+                    })
+
+                    local end_row = block_end_row("render-focus-switch")
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer:
+                    -- buttons at -4 and -2, spacers at -3 and -1.
+                    local rows_before = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row - 4,
+                        end_row,
+                        false
+                    )
+                    assert.is_nil(rows_before[1]:find(" 1 "))
+                    assert.equal("", rows_before[2])
+                    assert.is_nil(rows_before[3]:find(" 2 "))
+                    assert.equal("", rows_before[4])
+
+                    writer:set_permission_state("render-focus-switch", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+                    writer:repaint_status_row("render-focus-switch")
+
+                    end_row = block_end_row("render-focus-switch")
+                    local rows_after = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row - 4,
+                        end_row,
+                        false
+                    )
+                    assert.truthy(rows_after[1]:find("^ 1 "))
+                    assert.equal("", rows_after[2])
+                    assert.truthy(rows_after[3]:find("^ 2 "))
+                    assert.equal("", rows_after[4])
+
+                    -- Status row still only has the status word.
+                    local status_text = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row,
+                        end_row + 1,
+                        false
+                    )[1]
+                    assert.truthy(status_text:find("pending"))
+                    assert.is_nil(status_text:find("Allow"))
+                end
+            )
+
+            it(
+                "deletes button rows when permission state is cleared and shrinks block",
+                function()
+                    setup_permission_block("render-clear", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+                    local end_row_with_buttons = block_end_row("render-clear")
+
+                    writer:set_permission_state("render-clear", nil)
+                    writer:repaint_status_row("render-clear")
+
+                    local tracker = writer.tool_call_blocks["render-clear"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    assert.equal(0, tracker._rendered_button_count)
+
+                    local end_row_after = block_end_row("render-clear")
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer removed.
+                    assert.equal(end_row_with_buttons - 4, end_row_after)
+
+                    local status_text = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row_after,
+                        end_row_after + 1,
+                        false
+                    )[1]
+                    assert.truthy(status_text:find("pending"))
+                    assert.is_nil(status_text:find("Allow"))
+                end
+            )
+
+            it(
+                "is idempotent when repainted twice with the same state",
+                function()
+                    setup_permission_block("render-idempotent", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    local end_row_1 = block_end_row("render-idempotent")
+                    local lines_1 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row_1 - 4,
+                        end_row_1 + 1,
+                        false
+                    )
+
+                    writer:repaint_status_row("render-idempotent")
+
+                    local end_row_2 = block_end_row("render-idempotent")
+                    assert.equal(end_row_1, end_row_2)
+
+                    local lines_2 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        end_row_2 - 4,
+                        end_row_2 + 1,
+                        false
+                    )
+                    assert.same(lines_1, lines_2)
+
+                    local tracker = writer.tool_call_blocks["render-idempotent"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer.
+                    assert.equal(4, tracker._rendered_button_count)
+                end
+            )
+
+            it(
+                "rendering one block does not displace another block's content",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("render-multi-a", "pending")
+                    )
+                    writer:write_tool_call_block(
+                        make_tool_call_block("render-multi-b", "pending")
+                    )
+
+                    local a_end_before = block_end_row("render-multi-a")
+                    local b_end_before = block_end_row("render-multi-b")
+                    assert.is_true(b_end_before > a_end_before)
+
+                    writer:set_permission_state("render-multi-a", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = false,
+                    })
+                    writer:repaint_status_row("render-multi-a")
+
+                    local a_end_after = block_end_row("render-multi-a")
+                    local b_end_after = block_end_row("render-multi-b")
+
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer.
+                    assert.equal(a_end_before + 4, a_end_after)
+                    assert.equal(b_end_before + 4, b_end_after)
+
+                    -- Block B unchanged: status row still carries the
+                    -- status word and no button text.
+                    local b_status = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        b_end_after,
+                        b_end_after + 1,
+                        false
+                    )[1]
+                    assert.truthy(b_status:find("pending"))
+                    assert.is_nil(b_status:find("Allow"))
+                end
+            )
         end)
 
         it(
-            "clears buttons when permission state is removed and repainted",
+            "clears button rows when permission state is removed and repainted",
             function()
                 setup_permission_block("row-n-clear", {
                     sorted_options = { ALLOW_REJECT_OPTIONS[1] },
                     is_focused = true,
                     focused_button_index = 1,
                 })
-                assert.truthy(status_row_text("row-n-clear"):find("Allow"))
+
+                -- 1 button + 1 trailing spacer.
+                local rows_before = button_row_lines("row-n-clear")
+                assert.equal(2, #rows_before)
+                assert.truthy(rows_before[1]:find("Allow"))
+                assert.equal("", rows_before[2])
+                local end_row_before = block_end_row("row-n-clear")
 
                 writer:set_permission_state("row-n-clear", nil)
                 writer:repaint_status_row("row-n-clear")
+
+                local rows_after = button_row_lines("row-n-clear")
+                assert.equal(0, #rows_after)
+                local tracker = writer.tool_call_blocks["row-n-clear"]
+                --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                assert.equal(0, tracker._rendered_button_count)
+                -- Block shrinks back to its pre-permission end_row.
+                assert.equal(end_row_before - 2, block_end_row("row-n-clear"))
 
                 local text = status_row_text("row-n-clear")
                 assert.is_nil(text:find("Allow"))
                 assert.truthy(text:find("pending"))
             end
         )
+
+        describe("_build_permission_section (Task 1 stub)", function()
+            it(
+                "returns the no-permission shape for a completed block",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("section-completed", "completed")
+                    )
+
+                    local tracker = writer.tool_call_blocks["section-completed"]
+                    assert.is_not_nil(tracker)
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local section = writer:_build_permission_section(tracker)
+
+                    assert.is_table(section.button_lines)
+                    assert.equal(0, #section.button_lines)
+                    assert.is_table(section.button_segments_per_line)
+                    assert.equal(0, #section.button_segments_per_line)
+                    assert.equal("string", type(section.status_text))
+                    assert.truthy(section.status_text:find("completed"))
+                    assert.is_table(section.status_segments)
+                    assert.is_true(#section.status_segments >= 1)
+                end
+            )
+
+            it(
+                "returns the no-permission shape for a pending block without permission state",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("section-pending", "pending")
+                    )
+
+                    local tracker = writer.tool_call_blocks["section-pending"]
+                    assert.is_not_nil(tracker)
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local section = writer:_build_permission_section(tracker)
+
+                    assert.equal(0, #section.button_lines)
+                    assert.equal(0, #section.button_segments_per_line)
+                    assert.truthy(section.status_text:find("pending"))
+                end
+            )
+        end)
+
+        describe("get_button_row", function()
+            it("returns nil when the block has no permission state", function()
+                writer:write_tool_call_block(
+                    make_tool_call_block("get-row-no-perm", "pending")
+                )
+
+                assert.is_nil(writer:get_button_row("get-row-no-perm", 1))
+            end)
+
+            it(
+                "returns nil when permission state exists but nothing rendered yet",
+                function()
+                    writer:write_tool_call_block(
+                        make_tool_call_block("get-row-not-rendered", "pending")
+                    )
+                    -- Permission state set but no repaint -> k == 0.
+                    writer:set_permission_state("get-row-not-rendered", {
+                        sorted_options = ALLOW_REJECT_OPTIONS,
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+
+                    local tracker =
+                        writer.tool_call_blocks["get-row-not-rendered"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    assert.equal(0, tracker._rendered_button_count)
+                    assert.is_nil(
+                        writer:get_button_row("get-row-not-rendered", 1)
+                    )
+                end
+            )
+
+            it("returns nil for an unknown tool_call_id", function()
+                assert.is_nil(writer:get_button_row("does-not-exist", 1))
+            end)
+
+            it(
+                "returns the buffer row of each rendered button after repaint",
+                function()
+                    setup_permission_block(
+                        "get-row-two-options",
+                        { is_focused = true }
+                    )
+
+                    local end_row = block_end_row("get-row-two-options")
+                    --- @cast end_row integer
+                    -- 2 buttons + 1 inter-spacer + 1 trailing spacer = 4 rendered rows.
+                    local bottom_pad_row = end_row - 4 - 1
+
+                    -- Button 1 at offset +1; button 2 at offset +3 (spacers
+                    -- at +2 and +4).
+                    local row_1 =
+                        writer:get_button_row("get-row-two-options", 1)
+                    local row_2 =
+                        writer:get_button_row("get-row-two-options", 2)
+                    assert.equal(bottom_pad_row + 1, row_1)
+                    assert.equal(bottom_pad_row + 3, row_2)
+                    assert.is_nil(
+                        writer:get_button_row("get-row-two-options", 3)
+                    )
+                    assert.is_nil(
+                        writer:get_button_row("get-row-two-options", 0)
+                    )
+
+                    -- Returned rows must contain actual button text, not a
+                    -- spacer; guards against get_button_row math drifting
+                    -- from the rendered layout.
+                    --- @cast row_1 integer
+                    --- @cast row_2 integer
+                    local line_1 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        row_1,
+                        row_1 + 1,
+                        false
+                    )[1] or ""
+                    local line_2 = vim.api.nvim_buf_get_lines(
+                        bufnr,
+                        row_2,
+                        row_2 + 1,
+                        false
+                    )[1] or ""
+                    assert.truthy(line_1:find("Allow"))
+                    assert.truthy(line_2:find("Reject"))
+                end
+            )
+        end)
     end)
 
     describe("_prepare_block_lines", function()

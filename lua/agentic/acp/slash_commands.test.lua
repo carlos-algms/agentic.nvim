@@ -295,6 +295,56 @@ describe("agentic.acp.SlashCommands", function()
         end)
     end)
 
+    describe("auto_trigger", function()
+        local Config = require("agentic.config")
+
+        --- @type TestStub
+        local create_autocmd_stub
+        local original_auto_trigger
+
+        before_each(function()
+            original_auto_trigger = Config.slash_commands.auto_trigger
+            create_autocmd_stub = spy.stub(vim.api, "nvim_create_autocmd")
+        end)
+
+        after_each(function()
+            Config.slash_commands.auto_trigger = original_auto_trigger
+            create_autocmd_stub:revert()
+        end)
+
+        local function textchangedi_call_count()
+            local count = 0
+            for _, call in ipairs(create_autocmd_stub.calls) do
+                if call[1] == "TextChangedI" then
+                    count = count + 1
+                end
+            end
+            return count
+        end
+
+        it(
+            "registers TextChangedI autocmd when auto_trigger is true",
+            function()
+                Config.slash_commands.auto_trigger = true
+                local buf = vim.api.nvim_create_buf(false, true)
+                SlashCommands.setup_completion(buf)
+                assert.equal(1, textchangedi_call_count())
+                vim.api.nvim_buf_delete(buf, { force = true })
+            end
+        )
+
+        it(
+            "does not register TextChangedI autocmd when auto_trigger is false",
+            function()
+                Config.slash_commands.auto_trigger = false
+                local buf = vim.api.nvim_create_buf(false, true)
+                SlashCommands.setup_completion(buf)
+                assert.equal(0, textchangedi_call_count())
+                vim.api.nvim_buf_delete(buf, { force = true })
+            end
+        )
+    end)
+
     describe("instance management", function()
         it("allows independent commands per buffer instance", function()
             local bufnr2 = vim.api.nvim_create_buf(false, true)

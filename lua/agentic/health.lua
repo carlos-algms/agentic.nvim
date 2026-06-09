@@ -124,15 +124,62 @@ function M.check()
         end
     end
 
-    -- Check optional dependencies
-    vim_health.start("Optional Dependencies")
-    local Clipboard = require("agentic.ui.clipboard")
-    if Clipboard.is_img_clip_installed() then
-        vim_health.ok("hakonharnes/img-clip.nvim: installed")
+    -- Clipboard image paste tooling
+    vim_health.start("Clipboard Image Paste")
+    local ClipboardImage = require("agentic.ui.clipboard_image")
+    local platform = ClipboardImage.get_platform()
+    local supported = ClipboardImage.is_supported()
+
+    if platform == "mac" then
+        vim_health.ok("Clipboard image paste: supported (no extra deps)")
+    elseif platform == "win" then
+        if supported then
+            vim_health.ok("Clipboard image paste: supported (no extra deps)")
+        else
+            vim_health.warn(
+                "Clipboard image paste: powershell.exe not found in PATH"
+            )
+        end
+    elseif platform == "wsl" then
+        if supported then
+            vim_health.ok(
+                "Clipboard image paste: supported through Windows interop"
+            )
+        else
+            local has_powershell = vim.fn.executable("powershell.exe") == 1
+            local has_wslpath = vim.fn.executable("wslpath") == 1
+            if not has_powershell and not has_wslpath then
+                vim_health.warn(
+                    "Clipboard image paste: PowerShell interop (powershell.exe) and wslpath not found"
+                )
+            elseif not has_powershell then
+                vim_health.warn(
+                    "Clipboard image paste: PowerShell interop (powershell.exe) not found"
+                )
+            else
+                vim_health.warn("Clipboard image paste: wslpath not found")
+            end
+        end
+    elseif platform == "linux_wayland" then
+        if supported then
+            vim_health.ok("Clipboard image paste: wl-paste found")
+        else
+            vim_health.warn(
+                "Clipboard image paste: wl-paste not found - install wl-clipboard"
+            )
+        end
+    elseif platform == "linux_x11" then
+        if supported then
+            vim_health.ok(
+                "Clipboard image paste: xclip found (clipboard access depends on session)"
+            )
+        else
+            vim_health.warn(
+                "Clipboard image paste: xclip not found - install xclip"
+            )
+        end
     else
-        vim_health.info(
-            "hakonharnes/img-clip.nvim: not installed (optional - enables image pasting from clipboard)"
-        )
+        vim_health.warn("Clipboard image paste: platform not detected")
     end
 end
 

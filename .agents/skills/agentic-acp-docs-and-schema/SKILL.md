@@ -1,5 +1,5 @@
 ---
-name: acp-docs-and-schema
+name: agentic-acp-docs-and-schema
 description:
   Use when ACP schema is necessary to clarify the work or when the user asks for
   ACP data, rules, events, or documentation

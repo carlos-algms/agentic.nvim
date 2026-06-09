@@ -1,5 +1,6 @@
 local Logger = require("agentic.utils.logger")
 local FileSystem = require("agentic.utils.file_system")
+local ClipboardImage = require("agentic.ui.clipboard_image")
 
 --- @class agentic.Clipboard
 local M = {}
@@ -8,40 +9,53 @@ local M = {}
 --- @field is_cursor_in_widget fun(): boolean Callback to check if cursor is in a Chat widget buffer
 --- @field on_paste fun(file_path: string): boolean Callback when file is pasted, returns success
 
---- Check if img-clip plugin is installed
---- @return boolean
-function M.is_img_clip_installed()
-    local ok = pcall(require, "img-clip")
-    return ok
-end
-
---- Show a floating message explaining img-clip is not installed
-function M.show_img_clip_not_installed_message()
+--- Show a floating message guiding the user to install the missing
+--- clipboard tooling for their platform.
+function M.show_clipboard_tool_missing_message()
     local FloatingMessage = require("agentic.ui.floating_message")
+    local platform = ClipboardImage.get_platform()
+
+    --- @type string[]
+    local body
+    if platform == "linux_wayland" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Install `wl-clipboard` from your distro's package manager (provides `wl-paste`).",
+            "",
+            "Upstream: https://github.com/bugaevc/wl-clipboard",
+        }
+    elseif platform == "linux_x11" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Install `xclip` from your distro's package manager.",
+            "",
+            "Upstream: https://github.com/astrand/xclip",
+        }
+    elseif platform == "win" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Ensure `powershell.exe` is available in PATH.",
+        }
+    elseif platform == "wsl" then
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Ensure Windows interop is enabled and `powershell.exe` and `wslpath` are available.",
+        }
+    else
+        body = {
+            "# Clipboard image paste unavailable",
+            "",
+            "Clipboard image paste is not available on this system.",
+        }
+    end
+
     FloatingMessage.show({
         title = " Agentic.nvim - Image Clipboard ",
-
-        body = {
-            "# Failed to paste image from clipboard",
-            "It seems you're trying to paste an image, but **hakonharnes/img-clip.nvim** isn't installed.",
-            "",
-            "You can install it by adding as a dependency to Agentic.nvim in your plugin manager.",
-            "",
-            "```lua",
-            "{",
-            '  "carlos-algms/agentic.nvim",',
-            "  dependencies = {",
-            "    {",
-            '      "hakonharnes/img-clip.nvim",',
-            "    },",
-            "  },",
-            "}",
-            "```",
-            "",
-            "Restart Neovim and try pasting the image again.",
-            "",
-            "For more info: https://github.com/HakonHarnes/img-clip.nvim",
-        },
+        body = body,
     })
 end
 
@@ -73,12 +87,20 @@ local function is_dir_writable(dir)
     return false
 end
 
---- Paste image from clipboard using img-clip plugin
+--- Paste image from clipboard using the native ClipboardImage backend.
 --- @return string|nil file path of saved image or nil on failure
 function M.paste_image()
-    if not M.is_img_clip_installed() then
-        M.show_img_clip_not_installed_message()
-        return
+    if not ClipboardImage.is_supported() then
+        M.show_clipboard_tool_missing_message()
+        return nil
+    end
+
+    if not ClipboardImage.has_image() then
+        Logger.notify(
+            "Clipboard does not contain an image",
+            vim.log.levels.INFO
+        )
+        return nil
     end
 
     --- @type string|nil
@@ -112,19 +134,10 @@ function M.paste_image()
 
     Logger.debug("clipboard: saving image to", file_path)
 
-    local ok, ImgClipClipboard = pcall(require, "img-clip.clipboard")
+    local ok, err = ClipboardImage.save(file_path)
     if not ok then
         Logger.notify(
-            "Failed to load img-clip clipboard module",
-            vim.log.levels.ERROR
-        )
-        return nil
-    end
-
-    local success, result = pcall(ImgClipClipboard.save_image, file_path)
-    if not success or not result then
-        Logger.notify(
-            "Failed to paste image from clipboard, not an image",
+            "Failed to save clipboard image: " .. (err or "unknown error"),
             vim.log.levels.ERROR
         )
         return nil
