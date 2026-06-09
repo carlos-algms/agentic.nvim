@@ -212,9 +212,12 @@
 --- @class agentic.UserConfig.ProviderSwitcher
 --- @field hide_unhealthy_providers boolean Hide providers whose command is not installed
 
+--- @alias agentic.UserConfig.Settings.CursorOnSubmit "chat" | "prompt" | "editor"
+
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
---- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
+--- @field move_cursor_to_chat_on_submit boolean Deprecated: use cursor_on_submit instead
+--- @field cursor_on_submit agentic.UserConfig.Settings.CursorOnSubmit Where to move cursor after submitting a prompt: "chat", "prompt", or "editor"
 
 --- Nested partial types for user config overrides
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
@@ -576,6 +579,7 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
+        cursor_on_submit = "chat",
     },
 
     provider_switcher = {

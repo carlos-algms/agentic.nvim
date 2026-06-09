@@ -95,10 +95,10 @@ describe("config_default", function()
         it("accepts partial settings", function()
             --- @type agentic.PartialUserConfig
             local cfg = {
-                settings = { move_cursor_to_chat_on_submit = false },
+                settings = { cursor_on_submit = "editor" },
             }
 
-            assert.equal(false, cfg.settings.move_cursor_to_chat_on_submit)
+            assert.equal("editor", cfg.settings.cursor_on_submit)
         end)
 
         it("accepts an empty config", function()

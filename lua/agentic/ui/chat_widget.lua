@@ -287,8 +287,8 @@ function ChatWidget:_submit_input()
     self:close_optional_window("code")
     self:close_optional_window("files")
     self:close_optional_window("diagnostics")
-    -- Move cursor to chat buffer after submit for easy access to permission requests
-    self:move_cursor_to(self.win_nrs.chat)
+    -- Move cursor based on cursor_on_submit setting
+    self:_handle_cursor_on_submit()
 end
 
 --- @param winid integer|nil
@@ -296,9 +296,7 @@ end
 function ChatWidget:move_cursor_to(winid, callback)
     vim.schedule(function()
         if winid and vim.api.nvim_win_is_valid(winid) then
-            if Config.settings.move_cursor_to_chat_on_submit then
-                vim.api.nvim_set_current_win(winid)
-            end
+            vim.api.nvim_set_current_win(winid)
 
             -- make sure to scroll to the bottom
             -- 1. user can see the new message
@@ -312,6 +310,50 @@ function ChatWidget:move_cursor_to(winid, callback)
             end
         end
     end)
+end
+
+--- Handles cursor placement after prompt submit based on cursor_on_submit setting.
+--- Falls back to move_cursor_to_chat_on_submit for backward compatibility.
+function ChatWidget:_handle_cursor_on_submit()
+    local cursor_target = Config.settings.cursor_on_submit
+
+    -- Backward compat: if user set move_cursor_to_chat_on_submit = false
+    -- and didn't explicitly set cursor_on_submit, treat as "prompt"
+    if
+        not Config.settings.move_cursor_to_chat_on_submit
+        and cursor_target == "chat"
+    then
+        cursor_target = "prompt"
+    end
+
+    if cursor_target == "chat" then
+        self:move_cursor_to(self.win_nrs.chat)
+    elseif cursor_target == "editor" then
+        vim.schedule(function()
+            local editor_win = self:find_first_non_widget_window()
+            if editor_win then
+                vim.api.nvim_set_current_win(editor_win)
+            end
+            -- Still scroll chat to bottom for auto-scroll
+            local chat_win = self.win_nrs.chat
+            if chat_win and vim.api.nvim_win_is_valid(chat_win) then
+                vim.api.nvim_win_call(chat_win, function()
+                    vim.cmd("normal! G0zb")
+                end)
+            end
+        end)
+    else
+        -- "prompt" - stay in the input window (cursor doesn't move)
+        vim.schedule(function()
+            -- Still scroll chat to bottom for auto-scroll
+            local chat_win = self.win_nrs.chat
+            if chat_win and vim.api.nvim_win_is_valid(chat_win) then
+                vim.api.nvim_win_call(chat_win, function()
+                    vim.cmd("normal! G0zb")
+                end)
+            end
+        end)
+    end
 end
 
 function ChatWidget:_initialize()
