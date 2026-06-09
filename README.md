@@ -693,12 +693,14 @@ your setup:
       },
 
       -- Keybindings to cycle focus between pending permission blocks.
-      -- Once a block is focused, per-block keys work on its row N:
-      --   h / <Left>  : focus previous button
-      --   l / <Right> : focus next button
-      --   <CR>        : submit focused button
-      --   1..4        : submit option N directly
-      -- Per-block keys only fire when the cursor is on the focused row.
+      -- Once a block is focused, per-block keys cycle the stacked button
+      -- rows (one button per row, rendered between bottom_pad and the
+      -- status row):
+      --   h / <Left> / k / <Up>    : focus previous button
+      --   l / <Right> / j / <Down> : focus next button
+      --   <CR>                     : submit focused button
+      --   1..4                     : submit option N directly
+      -- Per-block keys only fire while a block is focused.
       permission = {
         cycle_next = "<C-n>",
         cycle_prev = "<C-p>",
@@ -779,34 +781,31 @@ The support still depends on the ACP provider capabilities, but most of them
 support images in the conversation.
 
 Drag-and-drop should work out of the box if your terminal supports it, no need
-for extra configuration or plugins.
+for extra configuration or plugins.  
+In SSH/headless sessions, image paste and drag-and-drop usually do not reach
+remote Neovim, terminal and protocol limitations.  
+Agentic does not copy local files into the remote filesystem; upload the image
+first with `scp`, `SFTP`, or your usual file-transfer workflow, then attach the
+remote file path using the `@...` notation.
 
-But, if you want to paste screenshots directly from your clipboard, you'll need
-to install the `img-clip.nvim` dependency:
+Pasting screenshots from your clipboard works out of the box on macOS, Windows,
+and WSL when Windows interop and `wslpath` are available. On Linux, you need one
+small CLI dependency:
 
-```lua
-{
-  "carlos-algms/agentic.nvim",
-
-  dependencies = {
-    { "hakonharnes/img-clip.nvim", opts = {} }
-  }
-
-  -- ... rest of your config
-}
-```
-
-Please note img-clip.nvim, on Linux depends on `xclip` (x11) or `wl-clipboard`
-(wayland), or `pngpaste` on macOS, Windows requires no extra dependencies.
+- **macOS**: no extra install. Uses the system `osascript`.
+- **Windows**: no extra install. Uses the bundled `powershell.exe`.
+- **WSL**: no extra install when Windows interop and `wslpath` are available.
+- **Linux (Wayland)**: install `wl-clipboard` (provides `wl-paste`).
+  - Debian/Ubuntu: `sudo apt install wl-clipboard`
+  - Arch: `sudo pacman -S wl-clipboard`
+  - Fedora: `sudo dnf install wl-clipboard`
+- **Linux (X11)**: install `xclip`.
+  - Debian/Ubuntu: `sudo apt install xclip`
+  - Arch: `sudo pacman -S xclip`
+  - Fedora: `sudo dnf install xclip`
 
 Then just press `<localleader>p` in the Prompt buffer to paste the image from
 your clipboard.
-
-NOTE: Due to Terminal and Neovim limitations, when pasting an image from the
-Clipboard, there's no way of intercepting it, as it's considered binary and not
-text, so either your Terminal or Neovim will just ignore and do nothing with it,
-that's why we need the help of the external plugin. It's totally out of our
-control.
 
 ### Session Restoration
 
@@ -964,21 +963,21 @@ colorscheme.
 
 ### Available Highlight Groups
 
-| Highlight Group                   | Purpose                                     | Default                             |
-| --------------------------------- | ------------------------------------------- | ----------------------------------- |
-| `AgenticDiffDelete`               | Deleted lines in diff view                  | Links to `DiffDelete`               |
-| `AgenticDiffAdd`                  | Added lines in diff view                    | Links to `DiffAdd`                  |
-| `AgenticDiffDeleteWord`           | Word-level deletions in diff                | `bg=#9a3c3c, bold=true`             |
-| `AgenticDiffAddWord`              | Word-level additions in diff                | `bg=#155729, bold=true`             |
-| `AgenticStatusPending`            | Pending tool call status indicator          | `bg=#5f4d8f`                        |
-| `AgenticStatusCompleted`          | Completed tool call status indicator        | `bg=#2d5a3d`                        |
-| `AgenticStatusFailed`             | Failed tool call status indicator           | `bg=#7a2d2d`                        |
-| `AgenticPermissionButtonAllow`    | Focused allow button (after `h`/`l` focus)  | `bg=#2d5a3d, bold=true`             |
-| `AgenticPermissionButtonReject`   | Focused reject button (after `h`/`l` focus) | `bg=#7a2d2d, bold=true`             |
-| `AgenticPermissionButtonInactive` | All non-focused permission buttons          | `bg=#3a3a3a`                        |
-| `AgenticCodeBlockFence`           | The left border decoration on tool calls    | Links to `Directory`                |
-| `AgenticTitle`                    | Window titles in sidebar                    | `bg=#2787b0, fg=#000000, bold=true` |
-| `AgenticThinking`                 | Thinking block text in chat buffer          | Links to `Comment`                  |
+| Highlight Group                   | Purpose                                  | Default                             |
+| --------------------------------- | ---------------------------------------- | ----------------------------------- |
+| `AgenticDiffDelete`               | Deleted lines in diff view               | Links to `DiffDelete`               |
+| `AgenticDiffAdd`                  | Added lines in diff view                 | Links to `DiffAdd`                  |
+| `AgenticDiffDeleteWord`           | Word-level deletions in diff             | `bg=#9a3c3c, bold=true`             |
+| `AgenticDiffAddWord`              | Word-level additions in diff             | `bg=#155729, bold=true`             |
+| `AgenticStatusPending`            | Pending tool call status indicator       | `bg=#5f4d8f`                        |
+| `AgenticStatusCompleted`          | Completed tool call status indicator     | `bg=#2d5a3d`                        |
+| `AgenticStatusFailed`             | Failed tool call status indicator        | `bg=#7a2d2d`                        |
+| `AgenticPermissionButtonAllow`    | Focused button (allow kind)              | `bg=#2d5a3d, bold=true`             |
+| `AgenticPermissionButtonReject`   | Focused button (reject kind)             | `bg=#7a2d2d, bold=true`             |
+| `AgenticPermissionButtonInactive` | Non-focused permission button            | `bg=#3a3a3a`                        |
+| `AgenticCodeBlockFence`           | The left border decoration on tool calls | Links to `Directory`                |
+| `AgenticTitle`                    | Window titles in sidebar                 | `bg=#2787b0, fg=#000000, bold=true` |
+| `AgenticThinking`                 | Thinking block text in chat buffer       | Links to `Comment`                  |
 
 If any of these highlight exists, Agentic will use it instead of creating new
 ones.
@@ -1175,6 +1174,94 @@ require('blink.cmp').setup({
 })
 ```
 
+Alternatively, you can disable Agentic's built-in autocomplete and let `blink.cmp` handle slash command and file picker completions in the prompt buffer:
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  opts = {
+    slash_commands = {
+      auto_trigger = false,
+    },
+    file_picker = {
+      auto_trigger = false,
+    },
+  },
+}
+```
+
+```lua
+{
+  'saghen/blink.cmp',
+  version = '1.*',
+  opts = {
+    -- ...
+    completion = {
+      menu = {
+        draw = {
+          components = {
+            -- Increase the label description width to show more of the slash
+            -- command descriptions
+            label_description = {
+              width = { max = 100 },
+            },
+          },
+        },
+      },
+    },
+    sources = {
+      per_filetype = {
+        -- You can also enable copilot here if you want copilot suggestions in the Prompt buffer
+        AgenticInput = { 'agentic_slash', 'agentic_at' },
+      },
+      providers = {
+        agentic_slash = {
+          module = 'blink.cmp.sources.complete_func',
+          name = 'AgenticSlash',
+          -- Detect / at the start of the prompt input to trigger slash command completions
+          enabled = function()
+            local cursor = vim.api.nvim_win_get_cursor(0)
+            if cursor[1] ~= 1 then return false end
+            local before = vim.api.nvim_get_current_line():sub(1, cursor[2])
+            return before:match('^/[^%s]*$') ~= nil
+          end,
+          opts = { complete_func = function() return "v:lua.require'agentic.acp.slash_commands'.complete_func" end },
+          -- Fix output by removing / added in label details
+          transform_items = function(_, items)
+            for _, item in ipairs(items) do
+              if item.labelDetails then
+                item.labelDetails.detail = nil
+              end
+            end
+            return items
+          end,
+        },
+        agentic_at = {
+          module = 'blink.cmp.sources.complete_func',
+          -- Detect @ is before the cursor to trigger file picker completions
+          name = 'AgenticAt',
+          enabled = function()
+            local col = vim.api.nvim_win_get_cursor(0)[2]
+            local before = vim.api.nvim_get_current_line():sub(1, col)
+            return (before:match('^@[^%s]*$') or before:match('[%s]@[^%s]*$')) ~= nil
+          end,
+          opts = { complete_func = function() return "v:lua.require'agentic.ui.file_picker'.complete_func" end },
+          -- Fix output by removing @ added in label details
+          transform_items = function(_, items)
+            for _, item in ipairs(items) do
+              if item.labelDetails then
+                item.labelDetails.detail = nil
+              end
+            end
+            return items
+          end,
+        },
+      },
+    },
+  },
+}
+```
+
 ### nvim-cmp
 
 You can disable `nvim-cmp` from attaching to Agentic prompt buffers by using
@@ -1234,6 +1321,8 @@ This will check:
 - Current ACP provider installation (We don't install them for security reasons)
 - Optional ACP providers (so you know which ones are available and can use at
   any time)
+- Clipboard image paste tooling (`powershell.exe`, `wslpath`, `wl-paste`, or
+  `xclip`)
 - Node.js and package managers (Most of the ACP CLIs require Node.js to install
   and run, some have native binaries too, we don't have control over that, it up
   to the Creators)
@@ -1282,8 +1371,7 @@ the the acknowledgments 😊.
   and sidebar structured with multiple panels
 
 [claude-agent-acp]: https://github.com/agentclientprotocol/claude-agent-acp
-[claude-agent-acp-releases]:
-  https://github.com/agentclientprotocol/claude-agent-acp/releases
+[claude-agent-acp-releases]: https://github.com/agentclientprotocol/claude-agent-acp/releases
 [gemini-cli]: https://github.com/gemini-cli/gemini-cli
 [codex-acp]: https://github.com/zed-industries/codex-acp
 [codex-acp-releases]: https://github.com/zed-industries/codex-acp/releases
@@ -1293,10 +1381,8 @@ the the acknowledgments 😊.
 [auggie-docs]: https://docs.augmentcode.com/cli/setup-auggie
 [mistral-vibe]: https://github.com/mistralai/mistral-vibe
 [mistral-vibe-releases]: https://github.com/mistralai/mistral-vibe/releases
-[preview-diff-side-by-side-image]:
-  https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
-[preview-diff-inline-image]:
-  https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
+[preview-diff-side-by-side-image]: https://github.com/user-attachments/assets/aef778af-815c-412b-a514-e3dec4280b6d
+[preview-diff-inline-image]: https://github.com/user-attachments/assets/6f824ec9-023b-4cc4-aca6-647a6b191183
 [copilot-cli]: https://github.com/github/copilot-cli
 [cline]: https://github.com/cline/cline
 [cline-docs]: https://docs.cline.bot/getting-started/installing-cline

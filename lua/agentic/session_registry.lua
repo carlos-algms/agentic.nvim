@@ -74,6 +74,20 @@ function SessionRegistry.destroy_session(tab_page_id)
     end
 end
 
+--- Destroys sessions whose tabpage is no longer in nvim_list_tabpages()
+function SessionRegistry.destroy_closed_sessions()
+    local valid = {}
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        valid[tab] = true
+    end
+
+    for tab_page_id in pairs(SessionRegistry.sessions) do
+        if not valid[tab_page_id] then
+            SessionRegistry.destroy_session(tab_page_id)
+        end
+    end
+end
+
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
 function SessionRegistry.select_provider(on_selected)
     local available_providers = ACPHealth.get_default_provider_names()

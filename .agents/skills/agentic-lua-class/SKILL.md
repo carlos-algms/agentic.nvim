@@ -1,9 +1,11 @@
 ---
-name: lua-class
-description:
-  Use when creating new lua classes or adding fields or methods to existing lua
-  classes. It gives guide lines on how to work with Lua classes and style guides
-  that must be followed in this project
+name: agentic-lua-class
+description: >
+  MANDATORY before writing or editing ANY .lua file in this repo - classes,
+  methods, fields, functions, or LuaCATS annotations. Holds the project's
+  enforced Lua style: class pattern, visibility prefixes (_private,
+  __protected), and optional-type syntax. Skipping it produces luals/selene
+  failures at make validate. Load it before the first edit, not after.
 ---
 
 # Lua Class Pattern
@@ -176,3 +178,76 @@ end
   - Unused properties
   - Properties that were needed during development but are no longer used
   - Properties that could be local variables instead
+
+## LuaCATS annotation syntax
+
+Space after `---` for descriptions and annotations. Do NOT write param/return
+descriptions unless requested. Group related annotations together.
+
+### Return format
+
+`@return {type} return_name description` (type first, then name).
+
+- RIGHT: `@return boolean success Whether the operation succeeded`
+- WRONG: `@return boolean Whether the operation succeeded` (missing name)
+- WRONG: `@return success boolean` (wrong order)
+
+### Optional types
+
+Format depends on annotation type. See
+[LuaLS issue #2385](https://github.com/LuaLS/lua-language-server/issues/2385)
+for the underlying validator limitation.
+
+**`@param` and `fun()` - MUST use `type|nil`:**
+
+- RIGHT: `@param winid number|nil`
+- RIGHT: `@param callback fun(result: table|nil)`
+- WRONG: `@param winid? number` (LuaLS does not validate optional syntax)
+- WRONG: `fun(result?: table)` (optional syntax ignored)
+
+**`@field` - Use `variable? type`:**
+
+- RIGHT: `@field _state? string`
+- RIGHT: `@field diff? { all?: boolean }` (inline tables also use `?`)
+- WRONG: `@field _state string|nil` (use `?` here instead)
+- WRONG: `@field _state string?` (`?` goes after variable name, not type)
+
+For a partial variant of an existing class, use `@class (partial)` extending the
+source type instead of re-declaring every field as optional.
+
+- RIGHT: `@class (partial) MyOptsOverride: MyOpts`
+- WRONG: re-listing `@field field? type` for every field from `MyOpts`
+
+**`@return`, `@type`, `@alias` - Use explicit `type|nil`:**
+
+- RIGHT: `@return string|nil result`, `@type table<string, number|nil>`,
+  `@alias MyType string|nil`
+- WRONG: trailing `?` on the type (e.g. `string?`, `number?`)
+
+### Typed variables before return
+
+LuaLS cannot infer types from inline returns of complex types. Use a typed
+intermediate variable:
+
+```lua
+-- Bad: LuaLS cannot infer the return type
+function M.create_block(lines)
+    return {
+        start_line = 1,
+        end_line = #lines,
+        content = lines,
+    }
+end
+
+-- Good: Type annotation enables proper type checking
+--- @return MyModule.Block block
+function M.create_block(lines)
+    --- @type MyModule.Block
+    local block = {
+        start_line = 1,
+        end_line = #lines,
+        content = lines,
+    }
+    return block
+end
+```

@@ -400,6 +400,74 @@ describe("agentic.SessionRegistry", function()
         end)
     end)
 
+    describe("destroy_closed_sessions", function()
+        --- @type TestStub|nil
+        local list_tabpages_stub
+
+        after_each(function()
+            if list_tabpages_stub then
+                list_tabpages_stub:revert()
+                list_tabpages_stub = nil
+            end
+        end)
+
+        it(
+            "only destroys sessions for tabpages that no longer exist",
+            function()
+                local session_10 = create_mock_session(10)
+                local session_20 = create_mock_session(20)
+                local destroy_10 = spy.new(function() end)
+                local destroy_20 = spy.new(function() end)
+                session_10.destroy = destroy_10
+                session_20.destroy = destroy_20
+
+                SessionRegistry.sessions[10] = session_10
+                SessionRegistry.sessions[20] = session_20
+
+                list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
+                list_tabpages_stub:returns({ 20 })
+
+                SessionRegistry.destroy_closed_sessions()
+
+                assert.is_nil(SessionRegistry.sessions[10])
+                assert.is_not_nil(SessionRegistry.sessions[20])
+                assert.spy(destroy_10).was.called(1)
+                assert.spy(destroy_20).was.called(0)
+            end
+        )
+
+        it("preserves all sessions when all tabpages are valid", function()
+            local session_10 = create_mock_session(10)
+            local session_20 = create_mock_session(20)
+            local destroy_10 = spy.new(function() end)
+            local destroy_20 = spy.new(function() end)
+            session_10.destroy = destroy_10
+            session_20.destroy = destroy_20
+
+            SessionRegistry.sessions[10] = session_10
+            SessionRegistry.sessions[20] = session_20
+
+            list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
+            list_tabpages_stub:returns({ 10, 20 })
+
+            SessionRegistry.destroy_closed_sessions()
+
+            assert.is_not_nil(SessionRegistry.sessions[10])
+            assert.is_not_nil(SessionRegistry.sessions[20])
+            assert.spy(destroy_10).was.called(0)
+            assert.spy(destroy_20).was.called(0)
+        end)
+
+        it("handles empty registry gracefully", function()
+            list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
+            list_tabpages_stub:returns({})
+
+            assert.has_no_errors(function()
+                SessionRegistry.destroy_closed_sessions()
+            end)
+        end)
+    end)
+
     describe("sessions weak table", function()
         it("uses weak value metatable", function()
             local metatable = getmetatable(SessionRegistry.sessions)

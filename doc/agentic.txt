@@ -152,8 +152,11 @@ Provider install commands (always check official docs):
     `pnpm add -g pi-acp`
     OR `npm i -g pi-acp`
 
-Optional: |img-clip.nvim| for pasting screenshots from the clipboard.
-Drag-and-drop works without it if your terminal supports it.
+Clipboard image paste works out of the box on macOS, Windows, and WSL
+when Windows interop and `wslpath` are available. On Linux, you need
+one small CLI dependency (`wl-clipboard` or `xclip`). See
+|agentic-images| for per-distro install commands.
+Drag-and-drop works without any extra tool if your terminal supports it.
 
 ==============================================================================
 INSTALLATION                                      *agentic-installation*
@@ -531,12 +534,16 @@ These keybindings are automatically set in Agentic buffers:
   [t                     n       Previous tool call
   ]c                     n       Next diff hunk
   [c                     n       Previous diff hunk
-  <C-n>                  n       Cycle to next pending permission block
-  <C-p>                  n       Cycle to previous pending permission block
-  h / <Left>             n       Focus previous permission button (on row)
-  l / <Right>            n       Focus next permission button (on row)
-  <CR>                   n       Submit focused permission button (on row)
-  1..4                   n       Submit permission option directly (on row)
+
+Permission keymaps (active while a permission request is pending):
+
+  Key                        Mode    Description ~
+  <C-n>                      n       Cycle to next pending permission block
+  <C-p>                      n       Cycle to prior pending permission block
+  h / <Left> / k / <Up>      n       Focus previous permission button
+  l / <Right> / j / <Down>   n       Focus next permission button
+  <CR>                       n       Submit focused permission button
+  1..4                       n       Submit permission option directly
 
                                         *agentic-keymaps-customizing*
 Customizing keymaps ~
@@ -586,9 +593,9 @@ Override default keybindings via the `keymaps` config option:
   }
 <
 
-The per-block permission keys (`h`, `l`, `<Left>`, `<Right>`, `<CR>`,
-`1`..`4`) are fixed and not configurable. Only `cycle_next` / `cycle_prev`
-can be remapped via `keymaps.permission`.
+The per-block permission keys (`h`, `l`, `j`, `k`, `<Left>`, `<Right>`,
+`<Up>`, `<Down>`, `<CR>`, `1`..`4`) are fixed and not configurable. Only
+`cycle_next` / `cycle_prev` can be remapped via `keymaps.permission`.
 
 Keymap configuration formats:
   - String: `close = "q"` (normal mode by default)
@@ -650,18 +657,29 @@ Uses `rg`, `fd`, `git ls-files`, or Lua globs as fallback.
 Image and screenshot support ~
                                                      *agentic-images*
 Drag-and-drop images into the prompt buffer or paste from clipboard.
-Drag-and-drop works with any terminal that supports it. Clipboard
-paste requires |img-clip.nvim|:
->lua
-  {
-    "carlos-algms/agentic.nvim",
-    dependencies = {
-      { "hakonharnes/img-clip.nvim", opts = {} },
-    },
-  }
-<
-On Linux, img-clip.nvim requires `xclip` (X11) or `wl-clipboard`
-(Wayland). On macOS, `pngpaste`. Windows needs no extra deps.
+Drag-and-drop works with any terminal that supports it.
+In SSH/headless sessions, image paste and drag-and-drop
+usually do not reach remote Neovim.
+Agentic does not copy local files into the remote filesystem.
+Upload the image first with `scp`, `SFTP`, or your usual file-transfer
+workflow, then attach the remote file path using the `@` file picker.
+
+Clipboard paste uses native OS tooling:
+
+  - macOS: works out of the box (uses `osascript`).
+  - Windows: works out of the box (uses bundled `powershell.exe`).
+  - WSL: works out of the box when Windows interop and `wslpath` are
+    available.
+  - Linux (Wayland): install `wl-clipboard` (provides `wl-paste`).
+    - Debian/Ubuntu: `sudo apt install wl-clipboard`
+    - Arch:          `sudo pacman -S wl-clipboard`
+    - Fedora:        `sudo dnf install wl-clipboard`
+  - Linux (X11): install `xclip`.
+    - Debian/Ubuntu: `sudo apt install xclip`
+    - Arch:          `sudo pacman -S xclip`
+    - Fedora:        `sudo dnf install xclip`
+
+Then press `<localleader>p` in the Prompt buffer to paste the image.
 
 Session restoration ~
                                             *agentic-session-restore*
@@ -858,7 +876,17 @@ File picker ~
   --- @type agentic.PartialUserConfig
   opts = {
     file_picker = {
-      enabled = true,  -- Enable @ file completion
+      -- Enable @ file completion
+      enabled = true,
+      -- When false, disables automatic completion triggering on @,
+      -- use <C-x><C-o> to trigger manual completion.
+      auto_trigger = true,
+    },
+
+    slash_commands = {
+      -- When false, disables automatic completion triggering on /.
+      -- Use <C-x><C-u> to trigger manual completion.
+      auto_trigger = true,
     },
   }
 <
@@ -1041,6 +1069,8 @@ Run `:checkhealth agentic` to verify:
   - Current ACP provider installation
   - Optional ACP providers availability
   - Node.js and package managers
+  - Clipboard image paste tooling (`powershell.exe`, `wslpath`,
+    `wl-paste`, or `xclip`)
 
 ==============================================================================
 DEBUG                                                    *agentic-debug*

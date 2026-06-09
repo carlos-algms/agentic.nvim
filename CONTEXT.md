@@ -158,8 +158,7 @@ A provider-initiated `session/request_permission` event tied to a specific
 
 **PermissionManager**:
 Per-**Tabpage** owner of pending **Permission Requests**, focus state, per-block
-keymaps. Renders inline buttons on row N of the focused **Tool Call Block**.
-See ADR 0003.
+keymaps. Renders buttons inside the focused **Tool Call Block**. See ADR 0003.
 
 ### Message chunks
 
@@ -267,10 +266,10 @@ default.
   (which **Tool Call Block** has buttons active and digit keymaps bound).
   Resolved: bare "focus" = Neovim's window focus; "permission focus" or
   "focused block" for the **PermissionManager** notion.
-- "status row", "row N", "status footer" all refer to the same line: the last
-  row of a **Tool Call Block**, outside the fold range, rendered by
-  `MessageWriter:_render_status_row`. Canonical: **status row** (or `row N`
-  when discussing the block layout diagram).
+- "status row", "status footer" refer to the same line: the last row of a
+  **Tool Call Block**, outside the fold range. Canonical: **status row**.
+  ("row N" was used pre-refactor and overlapped with the permission rows now
+  rendered between `bottom_pad` and the status row; avoid the term.)
 - "Functional test" vs "integration test" — `tests/AGENTS.md` once split these
   into separate categories with overlapping definitions. The split was not
   load-bearing. Resolved: treat as one category. Use either folder

@@ -1328,6 +1328,121 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
+    describe("_handle_input_submit: Referenced files rendering", function()
+        local ACPPayloads = require("agentic.acp.acp_payloads")
+        --- @type TestStub
+        local create_file_content_stub
+
+        before_each(function()
+            create_file_content_stub =
+                spy.stub(ACPPayloads, "create_file_content")
+            create_file_content_stub:invokes(function(_path)
+                return { type = "text", text = "stub" }
+            end)
+        end)
+
+        after_each(function()
+            create_file_content_stub:revert()
+        end)
+
+        --- Build a minimal SessionManager mock with a file_list returning
+        --- the provided paths. send_prompt is a no-op so we focus only on
+        --- the user-facing message_lines passed to write_message.
+        --- @param files string[]
+        --- @return agentic.SessionManager
+        --- @return TestSpy
+        local function make_session(files)
+            local write_message_spy = spy.new(function() end)
+            local consumed = false
+
+            --- @type agentic.SessionManager
+            local session = {
+                session_id = "s1",
+                tab_page_id = 1,
+                is_generating = false,
+                _connection_error = false,
+                _is_restoring_session = false,
+                _is_first_message = false,
+                history_to_send = nil,
+                chat_history = {
+                    title = "",
+                    add_message = function() end,
+                },
+                todo_list = { close_if_all_completed = function() end },
+                code_selection = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                file_list = {
+                    is_empty = function()
+                        return consumed or #files == 0
+                    end,
+                    get_files = function()
+                        return files
+                    end,
+                    clear = function()
+                        consumed = true
+                    end,
+                },
+                diagnostics_list = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                message_writer = { write_message = write_message_spy },
+                status_animation = { start = function() end },
+                agent = {
+                    provider_config = { name = "TestProvider" },
+                    send_prompt = function() end,
+                },
+                can_submit_prompt = function()
+                    return true
+                end,
+                _handle_input_submit = SessionManager._handle_input_submit,
+            } --[[@as agentic.SessionManager]]
+
+            return session, write_message_spy
+        end
+
+        it(
+            "emits markdown image tag for image files, @-mention for others",
+            function()
+                local session, write_message_spy = make_session({
+                    "/tmp/photo.png",
+                    "/tmp/photo with spaces).png",
+                    "/tmp/photo <draft>.png",
+                    "/tmp/code.lua",
+                    "/tmp/diagram.SVG",
+                })
+
+                session:_handle_input_submit("hello")
+
+                assert.spy(write_message_spy).was.called(1)
+                local user_message = write_message_spy.calls[1][2]
+                local text = user_message.content.text
+
+                -- image files render as markdown image tags so the chat
+                -- buffer (markdown filetype) can display them inline.
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo.png>)", 1, true)
+                )
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo with spaces).png>)", 1, true)
+                )
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/photo \\<draft\\>.png>)", 1, true)
+                )
+                -- extension match is case-insensitive.
+                assert.is_not_nil(
+                    text:find("  - ![](</tmp/diagram.SVG>)", 1, true)
+                )
+                -- non-image files keep the original @-mention bullet.
+                assert.is_not_nil(text:find("  %- @/tmp/code%.lua", 1))
+            end
+        )
+    end)
+
     describe("new_session: on_create_session_response hook", function()
         local Config = require("agentic.config")
         --- @type TestStub
