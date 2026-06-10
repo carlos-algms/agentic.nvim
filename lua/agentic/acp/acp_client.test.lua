@@ -405,4 +405,22 @@ describe("ACPClient", function()
             assert.equal(0, vim.tbl_count(client.callbacks))
         end)
     end)
+
+    describe("__build_tool_call_message", function()
+        it("handles vim.NIL content and locations (JSON null)", function()
+            local client = create_ready_client()
+
+            assert.has_no_errors(function()
+                ---@diagnostic disable: invisible, assign-type-mismatch
+                client:__build_tool_call_message({
+                    toolCallId = "tc-1",
+                    kind = "edit",
+                    content = vim.NIL,
+                    locations = vim.NIL,
+                    rawInput = vim.NIL,
+                })
+                ---@diagnostic enable: invisible, assign-type-mismatch
+            end)
+        end)
+    end)
 end)
