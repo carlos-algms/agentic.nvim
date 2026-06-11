@@ -100,3 +100,23 @@ describe("ACPTransport process lifecycle", function()
         end
     )
 end)
+
+describe("ACPTransport.decode_line", function()
+    local Transport = require("agentic.acp.acp_transport")
+
+    it("decodes JSON null as nil, not vim.NIL", function()
+        local ok, message = Transport.decode_line('{"a":null,"b":[],"c":{}}')
+        --- @cast message any
+
+        assert.is_true(ok)
+        assert.is_nil(message.a)
+        assert.is_table(message.b)
+        assert.equal(type(message.c), "table")
+    end)
+
+    it("returns false on malformed JSON", function()
+        local ok = Transport.decode_line("{not json")
+
+        assert.is_false(ok)
+    end)
+end)

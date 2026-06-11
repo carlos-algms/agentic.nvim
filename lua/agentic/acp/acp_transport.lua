@@ -32,6 +32,18 @@ local IGNORE_STDERR_PATTERNS = {
     "[PreToolUseHook]",
 }
 
+--- `luanil` decodes JSON `null` as `nil`, not truthy `vim.NIL` userdata.
+--- @param line string
+--- @return boolean ok
+--- @return agentic.acp.ResponseRaw|string decoded
+function M.decode_line(line)
+    return pcall(
+        vim.json.decode,
+        line,
+        { luanil = { object = true, array = true } }
+    )
+end
+
 --- Create stdio transport for ACP communication
 --- @param config agentic.acp.StdioTransportConfig
 --- @param callbacks agentic.acp.TransportCallbacks
@@ -203,8 +215,9 @@ function M.create_stdio_transport(config, callbacks)
                 for i = 1, #lines - 1 do
                     local line = vim.trim(lines[i])
                     if line ~= "" then
-                        local ok, message = pcall(vim.json.decode, line)
+                        local ok, message = M.decode_line(line)
                         if ok then
+                            --- @cast message agentic.acp.ResponseRaw
                             callbacks.on_message(message)
                         else
                             Logger.notify(
