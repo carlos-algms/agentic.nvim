@@ -183,6 +183,33 @@ end)()
         end
     )
 
+    it("adds tab suffix to custom buffer_name across tabs", function()
+        child.lua([[
+            require("agentic").setup({ windows = { chat = { buffer_name = "My Chat" } } })
+            require("agentic").toggle()
+        ]])
+        child.flush()
+
+        local tab1_basename = get_panel_basename("chat")
+
+        child.cmd("tabnew")
+        child.lua([[ require("agentic").toggle() ]])
+        child.flush()
+
+        local tab2_basename = get_panel_basename("chat")
+
+        -- First instance: custom name, no tab suffix
+        assert.is_true(vim.startswith(tab1_basename, "My Chat"))
+        assert.is_nil(tab1_basename:match("%(Tab %d+%)"))
+
+        -- Second instance: custom name plus visible "(Tab N)" suffix
+        assert.is_true(vim.startswith(tab2_basename, "My Chat"))
+        assert.is_not_nil(tab2_basename:match("%(Tab %d+%)"))
+
+        -- Names are unique
+        assert.is_not.equal(tab1_basename, tab2_basename)
+    end)
+
     it("each panel has distinct buffer name prefix", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
