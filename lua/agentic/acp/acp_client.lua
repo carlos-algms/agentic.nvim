@@ -401,7 +401,7 @@ function ACPClient:__build_tool_call_message(update)
         message.argument = update.title
     end
 
-    if update.content then
+    if type(update.content) == "table" then
         local body_parts = {}
         for _, content in ipairs(update.content) do
             if content then
@@ -442,7 +442,8 @@ function ACPClient:__build_tool_call_message(update)
     end
 
     -- Fallback: build diff from rawInput when content is missing (e.g. OpenCode)
-    local raw_input = update.rawInput
+    local raw_input = type(update.rawInput) == "table" and update.rawInput
+        or nil
 
     if not message.diff and update.kind == "edit" and raw_input then
         local new_string = raw_input.new_string or raw_input.newString
@@ -461,7 +462,7 @@ function ACPClient:__build_tool_call_message(update)
         message.file_path = raw_input.file_path or raw_input.filePath
     end
 
-    if not message.file_path and update.locations then
+    if not message.file_path and type(update.locations) == "table" then
         local first_location = update.locations[1]
         if first_location and first_location.path then
             message.file_path = first_location.path
