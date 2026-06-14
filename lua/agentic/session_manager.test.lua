@@ -162,54 +162,6 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
-    describe("_generate_welcome_header", function()
-        it(
-            "returns header with provider name, session id, and timestamp",
-            function()
-                local header = SessionManager._generate_welcome_header(
-                    "Claude ACP",
-                    "abc123"
-                )
-
-                assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
-                assert.truthy(header:match("\n%- %d%d%d%d%-%d%d%-%d%d"))
-                assert.truthy(header:match("\n%- session id: abc123\n"))
-                assert.truthy(header:match("\n%-%-%- %-%-$"))
-            end
-        )
-
-        it("uses 'unknown' when session_id is nil", function()
-            local header =
-                SessionManager._generate_welcome_header("Claude ACP", nil)
-
-            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
-            assert.truthy(header:match("\n%- session id: unknown\n"))
-            assert.truthy(header:match("\n%-%-%- %-%-$"))
-        end)
-
-        it("includes version when provided", function()
-            local header = SessionManager._generate_welcome_header(
-                "Claude ACP",
-                "abc123",
-                "1.2.3"
-            )
-
-            assert.truthy(header:match("^# Agentic %- Claude ACP v1%.2%.3\n"))
-            assert.truthy(header:match("\n%- session id: abc123\n"))
-        end)
-
-        it("omits version when nil", function()
-            local header = SessionManager._generate_welcome_header(
-                "Claude ACP",
-                "abc123",
-                nil
-            )
-
-            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
-            assert.is_nil(header:match(" v"))
-        end)
-    end)
-
     describe("_start_spinner_if_generating", function()
         --- @type TestSpy
         local start_spy

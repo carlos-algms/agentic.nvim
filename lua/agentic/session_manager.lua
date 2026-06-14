@@ -76,35 +76,6 @@ end
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
---- @param provider_name string
---- @param session_id string|nil
---- @param version string|nil
---- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
---- @return string header
-function SessionManager._generate_welcome_header(
-    provider_name,
-    session_id,
-    version,
-    timestamp
-)
-    local date_str
-    if type(timestamp) == "string" then
-        date_str = timestamp
-    else
-        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
-    end
-    local name = provider_name
-    if version then
-        name = name .. " v" .. version
-    end
-    return string.format(
-        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
-        name,
-        session_id or "unknown",
-        date_str
-    )
-end
-
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
@@ -1129,7 +1100,7 @@ function SessionManager:new_session(opts)
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
             local agent_info = self.agent.agent_info
-            local welcome_message = SessionManager._generate_welcome_header(
+            local welcome_message = self.message_writer:generate_welcome_header(
                 self.agent.provider_config.name,
                 self.session_id,
                 agent_info and agent_info.version,
@@ -1358,7 +1329,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
 
     -- Write banner before loading so it appears at top of cleared buffer
     local agent_info = self.agent.agent_info
-    local welcome_message = SessionManager._generate_welcome_header(
+    local welcome_message = self.message_writer:generate_welcome_header(
         self.agent.provider_config.name,
         session_id,
         agent_info and agent_info.version,

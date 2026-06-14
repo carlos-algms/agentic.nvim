@@ -1526,6 +1526,35 @@ function MessageWriter:_apply_status_highlights_if_present(tracker)
     self:repaint_status_row(tracker.tool_call_id)
 end
 
+--- @param provider_name string
+--- @param session_id string|nil
+--- @param version string|nil
+--- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
+--- @return string header
+function MessageWriter:generate_welcome_header(
+    provider_name,
+    session_id,
+    version,
+    timestamp
+)
+    local date_str
+    if type(timestamp) == "string" then
+        date_str = timestamp
+    else
+        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
+    end
+    local name = provider_name
+    if version then
+        name = name .. " v" .. version
+    end
+    return string.format(
+        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
+        name,
+        session_id or "unknown",
+        date_str
+    )
+end
+
 function MessageWriter:destroy() end
 
 return MessageWriter
