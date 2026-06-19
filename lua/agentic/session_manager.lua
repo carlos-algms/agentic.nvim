@@ -719,6 +719,15 @@ function SessionManager:new_session(opts)
             return
         end
 
+        -- A session restore was initiated after this create_session was sent.
+        -- Race A: load still in-flight → _is_restoring_session is true.
+        -- Race B: load already completed → session_id is already set.
+        -- In both cases discard this stale session.
+        if self._is_restoring_session or self.session_id ~= nil then
+            self.agent:cancel_session(response.sessionId)
+            return
+        end
+
         self.session_id = response.sessionId
         self.chat_history.session_id = response.sessionId
         self.chat_history.timestamp = os.time()
