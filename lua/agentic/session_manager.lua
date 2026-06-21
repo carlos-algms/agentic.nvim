@@ -13,27 +13,7 @@ local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local SlashCommands = require("agentic.acp.slash_commands")
 local EnvironmentInfo = require("agentic.utils.environment_info")
-
---- @class agentic._SessionManagerPrivate
-local P = {}
-
---- Safely invoke a user-configured hook
---- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
---- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
-function P.invoke_hook(hook_name, data)
-    local hook = Config.hooks and Config.hooks[hook_name]
-
-    if hook and type(hook) == "function" then
-        vim.schedule(function()
-            local ok, err = pcall(hook, data)
-            if not ok then
-                Logger.debug(
-                    string.format("Hook '%s' error: %s", hook_name, err)
-                )
-            end
-        end)
-    end
-end
+local Hooks = require("agentic.utils.hooks")
 
 --- @class agentic.SessionManager
 --- @field session_id? string
@@ -367,7 +347,7 @@ function SessionManager:_on_session_update(update)
         tab_page_id = self.tab_page_id,
         update = update,
     }
-    P.invoke_hook("on_session_update", hook_data)
+    Hooks.invoke("on_session_update", hook_data)
 end
 
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
@@ -467,7 +447,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
                     tab_page_id = self.tab_page_id,
                     bufnr = bufnr,
                 }
-                P.invoke_hook("on_file_edit", hook_data)
+                Hooks.invoke("on_file_edit", hook_data)
             end
         end
     end
@@ -759,7 +739,7 @@ function SessionManager:_handle_input_submit(input_text)
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
     }
-    P.invoke_hook("on_prompt_submit", prompt_hook_data)
+    Hooks.invoke("on_prompt_submit", prompt_hook_data)
 
     local session_id = self.session_id
     local tab_page_id = self.tab_page_id
@@ -809,7 +789,7 @@ function SessionManager:_handle_input_submit(input_text)
                 success = err == nil,
                 error = err,
             }
-            P.invoke_hook("on_response_complete", response_hook_data)
+            Hooks.invoke("on_response_complete", response_hook_data)
         end)
     end)
 
@@ -846,7 +826,7 @@ function SessionManager:_build_handlers()
         end,
 
         on_request_permission = function(request, callback)
-            P.invoke_hook("on_request_permission", {
+            Hooks.invoke("on_request_permission", {
                 request = request,
                 session_id = self.session_id,
                 tab_page_id = self.tab_page_id,
@@ -902,7 +882,7 @@ function SessionManager:new_session(opts)
             err = err,
         }
 
-        P.invoke_hook("on_create_session_response", hook_data)
+        Hooks.invoke("on_create_session_response", hook_data)
 
         if err or not response then
             -- no log here, already logged in create_session
