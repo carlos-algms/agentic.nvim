@@ -369,6 +369,29 @@ describe("agentic.ui.DiagnosticsList", function()
         end)
     end)
 
+    describe("to_prompt", function()
+        it(
+            "returns header, summary lines, prompt entries, and clears",
+            function()
+                diagnostics_list:add(
+                    create_diagnostic({ lnum = 10, message = "Error 1" })
+                )
+                diagnostics_list:add(
+                    create_diagnostic({ lnum = 20, message = "Error 2" })
+                )
+
+                local lines, prompt = diagnostics_list:to_prompt(120)
+
+                assert.equal("\n- **Diagnostics**:", lines[1])
+                assert.equal(3, #lines) -- header + one summary per diagnostic
+                assert.truthy(lines[2]:find("Error 1", 1, true))
+                assert.truthy(lines[3]:find("Error 2", 1, true))
+                assert.equal(2, #prompt)
+                assert.is_true(diagnostics_list:is_empty())
+            end
+        )
+    end)
+
     describe("get_buffer_diagnostics", function()
         --- @type integer
         local test_bufnr

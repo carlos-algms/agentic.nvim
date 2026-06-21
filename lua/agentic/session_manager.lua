@@ -27,13 +27,6 @@ local FILE_MUTATING_KINDS = {
     move = true,
 }
 
---- @param destination string
---- @return string escaped_destination
-local function escape_markdown_link_destination(destination)
-    local escaped = destination:gsub("([<>])", "\\%1")
-    return escaped
-end
-
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
 --- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
@@ -711,6 +704,7 @@ function SessionManager:_handle_input_submit(input_text)
         return false
     end
 
+    --- The text to be send to the agent, not on written on the chat
     --- @type agentic.acp.Content[]
     local prompt = {}
 
@@ -744,103 +738,19 @@ function SessionManager:_handle_input_submit(input_text)
     table.insert(message_lines, input_text)
 
     if not self.code_selection:is_empty() then
-        table.insert(message_lines, "\n- **Selected code**:\n")
-
-        table.insert(prompt, {
-            type = "text",
-            text = table.concat({
-                "IMPORTANT: Focus and respect the line numbers provided in the <line_start> and <line_end> tags for each <selected_code> tag.",
-                "The selection shows ONLY the specified line range, not the entire file!",
-                "The file may contain duplicated content of the selected snippet.",
-                "When using edit tools, on the referenced files, MAKE SURE your changes target the correct lines by including sufficient surrounding context to make the match unique.",
-                "After you make edits to the referenced files, go back and read the file to verify your changes were applied correctly.",
-            }, "\n"),
-        })
-
-        local selections = self.code_selection:get_selections()
-        self.code_selection:clear()
-
-        for _, selection in ipairs(selections) do
-            if selection and #selection.lines > 0 then
-                -- Add line numbers to each line in the snippet
-                local numbered_lines = {}
-                for i, line in ipairs(selection.lines) do
-                    local line_num = selection.start_line + i - 1
-                    table.insert(
-                        numbered_lines,
-                        string.format("Line %d: %s", line_num, line)
-                    )
-                end
-                local numbered_snippet = table.concat(numbered_lines, "\n")
-
-                table.insert(prompt, {
-                    type = "text",
-                    text = string.format(
-                        table.concat({
-                            "<selected_code>",
-                            "<path>%s</path>",
-                            "<line_start>%s</line_start>",
-                            "<line_end>%s</line_end>",
-                            "<snippet>",
-                            "%s",
-                            "</snippet>",
-                            "</selected_code>",
-                        }, "\n"),
-                        FileSystem.to_absolute_path(selection.file_path),
-                        selection.start_line,
-                        selection.end_line,
-                        numbered_snippet
-                    ),
-                })
-
-                table.insert(
-                    message_lines,
-                    string.format(
-                        "```%s %s#L%d-L%d\n%s\n```",
-                        selection.file_type,
-                        selection.file_path,
-                        selection.start_line,
-                        selection.end_line,
-                        table.concat(selection.lines, "\n")
-                    )
-                )
-            end
-        end
+        local code_selection_lines, code_selection_prompt =
+            self.code_selection:to_prompt()
+        vim.list_extend(message_lines, code_selection_lines)
+        vim.list_extend(prompt, code_selection_prompt)
     end
 
     if not self.file_list:is_empty() then
-        table.insert(message_lines, "\n- **Referenced files**:")
-
-        local files = self.file_list:get_files()
-        self.file_list:clear()
-
-        for _, file_path in ipairs(files) do
-            table.insert(prompt, ACPPayloads.create_file_content(file_path))
-
-            local smart_path = FileSystem.to_smart_path(file_path)
-            local ext = FileSystem.get_file_extension(file_path)
-            local line
-            -- Image files render as markdown image tags so the chat
-            -- buffer (markdown filetype) can display them inline.
-            if FileSystem.IMAGE_MIMES[ext] then
-                line = string.format(
-                    "  - ![](<%s>)",
-                    escape_markdown_link_destination(smart_path)
-                )
-            else
-                line = string.format("  - @%s", smart_path)
-            end
-
-            table.insert(message_lines, line)
-        end
+        local file_list_lines, file_list_prompt = self.file_list:to_prompt()
+        vim.list_extend(message_lines, file_list_lines)
+        vim.list_extend(prompt, file_list_prompt)
     end
 
     if not self.diagnostics_list:is_empty() then
-        table.insert(message_lines, "\n- **Diagnostics**:")
-
-        local diagnostics = self.diagnostics_list:get_diagnostics()
-        self.diagnostics_list:clear()
-
         local WidgetLayout = require("agentic.ui.widget_layout")
 
         local chat_width = WidgetLayout.calculate_width(Config.windows.width)
@@ -849,18 +759,10 @@ function SessionManager:_handle_input_submit(input_text)
             chat_width = vim.api.nvim_win_get_width(chat_winid)
         end
 
-        local DiagnosticsContext = require("agentic.ui.diagnostics_context")
-
-        local formatted_diagnostics =
-            DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
-
-        for _, prompt_entry in ipairs(formatted_diagnostics.prompt_entries) do
-            table.insert(prompt, prompt_entry)
-        end
-
-        for _, summary_line in ipairs(formatted_diagnostics.summary_lines) do
-            table.insert(message_lines, summary_line)
-        end
+        local diagnostics_lines, diagnostics_prompt =
+            self.diagnostics_list:to_prompt(chat_width)
+        vim.list_extend(message_lines, diagnostics_lines)
+        vim.list_extend(prompt, diagnostics_prompt)
     end
 
     local user_message = ACPPayloads.generate_user_message(message_lines)

@@ -210,6 +210,61 @@ describe("agentic.ui.FileList", function()
         end)
     end)
 
+    describe("to_prompt", function()
+        local ACPPayloads = require("agentic.acp.acp_payloads")
+        --- @type TestStub
+        local create_file_content_stub
+
+        before_each(function()
+            create_file_content_stub =
+                spy.stub(ACPPayloads, "create_file_content")
+            create_file_content_stub:invokes(function(_path)
+                return { type = "text", text = "stub" }
+            end)
+        end)
+
+        after_each(function()
+            create_file_content_stub:revert()
+        end)
+
+        it("emits image tags, @-mentions, and escapes <>", function()
+            file_list:add("/tmp/photo.png")
+            file_list:add("/tmp/photo with spaces).png")
+            file_list:add("/tmp/photo <draft>.png")
+            file_list:add("/tmp/code.lua")
+            file_list:add("/tmp/diagram.SVG")
+
+            local lines = file_list:to_prompt()
+            local text = table.concat(lines, "\n")
+
+            assert.equal("\n- **Referenced files**:", lines[1])
+            -- image files render as markdown image tags so the chat
+            -- buffer (markdown filetype) can display them inline.
+            assert.is_not_nil(text:find("  - ![](</tmp/photo.png>)", 1, true))
+            assert.is_not_nil(
+                text:find("  - ![](</tmp/photo with spaces).png>)", 1, true)
+            )
+            assert.is_not_nil(
+                text:find("  - ![](</tmp/photo \\<draft\\>.png>)", 1, true)
+            )
+            -- extension match is case-insensitive.
+            assert.is_not_nil(text:find("  - ![](</tmp/diagram.SVG>)", 1, true))
+            -- non-image files keep the original @-mention bullet.
+            assert.is_not_nil(text:find("  %- @/tmp/code%.lua", 1))
+        end)
+
+        it("returns one prompt entry per file and clears the list", function()
+            file_list:add("/tmp/a.lua")
+            file_list:add("/tmp/b.lua")
+
+            local _lines, prompt = file_list:to_prompt()
+
+            assert.equal(2, #prompt)
+            assert.stub(create_file_content_stub).was.called(2)
+            assert.is_true(file_list:is_empty())
+        end)
+    end)
+
     describe("buffer rendering", function()
         it("renders file paths in buffer", function()
             local file1 = "/path/to/alpha.lua"
