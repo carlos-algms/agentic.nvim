@@ -45,6 +45,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
+--- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -55,6 +56,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 
     self.win_nrs = {}
     self.current_position = Config.windows.position
+    self._header_refresh_scheduled = false
 
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
@@ -761,6 +763,29 @@ function ChatWidget:open_editor_window(bufnr)
     end
 
     return winid
+end
+
+--- Schedule a coalesced re-render of function-based headers.
+--- Multiple calls within the same event loop tick collapse into one render.
+function ChatWidget:schedule_header_refresh()
+    if self._header_refresh_scheduled then
+        return
+    end
+    if not Config.headers then
+        return
+    end
+
+    self._header_refresh_scheduled = true
+    -- Debounce updates within 150ms of each other to avoid excessive
+    -- re-renders when multiple updates come in quick succession
+    vim.defer_fn(function()
+        self._header_refresh_scheduled = false
+        for panel_name, header_config in pairs(Config.headers) do
+            if type(header_config) == "function" then
+                self:render_header(panel_name)
+            end
+        end
+    end, 150)
 end
 
 return ChatWidget

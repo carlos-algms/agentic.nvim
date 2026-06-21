@@ -55,7 +55,6 @@ end
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
 --- @field _session_ready_callbacks fun()[]
---- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -81,7 +80,6 @@ function SessionManager:new(tab_page_id)
         _connection_error = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
-        _header_refresh_scheduled = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
@@ -649,27 +647,9 @@ function SessionManager:_handle_thought_level_change(value)
     self.agent:set_config_option(self.session_id, config_id, value, callback)
 end
 
---- Schedule a coalesced re-render of function-based headers.
---- Multiple calls within the same event loop tick collapse into one render.
+--- NOTE: This is used by users inside hooks, moving/renaming this is a breaking change!
 function SessionManager:schedule_header_refresh()
-    if self._header_refresh_scheduled then
-        return
-    end
-    if not Config.headers then
-        return
-    end
-
-    self._header_refresh_scheduled = true
-    -- Debounce updates within 150ms of each other to avoid excessive
-    -- re-renders when multiple updates come in quick succession
-    vim.defer_fn(function()
-        self._header_refresh_scheduled = false
-        for panel_name, header_config in pairs(Config.headers) do
-            if type(header_config) == "function" then
-                self.widget:render_header(panel_name)
-            end
-        end
-    end, 150)
+    self.widget:schedule_header_refresh()
 end
 
 --- @param mode_id string
