@@ -80,6 +80,38 @@ function AgentConfigOptions:clear()
     self.legacy_agent_models:clear()
 end
 
+--- @class agentic.acp.AgentConfigOptions.Snapshot
+--- @field mode? agentic.acp.ConfigOption
+--- @field model? agentic.acp.ConfigOption
+--- @field thought_level? agentic.acp.ConfigOption
+--- @field legacy_modes { modes: agentic.acp.AgentMode[], current_mode_id: string|nil }
+--- @field legacy_models { models: agentic.acp.Model[], current_model_id: string|nil }
+
+--- Capture mode/model/thought_level and legacy modes/models so they survive a
+--- destructive `clear()`. These belong to the agent instance, not the session,
+--- and session load/restore does not re-send them.
+--- @return agentic.acp.AgentConfigOptions.Snapshot snapshot
+function AgentConfigOptions:snapshot()
+    --- @type agentic.acp.AgentConfigOptions.Snapshot
+    local snapshot = {
+        mode = self.mode,
+        model = self.model,
+        thought_level = self.thought_level,
+        legacy_modes = self.legacy_agent_modes:save(),
+        legacy_models = self.legacy_agent_models:save(),
+    }
+    return snapshot
+end
+
+--- @param snapshot agentic.acp.AgentConfigOptions.Snapshot
+function AgentConfigOptions:restore_snapshot(snapshot)
+    self.mode = snapshot.mode
+    self.model = snapshot.model
+    self.thought_level = snapshot.thought_level
+    self.legacy_agent_modes:restore(snapshot.legacy_modes)
+    self.legacy_agent_models:restore(snapshot.legacy_models)
+end
+
 --- @param configOptions agentic.acp.ConfigOption[]|nil
 function AgentConfigOptions:set_options(configOptions)
     self:clear()
