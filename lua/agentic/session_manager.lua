@@ -17,16 +17,6 @@ local EnvironmentInfo = require("agentic.utils.environment_info")
 --- @class agentic._SessionManagerPrivate
 local P = {}
 
---- Tool call kinds that mutate files on disk.
---- When these complete, buffers must be reloaded via checktime.
-local FILE_MUTATING_KINDS = {
-    edit = true,
-    create = true,
-    write = true,
-    delete = true,
-    move = true,
-}
-
 --- Safely invoke a user-configured hook
 --- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
 --- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
@@ -448,7 +438,11 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         local tracker =
             self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
 
-        if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
+        if
+            tracker
+            and tracker.kind
+            and ACPPayloads.FILE_MUTATING_KINDS[tracker.kind]
+        then
             vim.cmd.checktime()
 
             DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
