@@ -178,8 +178,8 @@ describe("race: stale create_session after load_acp_session", function()
     end)
 
     -- Race B: load_session completes BEFORE create_session callback fires.
-    -- _is_restoring_session is cleared; our current fix does NOT cover this.
-    it("Race B: load completes before create fires — exposes gap in current fix", function()
+    -- session_id is already set by the time create fires; the staleness guard catches it.
+    it("Race B: load completes before create fires — session_id guard prevents overwrite", function()
         local create_cb_ref = {}
         local session = make_session(create_cb_ref, nil) -- load fires immediately
 
@@ -195,12 +195,14 @@ describe("race: stale create_session after load_acp_session", function()
         -- Step 3: stale create fires after load already finished
         create_cb_ref.cb({ sessionId = "new-id" }, nil)
 
-        -- This assertion will FAIL with the current fix (only Race A is protected).
-        -- It will PASS once the generation-counter fix is applied.
         assert.equal(
             "restored-id",
             session.session_id,
             "stale create_session must not overwrite the restored session"
+        )
+        assert.is_true(
+            vim.tbl_contains(session._cancelled, "new-id"),
+            "stale new session should be cancelled"
         )
     end)
 end)

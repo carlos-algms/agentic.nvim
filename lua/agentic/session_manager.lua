@@ -714,18 +714,20 @@ function SessionManager:new_session(opts)
 
         Hooks.invoke("on_create_session_response", hook_data)
 
-        if err or not response then
-            -- no log here, already logged in create_session
-            self.session_id = nil
-            return
-        end
-
         -- A session restore was initiated after this create_session was sent.
         -- Race A: load still in-flight → _is_restoring_session is true.
         -- Race B: load already completed → session_id is already set.
-        -- In both cases discard this stale session.
+        -- Check staleness first so a failed stale callback can't wipe restored state.
         if self._is_restoring_session or self.session_id ~= nil then
-            self.agent:cancel_session(response.sessionId)
+            if response and response.sessionId then
+                self.agent:cancel_session(response.sessionId)
+            end
+            return
+        end
+
+        if err or not response then
+            -- no log here, already logged in create_session
+            self.session_id = nil
             return
         end
 
