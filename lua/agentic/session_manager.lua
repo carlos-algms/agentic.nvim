@@ -210,6 +210,7 @@ end
 function SessionManager:_handle_connection_error()
     self._connection_error = true
     self._session_ready_callbacks = {}
+    self.is_generating = false
     self.status_animation:stop()
     self.message_writer:write_message(
         ACPPayloads.generate_agent_message(
