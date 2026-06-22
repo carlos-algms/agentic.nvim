@@ -205,4 +205,32 @@ describe("race: stale create_session after load_acp_session", function()
             "stale new session should be cancelled"
         )
     end)
+
+    -- Race B with a FAILED stale create: response is nil and err is set.
+    -- The staleness guard runs before the `if err or not response` branch, so
+    -- the restored session_id survives. If the guard were moved below that
+    -- branch, the error path would null out session_id and silently drop the
+    -- restore. No cancellation is expected: a failed create has no sessionId.
+    it("Race B: stale create ERRORS after load — restored session survives", function()
+        local create_cb_ref = {}
+        local session = make_session(create_cb_ref, nil) -- load fires immediately
+
+        -- Step 1: new_session in-flight (create deferred)
+        session:new_session()
+        assert.is_nil(session.session_id)
+
+        -- Step 2: load_acp_session — load fires and completes synchronously
+        session:load_acp_session("restored-id", "title", nil)
+        assert.equal("restored-id", session.session_id)
+        assert.is_false(session._is_restoring_session) -- cleared by load callback
+
+        -- Step 3: stale create fails after restore already finished
+        create_cb_ref.cb(nil, { message = "boom" })
+
+        assert.equal(
+            "restored-id",
+            session.session_id,
+            "failed stale create must not null out the restored session"
+        )
+    end)
 end)
