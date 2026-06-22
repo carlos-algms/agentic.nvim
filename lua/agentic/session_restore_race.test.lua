@@ -232,5 +232,10 @@ describe("race: stale create_session after load_acp_session", function()
             session.session_id,
             "failed stale create must not null out the restored session"
         )
+        assert.equal(
+            0,
+            #session._cancelled,
+            "a failed stale create has no sessionId to cancel"
+        )
     end)
 end)
