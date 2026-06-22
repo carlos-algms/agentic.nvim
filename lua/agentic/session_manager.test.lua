@@ -787,7 +787,7 @@ describe("agentic.SessionManager", function()
                 status_animation = { start = function() end },
                 is_generating = true,
                 _start_spinner = SessionManager._start_spinner,
-                _clear_diff_in_buffer = function() end,
+                diff_coordinator = { clear = function() end },
                 _on_tool_call = function() end,
                 chat_history = {
                     update_tool_call = function() end,
@@ -1536,8 +1536,10 @@ describe("agentic.SessionManager", function()
                     end,
                     add_request = function() end,
                 },
-                _show_diff_in_buffer = function() end,
-                _clear_diff_in_buffer = function() end,
+                diff_coordinator = {
+                    show = function() end,
+                    clear = function() end,
+                },
                 _build_handlers = SessionManager._build_handlers,
             } --[[@as agentic.SessionManager]]
         end)

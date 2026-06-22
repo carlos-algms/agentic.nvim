@@ -6,6 +6,7 @@
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
+local ConfigChangeDispatcher = require("agentic.acp.config_change_dispatcher")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -29,6 +30,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field code_selection agentic.ui.CodeSelection
 --- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field config_options agentic.acp.AgentConfigOptions
+--- @field diff_coordinator agentic.ui.DiffCoordinator
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
@@ -50,6 +52,7 @@ function SessionManager:new(tab_page_id)
     local StatusAnimation = require("agentic.ui.status_animation")
     local TodoList = require("agentic.ui.todo_list")
     local AgentConfigOptions = require("agentic.acp.agent_config_options")
+    local DiffCoordinator = require("agentic.ui.diff_coordinator")
 
     self = setmetatable({
         session_id = nil,
@@ -114,6 +117,14 @@ function SessionManager:new(tab_page_id)
     -- there's no autocmd closure to otherwise keep it alive.
     self.file_picker = FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
+
+    self.diff_coordinator = DiffCoordinator:new(
+        self.widget,
+        self.message_writer,
+        function()
+            return self.tab_page_id
+        end
+    )
 
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
         set_mode = function(mode_id, is_legacy)
@@ -396,7 +407,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
     -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
     local is_rejection = tool_call_update.status == "failed"
-    self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
+    self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
 
     -- Remove the permission request when the tool call reaches a terminal status.
     -- `failed` covers user rejection or agent-side error;
@@ -465,24 +476,28 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
 
-    local function callback(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale mode change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change mode to '%s': %s",
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = mode_id,
+        label = "mode",
+        send = function(callback)
+            if is_legacy then
+                self.agent:set_mode(session_id, mode_id, callback)
+            else
+                self.agent:set_config_option(
+                    session_id,
+                    "mode",
                     mode_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+                    callback
+                )
+            end
+        end,
+        on_success = function(result)
             -- needed for backward compatibility
             self.config_options.legacy_agent_modes.current_mode_id = mode_id
 
@@ -501,14 +516,8 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
                     title = "Agentic Mode changed",
                 }
             )
-        end
-    end
-
-    if is_legacy then
-        self.agent:set_mode(self.session_id, mode_id, callback)
-    else
-        self.agent:set_config_option(self.session_id, "mode", mode_id, callback)
-    end
+        end,
+    })
 end
 
 --- Send the newly selected model to the agent
@@ -526,24 +535,28 @@ function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
 
-    local callback = function(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale model change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change model to '%s': %s",
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = model_id,
+        label = "model",
+        send = function(callback)
+            if is_legacy then
+                self.agent:set_model(session_id, model_id, callback)
+            else
+                self.agent:set_config_option(
+                    session_id,
+                    "model",
                     model_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+                    callback
+                )
+            end
+        end,
+        on_success = function(result)
             -- Always update legacy state on success (mirrors _handle_mode_change pattern)
             self.config_options.legacy_agent_models.current_model_id = model_id
 
@@ -561,19 +574,8 @@ function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
             if on_done then
                 on_done()
             end
-        end
-    end
-
-    if is_legacy then
-        self.agent:set_model(self.session_id, model_id, callback)
-    else
-        self.agent:set_config_option(
-            self.session_id,
-            "model",
-            model_id,
-            callback
-        )
-    end
+        end,
+    })
 end
 
 --- Send the newly selected thought level / effort to the agent.
@@ -592,25 +594,20 @@ function SessionManager:_handle_thought_level_change(value)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
     local config_id = thought.id
 
-    local function callback(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale thought_level change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change thought effort level to '%s': %s",
-                    value,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = value,
+        label = "thought effort level",
+        send = function(callback)
+            self.agent:set_config_option(session_id, config_id, value, callback)
+        end,
+        on_success = function(result)
             if result and result.configOptions then
                 Logger.debug("received result after setting thought_level")
                 self:_handle_new_config_options(result.configOptions)
@@ -621,10 +618,8 @@ function SessionManager:_handle_thought_level_change(value)
                 vim.log.levels.INFO,
                 { title = "Agentic Thought Effort Level changed" }
             )
-        end
-    end
-
-    self.agent:set_config_option(self.session_id, config_id, value, callback)
+        end,
+    })
 end
 
 --- NOTE: This is used by users inside hooks, moving/renaming this is a breaking change!
@@ -839,7 +834,7 @@ function SessionManager:_build_handlers()
 
                 local is_rejection = option_id == "reject_once"
                     or option_id == "reject_always"
-                self:_clear_diff_in_buffer(
+                self.diff_coordinator:clear(
                     request.toolCall.toolCallId,
                     is_rejection
                 )
@@ -849,7 +844,7 @@ function SessionManager:_build_handlers()
                 end
             end
 
-            self:_show_diff_in_buffer(request.toolCall.toolCallId)
+            self.diff_coordinator:show(request.toolCall.toolCallId)
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
@@ -1065,69 +1060,6 @@ function SessionManager:add_buffer_diagnostics_to_context(bufnr)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
     local diagnostics = DiagnosticsList.get_buffer_diagnostics(bufnr)
     return self.diagnostics_list:add_many(diagnostics)
-end
-
---- @param tool_call_id string
-function SessionManager:_show_diff_in_buffer(tool_call_id)
-    -- Only show diff if enabled by user config,
-    -- and cursor is in the same tabpage as this session to avoid disruption
-    if
-        not Config.diff_preview.enabled
-        or vim.api.nvim_get_current_tabpage() ~= self.tab_page_id
-    then
-        return
-    end
-
-    local tracker = tool_call_id
-        and self.message_writer.tool_call_blocks[tool_call_id]
-
-    if
-        not tracker
-        or tracker.kind ~= "edit"
-        or tracker.diff == nil
-        or not tracker.file_path
-    then
-        return
-    end
-
-    DiffPreview.show_diff({
-        file_path = tracker.file_path,
-        diff = tracker.diff,
-        get_winid = function(bufnr)
-            local winid = self.widget:find_first_non_widget_window()
-            if not winid then
-                return self.widget:open_editor_window(bufnr)
-            end
-            local ok, err = pcall(vim.api.nvim_win_set_buf, winid, bufnr)
-
-            if not ok then
-                Logger.notify(
-                    "Failed to set buffer in window: " .. tostring(err),
-                    vim.log.levels.WARN
-                )
-                return nil
-            end
-            return winid
-        end,
-    })
-end
-
---- @param tool_call_id string
---- @param is_rejection boolean|nil
-function SessionManager:_clear_diff_in_buffer(tool_call_id, is_rejection)
-    local tracker = tool_call_id
-        and self.message_writer.tool_call_blocks[tool_call_id]
-
-    if
-        not tracker
-        or tracker.kind ~= "edit"
-        or tracker.diff == nil
-        or not tracker.file_path
-    then
-        return
-    end
-
-    DiffPreview.clear_diff(tracker.file_path, is_rejection)
 end
 
 --- @param new_config_options agentic.acp.ConfigOption[]
