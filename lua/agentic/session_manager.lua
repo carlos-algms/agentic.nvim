@@ -1074,8 +1074,6 @@ end
 --- Note: the agent process is shared per provider, so this also resets other
 --- tabs' sessions on the same provider; they re-establish on their next use.
 function SessionManager:reconnect()
-    local session_id = self.session_id
-
     -- Reset the local UI immediately. The respawn also drains the dead request
     -- callbacks, but don't make the user wait for that to see the spinner stop.
     self.is_generating = false
@@ -1086,6 +1084,11 @@ function SessionManager:reconnect()
     self.agent:reconnect()
 
     self.agent:when_ready(function()
+        -- Re-read the session at ready-time rather than capturing it earlier:
+        -- re-initialization is async, so the current session may have changed
+        -- meanwhile and a captured id could be stale. Reloading whatever is
+        -- current avoids clobbering a newer session.
+        local session_id = self.session_id
         local caps = self.agent.agent_capabilities
         if session_id and caps and caps.loadSession then
             self:load_acp_session(session_id)

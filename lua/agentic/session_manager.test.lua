@@ -3231,5 +3231,39 @@ describe("agentic.SessionManager", function()
             assert.is_nil(calls.loaded_with)
             assert.is_true(calls.new)
         end)
+
+        it(
+            "reloads the current session, not a stale one, when ready fires late",
+            function()
+                local calls = { loaded_with = nil }
+                local ready_cb
+                local session = {
+                    session_id = "sess-old",
+                    is_generating = true,
+                    status_animation = { stop = function() end },
+                    agent = {
+                        reconnect = function() end,
+                        -- Defer the ready callback so the session can change
+                        -- before re-initialization completes.
+                        when_ready = function(_self, cb)
+                            ready_cb = cb
+                        end,
+                        agent_capabilities = { loadSession = true },
+                    },
+                    reconnect = SessionManager.reconnect,
+                    load_acp_session = function(_self, id)
+                        calls.loaded_with = id
+                    end,
+                    new_session = function() end,
+                } --[[@as agentic.SessionManager]]
+
+                session:reconnect()
+                -- The session is swapped while the agent is still re-initializing.
+                session.session_id = "sess-new"
+                ready_cb()
+
+                assert.equal("sess-new", calls.loaded_with)
+            end
+        )
     end)
 end)
