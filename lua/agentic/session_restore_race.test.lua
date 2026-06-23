@@ -36,13 +36,9 @@ describe("race: stale create_session after load_acp_session", function()
         end
 
         slash_stub = spy.stub(SlashCommands, "setCommands")
-        payload_stub = spy.stub(
-            ACPPayloads,
-            "generate_user_message",
-            function()
-                return {}
-            end
-        )
+        payload_stub = spy.stub(ACPPayloads, "generate_user_message", function()
+            return {}
+        end)
     end)
 
     after_each(function()
@@ -151,91 +147,100 @@ describe("race: stale create_session after load_acp_session", function()
 
     -- Race A: create_session callback fires BEFORE load_session completes.
     -- _is_restoring_session is still true → our guard should catch it.
-    it("Race A: create fires before load completes — fix should prevent overwrite", function()
-        local create_cb_ref = {}
-        local load_cb_ref = {}
-        local session = make_session(create_cb_ref, load_cb_ref)
+    it(
+        "Race A: create fires before load completes — fix should prevent overwrite",
+        function()
+            local create_cb_ref = {}
+            local load_cb_ref = {}
+            local session = make_session(create_cb_ref, load_cb_ref)
 
-        -- Step 1: new_session in-flight (create deferred)
-        session:new_session()
-        assert.is_nil(session.session_id)
+            -- Step 1: new_session in-flight (create deferred)
+            session:new_session()
+            assert.is_nil(session.session_id)
 
-        -- Step 2: load_acp_session starts but load_session callback is also deferred
-        session:load_acp_session("restored-id", "title", nil)
-        assert.is_true(session._is_restoring_session) -- load hasn't completed yet
+            -- Step 2: load_acp_session starts but load_session callback is also deferred
+            session:load_acp_session("restored-id", "title", nil)
+            assert.is_true(session._is_restoring_session) -- load hasn't completed yet
 
-        -- Step 3: create fires first (while _is_restoring_session is still true)
-        create_cb_ref.cb({ sessionId = "new-id" }, nil)
+            -- Step 3: create fires first (while _is_restoring_session is still true)
+            create_cb_ref.cb({ sessionId = "new-id" }, nil)
 
-        -- Step 4: load completes
-        load_cb_ref.cb(nil)
+            -- Step 4: load completes
+            load_cb_ref.cb(nil)
 
-        assert.equal("restored-id", session.session_id)
-        assert.is_true(
-            vim.tbl_contains(session._cancelled, "new-id"),
-            "stale new session should be cancelled"
-        )
-    end)
+            assert.equal("restored-id", session.session_id)
+            assert.is_true(
+                vim.tbl_contains(session._cancelled, "new-id"),
+                "stale new session should be cancelled"
+            )
+        end
+    )
 
     -- Race B: load_session completes BEFORE create_session callback fires.
     -- session_id is already set by the time create fires; the staleness guard catches it.
-    it("Race B: load completes before create fires — session_id guard prevents overwrite", function()
-        local create_cb_ref = {}
-        local session = make_session(create_cb_ref, nil) -- load fires immediately
+    it(
+        "Race B: load completes before create fires — session_id guard prevents overwrite",
+        function()
+            local create_cb_ref = {}
+            local session = make_session(create_cb_ref, nil) -- load fires immediately
 
-        -- Step 1: new_session in-flight (create deferred)
-        session:new_session()
-        assert.is_nil(session.session_id)
+            -- Step 1: new_session in-flight (create deferred)
+            session:new_session()
+            assert.is_nil(session.session_id)
 
-        -- Step 2: load_acp_session — load fires and completes synchronously
-        session:load_acp_session("restored-id", "title", nil)
-        assert.equal("restored-id", session.session_id)
-        assert.is_false(session._is_restoring_session) -- cleared by load callback
+            -- Step 2: load_acp_session — load fires and completes synchronously
+            session:load_acp_session("restored-id", "title", nil)
+            assert.equal("restored-id", session.session_id)
+            assert.is_false(session._is_restoring_session) -- cleared by load callback
 
-        -- Step 3: stale create fires after load already finished
-        create_cb_ref.cb({ sessionId = "new-id" }, nil)
+            -- Step 3: stale create fires after load already finished
+            create_cb_ref.cb({ sessionId = "new-id" }, nil)
 
-        assert.equal(
-            "restored-id",
-            session.session_id,
-            "stale create_session must not overwrite the restored session"
-        )
-        assert.is_true(
-            vim.tbl_contains(session._cancelled, "new-id"),
-            "stale new session should be cancelled"
-        )
-    end)
+            assert.equal(
+                "restored-id",
+                session.session_id,
+                "stale create_session must not overwrite the restored session"
+            )
+            assert.is_true(
+                vim.tbl_contains(session._cancelled, "new-id"),
+                "stale new session should be cancelled"
+            )
+        end
+    )
 
     -- Race B with a FAILED stale create: response is nil and err is set.
     -- The staleness guard runs before the `if err or not response` branch, so
     -- the restored session_id survives. If the guard were moved below that
     -- branch, the error path would null out session_id and silently drop the
     -- restore. No cancellation is expected: a failed create has no sessionId.
-    it("Race B: stale create ERRORS after load — restored session survives", function()
-        local create_cb_ref = {}
-        local session = make_session(create_cb_ref, nil) -- load fires immediately
+    it(
+        "Race B: stale create ERRORS after load — restored session survives",
+        function()
+            local create_cb_ref = {}
+            local session = make_session(create_cb_ref, nil) -- load fires immediately
 
-        -- Step 1: new_session in-flight (create deferred)
-        session:new_session()
-        assert.is_nil(session.session_id)
+            -- Step 1: new_session in-flight (create deferred)
+            session:new_session()
+            assert.is_nil(session.session_id)
 
-        -- Step 2: load_acp_session — load fires and completes synchronously
-        session:load_acp_session("restored-id", "title", nil)
-        assert.equal("restored-id", session.session_id)
-        assert.is_false(session._is_restoring_session) -- cleared by load callback
+            -- Step 2: load_acp_session — load fires and completes synchronously
+            session:load_acp_session("restored-id", "title", nil)
+            assert.equal("restored-id", session.session_id)
+            assert.is_false(session._is_restoring_session) -- cleared by load callback
 
-        -- Step 3: stale create fails after restore already finished
-        create_cb_ref.cb(nil, { message = "boom" })
+            -- Step 3: stale create fails after restore already finished
+            create_cb_ref.cb(nil, { message = "boom" })
 
-        assert.equal(
-            "restored-id",
-            session.session_id,
-            "failed stale create must not null out the restored session"
-        )
-        assert.equal(
-            0,
-            #session._cancelled,
-            "a failed stale create has no sessionId to cancel"
-        )
-    end)
+            assert.equal(
+                "restored-id",
+                session.session_id,
+                "failed stale create must not null out the restored session"
+            )
+            assert.equal(
+                0,
+                #session._cancelled,
+                "a failed stale create has no sessionId to cancel"
+            )
+        end
+    )
 end)
