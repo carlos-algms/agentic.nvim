@@ -247,6 +247,15 @@ function Agentic.restore_session()
     end)
 end
 
+--- Recover from an unresponsive agent: respawn the agent process and reload the
+--- current session in place, without quitting Neovim. Use when the agent stops
+--- responding (e.g. after the machine resumes from suspend).
+function Agentic.reconnect()
+    SessionRegistry.get_session_for_tab_page(nil, function(session)
+        session:reconnect()
+    end)
+end
+
 --- Restore a session by its ID.
 --- @param session_id string
 function Agentic.restore_session_by_id(session_id)

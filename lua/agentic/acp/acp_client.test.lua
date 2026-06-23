@@ -1827,4 +1827,88 @@ describe("ACPClient", function()
             assert.is_nil(watched_client._watchdog_timer)
         end)
     end)
+
+    describe("reconnect", function()
+        local original_schedule
+
+        before_each(function()
+            -- The drain on disconnect defers rejection via vim.schedule; run it
+            -- inline so it resolves within the test.
+            original_schedule = vim.schedule
+            vim.schedule = function(fn)
+                fn()
+            end
+        end)
+
+        after_each(function()
+            vim.schedule = original_schedule
+        end)
+
+        it("stops the transport and re-initializes back to ready", function()
+            local client = create_ready_client(LOAD_CAPS)
+            assert.equal("ready", client.state)
+
+            -- stop() drives the connection down; _connect() needs "disconnected".
+            transport_stop_stub:invokes(function()
+                if captured_on_state_change then
+                    captured_on_state_change("disconnected")
+                end
+            end)
+
+            -- A fresh start() reconnects and answers the new initialize.
+            transport_start_stub:reset()
+            transport_start_stub:invokes(function()
+                if captured_on_state_change then
+                    captured_on_state_change("connected")
+                end
+            end)
+            transport_send_stub:reset()
+            transport_send_stub:invokes(function(_self, data)
+                local decoded = vim.json.decode(data)
+                if decoded.method == "initialize" and captured_on_message then
+                    captured_on_message({
+                        jsonrpc = "2.0",
+                        id = decoded.id,
+                        result = {
+                            protocolVersion = 1,
+                            agentCapabilities = LOAD_CAPS,
+                            agentInfo = { name = "test" },
+                        },
+                    })
+                end
+            end)
+
+            client:reconnect()
+
+            assert.spy(transport_stop_stub).was.called(1)
+            assert.spy(transport_start_stub).was.called(1)
+            assert.equal("ready", client.state)
+        end)
+
+        it(
+            "rejects in-flight requests when it tears the connection down",
+            function()
+                local client = create_ready_client(LOAD_CAPS)
+
+                --- @type agentic.acp.ACPError|nil
+                local prompt_err
+                client:send_prompt("sess-1", {}, function(_result, err)
+                    prompt_err = err
+                end)
+
+                -- stop() reports the drop, which must drain pending callbacks.
+                transport_stop_stub:invokes(function()
+                    if captured_on_state_change then
+                        captured_on_state_change("disconnected")
+                    end
+                end)
+                transport_start_stub:reset()
+                transport_start_stub:invokes(function() end)
+
+                client:reconnect()
+
+                assert.is_not_nil(prompt_err)
+            end
+        )
+    end)
 end)

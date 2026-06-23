@@ -101,6 +101,74 @@ describe("ACPTransport process lifecycle", function()
     )
 end)
 
+describe("ACPTransport reconnect-in-place", function()
+    local child
+
+    before_each(function()
+        child = MiniTest.new_child_neovim()
+        child.restart({ "-i", "NONE", "-u", "NONE" })
+        child.lua("vim.opt.rtp:prepend(...)", { vim.fn.getcwd() })
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it(
+        "can stop and start the same transport, yielding a fresh live child",
+        function()
+            -- The reconnect feature reuses one transport object: stop() kills the
+            -- child and start() spawns a new one. stop() closes the process
+            -- handle, which cancels the dead child's exit callback, so the killed
+            -- child can never disturb the connection that replaced it.
+            local result = child.lua([[
+                local Transport = require("agentic.acp.acp_transport")
+                _G.states = {}
+                _G.reconnects = 0
+                _G.transport = Transport.create_stdio_transport({
+                    command = "/bin/cat",
+                }, {
+                    on_state_change = function(s)
+                        table.insert(_G.states, s)
+                    end,
+                    on_message = function() end,
+                    on_reconnect = function()
+                        _G.reconnects = _G.reconnects + 1
+                    end,
+                })
+
+                _G.transport:start()           -- child A
+                local pid_a = _G.transport.pid
+                _G.transport:stop()            -- kill A
+                _G.transport:start()           -- child B, same transport object
+                local pid_b = _G.transport.pid
+
+                -- Let any stale callback from A fire before we assert.
+                vim.wait(800)
+
+                local function alive(pid)
+                    vim.fn.system({ "kill", "-0", tostring(pid) })
+                    return vim.v.shell_error == 0
+                end
+
+                return {
+                    final_state = _G.states[#_G.states],
+                    reconnects = _G.reconnects,
+                    different_pid = pid_a ~= pid_b,
+                    b_alive = alive(pid_b),
+                }
+            ]])
+
+            assert.is_true(result.different_pid)
+            assert.equal("connected", result.final_state)
+            assert.equal(0, result.reconnects)
+            assert.is_true(result.b_alive)
+
+            child.lua([[ _G.transport:stop() ]])
+        end
+    )
+end)
+
 describe("ACPTransport.decode_line", function()
     local Transport = require("agentic.acp.acp_transport")
 

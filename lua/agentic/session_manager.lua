@@ -1065,6 +1065,37 @@ function SessionManager:destroy()
     end
 end
 
+--- Recover from an unresponsive agent without quitting Neovim: kill and
+--- respawn the agent process, then reload the current session so the
+--- conversation continues. This is the in-place equivalent of quitting Neovim
+--- and restoring the session, the only recovery available when the child is
+--- hung (e.g. after the machine resumes from suspend with a dead connection).
+---
+--- Note: the agent process is shared per provider, so this also resets other
+--- tabs' sessions on the same provider; they re-establish on their next use.
+function SessionManager:reconnect()
+    local session_id = self.session_id
+
+    -- Reset the local UI immediately. The respawn also drains the dead request
+    -- callbacks, but don't make the user wait for that to see the spinner stop.
+    self.is_generating = false
+    self.status_animation:stop()
+
+    Logger.notify("Reconnecting to agent…", vim.log.levels.INFO)
+
+    self.agent:reconnect()
+
+    self.agent:when_ready(function()
+        local caps = self.agent.agent_capabilities
+        if session_id and caps and caps.loadSession then
+            self:load_acp_session(session_id)
+        else
+            self:new_session()
+        end
+    end)
+end
+
+--- Load an existing ACP session by ID, subscribing to its updates
 --- @param session_id string
 --- @param title string|nil
 --- @param timestamp string|integer|nil Banner timestamp; defaults to now

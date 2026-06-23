@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch, return-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -3161,5 +3161,75 @@ describe("agentic.SessionManager", function()
                 assert.equal("  new   question  ", prompt[2].text)
             end
         )
+    end)
+
+    describe("reconnect", function()
+        --- @type TestStub
+        local notify_stub
+
+        before_each(function()
+            notify_stub = spy.stub(Logger, "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        --- @param overrides table
+        --- @return agentic.SessionManager session, table calls
+        local function make_session(overrides)
+            local calls =
+                { reconnected = false, loaded_with = nil, new = false }
+            local session = {
+                session_id = overrides.session_id,
+                is_generating = true,
+                status_animation = { stop = function() end },
+                agent = {
+                    reconnect = function()
+                        calls.reconnected = true
+                    end,
+                    -- Fire the ready callback synchronously.
+                    when_ready = function(_self, cb)
+                        cb()
+                    end,
+                    agent_capabilities = overrides.caps,
+                },
+                reconnect = SessionManager.reconnect,
+                load_acp_session = function(_self, id)
+                    calls.loaded_with = id
+                end,
+                new_session = function()
+                    calls.new = true
+                end,
+            } --[[@as agentic.SessionManager]]
+            return session, calls
+        end
+
+        it("respawns the agent and reloads the current session", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+            })
+
+            session:reconnect()
+
+            assert.is_true(calls.reconnected)
+            assert.is_false(session.is_generating)
+            assert.equal("sess-1", calls.loaded_with)
+            assert.is_false(calls.new)
+        end)
+
+        it("starts a fresh session when there is none to reload", function()
+            local session, calls = make_session({
+                session_id = nil,
+                caps = { loadSession = true },
+            })
+
+            session:reconnect()
+
+            assert.is_true(calls.reconnected)
+            assert.is_nil(calls.loaded_with)
+            assert.is_true(calls.new)
+        end)
     end)
 end)

@@ -787,6 +787,17 @@ function ACPClient:stop()
     self.transport:stop()
 end
 
+--- Force a fresh agent process in place: kill the current (possibly hung)
+--- child, then respawn and re-initialize. `stop()` drains every pending
+--- callback and moves the state to "disconnected", which `_connect()` requires.
+--- Sessions are not restored here; the caller re-establishes them once the
+--- client reaches "ready" again (via `when_ready`).
+function ACPClient:reconnect()
+    self.transport:stop()
+    self.reconnect_count = 0
+    self:_connect()
+end
+
 function ACPClient:_connect()
     if self.state ~= "disconnected" then
         return
