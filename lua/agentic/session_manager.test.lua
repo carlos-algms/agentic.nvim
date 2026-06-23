@@ -1749,32 +1749,37 @@ describe("agentic.SessionManager", function()
             end)
         end)
 
-        it("fires before the early return on error", function()
-            -- Verifies the contract: hook receives err, then session_id is
-            -- cleared. If the hook fired AFTER the early return, it would
-            -- never run on the error path.
-            local hook_call_order = {}
-            Config.hooks = Config.hooks or {}
-            Config.hooks.on_create_session_response = function(data)
-                table.insert(hook_call_order, {
-                    err = data.err,
-                    session_id_at_fire = data.session_id,
-                })
+        it(
+            "fires on error but preserves an already-owned session_id",
+            function()
+                -- Contract: the hook still fires on the error path, but if a
+                -- session_id is already set when this create callback fires, a
+                -- restore/takeover owns the session. The staleness guard runs
+                -- before the error branch, so even a FAILED stale create must not
+                -- null out the owned session_id.
+                local hook_call_order = {}
+                Config.hooks = Config.hooks or {}
+                Config.hooks.on_create_session_response = function(data)
+                    table.insert(hook_call_order, {
+                        err = data.err,
+                        session_id_at_fire = data.session_id,
+                    })
+                end
+
+                local session = make_session()
+                session.session_id = "owned-id"
+                fake_create_session(session, nil, {
+                    code = -32000,
+                    message = "boom",
+                } --[[@as agentic.acp.ACPError]])
+
+                SessionManager.new_session(session)
+
+                assert.equal(1, #hook_call_order)
+                assert.is_not_nil(hook_call_order[1].err)
+                assert.equal("owned-id", session.session_id)
             end
-
-            local session = make_session()
-            session.session_id = "stale-id"
-            fake_create_session(session, nil, {
-                code = -32000,
-                message = "boom",
-            } --[[@as agentic.acp.ACPError]])
-
-            SessionManager.new_session(session)
-
-            assert.equal(1, #hook_call_order)
-            assert.is_not_nil(hook_call_order[1].err)
-            assert.is_nil(session.session_id)
-        end)
+        )
     end)
 
     describe("initial thought_level wiring", function()
