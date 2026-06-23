@@ -1,3 +1,4 @@
+--- @diagnostic disable: invisible, duplicate-set-field
 local assert = require("tests.helpers.assert")
 local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
@@ -1673,6 +1674,157 @@ describe("ACPClient", function()
 
             assert.is_true(message.diff ~= nil)
             assert.equal(nil, message.body)
+        end)
+    end)
+
+    describe("request watchdog", function()
+        local uv = vim.uv or vim.loop
+        local original_schedule
+        --- @type agentic.acp.ACPClient|nil
+        local watched_client
+
+        before_each(function()
+            -- Run scheduled work inline so the stall/send-fail paths, which
+            -- defer rejection via vim.schedule, resolve within the test.
+            original_schedule = vim.schedule
+            vim.schedule = function(fn)
+                fn()
+            end
+        end)
+
+        after_each(function()
+            vim.schedule = original_schedule
+            -- Release any real timer a test left armed.
+            if watched_client then
+                watched_client:_disarm_watchdog()
+                watched_client = nil
+            end
+        end)
+
+        it(
+            "rejects a pending control request with a timeout after silence",
+            function()
+                watched_client = create_ready_client(LIST_CAPS)
+
+                --- @type agentic.acp.ACPError|nil
+                local received_err
+                watched_client:list_sessions("/tmp", function(_result, err)
+                    received_err = err
+                end)
+                -- No response stubbed: the callback is still parked.
+                assert.is_nil(received_err)
+
+                -- Pretend no message has arrived for far longer than the timeout.
+                watched_client._last_activity = 0
+                watched_client:_check_watchdog()
+
+                assert.is_not_nil(received_err)
+                --- @cast received_err agentic.acp.ACPError
+                assert.equal(
+                    watched_client.ERROR_CODES.TIMEOUT_ERROR,
+                    received_err.code
+                )
+            end
+        )
+
+        it("does not trip while inbound activity keeps arriving", function()
+            watched_client = create_ready_client(LIST_CAPS)
+
+            --- @type agentic.acp.ACPError|nil
+            local received_err
+            watched_client:list_sessions("/tmp", function(_result, err)
+                received_err = err
+            end)
+
+            -- Activity just happened: the silence window has not elapsed.
+            watched_client._last_activity = uv.now()
+            watched_client:_check_watchdog()
+
+            assert.is_nil(received_err)
+        end)
+
+        it("never times out session/prompt, even after long silence", function()
+            watched_client = create_ready_client(LOAD_CAPS)
+
+            --- @type agentic.acp.ACPError|nil
+            local received_err
+            watched_client:send_prompt("sess-1", {}, function(_result, err)
+                received_err = err
+            end)
+
+            -- A prompt must not arm the silence watchdog at all.
+            assert.is_nil(watched_client._watchdog_timer)
+
+            watched_client._last_activity = 0
+            watched_client:_check_watchdog()
+
+            assert.is_nil(received_err)
+        end)
+
+        it(
+            "times out a stalled control request without touching an in-flight prompt",
+            function()
+                watched_client = create_ready_client(LIST_CAPS)
+
+                --- @type agentic.acp.ACPError|nil
+                local prompt_err
+                watched_client:send_prompt("sess-1", {}, function(_result, err)
+                    prompt_err = err
+                end)
+
+                --- @type agentic.acp.ACPError|nil
+                local control_err
+                watched_client:list_sessions("/tmp", function(_result, err)
+                    control_err = err
+                end)
+
+                watched_client._last_activity = 0
+                watched_client:_check_watchdog()
+
+                -- Only the control request is rejected; the prompt is left alone.
+                assert.is_not_nil(control_err)
+                --- @cast control_err agentic.acp.ACPError
+                assert.equal(
+                    watched_client.ERROR_CODES.TIMEOUT_ERROR,
+                    control_err.code
+                )
+                assert.is_nil(prompt_err)
+            end
+        )
+
+        it("rejects immediately when the transport send fails", function()
+            watched_client = create_ready_client(LIST_CAPS)
+            transport_send_stub:reset()
+            transport_send_stub:invokes(function()
+                return false
+            end)
+
+            --- @type agentic.acp.ACPError|nil
+            local received_err
+            watched_client:list_sessions("/tmp", function(_result, err)
+                received_err = err
+            end)
+
+            assert.is_not_nil(received_err)
+            --- @cast received_err agentic.acp.ACPError
+            assert.equal(
+                watched_client.ERROR_CODES.TRANSPORT_ERROR,
+                received_err.code
+            )
+        end)
+
+        it("disarms the timer once no control request is pending", function()
+            watched_client = create_ready_client(LIST_CAPS)
+            -- The initialize round-trip during setup resolved, so nothing armed.
+            assert.is_nil(watched_client._watchdog_timer)
+
+            stub_send_response(watched_client, "session/list", {
+                sessions = {},
+            }, nil)
+            watched_client:list_sessions("/tmp", function() end)
+
+            -- Response resolved synchronously, so the watchdog disarmed again.
+            assert.is_nil(watched_client._watchdog_timer)
         end)
     end)
 end)
