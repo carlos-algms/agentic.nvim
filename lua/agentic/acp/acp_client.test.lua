@@ -1715,7 +1715,7 @@ describe("ACPClient", function()
                 assert.is_nil(received_err)
 
                 -- Pretend no message has arrived for far longer than the timeout.
-                watched_client._last_activity = 0
+                watched_client._last_activity = uv.now() - 70000
                 watched_client:_check_watchdog()
 
                 assert.is_not_nil(received_err)
@@ -1776,7 +1776,7 @@ describe("ACPClient", function()
             -- A prompt must not arm the silence watchdog at all.
             assert.is_nil(watched_client._watchdog_timer)
 
-            watched_client._last_activity = 0
+            watched_client._last_activity = uv.now() - 70000
             watched_client:_check_watchdog()
 
             assert.is_nil(received_err)
@@ -1799,7 +1799,7 @@ describe("ACPClient", function()
                     control_err = err
                 end)
 
-                watched_client._last_activity = 0
+                watched_client._last_activity = uv.now() - 70000
                 watched_client:_check_watchdog()
 
                 -- Only the control request is rejected; the prompt is left alone.
