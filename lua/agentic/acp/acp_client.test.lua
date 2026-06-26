@@ -1743,6 +1743,27 @@ describe("ACPClient", function()
             assert.is_nil(received_err)
         end)
 
+        it(
+            "spares a pending request if activity resumes before stall handler fires",
+            function()
+                watched_client = create_ready_client(LIST_CAPS)
+
+                --- @type agentic.acp.ACPError|nil
+                local received_err
+                watched_client:list_sessions("/tmp", function(_result, err)
+                    received_err = err
+                end)
+
+                -- Simulate a response arriving in the vim.schedule gap between
+                -- _check_watchdog disarming and _on_request_stall running.
+                -- The stall handler must re-check _last_activity and bail out.
+                watched_client._last_activity = uv.now()
+                watched_client:_on_request_stall(60000)
+
+                assert.is_nil(received_err)
+            end
+        )
+
         it("never times out session/prompt, even after long silence", function()
             watched_client = create_ready_client(LOAD_CAPS)
 

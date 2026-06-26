@@ -300,8 +300,7 @@ function ACPClient:_check_watchdog()
         return
     end
 
-    local timeout = self.provider_config.timeout
-        or DEFAULT_REQUEST_TIMEOUT_MS
+    local timeout = self.provider_config.timeout or DEFAULT_REQUEST_TIMEOUT_MS
 
     if uv.now() - self._last_activity >= timeout then
         -- Disarm here (still cheap, fast-context-safe) so a slow main loop
@@ -321,6 +320,12 @@ end
 --- @param timeout number
 function ACPClient:_on_request_stall(timeout)
     if not next(self._watched_pending) then
+        return
+    end
+
+    -- Re-check: a response may have arrived in the gap between the watchdog
+    -- disarming and this handler running via vim.schedule.
+    if uv.now() - self._last_activity < timeout then
         return
     end
 
