@@ -14,7 +14,7 @@
 --- Race B is the more common one in practice: the user has to interact with the
 --- restore picker, giving load_session time to complete before create fires.
 
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, param-type-mismatch
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, param-type-mismatch, duplicate-set-field
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -36,7 +36,8 @@ describe("race: stale create_session after load_acp_session", function()
         end
 
         slash_stub = spy.stub(SlashCommands, "setCommands")
-        payload_stub = spy.stub(ACPPayloads, "generate_user_message", function()
+        payload_stub = spy.stub(ACPPayloads, "generate_user_message")
+        payload_stub:invokes(function()
             return {}
         end)
     end)
@@ -70,11 +71,11 @@ describe("race: stale create_session after load_acp_session", function()
                 provider_config = { name = "test-provider" },
                 agent_info = nil,
 
-                create_session = function(_, handlers, cb)
+                create_session = function(_, _handlers, cb)
                     create_cb_ref.cb = cb -- capture; do NOT call yet
                 end,
 
-                load_session = function(_, sid, cwd, mcp, handlers, cb)
+                load_session = function(_, _sid, _cwd, _mcp, _handlers, cb)
                     if load_cb_ref then
                         load_cb_ref.cb = cb -- capture; caller fires manually (Race A)
                     else
