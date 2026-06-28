@@ -4,6 +4,7 @@ local BufferGuard = require("agentic.ui.buffer_guard")
 local ChatNavigation = require("agentic.ui.chat_navigation")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
+local StatusLine = require("agentic.ui.status_line")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
 
@@ -46,6 +47,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
+--- @field _status_line agentic.ui.StatusLine
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -60,6 +62,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
+    self._status_line = StatusLine:new()
 
     self:_initialize()
     self:_bind_events_to_change_headers()
@@ -108,6 +111,13 @@ function ChatWidget:show(opts)
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
     })
+
+    self._status_line:attach(
+        self.tab_page_id,
+        self.win_nrs,
+        self.current_position
+    )
+    self._status_line:reposition()
 end
 
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
@@ -234,6 +244,10 @@ function ChatWidget:destroy()
 
     if not tab_closing then
         self:hide()
+    end
+
+    if self._status_line then
+        self._status_line:destroy()
     end
 
     self:_close_hidden_chat_window()
@@ -608,6 +622,7 @@ function ChatWidget:close_optional_window(panel_name)
             self.current_position
         )
     end)
+    self._status_line:reposition()
 end
 
 --- Wraps a window-closing operation with the _closing flag so the

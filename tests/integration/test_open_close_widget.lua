@@ -5,13 +5,13 @@ describe("Open and Close Chat Widget", function()
     local child = Child:new()
 
     --- @param tabpage number
-    --- @return string[] sorted filetypes (hidden floats excluded)
+    --- @return string[] sorted filetypes (floats and hidden windows excluded)
     local function get_tabpage_filetypes(tabpage)
         local winids = child.api.nvim_tabpage_list_wins(tabpage)
         local filetypes = {}
         for _, winid in ipairs(winids) do
             local cfg = child.api.nvim_win_get_config(winid)
-            if not cfg.hide then
+            if not cfg.hide and cfg.relative == "" then
                 local bufnr = child.api.nvim_win_get_buf(winid)
                 local ft =
                     child.lua_get(string.format([[vim.bo[%d].filetype]], bufnr))

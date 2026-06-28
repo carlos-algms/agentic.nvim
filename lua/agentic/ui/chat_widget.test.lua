@@ -953,4 +953,130 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
         end)
     end)
+
+    describe("StatusLine integration", function()
+        local widget
+        local tab_page_id
+        local original_position
+
+        before_each(function()
+            original_position = Config.windows.position
+            Config.windows.position = "right"
+
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local on_submit_spy = spy.new(function() end)
+            widget =
+                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+
+            Config.windows.position = original_position
+        end)
+
+        it("show() creates a valid status float", function()
+            widget:show()
+
+            assert.is_not_nil(widget._status_line)
+            assert.is_not_nil(widget._status_line._float_winid)
+            assert.is_true(
+                vim.api.nvim_win_is_valid(widget._status_line._float_winid)
+            )
+        end)
+
+        it(
+            "close_optional_window() repositions float to new bottom-most anchor",
+            function()
+                -- Fill code buffer so it appears as a dynamic panel
+                local bufnr = widget.buf_nrs.code
+                vim.bo[bufnr].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "local x = 1" }
+                )
+
+                widget:show()
+
+                -- With code panel open (bottom layout would differ; right layout:
+                -- anchor is always input). Close code panel and confirm float
+                -- still has a valid anchor (reposition was called).
+                local float_winid = widget._status_line._float_winid
+                assert.is_not_nil(float_winid)
+                assert.is_true(vim.api.nvim_win_is_valid(float_winid))
+
+                widget:close_optional_window("code")
+
+                -- Float must still be valid after close_optional_window
+                assert.is_true(
+                    vim.api.nvim_win_is_valid(widget._status_line._float_winid)
+                )
+                -- For right layout, anchor is always input after code closes
+                local cfg = vim.api.nvim_win_get_config(
+                    widget._status_line._float_winid
+                )
+                assert.equal(widget.win_nrs.input, cfg.win)
+            end
+        )
+
+        it(
+            "destroy() closes the status float and clears its augroup",
+            function()
+                widget:show()
+
+                local float_winid = widget._status_line._float_winid
+                assert.is_not_nil(float_winid)
+                assert.is_true(vim.api.nvim_win_is_valid(float_winid))
+
+                local group_name = "AgenticStatusLine_" .. tab_page_id
+
+                widget:destroy()
+                widget = nil
+
+                assert.is_false(vim.api.nvim_win_is_valid(float_winid))
+                -- Group must be gone: querying it throws
+                local ok =
+                    pcall(vim.api.nvim_get_autocmds, { group = group_name })
+                assert.is_false(ok)
+            end
+        )
+
+        it(
+            "rotate_layout re-attaches cleanly: exactly one float after hide+show",
+            function()
+                widget:show()
+
+                local float_before = widget._status_line._float_winid
+                assert.is_not_nil(float_before)
+                assert.is_true(vim.api.nvim_win_is_valid(float_before))
+
+                widget:rotate_layout({ "right", "bottom" })
+
+                -- The old float must be gone (hide closed it; show re-created via attach+reposition)
+                -- and a new valid float must exist
+                local float_after = widget._status_line._float_winid
+                assert.is_not_nil(float_after)
+                assert.is_true(vim.api.nvim_win_is_valid(float_after))
+
+                -- Exactly one AgenticStatusLine augroup for this tab
+                local group_name = "AgenticStatusLine_" .. tab_page_id
+                local cmds = vim.api.nvim_get_autocmds({ group = group_name })
+                -- Should have exactly 2 autocmds: VimResized + WinResized
+                assert.equal(2, #cmds)
+            end
+        )
+    end)
 end)

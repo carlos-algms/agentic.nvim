@@ -10,7 +10,7 @@ local FLOAT_ZINDEX = 50
 --- Priority for position="bottom": todos > diagnostics > files > code > input > chat.
 --- Priority for position="left"/"right": input > chat.
 --- Returns nil when no valid winid is found.
---- @param win_nrs table<string, integer>
+--- @param win_nrs table<string, integer|nil>
 --- @param position string
 --- @return integer|nil
 local function bottom_anchor_winid(win_nrs, position)
@@ -40,7 +40,7 @@ end
 
 --- @class agentic.ui.StatusLine
 --- @field _tab_page_id? integer Owning tabpage id
---- @field _win_nrs? table<string, integer> Reference to ChatWidget.win_nrs
+--- @field _win_nrs? table<string, integer|nil> Reference to ChatWidget.win_nrs
 --- @field _position? "left"|"right"|"bottom" Layout position
 --- @field _text string Status text content (default "")
 --- @field _float_winid? integer Float window id, nil when not open
@@ -72,7 +72,7 @@ end
 --- Also safe to re-attach with a different tab_page_id: the old augroup is
 --- deleted first so "AgenticStatusLine_<old_tab>" does not orphan.
 --- @param tab_page_id integer
---- @param win_nrs table<string, integer>
+--- @param win_nrs table<string, integer|nil>
 --- @param position "left"|"right"|"bottom"
 function StatusLine:attach(tab_page_id, win_nrs, position)
     -- Guard: delete the existing augroup before creating a new one.
