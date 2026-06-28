@@ -1,5 +1,6 @@
 --- @diagnostic disable: invisible
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 
 local function normalize(p)
     return vim.fn.resolve(vim.fn.fnamemodify(p, ":p"))
@@ -126,5 +127,94 @@ describe("WindowDecoration._set_buffer_name", function()
         WindowDecoration._set_buffer_name(bufnr, name)
 
         assert_buf_name(name, bufnr)
+    end)
+end)
+
+describe("WindowDecoration.render_header", function()
+    local child = Child:new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    --- Build a buffer displayed in a window, install header + buffer_name
+    --- function configs that record their 2nd arg, then render_header with a
+    --- session_state carrying a unique marker. Returns recorded markers.
+    --- @return table recorded { header = any, buffer_name = any, header_text = string }
+    local function render_with_session_state()
+        return child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local Config = require("agentic.config")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+
+            Config.headers = Config.headers or {}
+            Config.headers.chat = function(parts, session_state)
+                _G.recorded_header_marker =
+                    session_state and session_state.marker or nil
+                return parts.title
+            end
+
+            Config.windows.chat.buffer_name = function(parts, session_state)
+                _G.recorded_buffer_name_marker =
+                    session_state and session_state.marker or nil
+                return "chat-buf-name"
+            end
+
+            local session_state = { marker = "SS_MARKER" }
+            WindowDecoration.render_header(bufnr, "chat", nil, session_state)
+
+            return bufnr
+        ]])
+    end
+
+    it("passes session_state as 2nd arg to header function", function()
+        render_with_session_state()
+        child.flush()
+
+        assert.equal("SS_MARKER", child.lua_get("_G.recorded_header_marker"))
+    end)
+
+    it("passes session_state as 2nd arg to buffer_name function", function()
+        render_with_session_state()
+        child.flush()
+
+        assert.equal(
+            "SS_MARKER",
+            child.lua_get("_G.recorded_buffer_name_marker")
+        )
+    end)
+
+    it("legacy single-arg header fn still works", function()
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local Config = require("agentic.config")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+
+            Config.headers = Config.headers or {}
+            -- Single-arg fn: ignores the new 2nd arg entirely.
+            Config.headers.chat = function(parts)
+                _G.legacy_returned = parts.title
+                return parts.title
+            end
+
+            WindowDecoration.render_header(
+                bufnr,
+                "chat",
+                nil,
+                { marker = "SS_MARKER" }
+            )
+        ]])
+        child.flush()
+
+        local returned = child.lua_get("_G.legacy_returned")
+        assert.is_true(returned:find("Agentic Chat", 1, true) ~= nil)
     end)
 end)

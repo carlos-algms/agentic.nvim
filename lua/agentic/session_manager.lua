@@ -149,6 +149,7 @@ function SessionManager:new(tab_page_id)
 
     self.session_state =
         SessionState:new(self.config_options, self.agent.provider_config.name)
+    self.widget.session_state = self.session_state
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then

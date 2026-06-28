@@ -46,6 +46,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
+--- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -57,6 +58,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self.win_nrs = {}
     self.current_position = Config.windows.position
     self._header_refresh_scheduled = false
+    self.session_state = nil
 
     self.on_submit_input = on_submit_input
     self.tab_page_id = tab_page_id
@@ -596,7 +598,12 @@ function ChatWidget:render_header(window_name, context)
         return
     end
 
-    WindowDecoration.render_header(bufnr, window_name, context)
+    WindowDecoration.render_header(
+        bufnr,
+        window_name,
+        context,
+        self.session_state
+    )
 end
 
 --- @param panel_name agentic.ui.ChatWidget.PanelNames

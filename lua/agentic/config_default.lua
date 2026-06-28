@@ -13,7 +13,7 @@
 --- | "kiro-acp"
 --- | "pi-acp"
 
---- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts): string|nil
+--- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
 --- User config headers - each panel can have either config parts or a custom render function
 --- Customize window headers for each panel in the chat widget.
@@ -91,7 +91,7 @@
 --- Overrides default options (wrap, linebreak, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
---- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts): string|nil
+--- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
 --- @class agentic.UserConfig.Windows.Chat
 --- @field buffer_name? string|agentic.UserConfig.BufferNameFn
