@@ -349,7 +349,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             option = mode_option,
             current = "normal",
             other_value = "plan",
-            config_id = "mode",
+            config_id = "mode-1",
             legacy_method = "set_mode",
             set_legacy = function(target)
                 target.legacy_agent_modes:set_modes({
@@ -370,7 +370,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             option = model_option,
             current = "claude-sonnet",
             other_value = "claude-opus",
-            config_id = "model",
+            config_id = "model-1",
             legacy_method = "set_model",
             set_legacy = function(target)
                 target.legacy_agent_models:set_models({
@@ -542,7 +542,7 @@ describe("agentic.acp.AgentConfigOptions", function()
 
                 assert.stub(set_config_stub).was.called(1)
                 local call = set_config_stub.calls[1]
-                assert.equal("model", call[3])
+                assert.equal("model-1", call[3])
                 assert.equal("claude-opus", call[4])
             end
         )
@@ -558,7 +558,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             method = "_show_mode_selector",
             option = mode_option,
             second_value = "plan",
-            config_id = "mode",
+            config_id = "mode-1",
             legacy_method = "set_mode",
             no_support_msg = "mode switching",
             legacy_setter = function(target)
@@ -584,7 +584,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             method = "_show_model_selector",
             option = model_option,
             second_value = "claude-opus",
-            config_id = "model",
+            config_id = "model-1",
             legacy_method = "set_model",
             no_support_msg = "model switching",
             legacy_setter = function(target)

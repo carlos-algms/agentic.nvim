@@ -14,7 +14,7 @@ local CATEGORY_ALIASES = {
 --- @class agentic.acp.AgentConfigOptions.Callbacks
 --- @field on_set_mode_success fun(mode_id: string)
 --- @field on_config_options_applied fun()
---- @field get_agent_instance fun(): agentic.acp.ACPClient
+--- @field get_agent_instance fun(): agentic.acp.ACPClient|nil
 --- @field get_session_id fun(): string|nil
 
 --- @class agentic.acp.AgentConfigOptions
@@ -546,7 +546,7 @@ function AgentConfigOptions:handle_mode_change(mode_id, is_legacy)
     if is_legacy then
         agent:set_mode(session_id, mode_id, response)
     else
-        agent:set_config_option(session_id, "mode", mode_id, response)
+        agent:set_config_option(session_id, self.mode.id, mode_id, response)
     end
 end
 
@@ -595,7 +595,7 @@ function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
     if is_legacy then
         agent:set_model(session_id, model_id, response)
     else
-        agent:set_config_option(session_id, "model", model_id, response)
+        agent:set_config_option(session_id, self.model.id, model_id, response)
     end
 end
 
