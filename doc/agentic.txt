@@ -308,6 +308,9 @@ windows ~
   `stack_width_ratio`  Ratio for stacked panels. Default: `0.4`.
   `buffer_name`        Name of the window buffer. String title
                        or function returning string title.
+                       Functions receive the header parts and an
+                       optional live session state second argument
+                       (|agentic-session-state|).
                        Default: window header title.
                        See |agentic-config-headers|.
 
@@ -351,6 +354,9 @@ headers ~
   table with `title` and `suffix` fields, or a function that receives
   header parts and returns a custom string.
 
+  Header functions receive an optional second argument, the live
+  session state. See |agentic-session-state|.
+
 >lua
   --- @type agentic.PartialUserConfig
   opts = {
@@ -361,6 +367,62 @@ headers ~
       },
       input = function(parts)
         return parts.title .. " | custom"
+      end,
+    },
+  }
+<
+
+                                          *agentic-session-state*
+Session state ~
+
+  Header functions (|agentic-config-headers|) and `buffer_name`
+  functions (|agentic-configuration|) receive an optional second
+  argument exposing live session data: current model, mode, thought
+  level, context-window usage, cost, and provider name.
+
+  The session-state argument is provided for the `chat` and `input`
+  panels only. For every other panel it is `nil`. It is also `nil`
+  on the very first frame and after a session restore until the next
+  usage update arrives.
+
+  Every getter is nil-able by contract; always nil-check before use.
+
+  Getters: ~
+
+  `get_model_id()`            (string|nil)  Current model id.
+  `get_model_name()`          (string|nil)  Current model display name.
+  `get_mode_id()`             (string|nil)  Current mode id.
+  `get_mode_name()`           (string|nil)  Current mode display name.
+  `get_thought_level_id()`    (string|nil)  Current thought level id.
+  `get_thought_level_name()`  (string|nil)  Thought level display name.
+  `get_context_used()`        (number|nil)  Tokens currently in context.
+  `get_context_size()`        (number|nil)  Total context window size.
+  `get_cost_amount()`         (number|nil)  Cumulative session cost amount.
+  `get_cost_currency()`       (string|nil)  Cost currency code (e.g. "USD").
+  `get_provider_name()`       (string|nil)  Provider display name.
+
+  Usage getters (`get_context_used`, `get_context_size`,
+  `get_cost_amount`, `get_cost_currency`) stay `nil` until the agent
+  emits the first usage update, and again after a session restore
+  until the next one.
+
+>lua
+  --- @type agentic.PartialUserConfig
+  opts = {
+    headers = {
+      chat = function(parts, session_state)
+        local header = parts.title
+        if session_state then
+          local used = session_state:get_context_used()
+          if used then
+            header = header .. " | " .. used .. " tok"
+          end
+          local cost = session_state:get_cost_amount()
+          if cost then
+            header = header .. " | $" .. string.format("%.2f", cost)
+          end
+        end
+        return header
       end,
     },
   }

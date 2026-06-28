@@ -470,6 +470,63 @@ header parts:
 }
 ```
 
+#### Live Session State
+
+Header and `buffer_name` functions receive an optional second argument,
+`session_state`, exposing live session data (current model, mode, thought level,
+context-window usage, cost, and provider name).
+
+The `session_state` argument is only provided for the **chat** and **input**
+panels. For every other panel it is `nil`. It is also `nil` on the very first
+frame and after a session restore until the next usage update arrives.
+
+Every getter is nil-able by contract — always nil-check before use.
+
+`SessionState` getters:
+
+| Getter                     | Returns       | Notes                               |
+| -------------------------- | ------------- | ----------------------------------- |
+| `get_model_id()`           | `string\|nil` | Current model id                    |
+| `get_model_name()`         | `string\|nil` | Current model display name          |
+| `get_mode_id()`            | `string\|nil` | Current mode id                     |
+| `get_mode_name()`          | `string\|nil` | Current mode display name           |
+| `get_thought_level_id()`   | `string\|nil` | Current thought level id            |
+| `get_thought_level_name()` | `string\|nil` | Current thought level display name  |
+| `get_context_used()`       | `number\|nil` | Tokens currently in context         |
+| `get_context_size()`       | `number\|nil` | Total context window size in tokens |
+| `get_cost_amount()`        | `number\|nil` | Cumulative session cost amount      |
+| `get_cost_currency()`      | `string\|nil` | Cost currency code (e.g. `"USD"`)   |
+| `get_provider_name()`      | `string\|nil` | Provider display name               |
+
+Usage getters (`get_context_used`, `get_context_size`, `get_cost_amount`,
+`get_cost_currency`) stay `nil` until the agent emits the first usage update, and
+again after a session restore until the next one.
+
+```lua
+{
+  "carlos-algms/agentic.nvim",
+  --- @type agentic.PartialUserConfig
+  opts = {
+    headers = {
+      chat = function(parts, session_state)
+        local header = parts.title
+        if session_state then
+          local used = session_state:get_context_used()
+          if used then
+            header = header .. " | " .. used .. " tok"
+          end
+          local cost = session_state:get_cost_amount()
+          if cost then
+            header = header .. " | $" .. string.format("%.2f", cost)
+          end
+        end
+        return header
+      end,
+    },
+  },
+}
+```
+
 ### Customizing Buffer Names
 
 By default, buffer names mirror the window header titles. You can override them
@@ -508,6 +565,11 @@ You can also use a function that receives the header parts and returns a string:
   },
 }
 ```
+
+`buffer_name` functions also receive the optional `session_state` second
+argument (chat and input panels only, `nil` elsewhere). See
+[Live Session State](#live-session-state) for the getter list and nil-check
+rules.
 
 When a panel has no `buffer_name` set, it falls back to the header title.
 

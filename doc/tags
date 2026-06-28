@@ -50,6 +50,7 @@ agentic-permission-icons	agentic.txt	/*agentic-permission-icons*
 agentic-render-markdown	agentic.txt	/*agentic-render-markdown*
 agentic-requirements	agentic.txt	/*agentic-requirements*
 agentic-session-restore	agentic.txt	/*agentic-session-restore*
+agentic-session-state	agentic.txt	/*agentic-session-state*
 agentic-slash-commands	agentic.txt	/*agentic-slash-commands*
 agentic-spinner-chars	agentic.txt	/*agentic-spinner-chars*
 agentic-status-icons	agentic.txt	/*agentic-status-icons*
