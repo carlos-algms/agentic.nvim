@@ -144,7 +144,7 @@ describe("WindowDecoration.render_header", function()
     --- Build a buffer displayed in a window, install header + buffer_name
     --- function configs that record their 2nd arg, then render_header with a
     --- session_state carrying a unique marker. Returns recorded markers.
-    --- @return table recorded { header = any, buffer_name = any, header_text = string }
+    --- @return integer bufnr the buffer rendered into; recorded markers are read via _G globals
     local function render_with_session_state()
         return child.lua([[
             local WindowDecoration = require("agentic.ui.window_decoration")
