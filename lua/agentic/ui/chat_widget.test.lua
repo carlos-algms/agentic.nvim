@@ -1065,17 +1065,62 @@ describe("agentic.ui.ChatWidget", function()
 
                 widget:rotate_layout({ "right", "bottom" })
 
-                -- The old float must be gone (hide closed it; show re-created via attach+reposition)
-                -- and a new valid float must exist
+                -- hide() does NOT close the float; show()->attach()->reposition()
+                -- reuses it via nvim_win_set_config. The winid must be unchanged.
                 local float_after = widget._status_line._float_winid
                 assert.is_not_nil(float_after)
                 assert.is_true(vim.api.nvim_win_is_valid(float_after))
+                assert.equal(float_before, float_after)
 
                 -- Exactly one AgenticStatusLine augroup for this tab
                 local group_name = "AgenticStatusLine_" .. tab_page_id
                 local cmds = vim.api.nvim_get_autocmds({ group = group_name })
                 -- Should have exactly 2 autocmds: VimResized + WinResized
                 assert.equal(2, #cmds)
+            end
+        )
+
+        it(
+            "close_optional_window() in bottom layout re-anchors float to new bottom-most window",
+            function()
+                -- Switch to bottom layout for this test
+                Config.windows.position = "bottom"
+                widget.current_position = "bottom"
+
+                -- Fill code buffer so it opens as a dynamic panel
+                local code_bufnr = widget.buf_nrs.code
+                vim.bo[code_bufnr].modifiable = true
+                vim.api.nvim_buf_set_lines(
+                    code_bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "local x = 1" }
+                )
+
+                widget:show()
+
+                -- In bottom layout with code panel open, code is below input,
+                -- so float should be anchored to code (bottom-most).
+                local float_winid = widget._status_line._float_winid
+                assert.is_not_nil(float_winid)
+                assert.is_true(vim.api.nvim_win_is_valid(float_winid))
+
+                local cfg_before = vim.api.nvim_win_get_config(float_winid)
+                assert.equal(widget.win_nrs.code, cfg_before.win)
+
+                -- Close the code panel; input becomes the new bottom-most window
+                widget:close_optional_window("code")
+
+                -- Float must still be valid
+                assert.is_true(
+                    vim.api.nvim_win_is_valid(widget._status_line._float_winid)
+                )
+                -- Float config.win must now point to input (new bottom-most)
+                local cfg_after = vim.api.nvim_win_get_config(
+                    widget._status_line._float_winid
+                )
+                assert.equal(widget.win_nrs.input, cfg_after.win)
             end
         )
     end)

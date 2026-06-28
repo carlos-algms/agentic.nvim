@@ -246,9 +246,7 @@ function ChatWidget:destroy()
         self:hide()
     end
 
-    if self._status_line then
-        self._status_line:destroy()
-    end
+    self._status_line:destroy()
 
     self:_close_hidden_chat_window()
 

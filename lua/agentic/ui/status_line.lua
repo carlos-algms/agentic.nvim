@@ -224,7 +224,15 @@ end
 --- group. Idempotent: safe to call more than once.
 function StatusLine:destroy()
     if self._float_winid and vim.api.nvim_win_is_valid(self._float_winid) then
-        pcall(vim.api.nvim_win_close, self._float_winid, true)
+        -- Guard: on Neovim 0.11.x Linux, nvim_win_is_valid returns true during
+        -- TabClosed but nvim_win_close segfaults (pcall cannot catch C crashes).
+        -- Mirror the same tabpage check used in WidgetLayout.close and
+        -- ChatWidget:_close_hidden_chat_window.
+        local tab_ok, win_tab =
+            pcall(vim.api.nvim_win_get_tabpage, self._float_winid)
+        if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
+            pcall(vim.api.nvim_win_close, self._float_winid, true)
+        end
     end
     self._float_winid = nil
 
