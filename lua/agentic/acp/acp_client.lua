@@ -1,4 +1,5 @@
 local Logger = require("agentic.utils.logger")
+local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
 
 --- Known ACP protocol tool call kinds.
@@ -467,6 +468,20 @@ function ACPClient:__build_tool_call_message(update)
         if first_location and first_location.path then
             message.file_path = first_location.path
         end
+    end
+
+    -- Last resort: render rawInput as expanded JSON so tool calls with no
+    -- content and no diff still show their input (e.g. OpenCode's bash
+    -- command lives only in rawInput). Skip `read` -- its renderer treats
+    -- #body as a line count and would print a bogus number.
+    if
+        not message.body
+        and not message.diff
+        and update.kind ~= "read"
+        and raw_input
+        and not vim.tbl_isempty(raw_input)
+    then
+        message.body = vim.split(JsonFormat.format_value(raw_input), "\n")
     end
 
     return message
