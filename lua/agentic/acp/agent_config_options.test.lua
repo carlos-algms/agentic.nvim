@@ -735,6 +735,72 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
     end
 
+    --- get_model_id / get_mode_id resolve the current id across config options
+    --- and legacy state in ONE place: config currentValue wins, legacy id is
+    --- the fallback, nil when neither source is populated.
+    for _, case in ipairs({
+        {
+            method = "get_model_id",
+            option = model_option,
+            config_id = "claude-sonnet",
+            set_legacy = function(target)
+                target.legacy_agent_models:set_models({
+                    availableModels = {
+                        {
+                            modelId = "legacy-opus",
+                            name = "Legacy",
+                            description = "",
+                        },
+                    },
+                    currentModelId = "legacy-opus",
+                })
+            end,
+            legacy_id = "legacy-opus",
+        },
+        {
+            method = "get_mode_id",
+            option = mode_option,
+            config_id = "normal",
+            set_legacy = function(target)
+                target.legacy_agent_modes:set_modes({
+                    availableModes = {
+                        {
+                            id = "legacy-plan",
+                            name = "Legacy",
+                            description = "",
+                        },
+                    },
+                    currentModeId = "legacy-plan",
+                })
+            end,
+            legacy_id = "legacy-plan",
+        },
+    }) do
+        describe(case.method, function()
+            it("returns config currentValue when config option set", function()
+                config_options:set_options({ case.option })
+
+                assert.equal(
+                    case.config_id,
+                    config_options[case.method](config_options)
+                )
+            end)
+
+            it("returns legacy current id when only legacy set", function()
+                case.set_legacy(config_options)
+
+                assert.equal(
+                    case.legacy_id,
+                    config_options[case.method](config_options)
+                )
+            end)
+
+            it("returns nil when neither source is populated", function()
+                assert.is_nil(config_options[case.method](config_options))
+            end)
+        end)
+    end
+
     describe("set_legacy_models", function()
         it("stores legacy models info", function()
             config_options:set_legacy_models({

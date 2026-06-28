@@ -123,7 +123,6 @@ describe("agentic.SessionManager", function()
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
-                _refresh_mode_header = SessionManager._refresh_mode_header,
                 _handle_new_config_options = SessionManager._handle_new_config_options,
             } --[[@as agentic.SessionManager]]
         end)

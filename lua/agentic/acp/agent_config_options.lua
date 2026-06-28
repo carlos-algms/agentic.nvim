@@ -174,9 +174,7 @@ function AgentConfigOptions:set_initial_mode(target_mode)
     end
 
     if not found then
-        local current = self.mode and self.mode.currentValue
-            or self.legacy_agent_modes.current_mode_id
-            or "unknown"
+        local current = self:get_mode_id() or "unknown"
         Logger.notify(
             string.format(
                 "Configured default_mode ‘%s’ not available."
@@ -223,9 +221,7 @@ function AgentConfigOptions:set_initial_model(target_model, on_done)
     end
 
     if not found then
-        local current = self.model and self.model.currentValue
-            or self.legacy_agent_models.current_model_id
-            or "unknown"
+        local current = self:get_model_id() or "unknown"
         Logger.notify(
             string.format(
                 "Configured initial_model '%s' not available."
@@ -267,6 +263,20 @@ local function getter(target, value)
     end
 
     return nil
+end
+
+--- Current mode id, config option first, legacy state as fallback.
+--- @return string|nil mode_id
+function AgentConfigOptions:get_mode_id()
+    return self.mode and self.mode.currentValue
+        or self.legacy_agent_modes.current_mode_id
+end
+
+--- Current model id, config option first, legacy state as fallback.
+--- @return string|nil model_id
+function AgentConfigOptions:get_model_id()
+    return self.model and self.model.currentValue
+        or self.legacy_agent_models.current_model_id
 end
 
 --- @param mode_value string
