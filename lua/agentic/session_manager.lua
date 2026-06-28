@@ -748,34 +748,9 @@ function SessionManager:_handle_input_submit(input_text)
                 return
             end
 
-            self.is_generating = false
-
-            local finish_message = string.format(
-                "\n### %s %s\n-----",
-                Config.message_icons.finished,
-                os.date("%Y-%m-%d %H:%M:%S")
-            )
-
-            if err then
-                finish_message = string.format(
-                    "\n### %s Agent finished with error: %s\n%s",
-                    Config.message_icons.error,
-                    vim.inspect(err),
-                    finish_message
-                )
-            elseif response and response.stopReason == "cancelled" then
-                finish_message = string.format(
-                    "\n### %s Generation stopped by the user request\n%s",
-                    Config.message_icons.stopped,
-                    finish_message
-                )
-            end
-
-            self.message_writer:write_message(
-                ACPPayloads.generate_agent_message(finish_message)
-            )
-
+            self.message_writer:write_finish_message(response, err)
             self.status_animation:stop()
+            self.is_generating = false
 
             --- @type agentic.UserConfig.ResponseCompleteData
             local response_hook_data = {
