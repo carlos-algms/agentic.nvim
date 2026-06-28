@@ -2,9 +2,9 @@
 local assert = require("tests.helpers.assert")
 local StatusLine = require("agentic.ui.status_line")
 
--- attach() only sets three fields and logs — no autocmd groups until Task 4.
--- after_each closes float windows and deletes float buffers via tracked_instances,
--- then closes split windows via tracked_wins.
+-- attach() sets fields, logs, and registers the resize augroup "AgenticStatusLine_<tab>".
+-- after_each closes float windows, deletes float buffers, and deletes augroups via
+-- tracked_instances, then closes split windows via tracked_wins.
 
 --- @type integer[]
 local tracked_wins
@@ -47,7 +47,8 @@ describe("StatusLine", function()
     end)
 
     after_each(function()
-        -- Close float windows and delete float buffers owned by StatusLine instances.
+        -- Close float windows, delete float buffers, and delete augroups owned by
+        -- StatusLine instances. Task 5: destroy() will handle this; keep in sync.
         for _, sl in ipairs(tracked_instances) do
             if
                 sl._float_winid and vim.api.nvim_win_is_valid(sl._float_winid)
@@ -58,6 +59,9 @@ describe("StatusLine", function()
                 sl._float_bufnr and vim.api.nvim_buf_is_valid(sl._float_bufnr)
             then
                 vim.api.nvim_buf_delete(sl._float_bufnr, { force = true })
+            end
+            if sl._augroup then
+                pcall(vim.api.nvim_del_augroup_by_id, sl._augroup)
             end
         end
         tracked_instances = {}

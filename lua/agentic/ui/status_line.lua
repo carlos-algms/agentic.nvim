@@ -69,10 +69,19 @@ end
 --- so the next reposition() re-points the existing float to the new anchor.
 --- `clear = true` on the augroup makes re-attach idempotent — rotate_layout
 --- calls hide→show→attach again and must not stack duplicate autocmds.
+--- Also safe to re-attach with a different tab_page_id: the old augroup is
+--- deleted first so "AgenticStatusLine_<old_tab>" does not orphan.
 --- @param tab_page_id integer
 --- @param win_nrs table<string, integer>
 --- @param position "left"|"right"|"bottom"
 function StatusLine:attach(tab_page_id, win_nrs, position)
+    -- Guard: delete the existing augroup before creating a new one.
+    -- Covers same-tab re-attach (clear=true below handles autocmd dedup) and
+    -- cross-tab re-attach where a different group name would otherwise orphan.
+    if self._augroup then
+        pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
+    end
+
     self._tab_page_id = tab_page_id
     self._win_nrs = win_nrs
     self._position = position
@@ -110,6 +119,10 @@ end
 --- Re-guard tabpage validity and reposition the float.
 --- Called from the vim.schedule wrapper in the autocmd callback.
 --- Also called directly from tests (synchronous) to avoid async traps.
+--- The tabpage re-guard here is necessary even though the outer autocmd callback
+--- guards first: vim.schedule yields to the event loop, so the tabpage can be
+--- closed between the outer check and when this scheduled function runs.
+--- @protected
 function StatusLine:_on_resize()
     if not vim.api.nvim_tabpage_is_valid(self._tab_page_id) then
         return
