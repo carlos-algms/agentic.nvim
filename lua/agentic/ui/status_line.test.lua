@@ -218,7 +218,7 @@ describe("StatusLine", function()
                 assert.equal(1, cfg.height)
 
                 local anchor_height = vim.api.nvim_win_get_height(input)
-                assert.equal(anchor_height - 1, cfg.row)
+                assert.equal(math.max(0, anchor_height - 2), cfg.row)
             end
         )
 

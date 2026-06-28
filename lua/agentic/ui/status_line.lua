@@ -168,7 +168,11 @@ function StatusLine:reposition()
     end
 
     local width = vim.api.nvim_win_get_width(anchor)
-    local row = vim.api.nvim_win_get_height(anchor) - 1
+    -- Overlay the row above the anchor's last text row (height - 2), so the
+    -- float sits clear of the global statusline that abuts the bottom-most
+    -- window. The input window sets scrolloff=2 so the cursor never reaches the
+    -- float's row, keeping the typed line visible. math.max guards tiny windows.
+    local row = math.max(0, vim.api.nvim_win_get_height(anchor) - 2)
 
     if self._float_winid and vim.api.nvim_win_is_valid(self._float_winid) then
         -- Move the existing float to the (possibly new) anchor.

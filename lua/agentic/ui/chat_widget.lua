@@ -117,6 +117,7 @@ function ChatWidget:show(opts)
         self.win_nrs,
         self.current_position
     )
+    self._status_line:set_text(" Agentic │ " .. self.current_position)
     self._status_line:reposition()
 end
 

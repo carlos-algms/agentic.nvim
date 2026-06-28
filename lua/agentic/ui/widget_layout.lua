@@ -276,6 +276,11 @@ local function show_layout(params, position)
 
     get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
         winfixheight = not is_bottom,
+        -- Keep the cursor >=2 rows from the bottom so the StatusLine float
+        -- (overlaying the last text row) never hides the line being typed.
+        -- NOTE: scrolloff does not apply at end-of-buffer, so this does not
+        -- protect the cursor when typing on the last line (known limitation).
+        scrolloff = 2,
     })
 
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
