@@ -1,6 +1,11 @@
 local Logger = require("agentic.utils.logger")
 local BufHelpers = require("agentic.utils.buf_helpers")
 
+-- 50 is Neovim's default float zindex. The status float anchors to a split
+-- (no zindex), so 50 is sufficient; bump only if it must sit above other
+-- agentic floats that use a higher zindex.
+local FLOAT_ZINDEX = 50
+
 --- Returns the bottom-most valid agentic winid for the given win_nrs + position.
 --- Priority for position="bottom": todos > diagnostics > files > code > input > chat.
 --- Priority for position="left"/"right": input > chat.
@@ -109,6 +114,9 @@ function StatusLine:reposition()
             pcall(vim.api.nvim_win_close, self._float_winid, true)
         end
         self._float_winid = nil
+        -- _float_bufnr is intentionally kept: the buffer is reused when the
+        -- layout reopens and reposition() is called again. The asymmetry with
+        -- _float_winid being nil'd is deliberate.
         return
     end
 
@@ -117,7 +125,9 @@ function StatusLine:reposition()
 
     if self._float_winid and vim.api.nvim_win_is_valid(self._float_winid) then
         -- Move the existing float to the (possibly new) anchor.
-        vim.api.nvim_win_set_config(self._float_winid, {
+        -- Guard against the anchor becoming invalid between _anchor_winid() and
+        -- here (real race once Task 4 schedules reposition on resize events).
+        local ok = pcall(vim.api.nvim_win_set_config, self._float_winid, {
             relative = "win",
             win = anchor,
             anchor = "NW",
@@ -126,6 +136,10 @@ function StatusLine:reposition()
             width = width,
             height = 1,
         })
+        if not ok then
+            -- Anchor went away; nil out so the next reposition recreates cleanly.
+            self._float_winid = nil
+        end
     else
         -- Create scratch buffer once and make it non-modifiable by default.
         if
@@ -146,16 +160,17 @@ function StatusLine:reposition()
             height = 1,
             focusable = false,
             style = "minimal",
-            zindex = 50,
+            zindex = FLOAT_ZINDEX,
             noautocmd = true,
         })
 
         vim.wo[self._float_winid][0].wrap = false
         vim.wo[self._float_winid][0].winhl = "Normal:NormalFloat"
-    end
 
-    -- Re-apply stored text so it survives re-anchor.
-    self:set_text(self._text)
+        -- Re-apply stored text after creation so it survives re-anchor.
+        -- Not needed on the move path: the buffer already holds the correct text.
+        self:set_text(self._text)
+    end
 end
 
 --- Close the float window, delete the scratch buffer, and clear the autocmd

@@ -3,10 +3,14 @@ local assert = require("tests.helpers.assert")
 local StatusLine = require("agentic.ui.status_line")
 
 -- attach() only sets three fields and logs — no autocmd groups until Task 4.
--- No destroy() call needed in after_each; window cleanup via tracked_wins list.
+-- after_each closes float windows and deletes float buffers via tracked_instances,
+-- then closes split windows via tracked_wins.
 
 --- @type integer[]
 local tracked_wins
+
+--- @type agentic.ui.StatusLine[]
+local tracked_instances
 
 --- @return integer winid
 local function open_scratch_win()
@@ -19,7 +23,7 @@ local function open_scratch_win()
     return win
 end
 
---- Track a window for cleanup (float windows whose bufnr we already track separately)
+--- Track a window for cleanup.
 --- @param winid integer
 local function track_win(winid)
     tracked_wins[#tracked_wins + 1] = winid
@@ -32,15 +36,33 @@ local function make_attached(win_nrs, position)
     local tab = vim.api.nvim_get_current_tabpage()
     local sl = StatusLine:new()
     sl:attach(tab, win_nrs, position)
+    tracked_instances[#tracked_instances + 1] = sl
     return sl
 end
 
 describe("StatusLine", function()
     before_each(function()
         tracked_wins = {}
+        tracked_instances = {}
     end)
 
     after_each(function()
+        -- Close float windows and delete float buffers owned by StatusLine instances.
+        for _, sl in ipairs(tracked_instances) do
+            if
+                sl._float_winid and vim.api.nvim_win_is_valid(sl._float_winid)
+            then
+                vim.api.nvim_win_close(sl._float_winid, true)
+            end
+            if
+                sl._float_bufnr and vim.api.nvim_buf_is_valid(sl._float_bufnr)
+            then
+                vim.api.nvim_buf_delete(sl._float_bufnr, { force = true })
+            end
+        end
+        tracked_instances = {}
+
+        -- Close tracked split windows and their backing buffers.
         for _, winid in ipairs(tracked_wins) do
             if vim.api.nvim_win_is_valid(winid) then
                 local buf = vim.api.nvim_win_get_buf(winid)
@@ -225,6 +247,30 @@ describe("StatusLine", function()
 
                 sl:reposition()
                 assert.equal(first_winid, sl._float_winid)
+            end
+        )
+
+        it(
+            "should preserve text after a second reposition on the move path",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:set_text("stable text")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                -- Second reposition takes the move branch (same anchor, valid float).
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_bufnr)
+                --- @type integer
+                local bufnr = sl._float_bufnr
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)
+                assert.equal("stable text", lines[1])
             end
         )
 
