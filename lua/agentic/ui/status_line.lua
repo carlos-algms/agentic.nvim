@@ -20,10 +20,9 @@ local function bottom_anchor_winid(win_nrs, position)
             or valid("code")
             or valid("input")
             or valid("chat")
-            or nil
     end
 
-    return valid("input") or valid("chat") or nil
+    return valid("input") or valid("chat")
 end
 
 --- Per-tab floating status surface for the agentic chat UI.

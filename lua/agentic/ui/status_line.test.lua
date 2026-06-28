@@ -1,3 +1,4 @@
+--- @diagnostic disable: invisible
 local assert = require("tests.helpers.assert")
 local StatusLine = require("agentic.ui.status_line")
 
@@ -36,7 +37,11 @@ describe("StatusLine", function()
     after_each(function()
         for _, winid in ipairs(tracked_wins) do
             if vim.api.nvim_win_is_valid(winid) then
+                local buf = vim.api.nvim_win_get_buf(winid)
                 vim.api.nvim_win_close(winid, true)
+                if vim.api.nvim_buf_is_valid(buf) then
+                    vim.api.nvim_buf_delete(buf, { force = true })
+                end
             end
         end
         tracked_wins = {}
@@ -48,8 +53,7 @@ describe("StatusLine", function()
             local input = open_scratch_win()
 
             local sl = make_attached({ chat = chat, input = input }, "right")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.equal(input, result)
         end)
 
@@ -58,8 +62,7 @@ describe("StatusLine", function()
             local input = open_scratch_win()
 
             local sl = make_attached({ chat = chat, input = input }, "left")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.equal(input, result)
         end)
 
@@ -74,8 +77,7 @@ describe("StatusLine", function()
                     { chat = chat, input = input, code = code },
                     "bottom"
                 )
-                local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+                local result = sl:_anchor_winid()
                 assert.equal(code, result)
             end
         )
@@ -96,8 +98,7 @@ describe("StatusLine", function()
                 diagnostics = diagnostics,
                 todos = todos,
             }, "bottom")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.equal(todos, result)
         end)
 
@@ -109,8 +110,7 @@ describe("StatusLine", function()
 
                 local sl =
                     make_attached({ chat = chat, input = input }, "bottom")
-                local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+                local result = sl:_anchor_winid()
                 assert.equal(input, result)
             end
         )
@@ -119,8 +119,7 @@ describe("StatusLine", function()
             local chat = open_scratch_win()
 
             local sl = make_attached({ chat = chat }, "right")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.equal(chat, result)
         end)
 
@@ -130,15 +129,13 @@ describe("StatusLine", function()
             vim.api.nvim_win_close(input, true)
 
             local sl = make_attached({ chat = chat, input = input }, "right")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.equal(chat, result)
         end)
 
         it("should return nil for empty win_nrs", function()
             local sl = make_attached({}, "right")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.is_nil(result)
         end)
 
@@ -149,8 +146,7 @@ describe("StatusLine", function()
             vim.api.nvim_win_close(input, true)
 
             local sl = make_attached({ chat = chat, input = input }, "right")
-            local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+            local result = sl:_anchor_winid()
             assert.is_nil(result)
         end)
 
@@ -165,8 +161,7 @@ describe("StatusLine", function()
                     { chat = chat, input = input, diagnostics = diagnostics },
                     "bottom"
                 )
-                local result = sl:_anchor_winid() --- @diagnostic disable-line: invisible
-
+                local result = sl:_anchor_winid()
                 assert.equal(diagnostics, result)
             end
         )
