@@ -19,6 +19,12 @@ local function open_scratch_win()
     return win
 end
 
+--- Track a window for cleanup (float windows whose bufnr we already track separately)
+--- @param winid integer
+local function track_win(winid)
+    tracked_wins[#tracked_wins + 1] = winid
+end
+
 --- @param win_nrs table<string, integer>
 --- @param position string
 --- @return agentic.ui.StatusLine
@@ -165,5 +171,156 @@ describe("StatusLine", function()
                 assert.equal(diagnostics, result)
             end
         )
+    end)
+
+    describe("reposition", function()
+        it(
+            "should create a float with relative=win anchor=NW height=1 row=anchor_height-1",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                local cfg = vim.api.nvim_win_get_config(float_winid)
+                assert.equal("win", cfg.relative)
+                assert.equal("NW", cfg.anchor)
+                assert.equal(1, cfg.height)
+
+                local anchor_height = vim.api.nvim_win_get_height(input)
+                assert.equal(anchor_height - 1, cfg.row)
+            end
+        )
+
+        it("should set float width equal to anchor width", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            assert.is_not_nil(sl._float_winid)
+            --- @type integer
+            local float_winid = sl._float_winid
+            track_win(float_winid)
+
+            local anchor_width = vim.api.nvim_win_get_width(input)
+            local cfg = vim.api.nvim_win_get_config(float_winid)
+            assert.equal(anchor_width, cfg.width)
+        end)
+
+        it(
+            "should reuse the same float winid on a second reposition call",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local first_winid = sl._float_winid
+                track_win(first_winid)
+
+                sl:reposition()
+                assert.equal(first_winid, sl._float_winid)
+            end
+        )
+
+        it(
+            "should update float config win when anchor window changes",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                -- Change the anchor by swapping in a new input window
+                local new_input = open_scratch_win()
+                sl._win_nrs = { input = new_input }
+                sl:reposition()
+
+                local cfg = vim.api.nvim_win_get_config(float_winid)
+                -- cfg.win is the window handle; compare as integer
+                assert.equal(new_input, cfg.win)
+            end
+        )
+
+        it("should close the float when _anchor_winid returns nil", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            assert.is_not_nil(sl._float_winid)
+            --- @type integer
+            local float_winid = sl._float_winid
+            -- Don't track_win — we expect it to be closed by reposition
+
+            -- Invalidate the anchor
+            vim.api.nvim_win_close(input, true)
+            sl:reposition()
+
+            assert.is_nil(sl._float_winid)
+            assert.is_false(vim.api.nvim_win_is_valid(float_winid))
+        end)
+
+        it(
+            "should display text set before float creation after reposition",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:set_text("preloaded text")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                assert.is_not_nil(sl._float_bufnr)
+                --- @type integer
+                local bufnr = sl._float_bufnr
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)
+                assert.equal("preloaded text", lines[1])
+            end
+        )
+    end)
+
+    describe("set_text", function()
+        it(
+            "should write text to float buffer line 0 and leave buffer non-modifiable",
+            function()
+                local input = open_scratch_win()
+                local sl = make_attached({ input = input }, "right")
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                assert.is_not_nil(sl._float_bufnr)
+                --- @type integer
+                local bufnr = sl._float_bufnr
+
+                sl:set_text("hello")
+
+                local lines = vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)
+                assert.equal("hello", lines[1])
+                assert.is_false(vim.bo[bufnr].modifiable)
+            end
+        )
+
+        it("should store text even when float does not exist yet", function()
+            local sl = StatusLine:new()
+            sl:set_text("pending")
+            assert.equal("pending", sl._text)
+        end)
     end)
 end)

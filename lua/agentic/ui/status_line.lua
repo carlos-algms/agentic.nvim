@@ -1,4 +1,5 @@
 local Logger = require("agentic.utils.logger")
+local BufHelpers = require("agentic.utils.buf_helpers")
 
 --- Returns the bottom-most valid agentic winid for the given win_nrs + position.
 --- Priority for position="bottom": todos > diagnostics > files > code > input > chat.
@@ -78,10 +79,14 @@ function StatusLine:attach(tab_page_id, win_nrs, position)
 end
 
 --- Store status text and refresh the float content when open.
---- Content refresh implemented in Task 3.
 --- @param text string|nil
 function StatusLine:set_text(text)
     self._text = text or ""
+    if self._float_bufnr and vim.api.nvim_buf_is_valid(self._float_bufnr) then
+        BufHelpers.with_modifiable(self._float_bufnr, function(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { self._text })
+        end)
+    end
 end
 
 --- Returns the bottom-most valid agentic winid for the current layout.
@@ -92,8 +97,66 @@ function StatusLine:_anchor_winid()
 end
 
 --- Recompute anchor window and update float position/size.
---- Float creation/move implemented in Task 3.
-function StatusLine:reposition() end
+--- Creates the float if absent; moves it when the anchor changes.
+--- Re-applies stored text after (re)creating so content survives re-anchor.
+function StatusLine:reposition()
+    local anchor = self:_anchor_winid()
+
+    if not anchor then
+        if
+            self._float_winid and vim.api.nvim_win_is_valid(self._float_winid)
+        then
+            pcall(vim.api.nvim_win_close, self._float_winid, true)
+        end
+        self._float_winid = nil
+        return
+    end
+
+    local width = vim.api.nvim_win_get_width(anchor)
+    local row = vim.api.nvim_win_get_height(anchor) - 1
+
+    if self._float_winid and vim.api.nvim_win_is_valid(self._float_winid) then
+        -- Move the existing float to the (possibly new) anchor.
+        vim.api.nvim_win_set_config(self._float_winid, {
+            relative = "win",
+            win = anchor,
+            anchor = "NW",
+            row = row,
+            col = 0,
+            width = width,
+            height = 1,
+        })
+    else
+        -- Create scratch buffer once and make it non-modifiable by default.
+        if
+            not self._float_bufnr
+            or not vim.api.nvim_buf_is_valid(self._float_bufnr)
+        then
+            self._float_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.bo[self._float_bufnr].modifiable = false
+        end
+
+        self._float_winid = vim.api.nvim_open_win(self._float_bufnr, false, {
+            relative = "win",
+            win = anchor,
+            anchor = "NW",
+            row = row,
+            col = 0,
+            width = width,
+            height = 1,
+            focusable = false,
+            style = "minimal",
+            zindex = 50,
+            noautocmd = true,
+        })
+
+        vim.wo[self._float_winid][0].wrap = false
+        vim.wo[self._float_winid][0].winhl = "Normal:NormalFloat"
+    end
+
+    -- Re-apply stored text so it survives re-anchor.
+    self:set_text(self._text)
+end
 
 --- Close the float window, delete the scratch buffer, and clear the autocmd
 --- group. Idempotent: safe to call more than once.
