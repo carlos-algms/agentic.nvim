@@ -12,6 +12,7 @@ local DiagnosticsList = require("agentic.ui.diagnostics_list")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local SlashCommands = require("agentic.acp.slash_commands")
+local SessionState = require("agentic.acp.session_state")
 local EnvironmentInfo = require("agentic.utils.environment_info")
 local Hooks = require("agentic.utils.hooks")
 
@@ -29,6 +30,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field code_selection agentic.ui.CodeSelection
 --- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field config_options agentic.acp.AgentConfigOptions
+--- @field session_state agentic.acp.SessionState
 --- @field diff_coordinator agentic.ui.DiffCoordinator
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
@@ -128,12 +130,14 @@ function SessionManager:new(tab_page_id)
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
         on_set_mode_success = function(mode_id)
             self:_set_mode_to_chat_header(mode_id)
+            self.widget:schedule_header_refresh()
         end,
         on_config_options_applied = function()
             local mode_id = self.config_options:get_mode_id()
             if mode_id then
                 self:_set_mode_to_chat_header(mode_id)
             end
+            self.widget:schedule_header_refresh()
         end,
         get_agent_instance = function()
             return self.agent
@@ -142,6 +146,9 @@ function SessionManager:new(tab_page_id)
             return self.session_id
         end,
     })
+
+    self.session_state =
+        SessionState:new(self.config_options, self.agent.provider_config.name)
 
     self.file_list = FileList:new(self.widget.buf_nrs.files, function(file_list)
         if file_list:is_empty() then
@@ -331,9 +338,8 @@ function SessionManager:_on_session_update(update)
     elseif update.sessionUpdate == "config_option_update" then
         self:_handle_new_config_options(update.configOptions)
     elseif update.sessionUpdate == "usage_update" then
-        -- Usage updates contain token/cost information - currently informational only
-        -- Fields: used (tokens), size (context window), cost (optional: amount, currency)
-        -- Keeping silent for now to avoid "press any key" prompts on large JSON output
+        self.session_state:set_usage(update)
+        self.widget:schedule_header_refresh()
     elseif update.sessionUpdate == "session_info_update" then
         -- Session metadata is currently informational only
     else
@@ -819,6 +825,7 @@ function SessionManager:_cancel_session()
         self.code_selection:clear()
         self.diagnostics_list:clear()
         self.config_options:clear()
+        self.session_state:clear()
     end
 
     self.session_id = nil
