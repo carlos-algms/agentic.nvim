@@ -301,6 +301,22 @@ describe("StatusLine", function()
             end
         )
 
+        it("should create float with focusable=false and zindex=50", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            assert.is_not_nil(sl._float_winid)
+            --- @type integer
+            local float_winid = sl._float_winid
+            track_win(float_winid)
+
+            local cfg = vim.api.nvim_win_get_config(float_winid)
+            assert.is_false(cfg.focusable)
+            assert.equal(50, cfg.zindex)
+            assert.equal("win", cfg.relative)
+        end)
+
         it("should close the float when _anchor_winid returns nil", function()
             local input = open_scratch_win()
             local sl = make_attached({ input = input }, "right")
