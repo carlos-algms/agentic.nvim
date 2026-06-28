@@ -247,6 +247,8 @@ function StatusLine:destroy()
     end
 
     self._win_nrs = nil
+    self._tab_page_id = nil
+    self._position = nil
 end
 
 return StatusLine

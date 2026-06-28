@@ -996,9 +996,13 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         it(
-            "close_optional_window() repositions float to new bottom-most anchor",
+            "close_optional_window() float survives and stays anchored to input (right layout: anchor is always input)",
             function()
-                -- Fill code buffer so it appears as a dynamic panel
+                -- In right layout the anchor is always `input` regardless of which
+                -- panels are open, so this test does NOT exercise anchor switching.
+                -- It verifies only that the float survives close_optional_window and
+                -- remains anchored to input. The bottom-layout test below covers
+                -- actual re-anchoring behavior.
                 local bufnr = widget.buf_nrs.code
                 vim.bo[bufnr].modifiable = true
                 vim.api.nvim_buf_set_lines(
@@ -1011,9 +1015,7 @@ describe("agentic.ui.ChatWidget", function()
 
                 widget:show()
 
-                -- With code panel open (bottom layout would differ; right layout:
-                -- anchor is always input). Close code panel and confirm float
-                -- still has a valid anchor (reposition was called).
+                -- Close code panel and confirm float still has a valid anchor.
                 local float_winid = widget._status_line._float_winid
                 assert.is_not_nil(float_winid)
                 assert.is_true(vim.api.nvim_win_is_valid(float_winid))
