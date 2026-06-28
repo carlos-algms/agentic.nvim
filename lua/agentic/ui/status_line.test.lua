@@ -338,6 +338,116 @@ describe("StatusLine", function()
         )
     end)
 
+    describe("attach / resize autocmds", function()
+        --- @type string[]
+        local tracked_augroups
+
+        before_each(function()
+            tracked_augroups = {}
+        end)
+
+        after_each(function()
+            for _, name in ipairs(tracked_augroups) do
+                pcall(vim.api.nvim_del_augroup_by_name, name)
+            end
+            tracked_augroups = {}
+        end)
+
+        --- @param tab integer
+        --- @return string
+        local function augroup_name(tab)
+            return "AgenticStatusLine_" .. tab
+        end
+
+        it(
+            "should register VimResized and WinResized autocmds after attach",
+            function()
+                local input = open_scratch_win()
+                local tab = vim.api.nvim_get_current_tabpage()
+                make_attached({ input = input }, "right")
+                tracked_augroups[#tracked_augroups + 1] = augroup_name(tab)
+
+                local cmds = vim.api.nvim_get_autocmds({
+                    group = augroup_name(tab),
+                })
+                local events = {}
+                for _, cmd in ipairs(cmds) do
+                    events[cmd.event] = true
+                end
+                assert.is_true(events["VimResized"])
+                assert.is_true(events["WinResized"])
+            end
+        )
+
+        it(
+            "should not duplicate autocmds when attach is called twice",
+            function()
+                local input = open_scratch_win()
+                local tab = vim.api.nvim_get_current_tabpage()
+                local sl = make_attached({ input = input }, "right")
+                tracked_augroups[#tracked_augroups + 1] = augroup_name(tab)
+
+                local count_before =
+                    #vim.api.nvim_get_autocmds({ group = augroup_name(tab) })
+
+                -- Re-attach same instance
+                sl:attach(tab, { input = input }, "right")
+
+                local count_after =
+                    #vim.api.nvim_get_autocmds({ group = augroup_name(tab) })
+                assert.equal(count_before, count_after)
+            end
+        )
+
+        it(
+            "should reposition the float when _on_resize is called directly",
+            function()
+                local input = open_scratch_win()
+                local tab = vim.api.nvim_get_current_tabpage()
+                local sl = make_attached({ input = input }, "right")
+                tracked_augroups[#tracked_augroups + 1] = augroup_name(tab)
+                sl:reposition()
+
+                assert.is_not_nil(sl._float_winid)
+                --- @type integer
+                local float_winid = sl._float_winid
+                track_win(float_winid)
+
+                local original_width = vim.api.nvim_win_get_width(input)
+
+                -- Resize the anchor window
+                local new_width = original_width - 10
+                if new_width < 1 then
+                    new_width = 1
+                end
+                vim.api.nvim_win_set_width(input, new_width)
+
+                -- Call _on_resize directly (synchronous — no vim.schedule drain needed)
+                sl:_on_resize()
+
+                local cfg = vim.api.nvim_win_get_config(float_winid)
+                assert.equal(new_width, cfg.width)
+            end
+        )
+
+        it(
+            "should be a safe no-op when tabpage is invalid (_on_resize)",
+            function()
+                local input = open_scratch_win()
+                local tab = vim.api.nvim_get_current_tabpage()
+                local sl = make_attached({ input = input }, "right")
+                tracked_augroups[#tracked_augroups + 1] = augroup_name(tab)
+
+                -- Force an invalid tab id so the guard fires
+                sl._tab_page_id = 999999
+
+                assert.has_no_errors(function()
+                    sl:_on_resize()
+                end)
+            end
+        )
+    end)
+
     describe("set_text", function()
         it(
             "should write text to float buffer line 0 and leave buffer non-modifiable",

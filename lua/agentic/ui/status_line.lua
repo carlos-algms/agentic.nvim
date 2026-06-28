@@ -67,6 +67,8 @@ end
 --- Attach the status line to a tab layout.
 --- Safe to call again on a live instance (re-attach): updates position/win_nrs
 --- so the next reposition() re-points the existing float to the new anchor.
+--- `clear = true` on the augroup makes re-attach idempotent — rotate_layout
+--- calls hide→show→attach again and must not stack duplicate autocmds.
 --- @param tab_page_id integer
 --- @param win_nrs table<string, integer>
 --- @param position "left"|"right"|"bottom"
@@ -74,13 +76,45 @@ function StatusLine:attach(tab_page_id, win_nrs, position)
     self._tab_page_id = tab_page_id
     self._win_nrs = win_nrs
     self._position = position
-    -- Autocmd group registration implemented in Task 4.
+
+    local group_name = "AgenticStatusLine_" .. tab_page_id
+    self._augroup = vim.api.nvim_create_augroup(group_name, { clear = true })
+
+    -- Register resize handlers on the tab-scoped group.
+    -- The callback is split into two parts for testability:
+    --   1. Outer: fast-context guard (synchronous, safe in all contexts).
+    --   2. Inner: _on_resize() — tabpage re-guard + reposition — callable
+    --      directly from tests without vim.schedule.
+    local function on_resize_callback()
+        if not vim.api.nvim_tabpage_is_valid(self._tab_page_id) then
+            return
+        end
+        vim.schedule(function()
+            self:_on_resize()
+        end)
+    end
+
+    vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, {
+        group = self._augroup,
+        callback = on_resize_callback,
+    })
+
     Logger.debug(
         "StatusLine:attach tab="
             .. tostring(tab_page_id)
             .. " position="
             .. tostring(position)
     )
+end
+
+--- Re-guard tabpage validity and reposition the float.
+--- Called from the vim.schedule wrapper in the autocmd callback.
+--- Also called directly from tests (synchronous) to avoid async traps.
+function StatusLine:_on_resize()
+    if not vim.api.nvim_tabpage_is_valid(self._tab_page_id) then
+        return
+    end
+    self:reposition()
 end
 
 --- Store status text and refresh the float content when open.
