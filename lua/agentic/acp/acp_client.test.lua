@@ -458,6 +458,39 @@ describe("ACPClient", function()
             assert.equal(nil, message.body)
         end)
 
+        it("falls back to rawInput JSON for empty command", function()
+            local client = create_ready_client()
+
+            ---@diagnostic disable: invisible, assign-type-mismatch
+            local message = client:__build_tool_call_message({
+                toolCallId = "tc-x",
+                kind = "execute",
+                title = "bash",
+                rawInput = { command = "", other = "value here" },
+            })
+            ---@diagnostic enable: invisible, assign-type-mismatch
+
+            assert.equal("bash", message.argument)
+            assert.is_true(type(message.body) == "table")
+            assert.is_true(#message.body > 1)
+        end)
+
+        it("ignores empty description, sets only command title", function()
+            local client = create_ready_client()
+
+            ---@diagnostic disable: invisible, assign-type-mismatch
+            local message = client:__build_tool_call_message({
+                toolCallId = "tc-x",
+                kind = "execute",
+                title = "bash",
+                rawInput = { command = "ls -la", description = "" },
+            })
+            ---@diagnostic enable: invisible, assign-type-mismatch
+
+            assert.equal("ls -la", message.argument)
+            assert.equal(nil, message.body)
+        end)
+
         it("falls back to rawInput JSON when no command field", function()
             local client = create_ready_client()
 

@@ -480,11 +480,14 @@ function ACPClient:__build_tool_call_message(update)
         and raw_input
         and not vim.tbl_isempty(raw_input)
     then
-        if type(raw_input.command) == "string" then
+        if type(raw_input.command) == "string" and raw_input.command ~= "" then
             -- OpenCode execute tools: the command is the meaningful title and
             -- the optional description reads better than raw JSON.
             message.argument = raw_input.command
-            if type(raw_input.description) == "string" then
+            if
+                type(raw_input.description) == "string"
+                and raw_input.description ~= ""
+            then
                 message.body = self:safe_split(raw_input.description)
             end
         else
