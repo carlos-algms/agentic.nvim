@@ -251,3 +251,19 @@ function M.create_block(lines)
     return block
 end
 ```
+
+## Appending to typed arrays
+
+Use `arr[#arr + 1] = value`, not `table.insert(arr, value)`, when `arr` has a
+LuaCATS element type (`string[]`, `agentic.acp.Content[]`, a typed field, etc.).
+
+`table.insert`'s second arg is variadic `any`, so LuaLS skips
+`assign-type-mismatch` (an Error in `.luarc.json`). The indexed-assignment form
+is type-checked against the element type and catches wrong-type appends and
+stale `@return` / `@type` annotations.
+
+- RIGHT: `lines[#lines + 1] = value` (flags a non-string pushed to `string[]`)
+- WRONG: `table.insert(lines, value)` (push silently accepted)
+
+`table.insert` stays fine for positional inserts (`table.insert(t, i, v)`) and
+untyped scratch tables where no element type is declared.

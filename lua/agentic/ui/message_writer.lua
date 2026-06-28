@@ -7,6 +7,7 @@ local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
+local ACPPayloads = require("agentic.acp.acp_payloads")
 
 local NS_TOOL_BLOCKS = ToolCallBlocks.NS_TOOL_BLOCKS
 local NS_DIFF_HIGHLIGHTS =
@@ -1066,7 +1067,6 @@ end
 --- headers show the correct provider from history.
 --- @param messages agentic.ui.ChatHistory.Message[]
 function MessageWriter:replay_history_messages(messages)
-    local ACPPayloads = require("agentic.acp.acp_payloads")
     local current_provider = self._provider_name
 
     for _, msg in ipairs(messages) do
@@ -1524,6 +1524,64 @@ function MessageWriter:_apply_status_highlights_if_present(tracker)
     end
     self:_apply_header_highlight(start_row, tracker.status)
     self:repaint_status_row(tracker.tool_call_id)
+end
+
+--- @param provider_name string
+--- @param session_id string|nil
+--- @param version string|nil
+--- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
+--- @return string header
+function MessageWriter:generate_welcome_header(
+    provider_name,
+    session_id,
+    version,
+    timestamp
+)
+    local date_str
+    if type(timestamp) == "string" then
+        date_str = timestamp
+    else
+        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
+    end
+    local name = provider_name
+    if version then
+        name = name .. " v" .. version
+    end
+    return string.format(
+        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
+        name,
+        session_id or "unknown",
+        date_str
+    )
+end
+
+--- @param response table|nil
+--- @param err agentic.acp.ACPError|nil
+function MessageWriter:write_finish_message(response, err)
+    local finish_message = ""
+
+    if err then
+        finish_message = string.format(
+            "\n### %s Agent finished with error: %s\n%s",
+            Config.message_icons.error,
+            vim.inspect(err),
+            finish_message
+        )
+    elseif response and response.stopReason == "cancelled" then
+        finish_message = string.format(
+            "\n### %s Generation stopped by the user request\n%s",
+            Config.message_icons.stopped,
+            finish_message
+        )
+    else
+        finish_message = string.format(
+            "\n### %s %s\n-----",
+            Config.message_icons.finished,
+            os.date("%Y-%m-%d %H:%M:%S")
+        )
+    end
+
+    self:write_message(ACPPayloads.generate_agent_message(finish_message))
 end
 
 function MessageWriter:destroy() end

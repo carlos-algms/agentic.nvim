@@ -6,50 +6,15 @@
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
+local ConfigChangeDispatcher = require("agentic.acp.config_change_dispatcher")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local SlashCommands = require("agentic.acp.slash_commands")
-
---- @class agentic._SessionManagerPrivate
-local P = {}
-
---- Tool call kinds that mutate files on disk.
---- When these complete, buffers must be reloaded via checktime.
-local FILE_MUTATING_KINDS = {
-    edit = true,
-    create = true,
-    write = true,
-    delete = true,
-    move = true,
-}
-
---- @param destination string
---- @return string escaped_destination
-local function escape_markdown_link_destination(destination)
-    local escaped = destination:gsub("([<>])", "\\%1")
-    return escaped
-end
-
---- Safely invoke a user-configured hook
---- @param hook_name "on_create_session_response" | "on_prompt_submit" | "on_response_complete" | "on_session_update" | "on_file_edit" | "on_request_permission"
---- @param data agentic.UserConfig.CreateSessionResponseData | agentic.UserConfig.PromptSubmitData | agentic.UserConfig.ResponseCompleteData | agentic.UserConfig.SessionUpdateData | agentic.UserConfig.FileEditData | agentic.UserConfig.RequestPermissionData
-function P.invoke_hook(hook_name, data)
-    local hook = Config.hooks and Config.hooks[hook_name]
-
-    if hook and type(hook) == "function" then
-        vim.schedule(function()
-            local ok, err = pcall(hook, data)
-            if not ok then
-                Logger.debug(
-                    string.format("Hook '%s' error: %s", hook_name, err)
-                )
-            end
-        end)
-    end
-end
+local EnvironmentInfo = require("agentic.utils.environment_info")
+local Hooks = require("agentic.utils.hooks")
 
 --- @class agentic.SessionManager
 --- @field session_id? string
@@ -65,44 +30,15 @@ end
 --- @field code_selection agentic.ui.CodeSelection
 --- @field diagnostics_list agentic.ui.DiagnosticsList
 --- @field config_options agentic.acp.AgentConfigOptions
+--- @field diff_coordinator agentic.ui.DiffCoordinator
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
 --- @field _session_ready_callbacks fun()[]
---- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 local SessionManager = {}
 SessionManager.__index = SessionManager
-
---- @param provider_name string
---- @param session_id string|nil
---- @param version string|nil
---- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
---- @return string header
-function SessionManager._generate_welcome_header(
-    provider_name,
-    session_id,
-    version,
-    timestamp
-)
-    local date_str
-    if type(timestamp) == "string" then
-        date_str = timestamp
-    else
-        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
-    end
-    local name = provider_name
-    if version then
-        name = name .. " v" .. version
-    end
-    return string.format(
-        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
-        name,
-        session_id or "unknown",
-        date_str
-    )
-end
 
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
@@ -116,6 +52,7 @@ function SessionManager:new(tab_page_id)
     local StatusAnimation = require("agentic.ui.status_animation")
     local TodoList = require("agentic.ui.todo_list")
     local AgentConfigOptions = require("agentic.acp.agent_config_options")
+    local DiffCoordinator = require("agentic.ui.diff_coordinator")
 
     self = setmetatable({
         session_id = nil,
@@ -126,7 +63,6 @@ function SessionManager:new(tab_page_id)
         _connection_error = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
-        _header_refresh_scheduled = false,
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
@@ -181,6 +117,14 @@ function SessionManager:new(tab_page_id)
     -- there's no autocmd closure to otherwise keep it alive.
     self.file_picker = FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
+
+    self.diff_coordinator = DiffCoordinator:new(
+        self.widget,
+        self.message_writer,
+        function()
+            return self.tab_page_id
+        end
+    )
 
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
         set_mode = function(mode_id, is_legacy)
@@ -414,7 +358,7 @@ function SessionManager:_on_session_update(update)
         tab_page_id = self.tab_page_id,
         update = update,
     }
-    P.invoke_hook("on_session_update", hook_data)
+    Hooks.invoke("on_session_update", hook_data)
 end
 
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
@@ -463,7 +407,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
     -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
     local is_rejection = tool_call_update.status == "failed"
-    self:_clear_diff_in_buffer(tool_call_update.tool_call_id, is_rejection)
+    self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
 
     -- Remove the permission request when the tool call reaches a terminal status.
     -- `failed` covers user rejection or agent-side error;
@@ -483,7 +427,11 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         local tracker =
             self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
 
-        if tracker and tracker.kind and FILE_MUTATING_KINDS[tracker.kind] then
+        if
+            tracker
+            and tracker.kind
+            and ACPPayloads.FILE_MUTATING_KINDS[tracker.kind]
+        then
             vim.cmd.checktime()
 
             DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
@@ -510,7 +458,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
                     tab_page_id = self.tab_page_id,
                     bufnr = bufnr,
                 }
-                P.invoke_hook("on_file_edit", hook_data)
+                Hooks.invoke("on_file_edit", hook_data)
             end
         end
     end
@@ -528,24 +476,28 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
 
-    local function callback(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale mode change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change mode to '%s': %s",
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = mode_id,
+        label = "mode",
+        send = function(callback)
+            if is_legacy then
+                self.agent:set_mode(session_id, mode_id, callback)
+            else
+                self.agent:set_config_option(
+                    session_id,
+                    "mode",
                     mode_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+                    callback
+                )
+            end
+        end,
+        on_success = function(result)
             -- needed for backward compatibility
             self.config_options.legacy_agent_modes.current_mode_id = mode_id
 
@@ -564,14 +516,8 @@ function SessionManager:_handle_mode_change(mode_id, is_legacy)
                     title = "Agentic Mode changed",
                 }
             )
-        end
-    end
-
-    if is_legacy then
-        self.agent:set_mode(self.session_id, mode_id, callback)
-    else
-        self.agent:set_config_option(self.session_id, "mode", mode_id, callback)
-    end
+        end,
+    })
 end
 
 --- Send the newly selected model to the agent
@@ -589,24 +535,28 @@ function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
 
-    local callback = function(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale model change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change model to '%s': %s",
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = model_id,
+        label = "model",
+        send = function(callback)
+            if is_legacy then
+                self.agent:set_model(session_id, model_id, callback)
+            else
+                self.agent:set_config_option(
+                    session_id,
+                    "model",
                     model_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+                    callback
+                )
+            end
+        end,
+        on_success = function(result)
             -- Always update legacy state on success (mirrors _handle_mode_change pattern)
             self.config_options.legacy_agent_models.current_model_id = model_id
 
@@ -624,19 +574,8 @@ function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
             if on_done then
                 on_done()
             end
-        end
-    end
-
-    if is_legacy then
-        self.agent:set_model(self.session_id, model_id, callback)
-    else
-        self.agent:set_config_option(
-            self.session_id,
-            "model",
-            model_id,
-            callback
-        )
-    end
+        end,
+    })
 end
 
 --- Send the newly selected thought level / effort to the agent.
@@ -655,25 +594,20 @@ function SessionManager:_handle_thought_level_change(value)
         return
     end
 
-    local request_session_id = self.session_id
+    --- @type string
+    local session_id = self.session_id
     local config_id = thought.id
 
-    local function callback(result, err)
-        if self.session_id ~= request_session_id then
-            Logger.debug("Stale thought_level change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change thought effort level to '%s': %s",
-                    value,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-        else
+    ConfigChangeDispatcher.dispatch({
+        get_session_id = function()
+            return self.session_id
+        end,
+        value = value,
+        label = "thought effort level",
+        send = function(callback)
+            self.agent:set_config_option(session_id, config_id, value, callback)
+        end,
+        on_success = function(result)
             if result and result.configOptions then
                 Logger.debug("received result after setting thought_level")
                 self:_handle_new_config_options(result.configOptions)
@@ -684,33 +618,13 @@ function SessionManager:_handle_thought_level_change(value)
                 vim.log.levels.INFO,
                 { title = "Agentic Thought Effort Level changed" }
             )
-        end
-    end
-
-    self.agent:set_config_option(self.session_id, config_id, value, callback)
+        end,
+    })
 end
 
---- Schedule a coalesced re-render of function-based headers.
---- Multiple calls within the same event loop tick collapse into one render.
+--- NOTE: This is used by users inside hooks, moving/renaming this is a breaking change!
 function SessionManager:schedule_header_refresh()
-    if self._header_refresh_scheduled then
-        return
-    end
-    if not Config.headers then
-        return
-    end
-
-    self._header_refresh_scheduled = true
-    -- Debounce updates within 150ms of each other to avoid excessive
-    -- re-renders when multiple updates come in quick succession
-    vim.defer_fn(function()
-        self._header_refresh_scheduled = false
-        for panel_name, header_config in pairs(Config.headers) do
-            if type(header_config) == "function" then
-                self.widget:render_header(panel_name)
-            end
-        end
-    end, 150)
+    self.widget:schedule_header_refresh()
 end
 
 --- @param mode_id string
@@ -739,6 +653,7 @@ function SessionManager:_handle_input_submit(input_text)
         return false
     end
 
+    --- The text to be send to the agent, not on written on the chat
     --- @type agentic.acp.Content[]
     local prompt = {}
 
@@ -762,7 +677,7 @@ function SessionManager:_handle_input_submit(input_text)
 
         table.insert(prompt, {
             type = "text",
-            text = self:_get_system_info(),
+            text = EnvironmentInfo.get_system_info(),
         })
     end
 
@@ -772,103 +687,19 @@ function SessionManager:_handle_input_submit(input_text)
     table.insert(message_lines, input_text)
 
     if not self.code_selection:is_empty() then
-        table.insert(message_lines, "\n- **Selected code**:\n")
-
-        table.insert(prompt, {
-            type = "text",
-            text = table.concat({
-                "IMPORTANT: Focus and respect the line numbers provided in the <line_start> and <line_end> tags for each <selected_code> tag.",
-                "The selection shows ONLY the specified line range, not the entire file!",
-                "The file may contain duplicated content of the selected snippet.",
-                "When using edit tools, on the referenced files, MAKE SURE your changes target the correct lines by including sufficient surrounding context to make the match unique.",
-                "After you make edits to the referenced files, go back and read the file to verify your changes were applied correctly.",
-            }, "\n"),
-        })
-
-        local selections = self.code_selection:get_selections()
-        self.code_selection:clear()
-
-        for _, selection in ipairs(selections) do
-            if selection and #selection.lines > 0 then
-                -- Add line numbers to each line in the snippet
-                local numbered_lines = {}
-                for i, line in ipairs(selection.lines) do
-                    local line_num = selection.start_line + i - 1
-                    table.insert(
-                        numbered_lines,
-                        string.format("Line %d: %s", line_num, line)
-                    )
-                end
-                local numbered_snippet = table.concat(numbered_lines, "\n")
-
-                table.insert(prompt, {
-                    type = "text",
-                    text = string.format(
-                        table.concat({
-                            "<selected_code>",
-                            "<path>%s</path>",
-                            "<line_start>%s</line_start>",
-                            "<line_end>%s</line_end>",
-                            "<snippet>",
-                            "%s",
-                            "</snippet>",
-                            "</selected_code>",
-                        }, "\n"),
-                        FileSystem.to_absolute_path(selection.file_path),
-                        selection.start_line,
-                        selection.end_line,
-                        numbered_snippet
-                    ),
-                })
-
-                table.insert(
-                    message_lines,
-                    string.format(
-                        "```%s %s#L%d-L%d\n%s\n```",
-                        selection.file_type,
-                        selection.file_path,
-                        selection.start_line,
-                        selection.end_line,
-                        table.concat(selection.lines, "\n")
-                    )
-                )
-            end
-        end
+        local code_selection_lines, code_selection_prompt =
+            self.code_selection:to_prompt()
+        vim.list_extend(message_lines, code_selection_lines)
+        vim.list_extend(prompt, code_selection_prompt)
     end
 
     if not self.file_list:is_empty() then
-        table.insert(message_lines, "\n- **Referenced files**:")
-
-        local files = self.file_list:get_files()
-        self.file_list:clear()
-
-        for _, file_path in ipairs(files) do
-            table.insert(prompt, ACPPayloads.create_file_content(file_path))
-
-            local smart_path = FileSystem.to_smart_path(file_path)
-            local ext = FileSystem.get_file_extension(file_path)
-            local line
-            -- Image files render as markdown image tags so the chat
-            -- buffer (markdown filetype) can display them inline.
-            if FileSystem.IMAGE_MIMES[ext] then
-                line = string.format(
-                    "  - ![](<%s>)",
-                    escape_markdown_link_destination(smart_path)
-                )
-            else
-                line = string.format("  - @%s", smart_path)
-            end
-
-            table.insert(message_lines, line)
-        end
+        local file_list_lines, file_list_prompt = self.file_list:to_prompt()
+        vim.list_extend(message_lines, file_list_lines)
+        vim.list_extend(prompt, file_list_prompt)
     end
 
     if not self.diagnostics_list:is_empty() then
-        table.insert(message_lines, "\n- **Diagnostics**:")
-
-        local diagnostics = self.diagnostics_list:get_diagnostics()
-        self.diagnostics_list:clear()
-
         local WidgetLayout = require("agentic.ui.widget_layout")
 
         local chat_width = WidgetLayout.calculate_width(Config.windows.width)
@@ -877,18 +708,10 @@ function SessionManager:_handle_input_submit(input_text)
             chat_width = vim.api.nvim_win_get_width(chat_winid)
         end
 
-        local DiagnosticsContext = require("agentic.ui.diagnostics_context")
-
-        local formatted_diagnostics =
-            DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
-
-        for _, prompt_entry in ipairs(formatted_diagnostics.prompt_entries) do
-            table.insert(prompt, prompt_entry)
-        end
-
-        for _, summary_line in ipairs(formatted_diagnostics.summary_lines) do
-            table.insert(message_lines, summary_line)
-        end
+        local diagnostics_lines, diagnostics_prompt =
+            self.diagnostics_list:to_prompt(chat_width)
+        vim.list_extend(message_lines, diagnostics_lines)
+        vim.list_extend(prompt, diagnostics_prompt)
     end
 
     local user_message = ACPPayloads.generate_user_message(message_lines)
@@ -911,7 +734,7 @@ function SessionManager:_handle_input_submit(input_text)
         session_id = self.session_id,
         tab_page_id = self.tab_page_id,
     }
-    P.invoke_hook("on_prompt_submit", prompt_hook_data)
+    Hooks.invoke("on_prompt_submit", prompt_hook_data)
 
     local session_id = self.session_id
     local tab_page_id = self.tab_page_id
@@ -925,34 +748,9 @@ function SessionManager:_handle_input_submit(input_text)
                 return
             end
 
-            self.is_generating = false
-
-            local finish_message = string.format(
-                "\n### %s %s\n-----",
-                Config.message_icons.finished,
-                os.date("%Y-%m-%d %H:%M:%S")
-            )
-
-            if err then
-                finish_message = string.format(
-                    "\n### %s Agent finished with error: %s\n%s",
-                    Config.message_icons.error,
-                    vim.inspect(err),
-                    finish_message
-                )
-            elseif response and response.stopReason == "cancelled" then
-                finish_message = string.format(
-                    "\n### %s Generation stopped by the user request\n%s",
-                    Config.message_icons.stopped,
-                    finish_message
-                )
-            end
-
-            self.message_writer:write_message(
-                ACPPayloads.generate_agent_message(finish_message)
-            )
-
+            self.message_writer:write_finish_message(response, err)
             self.status_animation:stop()
+            self.is_generating = false
 
             --- @type agentic.UserConfig.ResponseCompleteData
             local response_hook_data = {
@@ -961,7 +759,7 @@ function SessionManager:_handle_input_submit(input_text)
                 success = err == nil,
                 error = err,
             }
-            P.invoke_hook("on_response_complete", response_hook_data)
+            Hooks.invoke("on_response_complete", response_hook_data)
         end)
     end)
 
@@ -998,7 +796,7 @@ function SessionManager:_build_handlers()
         end,
 
         on_request_permission = function(request, callback)
-            P.invoke_hook("on_request_permission", {
+            Hooks.invoke("on_request_permission", {
                 request = request,
                 session_id = self.session_id,
                 tab_page_id = self.tab_page_id,
@@ -1011,7 +809,7 @@ function SessionManager:_build_handlers()
 
                 local is_rejection = option_id == "reject_once"
                     or option_id == "reject_always"
-                self:_clear_diff_in_buffer(
+                self.diff_coordinator:clear(
                     request.toolCall.toolCallId,
                     is_rejection
                 )
@@ -1021,7 +819,7 @@ function SessionManager:_build_handlers()
                 end
             end
 
-            self:_show_diff_in_buffer(request.toolCall.toolCallId)
+            self.diff_coordinator:show(request.toolCall.toolCallId)
             self.permission_manager:add_request(request, wrapped_callback)
         end,
     }
@@ -1054,7 +852,7 @@ function SessionManager:new_session(opts)
             err = err,
         }
 
-        P.invoke_hook("on_create_session_response", hook_data)
+        Hooks.invoke("on_create_session_response", hook_data)
 
         if err or not response then
             -- no log here, already logged in create_session
@@ -1128,7 +926,7 @@ function SessionManager:new_session(opts)
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
             local agent_info = self.agent.agent_info
-            local welcome_message = SessionManager._generate_welcome_header(
+            local welcome_message = self.message_writer:generate_welcome_header(
                 self.agent.provider_config.name,
                 self.session_id,
                 agent_info and agent_info.version,
@@ -1239,69 +1037,6 @@ function SessionManager:add_buffer_diagnostics_to_context(bufnr)
     return self.diagnostics_list:add_many(diagnostics)
 end
 
---- @param tool_call_id string
-function SessionManager:_show_diff_in_buffer(tool_call_id)
-    -- Only show diff if enabled by user config,
-    -- and cursor is in the same tabpage as this session to avoid disruption
-    if
-        not Config.diff_preview.enabled
-        or vim.api.nvim_get_current_tabpage() ~= self.tab_page_id
-    then
-        return
-    end
-
-    local tracker = tool_call_id
-        and self.message_writer.tool_call_blocks[tool_call_id]
-
-    if
-        not tracker
-        or tracker.kind ~= "edit"
-        or tracker.diff == nil
-        or not tracker.file_path
-    then
-        return
-    end
-
-    DiffPreview.show_diff({
-        file_path = tracker.file_path,
-        diff = tracker.diff,
-        get_winid = function(bufnr)
-            local winid = self.widget:find_first_non_widget_window()
-            if not winid then
-                return self.widget:open_editor_window(bufnr)
-            end
-            local ok, err = pcall(vim.api.nvim_win_set_buf, winid, bufnr)
-
-            if not ok then
-                Logger.notify(
-                    "Failed to set buffer in window: " .. tostring(err),
-                    vim.log.levels.WARN
-                )
-                return nil
-            end
-            return winid
-        end,
-    })
-end
-
---- @param tool_call_id string
---- @param is_rejection boolean|nil
-function SessionManager:_clear_diff_in_buffer(tool_call_id, is_rejection)
-    local tracker = tool_call_id
-        and self.message_writer.tool_call_blocks[tool_call_id]
-
-    if
-        not tracker
-        or tracker.kind ~= "edit"
-        or tracker.diff == nil
-        or not tracker.file_path
-    then
-        return
-    end
-
-    DiffPreview.clear_diff(tracker.file_path, is_rejection)
-end
-
 --- @param new_config_options agentic.acp.ConfigOption[]
 function SessionManager:_handle_new_config_options(new_config_options)
     self.config_options:set_options(new_config_options)
@@ -1309,70 +1044,6 @@ function SessionManager:_handle_new_config_options(new_config_options)
     if self.config_options.mode and self.config_options.mode.currentValue then
         self:_set_mode_to_chat_header(self.config_options.mode.currentValue)
     end
-end
-
-function SessionManager:_get_system_info()
-    local os_name = vim.uv.os_uname().sysname
-    local os_version = vim.uv.os_uname().release
-    local os_machine = vim.uv.os_uname().machine
-    local shell = os.getenv("SHELL")
-    local neovim_version = tostring(vim.version())
-    local today = os.date("%Y-%m-%d")
-
-    local res = string.format(
-        [[
-- Platform: %s-%s-%s
-- Shell: %s
-- Editor: Neovim %s
-- Current date: %s]],
-        os_name,
-        os_version,
-        os_machine,
-        shell,
-        neovim_version,
-        today
-    )
-
-    local project_root = vim.uv.cwd()
-
-    local git_root = vim.fs.root(project_root or 0, ".git")
-    if git_root then
-        project_root = git_root
-        res = res .. "\n- This is a Git repository."
-
-        local branch =
-            vim.fn.system("git rev-parse --abbrev-ref HEAD"):gsub("\n", "")
-        if vim.v.shell_error == 0 and branch ~= "" then
-            res = res .. string.format("\n- Current branch: %s", branch)
-        end
-
-        local changed = vim.fn.system("git status --porcelain"):gsub("\n$", "")
-        if vim.v.shell_error == 0 and changed ~= "" then
-            local files = vim.split(changed, "\n")
-            res = res .. "\n- Changed files:"
-            for _, file in ipairs(files) do
-                res = res .. "\n  - " .. file
-            end
-        end
-
-        local commits = vim.fn
-            .system("git log -3 --oneline --format='%h (%ar) %an: %s'")
-            :gsub("\n$", "")
-        if vim.v.shell_error == 0 and commits ~= "" then
-            local commit_lines = vim.split(commits, "\n")
-            res = res .. "\n- Recent commits:"
-            for _, commit in ipairs(commit_lines) do
-                res = res .. "\n  - " .. commit
-            end
-        end
-    end
-
-    if project_root then
-        res = res .. string.format("\n- Project root: %s", project_root)
-    end
-
-    res = "<environment_info>\n" .. res .. "\n</environment_info>"
-    return res
 end
 
 function SessionManager:destroy()
@@ -1399,29 +1070,18 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
 
     -- Preserve config_options (mode/model) across cancel — session/load doesn't
     -- re-send them and they belong to the agent instance, not the session.
-    -- Save snapshots, NOT object references — :clear() mutates in-place.
-    local saved_config = {
-        mode = self.config_options.mode,
-        model = self.config_options.model,
-        thought_level = self.config_options.thought_level,
-        legacy_modes = self.config_options.legacy_agent_modes:save(),
-        legacy_models = self.config_options.legacy_agent_models:save(),
-    }
+    local saved_config = self.config_options:snapshot()
 
     self:_cancel_session()
 
-    self.config_options.mode = saved_config.mode
-    self.config_options.model = saved_config.model
-    self.config_options.thought_level = saved_config.thought_level
-    self.config_options.legacy_agent_modes:restore(saved_config.legacy_modes)
-    self.config_options.legacy_agent_models:restore(saved_config.legacy_models)
+    self.config_options:restore_snapshot(saved_config)
 
     self._is_restoring_session = true
     self.status_animation:start("busy")
 
     -- Write banner before loading so it appears at top of cleared buffer
     local agent_info = self.agent.agent_info
-    local welcome_message = SessionManager._generate_welcome_header(
+    local welcome_message = self.message_writer:generate_welcome_header(
         self.agent.provider_config.name,
         session_id,
         agent_info and agent_info.version,

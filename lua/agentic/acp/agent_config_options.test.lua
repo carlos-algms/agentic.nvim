@@ -875,4 +875,68 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.is_nil(config_options.legacy_agent_models.current_model_id)
         end)
     end)
+
+    describe("snapshot / restore_snapshot", function()
+        --- Populate every config field, including legacy modes/models.
+        local function populate()
+            config_options:set_options({
+                mode_option,
+                model_option,
+                thought_option,
+            })
+            config_options.legacy_agent_modes:set_modes({
+                availableModes = {
+                    { id = "legacy", name = "Legacy", description = "" },
+                },
+                currentModeId = "legacy",
+            })
+            config_options.legacy_agent_models:set_models({
+                availableModels = {
+                    { modelId = "opus", name = "Opus", description = "" },
+                },
+                currentModelId = "opus",
+            })
+        end
+
+        it("restores all fields after clear()", function()
+            populate()
+
+            local snapshot = config_options:snapshot()
+            config_options:clear()
+            config_options:restore_snapshot(snapshot)
+
+            assert.equal("mode-1", config_options.mode.id)
+            assert.equal("model-1", config_options.model.id)
+            assert.equal("thought-1", config_options.thought_level.id)
+            assert.is_not_nil(
+                config_options.legacy_agent_modes:get_mode("legacy")
+            )
+            assert.equal(
+                "legacy",
+                config_options.legacy_agent_modes.current_mode_id
+            )
+            assert.is_not_nil(
+                config_options.legacy_agent_models:get_model("opus")
+            )
+            assert.equal(
+                "opus",
+                config_options.legacy_agent_models.current_model_id
+            )
+        end)
+
+        it("snapshot is unaffected by a later clear()", function()
+            populate()
+
+            local snapshot = config_options:snapshot()
+            config_options:clear()
+
+            assert.equal("mode-1", snapshot.mode.id)
+            assert.equal("model-1", snapshot.model.id)
+            assert.equal("thought-1", snapshot.thought_level.id)
+            assert.equal("legacy", snapshot.legacy_modes.current_mode_id)
+            assert.equal(1, #snapshot.legacy_modes.modes)
+            assert.equal("opus", snapshot.legacy_models.current_model_id)
+            assert.equal(1, #snapshot.legacy_models.models)
+        end)
+    end)
 end)

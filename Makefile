@@ -51,27 +51,31 @@ format-file:
 check: format-check luals selene
 
 # Run all validations with output redirection for AI agents
+# format runs first (it rewrites files); luals/selene/test then run in parallel
+# since they only read. Each parallel job records its rc to a sentinel file.
 validate:
 	@mkdir -p .local; \
 	total_start=$$(date +%s); \
 	start=$$(date +%s); \
-	make format > .local/agentic_format_output.log 2>&1; \
+	$(MAKE) format > .local/agentic_format_output.log 2>&1; \
 	rc_format=$$?; \
 	echo "format: $$rc_format (took $$(($$(date +%s) - start))s) - log: .local/agentic_format_output.log"; \
-	start=$$(date +%s); \
-	make luals > .local/agentic_luals_output.log 2>&1; \
-	rc_luals=$$?; \
-	echo "luals: $$rc_luals (took $$(($$(date +%s) - start))s) - log: .local/agentic_luals_output.log"; \
-	start=$$(date +%s); \
-	make selene > .local/agentic_selene_output.log 2>&1; \
-	rc_selene=$$?; \
-	echo "selene: $$rc_selene (took $$(($$(date +%s) - start))s) - log: .local/agentic_selene_output.log"; \
-	start=$$(date +%s); \
-	make test > .local/agentic_test_output.log 2>&1; \
-	rc_test=$$?; \
-	echo "test: $$rc_test (took $$(($$(date +%s) - start))s) - log: .local/agentic_test_output.log"; \
+	for t in luals selene test; do \
+		( start=$$(date +%s); \
+		  $(MAKE) $$t > .local/agentic_$${t}_output.log 2>&1; \
+		  rc=$$?; \
+		  echo "$$rc $$(($$(date +%s) - start))" > .local/agentic_$${t}.rc; \
+		  echo "$$t: $$rc (took $$(($$(date +%s) - start))s) - log: .local/agentic_$${t}_output.log" ) & \
+	done; \
+	wait; \
 	echo "Total: $$(($$(date +%s) - total_start))s"; \
-	if [ $$rc_format -ne 0 ] || [ $$rc_luals -ne 0 ] || [ $$rc_selene -ne 0 ] || [ $$rc_test -ne 0 ]; then \
+	rc_rest=0; \
+	for t in luals selene test; do \
+		rc=$$(cut -d' ' -f1 .local/agentic_$${t}.rc); \
+		[ "$$rc" -ne 0 ] && rc_rest=1; \
+		rm -f .local/agentic_$${t}.rc; \
+	done; \
+	if [ $$rc_format -ne 0 ] || [ $$rc_rest -ne 0 ]; then \
 		echo "Validation failed! Check log files for details."; \
 		exit 1; \
 	fi

@@ -2375,4 +2375,76 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal(bottom_pad_row, end_row - 1)
         end)
     end)
+
+    describe("_generate_welcome_header", function()
+        it(
+            "returns header with provider name, session id, and timestamp",
+            function()
+                local header =
+                    writer:generate_welcome_header("Claude ACP", "abc123")
+
+                assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+                assert.truthy(header:match("\n%- %d%d%d%d%-%d%d%-%d%d"))
+                assert.truthy(header:match("\n%- session id: abc123\n"))
+                assert.truthy(header:match("\n%-%-%- %-%-$"))
+            end
+        )
+
+        it("uses 'unknown' when session_id is nil", function()
+            local header = writer:generate_welcome_header("Claude ACP", nil)
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.truthy(header:match("\n%- session id: unknown\n"))
+            assert.truthy(header:match("\n%-%-%- %-%-$"))
+        end)
+
+        it("includes version when provided", function()
+            local header =
+                writer:generate_welcome_header("Claude ACP", "abc123", "1.2.3")
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP v1%.2%.3\n"))
+            assert.truthy(header:match("\n%- session id: abc123\n"))
+        end)
+
+        it("omits version when nil", function()
+            local header =
+                writer:generate_welcome_header("Claude ACP", "abc123", nil)
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.is_nil(header:match(" v"))
+        end)
+    end)
+
+    describe("write_finish_message", function()
+        it(
+            "writes the error branch with the error icon and inspected err",
+            function()
+                writer:write_finish_message(
+                    nil,
+                    { code = -32000, message = "boom" } --[[@as any]]
+                )
+
+                assert.truthy(content_has(Config.message_icons.error))
+                assert.truthy(content_has("Agent finished with error"))
+                assert.truthy(content_has("boom"))
+            end
+        )
+
+        it("writes the cancelled branch with the stopped icon", function()
+            writer:write_finish_message({ stopReason = "cancelled" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.stopped))
+            assert.truthy(content_has("Generation stopped by the user request"))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.finished))
+        end)
+
+        it("writes the completed branch with the finished icon", function()
+            writer:write_finish_message({ stopReason = "end_turn" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.finished))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.stopped))
+        end)
+    end)
 end)

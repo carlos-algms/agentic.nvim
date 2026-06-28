@@ -78,7 +78,7 @@ function DiagnosticsList:_add_no_render(diagnostic)
         end
     end
 
-    table.insert(self._diagnostics, diagnostic)
+    self._diagnostics[#self._diagnostics + 1] = diagnostic
     return true
 end
 
@@ -127,6 +127,34 @@ function DiagnosticsList:get_diagnostics()
     return vim.deepcopy(self._diagnostics)
 end
 
+--- @param chat_width integer The width to format diagnostics against
+--- @return string[] lines the lines to be written on the chat
+--- @return agentic.acp.Content[] prompt the content to be sent in the prompt to the agent
+function DiagnosticsList:to_prompt(chat_width)
+    --- @type string[]
+    local lines = {}
+    --- @type agentic.acp.Content[]
+    local prompt = {}
+
+    lines[#lines + 1] = "\n- **Diagnostics**:"
+
+    local diagnostics = self:get_diagnostics()
+    self:clear()
+
+    local formatted_diagnostics =
+        DiagnosticsContext.format_diagnostics(diagnostics, chat_width)
+
+    for _, prompt_entry in ipairs(formatted_diagnostics.prompt_entries) do
+        prompt[#prompt + 1] = prompt_entry
+    end
+
+    for _, summary_line in ipairs(formatted_diagnostics.summary_lines) do
+        lines[#lines + 1] = summary_line
+    end
+
+    return lines, prompt
+end
+
 function DiagnosticsList:clear()
     self._diagnostics = {}
     self:_render()
@@ -155,7 +183,7 @@ function DiagnosticsList.get_buffer_diagnostics(bufnr, opts)
     for _, d in ipairs(vim_diagnostics) do
         --- @type agentic.ui.DiagnosticsList.Diagnostic
         local diagnostic = vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]
-        table.insert(diagnostics, diagnostic)
+        diagnostics[#diagnostics + 1] = diagnostic
     end
 
     return diagnostics
@@ -194,7 +222,7 @@ function DiagnosticsList.get_diagnostics_at_cursor(bufnr, opts)
             --- @type agentic.ui.DiagnosticsList.Diagnostic
             local diagnostic =
                 vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]
-            table.insert(diagnostics, diagnostic)
+            diagnostics[#diagnostics + 1] = diagnostic
         end
     end
 
@@ -237,10 +265,8 @@ function DiagnosticsList:_render()
 
         -- Format: ICON path:line:col - message
         local line = string.format("%s %s - %s", icon, location, message)
-        table.insert(
-            lines,
+        lines[#lines + 1] =
             DiagnosticsContext.truncate_for_display(line, buf_width)
-        )
     end
 
     local did_render = BufHelpers.with_modifiable(self._bufnr, function(bufnr)
@@ -301,7 +327,7 @@ function DiagnosticsList:_setup_keybindings()
         --- @type integer[]
         local sorted_indices = {}
         for index in pairs(indices_to_remove) do
-            table.insert(sorted_indices, index)
+            sorted_indices[#sorted_indices + 1] = index
         end
         table.sort(sorted_indices, function(a, b)
             return a > b
