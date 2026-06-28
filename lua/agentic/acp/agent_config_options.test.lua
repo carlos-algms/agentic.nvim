@@ -82,9 +82,40 @@ describe("agentic.acp.AgentConfigOptions", function()
     --- @return agentic.acp.AgentConfigOptions
     local function make_fresh()
         return AgentConfigOptions:new({ chat = test_bufnr }, {
-            set_mode = function() end,
-            set_model = function() end,
-            set_thought_level = function() end,
+            on_set_mode_success = function() end,
+            on_config_options_applied = function() end,
+            get_agent_instance = function()
+                --- @diagnostic disable-next-line: return-type-mismatch
+                return nil
+            end,
+            get_session_id = function()
+                return nil
+            end,
+        })
+    end
+
+    --- Build config_options whose callbacks resolve to the given fake agent and
+    --- a mutable session_id holder, so handler tests can flip the session id
+    --- mid-flight to exercise the stale-response guard.
+    --- @param agent any Fake ACP client capturing setter calls
+    --- @param session_holder { id: string|nil }
+    --- @param on_config_options_applied? fun() Override to spy header refresh
+    --- @return agentic.acp.AgentConfigOptions
+    local function make_with_agent(
+        agent,
+        session_holder,
+        on_config_options_applied
+    )
+        return AgentConfigOptions:new({ chat = test_bufnr }, {
+            on_set_mode_success = function() end,
+            on_config_options_applied = on_config_options_applied
+                or function() end,
+            get_agent_instance = function()
+                return agent
+            end,
+            get_session_id = function()
+                return session_holder.id
+            end,
         })
     end
 
@@ -307,15 +338,19 @@ describe("agentic.acp.AgentConfigOptions", function()
 
     --- set_initial_mode and set_initial_model share an identical early-return
     --- cascade. Decision table: target nil/empty -> nothing; not in any
-    --- source -> notify+skip; matches current -> skip; in legacy -> handler
-    --- with is_legacy=true; in config options -> handler with is_legacy=false.
+    --- source -> notify+skip; matches current -> skip; in legacy -> agent
+    --- legacy setter; in config options -> agent set_config_option.
+    --- The initial-setters call `self:handle_*_change` internally, so behavior
+    --- is observed through a fake agent capturing the dispatched ACP call.
+    --- `set_initial_mode` takes no extra arg; `set_initial_model` takes on_done.
     for _, case in ipairs({
         {
             method = "set_initial_mode",
             option = mode_option,
             current = "normal",
             other_value = "plan",
-            legacy_setter = "legacy_agent_modes",
+            config_id = "mode",
+            legacy_method = "set_mode",
             set_legacy = function(target)
                 target.legacy_agent_modes:set_modes({
                     availableModes = {
@@ -335,7 +370,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             option = model_option,
             current = "claude-sonnet",
             other_value = "claude-opus",
-            legacy_setter = "legacy_agent_models",
+            config_id = "model",
+            legacy_method = "set_model",
             set_legacy = function(target)
                 target.legacy_agent_models:set_models({
                     availableModels = {
@@ -354,75 +390,81 @@ describe("agentic.acp.AgentConfigOptions", function()
         describe(case.method, function()
             --- @type TestStub
             local notify_stub
+            --- @type { id: string|nil }
+            local session_holder
+            --- @type TestStub
+            local set_config_stub
+            --- @type TestStub
+            local legacy_stub
+            --- @type agentic.acp.AgentConfigOptions
+            local config
 
             before_each(function()
-                config_options:set_options({ case.option })
+                session_holder = { id = "s1" }
+                --- @type any
+                local agent = {
+                    set_config_option = function() end,
+                    set_mode = function() end,
+                    set_model = function() end,
+                }
+                config = make_with_agent(agent, session_holder)
+                config:set_options({ case.option })
+                set_config_stub = spy.stub(agent, "set_config_option")
+                legacy_stub = spy.stub(agent, case.legacy_method)
                 notify_stub =
                     spy.stub(require("agentic.utils.logger"), "notify")
             end)
 
             after_each(function()
+                set_config_stub:revert()
+                legacy_stub:revert()
                 notify_stub:revert()
             end)
 
             it(
-                "calls handler with is_legacy=false when target is in config options",
+                "dispatches modern set_config_option when target is in config options",
                 function()
-                    local handler = spy.new(function() end)
+                    config[case.method](config, case.other_value)
 
-                    config_options[case.method](
-                        config_options,
-                        case.other_value,
-                        handler --[[@as function]]
-                    )
-
-                    assert.spy(handler).was.called(1)
-                    assert.equal(case.other_value, handler.calls[1][1])
-                    assert.is_false(handler.calls[1][2])
+                    assert.stub(set_config_stub).was.called(1)
+                    assert.stub(legacy_stub).was.called(0)
+                    local call = set_config_stub.calls[1]
+                    -- call[1]=self, [2]=session_id, [3]=configId, [4]=value
+                    assert.equal("s1", call[2])
+                    assert.equal(case.config_id, call[3])
+                    assert.equal(case.other_value, call[4])
                 end
             )
 
             it(
-                "calls handler with is_legacy=true when target is only in legacy",
+                "dispatches legacy setter when target is only in legacy",
                 function()
-                    case.set_legacy(config_options)
-                    local handler = spy.new(function() end)
+                    case.set_legacy(config)
 
-                    config_options[case.method](
-                        config_options,
-                        case.legacy_target,
-                        handler --[[@as function]]
-                    )
+                    config[case.method](config, case.legacy_target)
 
-                    assert.spy(handler).was.called(1)
-                    assert.equal(case.legacy_target, handler.calls[1][1])
-                    assert.is_true(handler.calls[1][2])
+                    assert.stub(legacy_stub).was.called(1)
+                    assert.stub(set_config_stub).was.called(0)
+                    local call = legacy_stub.calls[1]
+                    -- legacy setters: call[1]=self, [2]=session_id, [3]=value
+                    assert.equal("s1", call[2])
+                    assert.equal(case.legacy_target, call[3])
                 end
             )
 
-            it("skips handler when target matches currentValue", function()
-                local handler = spy.new(function() end)
+            it("skips dispatch when target matches currentValue", function()
+                config[case.method](config, case.current)
 
-                config_options[case.method](
-                    config_options,
-                    case.current,
-                    handler --[[@as function]]
-                )
-
-                assert.spy(handler).was.called(0)
+                assert.stub(set_config_stub).was.called(0)
+                assert.stub(legacy_stub).was.called(0)
                 assert.stub(notify_stub).was.called(0)
             end)
 
             it("warns when target is not in any source", function()
-                local handler = spy.new(function() end)
+                config[case.method](config, "nonexistent")
 
-                config_options[case.method](
-                    config_options,
-                    "nonexistent",
-                    handler --[[@as function]]
-                )
-
-                assert.spy(handler).was.called(0)
+                assert.stub(set_config_stub).was.called(0)
+                assert.stub(legacy_stub).was.called(0)
                 assert.stub(notify_stub).was.called(1)
                 assert.is_true(
                     string.find(notify_stub.calls[1][1], "nonexistent") ~= nil
@@ -430,38 +472,24 @@ describe("agentic.acp.AgentConfigOptions", function()
             end)
 
             it("does nothing when target is nil or empty", function()
-                local handler = spy.new(function() end)
+                config[case.method](config, nil)
+                config[case.method](config, "")
 
-                config_options[case.method](
-                    config_options,
-                    nil,
-                    handler --[[@as function]]
-                )
-                config_options[case.method](
-                    config_options,
-                    "",
-                    handler --[[@as function]]
-                )
-
-                assert.spy(handler).was.called(0)
+                assert.stub(set_config_stub).was.called(0)
+                assert.stub(legacy_stub).was.called(0)
                 assert.stub(notify_stub).was.called(0)
             end)
 
             it(
                 "does not crash when no config options and no legacy entries exist",
                 function()
-                    local fresh = make_fresh()
-                    local handler = spy.new(function() end)
-
                     assert.has_no_errors(function()
-                        fresh[case.method](
-                            fresh,
-                            "nonexistent",
-                            handler --[[@as function]]
-                        )
+                        config:clear()
+                        config[case.method](config, "nonexistent")
                     end)
 
-                    assert.spy(handler).was.called(0)
+                    assert.stub(set_config_stub).was.called(0)
+                    assert.stub(legacy_stub).was.called(0)
                     assert.stub(notify_stub).was.called(1)
                     assert.is_true(
                         string.find(notify_stub.calls[1][1], "unknown") ~= nil
@@ -474,20 +502,32 @@ describe("agentic.acp.AgentConfigOptions", function()
     describe("set_initial_model (model-specific)", function()
         --- @type TestStub
         local notify_stub
+        --- @type TestStub
+        local set_config_stub
+        --- @type agentic.acp.AgentConfigOptions
+        local config
 
         before_each(function()
-            config_options:set_options({ model_option })
+            --- @type any
+            local agent = {
+                set_config_option = function() end,
+                set_model = function() end,
+            }
+            config = make_with_agent(agent, { id = "s1" })
+            config:set_options({ model_option })
+            set_config_stub = spy.stub(agent, "set_config_option")
             notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
         end)
 
         after_each(function()
+            set_config_stub:revert()
             notify_stub:revert()
         end)
 
         it(
             "prefers config options over legacy when model exists in both",
             function()
-                config_options.legacy_agent_models:set_models({
+                config.legacy_agent_models:set_models({
                     availableModels = {
                         {
                             modelId = "claude-opus",
@@ -498,28 +538,28 @@ describe("agentic.acp.AgentConfigOptions", function()
                     currentModelId = "legacy-default",
                 })
 
-                local handler = spy.new(function() end)
+                config:set_initial_model("claude-opus")
 
-                config_options:set_initial_model(
-                    "claude-opus",
-                    handler --[[@as fun(model: string, is_legacy: boolean|nil): any]]
-                )
-
-                assert.spy(handler).was.called(1)
-                assert.equal("claude-opus", handler.calls[1][1])
-                assert.is_false(handler.calls[1][2])
+                assert.stub(set_config_stub).was.called(1)
+                local call = set_config_stub.calls[1]
+                assert.equal("model", call[3])
+                assert.equal("claude-opus", call[4])
             end
         )
     end)
 
-    --- show_mode_selector and show_model_selector share legacy-fallback
-    --- behavior. Parameterize the common cases; thought_level is separate
-    --- because it has no legacy fallback.
+    --- _show_mode_selector and _show_model_selector share legacy-fallback
+    --- behavior. The selectors take no handler — they route the pick to
+    --- `self:handle_*_change` internally, so a fake agent observes the
+    --- dispatched ACP call (modern set_config_option vs legacy set_mode/
+    --- set_model). thought_level is separate (no legacy fallback).
     for _, case in ipairs({
         {
-            method = "show_mode_selector",
+            method = "_show_mode_selector",
             option = mode_option,
             second_value = "plan",
+            config_id = "mode",
+            legacy_method = "set_mode",
             no_support_msg = "mode switching",
             legacy_setter = function(target)
                 target.legacy_agent_modes:set_modes({
@@ -541,9 +581,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             legacy_second = "legacy-2",
         },
         {
-            method = "show_model_selector",
+            method = "_show_model_selector",
             option = model_option,
             second_value = "claude-opus",
+            config_id = "model",
+            legacy_method = "set_model",
             no_support_msg = "model switching",
             legacy_setter = function(target)
                 target.legacy_agent_models:set_models({
@@ -568,23 +610,42 @@ describe("agentic.acp.AgentConfigOptions", function()
         describe(case.method, function()
             --- @type TestStub
             local select_stub
+            --- @type TestStub
+            local set_config_stub
+            --- @type TestStub
+            local legacy_stub
+            --- @type agentic.acp.AgentConfigOptions
+            local config
+
+            --- @return any agent
+            local function make_agent()
+                --- @type any
+                return {
+                    set_config_option = function() end,
+                    set_mode = function() end,
+                    set_model = function() end,
+                }
+            end
 
             before_each(function()
-                config_options:set_options({ case.option })
+                local agent = make_agent()
+                config = make_with_agent(agent, { id = "s1" })
+                config:set_options({ case.option })
+                set_config_stub = spy.stub(agent, "set_config_option")
+                legacy_stub = spy.stub(agent, case.legacy_method)
                 select_stub = spy.stub(vim.ui, "select")
             end)
 
             after_each(function()
+                set_config_stub:revert()
+                legacy_stub:revert()
                 select_stub:revert()
             end)
 
             it(
                 "returns true and opens vim.ui.select when config options exist",
                 function()
-                    local shown = config_options[case.method](
-                        config_options,
-                        function() end
-                    )
+                    local shown = config[case.method](config)
 
                     assert.is_true(shown)
                     assert.stub(select_stub).was.called(1)
@@ -592,65 +653,61 @@ describe("agentic.acp.AgentConfigOptions", function()
             )
 
             it(
-                "calls handler with selection and is_legacy=false on config-option pick",
+                "dispatches modern set_config_option on config-option pick",
                 function()
-                    local handler = spy.new(function() end)
                     select_stub:invokes(function(items, _opts, on_choice)
                         on_choice(items[2])
                     end)
 
-                    config_options[case.method](
-                        config_options,
-                        handler --[[@as function]]
-                    )
+                    config[case.method](config)
 
-                    assert
-                        .spy(handler).was
-                        .called_with(case.second_value, false)
+                    assert.stub(set_config_stub).was.called(1)
+                    assert.stub(legacy_stub).was.called(0)
+                    local call = set_config_stub.calls[1]
+                    assert.equal(case.config_id, call[3])
+                    assert.equal(case.second_value, call[4])
                 end
             )
 
-            it("does not call handler on current value or cancel", function()
-                local handler = spy.new(function() end)
-
+            it("does not dispatch on current value or cancel", function()
                 select_stub:invokes(function(items, _opts, on_choice)
                     on_choice(items[1])
                 end)
-                config_options[case.method](
-                    config_options,
-                    handler --[[@as function]]
-                )
+                config[case.method](config)
 
                 select_stub:invokes(function(_items, _opts, on_choice)
                     on_choice(nil)
                 end)
-                config_options[case.method](
-                    config_options,
-                    handler --[[@as function]]
-                )
+                config[case.method](config)
 
-                assert.spy(handler).was.called(0)
+                assert.stub(set_config_stub).was.called(0)
+                assert.stub(legacy_stub).was.called(0)
             end)
 
             it(
-                "falls back to legacy and wraps callback with is_legacy=true",
+                "falls back to legacy and dispatches with is_legacy path",
                 function()
-                    local fresh = make_fresh()
+                    local agent = make_agent()
+                    local fresh = make_with_agent(agent, { id = "s1" })
                     case.legacy_setter(fresh)
+                    local fresh_legacy_stub =
+                        spy.stub(agent, case.legacy_method)
 
-                    local handler = spy.new(function() end)
                     select_stub:invokes(function(items, _opts, on_choice)
                         on_choice(items[2])
                     end)
 
-                    local shown =
-                        fresh[case.method](fresh, handler --[[@as function]])
+                    local shown = fresh[case.method](fresh)
 
                     assert.is_true(shown)
                     assert.stub(select_stub).was.called(1)
-                    assert
-                        .spy(handler).was
-                        .called_with(case.legacy_second, true)
+                    assert.stub(fresh_legacy_stub).was.called(1)
+                    assert.equal(
+                        case.legacy_second,
+                        fresh_legacy_stub.calls[1][3]
+                    )
+
+                    fresh_legacy_stub:revert()
                 end
             )
 
@@ -660,9 +717,9 @@ describe("agentic.acp.AgentConfigOptions", function()
                     local notify_stub =
                         spy.stub(require("agentic.utils.logger"), "notify")
 
-                    local fresh = make_fresh()
+                    local fresh = make_with_agent(make_agent(), { id = "s1" })
 
-                    assert.is_false(fresh[case.method](fresh, function() end))
+                    assert.is_false(fresh[case.method](fresh))
                     assert.stub(select_stub).was.called(0)
                     assert.stub(notify_stub).was.called(1)
                     assert.truthy(
@@ -701,7 +758,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
     end)
 
-    describe("show_thought_level_selector", function()
+    describe("_show_thought_level_selector", function()
         --- @type TestStub
         local select_stub
 
@@ -717,9 +774,8 @@ describe("agentic.acp.AgentConfigOptions", function()
             local notify_stub =
                 spy.stub(require("agentic.utils.logger"), "notify")
 
-            local result = config_options:show_thought_level_selector(
-                function() end
-            )
+            ---@diagnostic disable-next-line: invisible
+            local result = config_options:_show_thought_level_selector()
 
             assert.is_false(result)
             assert.equal(0, select_stub.call_count)
@@ -736,18 +792,19 @@ describe("agentic.acp.AgentConfigOptions", function()
         it("opens the selector when options are present", function()
             config_options:set_options({ thought_option })
 
-            local result = config_options:show_thought_level_selector(
-                function() end
-            )
+            ---@diagnostic disable-next-line: invisible
+            local result = config_options:_show_thought_level_selector()
 
             assert.is_true(result)
             assert.equal(1, select_stub.call_count)
         end)
 
-        it("invokes handler with selected value (no is_legacy)", function()
-            config_options:set_options({ multi_thought })
-
-            local handler_spy = spy.new(function() end)
+        it("dispatches set_config_option with selected value", function()
+            --- @type any
+            local agent = { set_config_option = function() end }
+            local config = make_with_agent(agent, { id = "s1" })
+            config:set_options({ multi_thought })
+            local set_config_stub = spy.stub(agent, "set_config_option")
 
             select_stub:invokes(function(items, _opts, on_choice)
                 for _, item in ipairs(items) do
@@ -758,67 +815,74 @@ describe("agentic.acp.AgentConfigOptions", function()
                 end
             end)
 
-            config_options:show_thought_level_selector(
-                handler_spy --[[@as function]]
-            )
+            ---@diagnostic disable-next-line: invisible
+            config:_show_thought_level_selector()
 
-            assert.equal(1, handler_spy.call_count)
-            assert.equal("high", handler_spy.calls[1][1])
-            assert.is_false(handler_spy.calls[1][2])
+            assert.stub(set_config_stub).was.called(1)
+            local call = set_config_stub.calls[1]
+            -- call[3]=configId (option.id), call[4]=value
+            assert.equal("thought-multi", call[3])
+            assert.equal("high", call[4])
+
+            set_config_stub:revert()
         end)
     end)
 
     describe("set_initial_thought_level", function()
         --- @type TestStub
         local notify_stub
+        --- @type TestStub
+        local set_config_stub
+        --- @type agentic.acp.AgentConfigOptions
+        local config
 
         before_each(function()
-            config_options:set_options({ multi_thought })
+            --- @type any
+            local agent = { set_config_option = function() end }
+            config = make_with_agent(agent, { id = "s1" })
+            config:set_options({ multi_thought })
+            set_config_stub = spy.stub(agent, "set_config_option")
             notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
         end)
 
         after_each(function()
+            set_config_stub:revert()
             notify_stub:revert()
         end)
 
         --- Decision table for the early-return cascade. Each row maps a
-        --- target value to its expected (handler call_count, notify
+        --- target value to its expected (agent dispatch call_count, notify
         --- call_count) pair. `multi_thought.currentValue` is "low".
         for _, case in ipairs({
-            { name = "nil target", target = nil, handler = 0, notify = 0 },
-            { name = "empty target", target = "", handler = 0, notify = 0 },
+            { name = "nil target", target = nil, dispatch = 0, notify = 0 },
+            { name = "empty target", target = "", dispatch = 0, notify = 0 },
             {
                 name = "invalid target",
                 target = "nonexistent",
-                handler = 0,
+                dispatch = 0,
                 notify = 1,
             },
             {
                 name = "target equals current",
                 target = "low",
-                handler = 0,
+                dispatch = 0,
                 notify = 0,
             },
             {
                 name = "target valid and different",
                 target = "max",
-                handler = 1,
+                dispatch = 1,
                 notify = 0,
             },
         }) do
             it(case.name, function()
-                local handler = spy.new(function() end)
+                config:set_initial_thought_level(case.target)
 
-                config_options:set_initial_thought_level(
-                    case.target,
-                    handler --[[@as function]]
-                )
-
-                assert.equal(case.handler, handler.call_count)
+                assert.equal(case.dispatch, set_config_stub.call_count)
                 assert.equal(case.notify, notify_stub.call_count)
 
-                if case.handler == 1 then
-                    assert.equal(case.target, handler.calls[1][1])
+                if case.dispatch == 1 then
+                    assert.equal(case.target, set_config_stub.calls[1][4])
                 end
             end)
         end
@@ -826,15 +890,11 @@ describe("agentic.acp.AgentConfigOptions", function()
         it(
             "silently skips (no notify) when provider has no thought_level option",
             function()
-                config_options:clear()
-                local handler = spy.new(function() end)
+                config:clear()
 
-                config_options:set_initial_thought_level(
-                    "max",
-                    handler --[[@as function]]
-                )
+                config:set_initial_thought_level("max")
 
-                assert.equal(0, handler.call_count)
+                assert.equal(0, set_config_stub.call_count)
                 assert.equal(0, notify_stub.call_count)
             end
         )

@@ -123,6 +123,7 @@ describe("agentic.SessionManager", function()
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
+                _refresh_mode_header = SessionManager._refresh_mode_header,
                 _handle_new_config_options = SessionManager._handle_new_config_options,
             } --[[@as agentic.SessionManager]]
         end)
@@ -1498,9 +1499,9 @@ describe("agentic.SessionManager", function()
 
                 assert.equal(1, set_initial_thought_level_stub.call_count)
                 local call = set_initial_thought_level_stub.calls[1]
-                -- call[1] is self, call[2] is target_value, call[3] is handler
+                -- call[1] is self, call[2] is target_value (no handler arg)
                 assert.equal("max", call[2])
-                assert.equal("function", type(call[3]))
+                assert.equal(2, call.n)
             end
         )
     end)

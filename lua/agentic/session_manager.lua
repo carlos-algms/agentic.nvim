@@ -6,7 +6,6 @@
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
-local ConfigChangeDispatcher = require("agentic.acp.config_change_dispatcher")
 local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -127,14 +126,17 @@ function SessionManager:new(tab_page_id)
     )
 
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
-        set_mode = function(mode_id, is_legacy)
-            self:_handle_mode_change(mode_id, is_legacy)
+        on_set_mode_success = function(mode_id)
+            self:_set_mode_to_chat_header(mode_id)
         end,
-        set_model = function(model_id, is_legacy)
-            self:_handle_model_change(model_id, is_legacy)
+        on_config_options_applied = function()
+            self:_refresh_mode_header()
         end,
-        set_thought_level = function(value)
-            self:_handle_thought_level_change(value)
+        get_agent_instance = function()
+            return self.agent
+        end,
+        get_session_id = function()
+            return self.session_id
         end,
     })
 
@@ -468,160 +470,6 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     end
 end
 
---- Send the newly selected mode to the agent and handle the response
---- @param mode_id string
---- @param is_legacy boolean|nil
-function SessionManager:_handle_mode_change(mode_id, is_legacy)
-    if not self.session_id then
-        return
-    end
-
-    --- @type string
-    local session_id = self.session_id
-
-    ConfigChangeDispatcher.dispatch({
-        get_session_id = function()
-            return self.session_id
-        end,
-        value = mode_id,
-        label = "mode",
-        send = function(callback)
-            if is_legacy then
-                self.agent:set_mode(session_id, mode_id, callback)
-            else
-                self.agent:set_config_option(
-                    session_id,
-                    "mode",
-                    mode_id,
-                    callback
-                )
-            end
-        end,
-        on_success = function(result)
-            -- needed for backward compatibility
-            self.config_options.legacy_agent_modes.current_mode_id = mode_id
-
-            if result and result.configOptions then
-                Logger.debug("received result after setting mode")
-                self:_handle_new_config_options(result.configOptions)
-            end
-
-            self:_set_mode_to_chat_header(mode_id)
-
-            local mode_name = self.config_options:get_mode_name(mode_id)
-            Logger.notify(
-                "Mode changed to: " .. mode_name,
-                vim.log.levels.INFO,
-                {
-                    title = "Agentic Mode changed",
-                }
-            )
-        end,
-    })
-end
-
---- Send the newly selected model to the agent
---- @param model_id string
---- @param is_legacy boolean|nil
---- @param on_done fun()|nil Called after the agent responds successfully.
----  Used by session-creation wiring to chain `default_thought_level` after
----  the model change has refreshed the available effort/thought_level
----  options server-side. Without this chain, applying the thought level
----  before the model response validates against the OLD model's options,
----  which can silently reject the configured value or warn that a valid
----  option is unavailable.
-function SessionManager:_handle_model_change(model_id, is_legacy, on_done)
-    if not self.session_id then
-        return
-    end
-
-    --- @type string
-    local session_id = self.session_id
-
-    ConfigChangeDispatcher.dispatch({
-        get_session_id = function()
-            return self.session_id
-        end,
-        value = model_id,
-        label = "model",
-        send = function(callback)
-            if is_legacy then
-                self.agent:set_model(session_id, model_id, callback)
-            else
-                self.agent:set_config_option(
-                    session_id,
-                    "model",
-                    model_id,
-                    callback
-                )
-            end
-        end,
-        on_success = function(result)
-            -- Always update legacy state on success (mirrors _handle_mode_change pattern)
-            self.config_options.legacy_agent_models.current_model_id = model_id
-
-            if result and result.configOptions then
-                Logger.debug("received result after setting model")
-                self:_handle_new_config_options(result.configOptions)
-            end
-
-            Logger.notify(
-                "Model changed to: " .. model_id,
-                vim.log.levels.INFO,
-                { title = "Agentic Model changed" }
-            )
-
-            if on_done then
-                on_done()
-            end
-        end,
-    })
-end
-
---- Send the newly selected thought level / effort to the agent.
---- Reads `id` from the stored config option to determine the actual
---- configId — Claude sends `effort`, Codex sends `thought_level`.
---- @param value string
-function SessionManager:_handle_thought_level_change(value)
-    if not self.session_id then
-        return
-    end
-
-    local thought = self.config_options.thought_level
-
-    if not thought then
-        Logger.debug("no thought_level option available")
-        return
-    end
-
-    --- @type string
-    local session_id = self.session_id
-    local config_id = thought.id
-
-    ConfigChangeDispatcher.dispatch({
-        get_session_id = function()
-            return self.session_id
-        end,
-        value = value,
-        label = "thought effort level",
-        send = function(callback)
-            self.agent:set_config_option(session_id, config_id, value, callback)
-        end,
-        on_success = function(result)
-            if result and result.configOptions then
-                Logger.debug("received result after setting thought_level")
-                self:_handle_new_config_options(result.configOptions)
-            end
-
-            Logger.notify(
-                "Thought effort level changed to: " .. value,
-                vim.log.levels.INFO,
-                { title = "Agentic Thought Effort Level changed" }
-            )
-        end,
-    })
-end
-
 --- NOTE: This is used by users inside hooks, moving/renaming this is a breaking change!
 function SessionManager:schedule_header_refresh()
     self.widget:schedule_header_refresh()
@@ -882,10 +730,7 @@ function SessionManager:new_session(opts)
 
         local function apply_initial_thought_level()
             self.config_options:set_initial_thought_level(
-                self.agent.provider_config.default_thought_level,
-                function(value)
-                    self:_handle_thought_level_change(value)
-                end
+                self.agent.provider_config.default_thought_level
             )
         end
 
@@ -896,20 +741,11 @@ function SessionManager:new_session(opts)
         -- response. Otherwise (model unchanged), apply immediately.
         local will_change_model = self.config_options:set_initial_model(
             self.agent.provider_config.initial_model,
-            function(model, is_legacy)
-                self:_handle_model_change(
-                    model,
-                    is_legacy,
-                    apply_initial_thought_level
-                )
-            end
+            apply_initial_thought_level
         )
 
         self.config_options:set_initial_mode(
-            self.agent.provider_config.default_mode,
-            function(mode, is_legacy)
-                self:_handle_mode_change(mode, is_legacy)
-            end
+            self.agent.provider_config.default_mode
         )
 
         if not will_change_model then
@@ -1037,13 +873,17 @@ function SessionManager:add_buffer_diagnostics_to_context(bufnr)
     return self.diagnostics_list:add_many(diagnostics)
 end
 
---- @param new_config_options agentic.acp.ConfigOption[]
-function SessionManager:_handle_new_config_options(new_config_options)
-    self.config_options:set_options(new_config_options)
-
+--- Refresh the chat header from the live mode option, when one is present.
+function SessionManager:_refresh_mode_header()
     if self.config_options.mode and self.config_options.mode.currentValue then
         self:_set_mode_to_chat_header(self.config_options.mode.currentValue)
     end
+end
+
+--- @param new_config_options agentic.acp.ConfigOption[]
+function SessionManager:_handle_new_config_options(new_config_options)
+    self.config_options:set_options(new_config_options)
+    self:_refresh_mode_header()
 end
 
 function SessionManager:destroy()
