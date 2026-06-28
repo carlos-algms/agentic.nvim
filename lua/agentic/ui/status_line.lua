@@ -222,7 +222,23 @@ end
 
 --- Close the float window, delete the scratch buffer, and clear the autocmd
 --- group. Idempotent: safe to call more than once.
---- Full implementation in Task 5.
-function StatusLine:destroy() end
+function StatusLine:destroy()
+    if self._float_winid and vim.api.nvim_win_is_valid(self._float_winid) then
+        pcall(vim.api.nvim_win_close, self._float_winid, true)
+    end
+    self._float_winid = nil
+
+    if self._float_bufnr and vim.api.nvim_buf_is_valid(self._float_bufnr) then
+        pcall(vim.api.nvim_buf_delete, self._float_bufnr, { force = true })
+    end
+    self._float_bufnr = nil
+
+    if self._augroup then
+        pcall(vim.api.nvim_del_augroup_by_id, self._augroup)
+        self._augroup = nil
+    end
+
+    self._win_nrs = nil
+end
 
 return StatusLine

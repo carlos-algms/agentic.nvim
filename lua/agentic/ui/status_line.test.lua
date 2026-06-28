@@ -452,6 +452,82 @@ describe("StatusLine", function()
         )
     end)
 
+    describe("destroy", function()
+        it("should close the float window and nil _float_winid", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            assert.is_not_nil(sl._float_winid)
+            --- @type integer
+            local former_winid = sl._float_winid
+
+            sl:destroy()
+
+            assert.is_nil(sl._float_winid)
+            assert.is_false(vim.api.nvim_win_is_valid(former_winid))
+        end)
+
+        it("should delete the scratch buffer and nil _float_bufnr", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            assert.is_not_nil(sl._float_bufnr)
+            --- @type integer
+            local former_bufnr = sl._float_bufnr
+
+            sl:destroy()
+
+            assert.is_nil(sl._float_bufnr)
+            assert.is_false(vim.api.nvim_buf_is_valid(former_bufnr))
+        end)
+
+        it("should clear the autocmd group", function()
+            local input = open_scratch_win()
+            local tab = vim.api.nvim_get_current_tabpage()
+            local sl = make_attached({ input = input }, "right")
+            local group_name = "AgenticStatusLine_" .. tab
+
+            sl:destroy()
+
+            -- Querying a deleted group by name throws; pcall returns false.
+            local ok = pcall(vim.api.nvim_get_autocmds, { group = group_name })
+            assert.is_false(ok)
+        end)
+
+        it("should nil the _win_nrs reference", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+
+            sl:destroy()
+
+            assert.is_nil(sl._win_nrs)
+        end)
+
+        it("should be idempotent: second destroy does not error", function()
+            local input = open_scratch_win()
+            local sl = make_attached({ input = input }, "right")
+            sl:reposition()
+            sl:destroy()
+
+            assert.has_no_errors(function()
+                sl:destroy()
+            end)
+        end)
+
+        it(
+            "should not error on a fresh instance with no attach or float",
+            function()
+                local sl = StatusLine:new()
+                assert.has_no_errors(function()
+                    sl:destroy()
+                end)
+            end
+        )
+    end)
+
     describe("set_text", function()
         it(
             "should write text to float buffer line 0 and leave buffer non-modifiable",
