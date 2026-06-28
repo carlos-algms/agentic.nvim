@@ -8,9 +8,9 @@ local Logger = require("agentic.utils.logger")
 --- instance; no module-level mutable per-tab data.
 
 --- @class agentic.ui.StatusLine
---- @field _tab_page_id integer Owning tabpage id
+--- @field _tab_page_id? integer Owning tabpage id
 --- @field _win_nrs? table<string, integer> Reference to ChatWidget.win_nrs
---- @field _position? string Layout position: "left"|"right"|"bottom"
+--- @field _position? "left"|"right"|"bottom" Layout position
 --- @field _text string Status text content (default "")
 --- @field _float_winid? integer Float window id, nil when not open
 --- @field _float_bufnr? integer Scratch buffer id for the float
@@ -21,7 +21,7 @@ StatusLine.__index = StatusLine
 --- @return agentic.ui.StatusLine
 function StatusLine:new()
     local instance = setmetatable({
-        _tab_page_id = 0,
+        _tab_page_id = nil,
         _win_nrs = nil,
         _position = nil,
         _text = "",
@@ -38,7 +38,7 @@ end
 --- so the next reposition() re-points the existing float to the new anchor.
 --- @param tab_page_id integer
 --- @param win_nrs table<string, integer>
---- @param position string "left"|"right"|"bottom"
+--- @param position "left"|"right"|"bottom"
 function StatusLine:attach(tab_page_id, win_nrs, position)
     self._tab_page_id = tab_page_id
     self._win_nrs = win_nrs
@@ -65,7 +65,7 @@ function StatusLine:reposition() end
 
 --- Close the float window, delete the scratch buffer, and clear the autocmd
 --- group. Idempotent: safe to call more than once.
---- Full implementation in Tasks 4/5.
+--- Full implementation in Task 5.
 function StatusLine:destroy() end
 
 return StatusLine
