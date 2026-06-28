@@ -85,7 +85,6 @@ describe("agentic.acp.AgentConfigOptions", function()
             on_set_mode_success = function() end,
             on_config_options_applied = function() end,
             get_agent_instance = function()
-                --- @diagnostic disable-next-line: return-type-mismatch
                 return nil
             end,
             get_session_id = function()
