@@ -435,7 +435,7 @@ end
 
 --- @param target agentic.acp.ConfigOption|nil
 --- @param prompt string
---- @param handle_change fun(mode: string, is_legacy: boolean): any
+--- @param handle_change fun(value: string): any
 --- @return boolean shown
 function AgentConfigOptions:_show_selector(target, prompt, handle_change)
     if not target or not target.options or #target.options == 0 then
@@ -463,11 +463,45 @@ function AgentConfigOptions:_show_selector(target, prompt, handle_change)
         end,
     }, function(selected_mode)
         if selected_mode and selected_mode.value ~= target.currentValue then
-            handle_change(selected_mode.value, false)
+            handle_change(selected_mode.value)
         end
     end)
 
     return true
+end
+
+--- @param session_id string
+--- @param label string
+--- @param value string
+--- @param on_success fun(result: table|nil)
+--- @return fun(result: table|nil, err: agentic.acp.ACPError|nil)
+function AgentConfigOptions:_make_change_response(
+    session_id,
+    label,
+    value,
+    on_success
+)
+    return function(result, err)
+        if self.callbacks.get_session_id() ~= session_id then
+            Logger.debug("Stale config change response, ignoring")
+            return
+        end
+
+        if err then
+            Logger.notify(
+                string.format(
+                    "Failed to change %s to '%s': %s",
+                    label,
+                    value,
+                    err.message
+                ),
+                vim.log.levels.ERROR
+            )
+            return
+        end
+
+        on_success(result)
+    end
 end
 
 --- @param mode_id string
@@ -485,64 +519,40 @@ function AgentConfigOptions:handle_mode_change(mode_id, is_legacy)
         return
     end
 
-    --- @param result table|nil
-    --- @param err agentic.acp.ACPError|nil
-    local function handle_mode_change_response(result, err)
-        if self.callbacks.get_session_id() ~= session_id then
-            Logger.debug("Stale config change response, ignoring")
-            return
-        end
+    local response = self:_make_change_response(
+        session_id,
+        "mode",
+        mode_id,
+        function(result)
+            -- keep legacy state in sync so legacy selectors reflect the change
+            self.legacy_agent_modes.current_mode_id = mode_id
 
-        if err then
+            if result and type(result.configOptions) == "table" then
+                Logger.debug("received result after setting mode")
+                self:set_options(result.configOptions)
+            end
+
+            local mode_name = self:get_mode_name(mode_id)
             Logger.notify(
-                string.format(
-                    "Failed to change mode to '%s': %s",
-                    mode_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
+                "Mode changed to: " .. mode_name,
+                vim.log.levels.INFO,
+                { title = "Agentic Mode changed" }
             )
-            return
+
+            self.callbacks.on_set_mode_success(mode_id)
         end
-
-        -- keep legacy state in sync so legacy selectors reflect the change
-        self.legacy_agent_modes.current_mode_id = mode_id
-
-        if result and type(result.configOptions) == "table" then
-            Logger.debug("received result after setting mode")
-            self:set_options(result.configOptions)
-        end
-
-        local mode_name = self:get_mode_name(mode_id)
-        Logger.notify("Mode changed to: " .. mode_name, vim.log.levels.INFO, {
-            title = "Agentic Mode changed",
-        })
-
-        self.callbacks.on_set_mode_success(mode_id)
-    end
+    )
 
     if is_legacy then
-        agent:set_mode(session_id, mode_id, handle_mode_change_response)
+        agent:set_mode(session_id, mode_id, response)
     else
-        agent:set_config_option(
-            session_id,
-            "mode",
-            mode_id,
-            handle_mode_change_response
-        )
+        agent:set_config_option(session_id, "mode", mode_id, response)
     end
 end
 
---- Send the newly selected model to the agent.
 --- @param model_id string
 --- @param is_legacy boolean
---- @param on_done fun()|nil Called after the agent responds successfully.
----  Used by session-creation wiring to chain `default_thought_level` after
----  the model change has refreshed the available effort/thought_level
----  options server-side. Without this chain, applying the thought level
----  before the model response validates against the OLD model's options,
----  which can silently reject the configured value or warn that a valid
----  option is unavailable.
+--- @param on_done fun()|nil
 function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
     local session_id = self.callbacks.get_session_id()
 
@@ -556,61 +566,39 @@ function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
         return
     end
 
-    --- @param result table|nil
-    --- @param err agentic.acp.ACPError|nil
-    local function handle_model_change_response(result, err)
-        if self.callbacks.get_session_id() ~= session_id then
-            Logger.debug("Stale config change response, ignoring")
-            return
-        end
+    local response = self:_make_change_response(
+        session_id,
+        "model",
+        model_id,
+        function(result)
+            -- keep legacy state in sync so legacy selectors reflect the change
+            self.legacy_agent_models.current_model_id = model_id
 
-        if err then
+            if result and type(result.configOptions) == "table" then
+                Logger.debug("received result after setting model")
+                self:set_options(result.configOptions)
+                self.callbacks.on_config_options_applied()
+            end
+
             Logger.notify(
-                string.format(
-                    "Failed to change model to '%s': %s",
-                    model_id,
-                    err.message
-                ),
-                vim.log.levels.ERROR
+                "Model changed to: " .. model_id,
+                vim.log.levels.INFO,
+                { title = "Agentic Model changed" }
             )
-            return
+
+            if on_done then
+                on_done()
+            end
         end
-
-        -- keep legacy state in sync so legacy selectors reflect the change
-        self.legacy_agent_models.current_model_id = model_id
-
-        if result and type(result.configOptions) == "table" then
-            Logger.debug("received result after setting model")
-            self:set_options(result.configOptions)
-            self.callbacks.on_config_options_applied()
-        end
-
-        Logger.notify(
-            "Model changed to: " .. model_id,
-            vim.log.levels.INFO,
-            { title = "Agentic Model changed" }
-        )
-
-        if on_done then
-            on_done()
-        end
-    end
+    )
 
     if is_legacy then
-        agent:set_model(session_id, model_id, handle_model_change_response)
+        agent:set_model(session_id, model_id, response)
     else
-        agent:set_config_option(
-            session_id,
-            "model",
-            model_id,
-            handle_model_change_response
-        )
+        agent:set_config_option(session_id, "model", model_id, response)
     end
 end
 
---- Send the newly selected thought level / effort to the agent.
---- Reads `id` from the stored config option to determine the actual
---- configId — Claude sends `effort`, Codex sends `thought_level`.
 --- @param value string
 function AgentConfigOptions:handle_thought_level_change(value)
     local session_id = self.callbacks.get_session_id()
@@ -633,45 +621,26 @@ function AgentConfigOptions:handle_thought_level_change(value)
         return
     end
 
-    --- @param result table|nil
-    --- @param err agentic.acp.ACPError|nil
-    local function handle_thought_level_change_response(result, err)
-        if self.callbacks.get_session_id() ~= session_id then
-            Logger.debug("Stale config change response, ignoring")
-            return
-        end
-
-        if err then
-            Logger.notify(
-                string.format(
-                    "Failed to change thought effort level to '%s': %s",
-                    value,
-                    err.message
-                ),
-                vim.log.levels.ERROR
-            )
-            return
-        end
-
-        if result and type(result.configOptions) == "table" then
-            Logger.debug("received result after setting thought_level")
-            self:set_options(result.configOptions)
-            self.callbacks.on_config_options_applied()
-        end
-
-        Logger.notify(
-            "Thought effort level changed to: " .. value,
-            vim.log.levels.INFO,
-            { title = "Agentic Thought Effort Level changed" }
-        )
-    end
-
-    agent:set_config_option(
+    local response = self:_make_change_response(
         session_id,
-        config_id,
+        "thought effort level",
         value,
-        handle_thought_level_change_response
+        function(result)
+            if result and type(result.configOptions) == "table" then
+                Logger.debug("received result after setting thought_level")
+                self:set_options(result.configOptions)
+                self.callbacks.on_config_options_applied()
+            end
+
+            Logger.notify(
+                "Thought effort level changed to: " .. value,
+                vim.log.levels.INFO,
+                { title = "Agentic Thought Effort Level changed" }
+            )
+        end
     )
+
+    agent:set_config_option(session_id, config_id, value, response)
 end
 
 return AgentConfigOptions
