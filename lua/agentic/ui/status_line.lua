@@ -1,5 +1,31 @@
 local Logger = require("agentic.utils.logger")
 
+--- Returns the bottom-most valid agentic winid for the given win_nrs + position.
+--- Priority for position="bottom": todos > diagnostics > files > code > input > chat.
+--- Priority for position="left"/"right": input > chat.
+--- Returns nil when no valid winid is found.
+--- @param win_nrs table<string, integer>
+--- @param position string
+--- @return integer|nil
+local function bottom_anchor_winid(win_nrs, position)
+    local function valid(key)
+        local id = win_nrs[key]
+        return id and vim.api.nvim_win_is_valid(id) and id or nil
+    end
+
+    if position == "bottom" then
+        return valid("todos")
+            or valid("diagnostics")
+            or valid("files")
+            or valid("code")
+            or valid("input")
+            or valid("chat")
+            or nil
+    end
+
+    return valid("input") or valid("chat") or nil
+end
+
 --- Per-tab floating status surface for the agentic chat UI.
 ---
 --- Owns a single floating window anchored to the bottom row of the bottom-most
@@ -57,6 +83,13 @@ end
 --- @param text string|nil
 function StatusLine:set_text(text)
     self._text = text or ""
+end
+
+--- Returns the bottom-most valid agentic winid for the current layout.
+--- Delegates to the module-level bottom_anchor_winid function.
+--- @return integer|nil
+function StatusLine:_anchor_winid()
+    return bottom_anchor_winid(self._win_nrs or {}, self._position or "")
 end
 
 --- Recompute anchor window and update float position/size.
