@@ -470,10 +470,9 @@ function ACPClient:__build_tool_call_message(update)
         end
     end
 
-    -- Last resort: render rawInput as expanded JSON so tool calls with no
-    -- content and no diff still show their input (e.g. OpenCode's bash
-    -- command lives only in rawInput). Skip `read` -- its renderer treats
-    -- #body as a line count and would print a bogus number.
+    -- Surface rawInput for tool calls with no content and no diff (e.g.
+    -- OpenCode's bash command lives only in rawInput). Skip `read` -- its
+    -- renderer treats #body as a line count and would print a bogus number.
     if
         not message.body
         and not message.diff
@@ -481,7 +480,16 @@ function ACPClient:__build_tool_call_message(update)
         and raw_input
         and not vim.tbl_isempty(raw_input)
     then
-        message.body = vim.split(JsonFormat.format_value(raw_input), "\n")
+        if type(raw_input.command) == "string" then
+            -- OpenCode execute tools: the command is the meaningful title and
+            -- the optional description reads better than raw JSON.
+            message.argument = raw_input.command
+            if type(raw_input.description) == "string" then
+                message.body = self:safe_split(raw_input.description)
+            end
+        else
+            message.body = vim.split(JsonFormat.format_value(raw_input), "\n")
+        end
     end
 
     return message

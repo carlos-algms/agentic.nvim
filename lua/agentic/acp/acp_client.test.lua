@@ -423,7 +423,7 @@ describe("ACPClient", function()
             end)
         end)
 
-        it("injects rawInput JSON as body for execute with command", function()
+        it("uses rawInput command as title and description as body", function()
             local client = create_ready_client()
 
             ---@diagnostic disable: invisible, assign-type-mismatch
@@ -431,14 +431,49 @@ describe("ACPClient", function()
                 toolCallId = "tc-x",
                 kind = "execute",
                 title = "bash",
-                rawInput = { command = "ls -la", description = "List files" },
+                rawInput = {
+                    command = "rm demo.md",
+                    description = "Remove demo.md file",
+                },
+            })
+            ---@diagnostic enable: invisible, assign-type-mismatch
+
+            assert.equal("rm demo.md", message.argument)
+            assert.same({ "Remove demo.md file" }, message.body)
+        end)
+
+        it("uses rawInput command as title with no description body", function()
+            local client = create_ready_client()
+
+            ---@diagnostic disable: invisible, assign-type-mismatch
+            local message = client:__build_tool_call_message({
+                toolCallId = "tc-x",
+                kind = "execute",
+                title = "bash",
+                rawInput = { command = "ls -la" },
+            })
+            ---@diagnostic enable: invisible, assign-type-mismatch
+
+            assert.equal("ls -la", message.argument)
+            assert.equal(nil, message.body)
+        end)
+
+        it("falls back to rawInput JSON when no command field", function()
+            local client = create_ready_client()
+
+            ---@diagnostic disable: invisible, assign-type-mismatch
+            local message = client:__build_tool_call_message({
+                toolCallId = "tc-x",
+                kind = "execute",
+                title = "bash",
+                rawInput = { foo = "bar baz" },
             })
             ---@diagnostic enable: invisible, assign-type-mismatch
 
             assert.is_true(type(message.body) == "table")
             assert.is_true(#message.body > 1)
             local joined = table.concat(message.body, "\n")
-            assert.is_true(joined:find('"command": "ls %-la"') ~= nil)
+            assert.is_true(joined:find('"foo": "bar baz"') ~= nil)
         end)
 
         it("does not inject body for empty rawInput", function()
