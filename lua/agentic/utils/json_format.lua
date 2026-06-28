@@ -41,6 +41,10 @@ end
 --- @param value table
 --- @return boolean
 local function is_array(value)
+    if getmetatable(value) == vim._empty_dict_mt then
+        return false
+    end
+
     local count = 0
     for _ in pairs(value) do
         count = count + 1
@@ -148,6 +152,14 @@ local function pretty(value)
     local parts = {}
     encode(value, 0, parts)
     return table.concat(parts)
+end
+
+--- Pretty-print any Lua value to multi-line JSON, with no length gate.
+--- Unlike `format_line`, short values still expand to multiple lines.
+--- @param value any
+--- @return string
+function M.format_value(value)
+    return pretty(value)
 end
 
 --- Try to format a single string as pretty-printed JSON. Returns the
