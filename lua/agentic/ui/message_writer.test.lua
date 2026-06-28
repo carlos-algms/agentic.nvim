@@ -2414,4 +2414,37 @@ describe("agentic.ui.MessageWriter", function()
             assert.is_nil(header:match(" v"))
         end)
     end)
+
+    describe("write_finish_message", function()
+        it(
+            "writes the error branch with the error icon and inspected err",
+            function()
+                writer:write_finish_message(
+                    nil,
+                    { code = -32000, message = "boom" } --[[@as any]]
+                )
+
+                assert.truthy(content_has(Config.message_icons.error))
+                assert.truthy(content_has("Agent finished with error"))
+                assert.truthy(content_has("boom"))
+            end
+        )
+
+        it("writes the cancelled branch with the stopped icon", function()
+            writer:write_finish_message({ stopReason = "cancelled" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.stopped))
+            assert.truthy(content_has("Generation stopped by the user request"))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.finished))
+        end)
+
+        it("writes the completed branch with the finished icon", function()
+            writer:write_finish_message({ stopReason = "end_turn" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.finished))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.stopped))
+        end)
+    end)
 end)

@@ -57,12 +57,12 @@ validate:
 	@mkdir -p .local; \
 	total_start=$$(date +%s); \
 	start=$$(date +%s); \
-	make format > .local/agentic_format_output.log 2>&1; \
+	$(MAKE) format > .local/agentic_format_output.log 2>&1; \
 	rc_format=$$?; \
 	echo "format: $$rc_format (took $$(($$(date +%s) - start))s) - log: .local/agentic_format_output.log"; \
 	for t in luals selene test; do \
 		( start=$$(date +%s); \
-		  make $$t > .local/agentic_$${t}_output.log 2>&1; \
+		  $(MAKE) $$t > .local/agentic_$${t}_output.log 2>&1; \
 		  rc=$$?; \
 		  echo "$$rc $$(($$(date +%s) - start))" > .local/agentic_$${t}.rc; \
 		  echo "$$t: $$rc (took $$(($$(date +%s) - start))s) - log: .local/agentic_$${t}_output.log" ) & \

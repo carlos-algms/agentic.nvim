@@ -7,6 +7,8 @@ local Hooks = require("agentic.utils.hooks")
 describe("agentic.utils.Hooks", function()
     --- @type TestStub
     local schedule_stub
+    --- @type TestStub|nil
+    local notify_stub
 
     before_each(function()
         -- Run the scheduled callback synchronously so assertions see its effect.
@@ -18,6 +20,10 @@ describe("agentic.utils.Hooks", function()
 
     after_each(function()
         schedule_stub:revert()
+        if notify_stub then
+            notify_stub:revert()
+            notify_stub = nil
+        end
         Config.hooks = Config.hooks or {}
         Config.hooks.on_prompt_submit = nil
     end)
@@ -58,7 +64,7 @@ describe("agentic.utils.Hooks", function()
     end)
 
     it("swallows hook errors and notifies them at ERROR level", function()
-        local notify_stub = spy.stub(Logger, "notify")
+        notify_stub = spy.stub(Logger, "notify")
         Config.hooks = Config.hooks or {}
         Config.hooks.on_prompt_submit = function()
             error("boom")
@@ -69,7 +75,5 @@ describe("agentic.utils.Hooks", function()
         end)
         assert.spy(notify_stub).was.called(1)
         assert.equal(vim.log.levels.ERROR, notify_stub.calls[1][2])
-
-        notify_stub:revert()
     end)
 end)
