@@ -91,7 +91,7 @@
 --- Overrides default options (wrap, linebreak, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
---- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
+--- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState|nil): string|nil
 
 --- @class agentic.UserConfig.Windows.Chat
 --- @field buffer_name? string|agentic.UserConfig.BufferNameFn
