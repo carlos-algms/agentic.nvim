@@ -14,6 +14,7 @@ local SessionState = {}
 SessionState.__index = SessionState
 
 --- ceil to 1 decimal: 27649 -> "27.7K", 1000000 -> "1M"
+--- @return string
 local function to_human(n)
     n = n or 0
     if n >= 1000000 then
@@ -29,6 +30,7 @@ local function to_human(n)
 end
 
 --- ceil to 2 decimals: 0.004 -> 0.01
+--- @return string
 local function to_formatted_cost(n)
     return string.format("%.2f", math.ceil((n or 0) * 100) / 100)
 end
