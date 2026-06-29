@@ -547,6 +547,76 @@ describe("agentic.acp.AgentConfigOptions", function()
         )
     end)
 
+    describe("successful changes without returned configOptions", function()
+        --- @type TestStub
+        local notify_stub
+
+        before_each(function()
+            notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        it("updates modern mode currentValue", function()
+            --- @type any
+            local agent = {
+                set_config_option = function(_self, _sid, _cid, _val, cb)
+                    cb({}, nil)
+                end,
+            }
+            local config = make_with_agent(agent, { id = "s1" })
+            config:set_options({ mode_option })
+
+            config:handle_mode_change("plan", false)
+
+            assert.equal("plan", config:get_mode_id())
+        end)
+
+        it("updates modern model currentValue and refreshes headers", function()
+            local applied = spy.new(function() end)
+            --- @type any
+            local agent = {
+                set_config_option = function(_self, _sid, _cid, _val, cb)
+                    cb({}, nil)
+                end,
+            }
+            local config =
+                make_with_agent(agent, { id = "s1" }, applied --[[@as fun()]])
+            config:set_options({ model_option })
+
+            config:handle_model_change("claude-opus", false)
+
+            assert.equal("claude-opus", config:get_model_id())
+            assert.equal(1, applied.call_count)
+        end)
+
+        it(
+            "updates thought_level currentValue and refreshes headers",
+            function()
+                local applied = spy.new(function() end)
+                --- @type any
+                local agent = {
+                    set_config_option = function(_self, _sid, _cid, _val, cb)
+                        cb({}, nil)
+                    end,
+                }
+                local config = make_with_agent(
+                    agent,
+                    { id = "s1" },
+                    applied --[[@as fun()]]
+                )
+                config:set_options({ multi_thought })
+
+                config:handle_thought_level_change("max")
+
+                assert.equal("max", config.thought_level.currentValue)
+                assert.equal(1, applied.call_count)
+            end
+        )
+    end)
+
     --- _show_mode_selector and _show_model_selector share legacy-fallback
     --- behavior. The selectors take no handler — they route the pick to
     --- `self:handle_*_change` internally, so a fake agent observes the

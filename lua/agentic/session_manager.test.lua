@@ -18,6 +18,8 @@ describe("agentic.SessionManager", function()
         local notify_stub
         --- @type TestSpy
         local render_header_spy
+        --- @type TestSpy
+        local refresh_spy
         --- @type agentic.SessionManager
         local session
         --- @type integer
@@ -26,6 +28,7 @@ describe("agentic.SessionManager", function()
         before_each(function()
             notify_stub = spy.stub(Logger, "notify")
             render_header_spy = spy.new(function() end)
+            refresh_spy = spy.new(function() end)
             test_bufnr = vim.api.nvim_create_buf(false, true)
 
             local legacy_modes = AgentModes:new()
@@ -47,6 +50,7 @@ describe("agentic.SessionManager", function()
                 },
                 widget = {
                     render_header = render_header_spy,
+                    schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
                 },
                 _on_session_update = SessionManager._on_session_update,
@@ -70,6 +74,7 @@ describe("agentic.SessionManager", function()
             assert.spy(render_header_spy).was.called(1)
             assert.equal("chat", render_header_spy.calls[1][2])
             assert.equal("Mode: Code", render_header_spy.calls[1][3])
+            assert.spy(refresh_spy).was.called(1)
 
             assert.spy(notify_stub).was.called(1)
             assert.equal("Mode changed to: code", notify_stub.calls[1][1])
@@ -84,6 +89,7 @@ describe("agentic.SessionManager", function()
                 session.config_options.legacy_agent_modes.current_mode_id
             )
             assert.spy(render_header_spy).was.called(0)
+            assert.spy(refresh_spy).was.called(0)
 
             assert.spy(notify_stub).was.called(1)
             assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
@@ -809,15 +815,40 @@ describe("agentic.SessionManager", function()
         local SessionState = require("agentic.acp.session_state")
         --- @type TestSpy
         local refresh_spy
+        --- @type TestSpy
+        local render_header_spy
         --- @type agentic.SessionManager
         local session
 
         before_each(function()
             refresh_spy = spy.new(function() end)
+            render_header_spy = spy.new(function() end)
+
+            local legacy_modes = AgentModes:new()
+            legacy_modes:set_modes({
+                availableModes = {
+                    { id = "plan", name = "Plan", description = "Planning" },
+                    { id = "code", name = "Code", description = "Coding" },
+                },
+                currentModeId = "plan",
+            })
 
             local config_options = {
-                get_model_id = function() end,
-                get_mode_id = function() end,
+                legacy_agent_modes = legacy_modes,
+                mode = nil,
+                set_options = function(self, config_options_update)
+                    self.mode = config_options_update[1]
+                end,
+                get_model_id = function(_self)
+                    return nil
+                end,
+                get_mode_id = function(self)
+                    return self.mode and self.mode.currentValue or nil
+                end,
+                get_mode_name = function(_self, mode_id)
+                    local mode = legacy_modes:get_mode(mode_id)
+                    return mode and mode.name or mode_id
+                end,
             }
 
             session = {
@@ -828,9 +859,12 @@ describe("agentic.SessionManager", function()
                 session_state = SessionState:new(config_options, "Test"),
                 widget = {
                     schedule_header_refresh = refresh_spy,
+                    render_header = render_header_spy,
                 },
                 agent = { provider_config = { name = "Test" } },
                 _on_session_update = SessionManager._on_session_update,
+                _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
+                _handle_new_config_options = SessionManager._handle_new_config_options,
             } --[[@as agentic.SessionManager]]
         end)
 
@@ -850,6 +884,39 @@ describe("agentic.SessionManager", function()
                 sessionUpdate = "usage_update",
                 used = 10,
                 size = 20,
+            })
+
+            assert.spy(refresh_spy).was.called(1)
+        end)
+
+        it("schedules a header refresh for config_option_update", function()
+            session:_on_session_update({
+                sessionUpdate = "config_option_update",
+                configOptions = {
+                    {
+                        id = "mode-1",
+                        category = "mode",
+                        currentValue = "plan",
+                        description = "Mode",
+                        name = "Mode",
+                        options = {
+                            {
+                                value = "plan",
+                                name = "Plan",
+                                description = "",
+                            },
+                        },
+                    },
+                },
+            })
+
+            assert.spy(refresh_spy).was.called(1)
+        end)
+
+        it("schedules a header refresh for current_mode_update", function()
+            session:_on_session_update({
+                sessionUpdate = "current_mode_update",
+                currentModeId = "code",
             })
 
             assert.spy(refresh_spy).was.called(1)

@@ -141,8 +141,9 @@ describe("WindowDecoration._build_default_header", function()
 
     --- Stub session_state exposing only the getters the header consumes.
     --- @param cost_raw number|nil Cumulative cost; nil/0 omits the cost segment
+    --- @param currency string|nil Cost currency
     --- @return agentic.acp.SessionState
-    local function fake_session_state(cost_raw)
+    local function fake_session_state(cost_raw, currency)
         --- @type any
         local stub = {
             get_provider_name = function()
@@ -166,6 +167,9 @@ describe("WindowDecoration._build_default_header", function()
             get_cost_amount = function()
                 return cost_raw and string.format("%.2f", cost_raw) or nil
             end,
+            get_cost_currency = function()
+                return currency or "USD"
+            end,
         }
         return stub
     end
@@ -183,7 +187,22 @@ describe("WindowDecoration._build_default_header", function()
         )
 
         assert.equal(
-            "Agentic Chat | Claude - Sonnet - Ask (1K/200K) $0.50",
+            "Agentic Chat | Claude - Sonnet - Ask (1K/200K) USD 0.50",
+            text
+        )
+    end)
+
+    it("shows the reported cost currency", function()
+        local parts = { title = "Agentic Chat" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(0.5, "EUR")
+        )
+
+        assert.equal(
+            "Agentic Chat | Claude - Sonnet - Ask (1K/200K) EUR 0.50",
             text
         )
     end)
@@ -256,9 +275,11 @@ describe("WindowDecoration.render_header", function()
     --- Build a buffer displayed in a window, install header + buffer_name
     --- function configs that record their 2nd arg, then render_header with a
     --- session_state carrying a unique marker. Returns recorded markers.
+    --- @param window_name string
     --- @return integer bufnr the buffer rendered into; recorded markers are read via _G globals
-    local function render_with_session_state()
-        return child.lua([[
+    local function render_with_session_state(window_name)
+        return child.lua(string.format(
+            [[
             local WindowDecoration = require("agentic.ui.window_decoration")
             local Config = require("agentic.config")
 
@@ -266,40 +287,79 @@ describe("WindowDecoration.render_header", function()
             vim.api.nvim_win_set_buf(0, bufnr)
 
             Config.headers = Config.headers or {}
-            Config.headers.chat = function(parts, session_state)
+            Config.headers.%s = function(parts, session_state)
                 _G.recorded_header_marker =
                     session_state and session_state.marker or nil
                 return parts.title
             end
 
-            Config.windows.chat.buffer_name = function(parts, session_state)
+            Config.windows.%s.buffer_name = function(parts, session_state)
                 _G.recorded_buffer_name_marker =
                     session_state and session_state.marker or nil
-                return "chat-buf-name"
+                return "%s-buf-name"
             end
 
             local session_state = { marker = "SS_MARKER" }
-            WindowDecoration.render_header(bufnr, "chat", nil, session_state)
+            WindowDecoration.render_header(bufnr, "%s", nil, session_state)
 
             return bufnr
-        ]])
+        ]],
+            window_name,
+            window_name,
+            window_name,
+            window_name
+        ))
     end
 
     it("passes session_state as 2nd arg to header function", function()
-        render_with_session_state()
+        render_with_session_state("chat")
         child.flush()
 
         assert.equal("SS_MARKER", child.lua_get("_G.recorded_header_marker"))
     end)
 
     it("passes session_state as 2nd arg to buffer_name function", function()
-        render_with_session_state()
+        render_with_session_state("chat")
         child.flush()
 
         assert.equal(
             "SS_MARKER",
             child.lua_get("_G.recorded_buffer_name_marker")
         )
+    end)
+
+    it("passes session_state as 2nd arg to input header function", function()
+        render_with_session_state("input")
+        child.flush()
+
+        assert.equal("SS_MARKER", child.lua_get("_G.recorded_header_marker"))
+    end)
+
+    it(
+        "passes session_state as 2nd arg to input buffer_name function",
+        function()
+            render_with_session_state("input")
+            child.flush()
+
+            assert.equal(
+                "SS_MARKER",
+                child.lua_get("_G.recorded_buffer_name_marker")
+            )
+        end
+    )
+
+    it("passes nil session_state to non-chat header function", function()
+        render_with_session_state("code")
+        child.flush()
+
+        assert.is_true(child.lua_get("_G.recorded_header_marker == nil"))
+    end)
+
+    it("passes nil session_state to non-chat buffer_name function", function()
+        render_with_session_state("code")
+        child.flush()
+
+        assert.is_true(child.lua_get("_G.recorded_buffer_name_marker == nil"))
     end)
 
     it("legacy single-arg header fn still works", function()

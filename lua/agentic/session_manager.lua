@@ -335,6 +335,7 @@ function SessionManager:_on_session_update(update)
             )
         then
             self:_set_mode_to_chat_header(update.currentModeId)
+            self.widget:schedule_header_refresh()
         end
     elseif update.sessionUpdate == "config_option_update" then
         self:_handle_new_config_options(update.configOptions)

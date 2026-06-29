@@ -492,9 +492,12 @@ Every getter is nil-able by contract — always nil-check before use.
 | `get_mode_name()`          | `string\|nil` | Current mode display name           |
 | `get_thought_level_id()`   | `string\|nil` | Current thought level id            |
 | `get_thought_level_name()` | `string\|nil` | Current thought level display name  |
-| `get_context_used()`       | `number\|nil` | Tokens currently in context         |
-| `get_context_size()`       | `number\|nil` | Total context window size in tokens |
-| `get_cost_amount()`        | `number\|nil` | Cumulative session cost amount      |
+| `get_context_used()`       | `string\|nil` | Formatted context used              |
+| `get_context_used_raw()`   | `number\|nil` | Tokens currently in context         |
+| `get_context_size()`       | `string\|nil` | Formatted context window size       |
+| `get_context_size_raw()`   | `number\|nil` | Total context window size in tokens |
+| `get_cost_amount()`        | `string\|nil` | Formatted cumulative session cost   |
+| `get_cost_amount_raw()`    | `number\|nil` | Cumulative session cost amount      |
 | `get_cost_currency()`      | `string\|nil` | Cost currency code (e.g. `"USD"`)   |
 | `get_provider_name()`      | `string\|nil` | Provider display name               |
 
@@ -517,7 +520,8 @@ again after a session restore until the next one.
           end
           local cost = session_state:get_cost_amount()
           if cost then
-            header = header .. " | $" .. string.format("%.2f", cost)
+            local currency = session_state:get_cost_currency()
+            header = header .. " | " .. (currency and currency .. " " or "") .. cost
           end
         end
         return header

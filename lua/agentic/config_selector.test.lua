@@ -394,7 +394,7 @@ describe("config selector", function()
             end
         )
 
-        it("does NOT fire when the response omits configOptions", function()
+        it("fires when the response omits configOptions", function()
             local applied = spy.new(function() end)
             --- @type any
             local agent = {
@@ -411,7 +411,7 @@ describe("config selector", function()
 
             config:handle_model_change("m2", false)
 
-            assert.equal(0, applied.call_count)
+            assert.equal(1, applied.call_count)
         end)
 
         it("does NOT fire when the change errors", function()

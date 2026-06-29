@@ -100,7 +100,13 @@ local function build_chat_header(parts, session_state)
 
     local cost = session_state:get_cost_amount_raw()
     if cost ~= nil and cost ~= 0 then
-        header = header .. " $" .. (session_state:get_cost_amount() or "")
+        local amount = session_state:get_cost_amount() or ""
+        local currency = session_state:get_cost_currency()
+        if currency then
+            header = header .. " " .. currency .. " " .. amount
+        else
+            header = header .. " " .. amount
+        end
     end
 
     return header
@@ -433,7 +439,7 @@ end
 --- @param bufnr integer Buffer number - stable reference to derive window and tab context
 --- @param window_name string Name of the window (for Config.headers lookup and error messages)
 --- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
---- @param session_state agentic.acp.SessionState|nil Live session state forwarded to user header/buffer_name callbacks as their 2nd arg
+--- @param session_state agentic.acp.SessionState|nil Live session state forwarded to chat/input header/buffer_name callbacks as their 2nd arg
 function WindowDecoration.render_header(
     bufnr,
     window_name,
@@ -469,8 +475,16 @@ function WindowDecoration.render_header(
             WindowDecoration.set_headers_state(tab_page_id, headers)
         end
 
-        local header_text, err =
-            resolve_header_text(dynamic_header, window_name, session_state)
+        local callback_session_state = nil
+        if window_name == "chat" or window_name == "input" then
+            callback_session_state = session_state
+        end
+
+        local header_text, err = resolve_header_text(
+            dynamic_header,
+            window_name,
+            callback_session_state
+        )
 
         if err then
             Logger.notify(err)
@@ -487,7 +501,7 @@ function WindowDecoration.render_header(
             tab_page_id,
             window_name,
             dynamic_header,
-            session_state
+            callback_session_state
         )
     end)
 end
