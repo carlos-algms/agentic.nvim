@@ -133,15 +133,6 @@ describe("agentic.acp.SessionState", function()
             assert.equal(state:get_cost_currency(), "USD")
         end)
 
-        it("normalizes cost arriving as vim.NIL to nil", function()
-            local state = SessionState:new(config_provider_fake(), "Claude")
-
-            state:set_usage({ used = 1, size = 2, cost = vim.NIL })
-
-            assert.is_nil(state:get_cost_amount())
-            assert.is_nil(state:get_cost_currency())
-        end)
-
         it("stores zero used/size values", function()
             local state = SessionState:new(config_provider_fake(), "Claude")
 
@@ -205,6 +196,13 @@ describe("agentic.acp.SessionState", function()
 
             assert.equal(state:get_context_used(), "1M")
             assert.equal(state:get_context_size(), "1.6M")
+        end)
+
+        it("crosses to M when K rounding hits 1000, not 1000K", function()
+            local state = state_with({ used = 999999, size = 999500 })
+
+            assert.equal(state:get_context_used(), "1M")
+            assert.equal(state:get_context_size(), "999.5K")
         end)
 
         it("formats cost as a 2-decimal string, ceil to cents", function()

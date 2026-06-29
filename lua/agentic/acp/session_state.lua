@@ -19,7 +19,11 @@ local function to_human(n)
     if n >= 1000000 then
         return string.format("%gM", math.ceil(n / 100000) / 10)
     elseif n >= 1000 then
-        return string.format("%gK", math.ceil(n / 100) / 10)
+        local k = math.ceil(n / 100) / 10
+        if k >= 1000 then
+            return string.format("%gM", math.ceil(n / 100000) / 10)
+        end
+        return string.format("%gK", k)
     end
     return tostring(n)
 end
@@ -165,16 +169,10 @@ end
 
 --- @param update agentic.acp.UsageUpdate
 function SessionState:set_usage(update)
-    local cost_update = update.cost
-
-    if cost_update == vim.NIL then
-        cost_update = nil
-    end
-
     self._usage = {
         used = update.used,
         size = update.size,
-        cost = cost_update,
+        cost = update.cost,
     }
 end
 
