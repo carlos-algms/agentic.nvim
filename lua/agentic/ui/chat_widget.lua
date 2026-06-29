@@ -581,7 +581,7 @@ function ChatWidget:_bind_events_to_change_headers()
                         return
                     end
 
-                    headers.input.suffix = table.concat(hints, " ")
+                    headers.input.suffix = table.concat(hints, " | ")
 
                     -- Reassign to persist changes
                     WindowDecoration.set_headers_state(tab_page_id, headers)

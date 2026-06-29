@@ -37,7 +37,7 @@ local WINDOW_HEADERS = {
     },
     input = {
         title = "󰦨 Prompt",
-        suffix = "submit: <C-s> change mode: <S-Tab>",
+        suffix = "submit: <C-s> | change mode: <S-Tab>",
     },
     code = {
         title = "󰪸 Selected Code Snippets",
@@ -89,14 +89,18 @@ end
 --- @return string header_text
 local function build_chat_header(parts, session_state)
     local header = string.format(
-        "%s | %s - %s - %s (%s/%s)",
+        "%s | %s - %s - %s",
         parts.title,
         session_state:get_provider_name() or "",
         session_state:get_model_name() or "unknown",
-        session_state:get_mode_name() or "",
-        session_state:get_context_used() or "0",
-        session_state:get_context_size() or "0"
+        session_state:get_mode_name() or ""
     )
+
+    local used = session_state:get_context_used()
+    local size = session_state:get_context_size()
+    if used ~= nil and size ~= nil then
+        header = header .. string.format(" (%s/%s)", used, size)
+    end
 
     local cost = session_state:get_cost_amount_raw()
     if cost ~= nil and cost ~= 0 then

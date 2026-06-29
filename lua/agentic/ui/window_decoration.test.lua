@@ -142,8 +142,16 @@ describe("WindowDecoration._build_default_header", function()
     --- Stub session_state exposing only the getters the header consumes.
     --- @param cost_raw number|nil Cumulative cost; nil/0 omits the cost segment
     --- @param currency string|nil Cost currency
+    --- @param context { used: string|nil, size: string|nil }|nil Overrides the
+    ---   human-readable context getters; defaults to "1K"/"200K"
     --- @return agentic.acp.SessionState
-    local function fake_session_state(cost_raw, currency)
+    local function fake_session_state(cost_raw, currency, context)
+        --- @type string|nil, string|nil
+        local used, size = "1K", "200K"
+        if context ~= nil then
+            used = context.used
+            size = context.size
+        end
         --- @type any
         local stub = {
             get_provider_name = function()
@@ -156,10 +164,10 @@ describe("WindowDecoration._build_default_header", function()
                 return "Ask"
             end,
             get_context_used = function()
-                return "1K"
+                return used
             end,
             get_context_size = function()
-                return "200K"
+                return size
             end,
             get_cost_amount_raw = function()
                 return cost_raw
@@ -229,6 +237,30 @@ describe("WindowDecoration._build_default_header", function()
         )
 
         assert.equal("Agentic Chat | Claude - Sonnet - Ask (1K/200K)", text)
+    end)
+
+    it("omits usage segment when context is not reported yet", function()
+        local parts = { title = "Agentic Chat" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(nil, nil, { used = nil, size = nil })
+        )
+
+        assert.equal("Agentic Chat | Claude - Sonnet - Ask", text)
+    end)
+
+    it("omits usage segment when only one usage value is present", function()
+        local parts = { title = "Agentic Chat" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(nil, nil, { used = "1K", size = nil })
+        )
+
+        assert.equal("Agentic Chat | Claude - Sonnet - Ask", text)
     end)
 
     it("keeps the input header carrying both key hints", function()
