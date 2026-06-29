@@ -114,9 +114,9 @@ describe("agentic.acp.SessionState", function()
 
             state:set_usage({ used = 1000, size = 200000 })
 
-            assert.equal(state:get_context_used(), 1000)
-            assert.equal(state:get_context_size(), 200000)
-            assert.is_nil(state:get_cost_amount())
+            assert.equal(state:get_context_used_raw(), 1000)
+            assert.equal(state:get_context_size_raw(), 200000)
+            assert.is_nil(state:get_cost_amount_raw())
             assert.is_nil(state:get_cost_currency())
         end)
 
@@ -129,7 +129,7 @@ describe("agentic.acp.SessionState", function()
                 cost = { amount = 0.5, currency = "USD" },
             })
 
-            assert.equal(state:get_cost_amount(), 0.5)
+            assert.equal(state:get_cost_amount_raw(), 0.5)
             assert.equal(state:get_cost_currency(), "USD")
         end)
 
@@ -147,8 +147,8 @@ describe("agentic.acp.SessionState", function()
 
             state:set_usage({ used = 0, size = 0 })
 
-            assert.equal(state:get_context_used(), 0)
-            assert.equal(state:get_context_size(), 0)
+            assert.equal(state:get_context_used_raw(), 0)
+            assert.equal(state:get_context_size_raw(), 0)
         end)
 
         it("overwrites prior usage on a later set_usage", function()
@@ -161,10 +161,60 @@ describe("agentic.acp.SessionState", function()
             })
             state:set_usage({ used = 5, size = 6 })
 
-            assert.equal(state:get_context_used(), 5)
-            assert.equal(state:get_context_size(), 6)
-            assert.is_nil(state:get_cost_amount())
+            assert.equal(state:get_context_used_raw(), 5)
+            assert.equal(state:get_context_size_raw(), 6)
+            assert.is_nil(state:get_cost_amount_raw())
             assert.is_nil(state:get_cost_currency())
+        end)
+    end)
+
+    describe("human-readable usage getters", function()
+        --- @param usage table
+        --- @return agentic.acp.SessionState
+        local function state_with(usage)
+            local state = SessionState:new(config_provider_fake(), "Claude")
+            state:set_usage(usage)
+
+            return state
+        end
+
+        it("returns nil on a fresh instance", function()
+            local state = SessionState:new(config_provider_fake(), "Claude")
+
+            assert.is_nil(state:get_context_used())
+            assert.is_nil(state:get_context_size())
+            assert.is_nil(state:get_cost_amount())
+        end)
+
+        it("formats sub-thousand counts as plain numbers", function()
+            local state = state_with({ used = 0, size = 999 })
+
+            assert.equal(state:get_context_used(), "0")
+            assert.equal(state:get_context_size(), "999")
+        end)
+
+        it("formats thousands with a K suffix, ceil to 1 decimal", function()
+            local state = state_with({ used = 1000, size = 27649 })
+
+            assert.equal(state:get_context_used(), "1K")
+            assert.equal(state:get_context_size(), "27.7K")
+        end)
+
+        it("formats millions with an M suffix, ceil to 1 decimal", function()
+            local state = state_with({ used = 1000000, size = 1550000 })
+
+            assert.equal(state:get_context_used(), "1M")
+            assert.equal(state:get_context_size(), "1.6M")
+        end)
+
+        it("formats cost as a 2-decimal string, ceil to cents", function()
+            local state = state_with({
+                used = 1,
+                size = 2,
+                cost = { amount = 0.004, currency = "USD" },
+            })
+
+            assert.equal(state:get_cost_amount(), "0.01")
         end)
     end)
 

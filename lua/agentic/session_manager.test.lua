@@ -836,8 +836,8 @@ describe("agentic.SessionManager", function()
                 size = 200000,
             })
 
-            assert.equal(1000, session.session_state:get_context_used())
-            assert.equal(200000, session.session_state:get_context_size())
+            assert.equal(1000, session.session_state:get_context_used_raw())
+            assert.equal(200000, session.session_state:get_context_size_raw())
         end)
 
         it("schedules a header refresh", function()

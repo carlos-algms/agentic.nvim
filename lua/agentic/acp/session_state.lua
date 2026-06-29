@@ -13,6 +13,22 @@
 local SessionState = {}
 SessionState.__index = SessionState
 
+--- ceil to 1 decimal: 27649 -> "27.7K", 1000000 -> "1M"
+local function to_human(n)
+    n = n or 0
+    if n >= 1000000 then
+        return string.format("%gM", math.ceil(n / 100000) / 10)
+    elseif n >= 1000 then
+        return string.format("%gK", math.ceil(n / 100) / 10)
+    end
+    return tostring(n)
+end
+
+--- ceil to 2 decimals: 0.004 -> 0.01
+local function to_formatted_cost(n)
+    return string.format("%.2f", math.ceil((n or 0) * 100) / 100)
+end
+
 --- @param config_options agentic.acp.AgentConfigOptions
 --- @param provider_name string|nil
 --- @return agentic.acp.SessionState
@@ -99,18 +115,42 @@ function SessionState:get_thought_level_name()
 end
 
 --- @return number|nil context_used Tokens currently in context
-function SessionState:get_context_used()
+function SessionState:get_context_used_raw()
     return self._usage and self._usage.used
 end
 
+--- Human-readable `get_context_used_raw`: 27649 -> "27.7K"
+--- @return string|nil context_used
+function SessionState:get_context_used()
+    local used = self:get_context_used_raw()
+
+    return used and to_human(used)
+end
+
 --- @return number|nil context_size Total context window size in tokens
-function SessionState:get_context_size()
+function SessionState:get_context_size_raw()
     return self._usage and self._usage.size
 end
 
+--- Human-readable `get_context_size_raw`: 1000000 -> "1M"
+--- @return string|nil context_size
+function SessionState:get_context_size()
+    local size = self:get_context_size_raw()
+
+    return size and to_human(size)
+end
+
 --- @return number|nil cost_amount Cumulative session cost amount
-function SessionState:get_cost_amount()
+function SessionState:get_cost_amount_raw()
     return self._usage and self._usage.cost and self._usage.cost.amount
+end
+
+--- Human-readable `get_cost_amount_raw`: 0.004 -> "0.01"
+--- @return string|nil cost_amount
+function SessionState:get_cost_amount()
+    local amount = self:get_cost_amount_raw()
+
+    return amount and to_formatted_cost(amount)
 end
 
 --- @return string|nil cost_currency Cumulative session cost currency
@@ -125,16 +165,16 @@ end
 
 --- @param update agentic.acp.UsageUpdate
 function SessionState:set_usage(update)
-    local cost = update.cost
+    local cost_update = update.cost
 
-    if cost == vim.NIL then
-        cost = nil
+    if cost_update == vim.NIL then
+        cost_update = nil
     end
 
     self._usage = {
         used = update.used,
         size = update.size,
-        cost = cost,
+        cost = cost_update,
     }
 end
 
