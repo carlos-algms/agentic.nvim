@@ -130,6 +130,118 @@ describe("WindowDecoration._set_buffer_name", function()
     end)
 end)
 
+describe("WindowDecoration._build_default_header", function()
+    --- @type agentic.ui.WindowDecoration
+    local WindowDecoration
+
+    before_each(function()
+        package.loaded["agentic.ui.window_decoration"] = nil
+        WindowDecoration = require("agentic.ui.window_decoration")
+    end)
+
+    --- Stub session_state exposing only the getters the header consumes.
+    --- @param cost_raw number|nil Cumulative cost; nil/0 omits the cost segment
+    --- @return agentic.acp.SessionState
+    local function fake_session_state(cost_raw)
+        --- @type any
+        local stub = {
+            get_provider_name = function()
+                return "Claude"
+            end,
+            get_model_name = function()
+                return "Sonnet"
+            end,
+            get_mode_name = function()
+                return "Ask"
+            end,
+            get_context_used = function()
+                return "1K"
+            end,
+            get_context_size = function()
+                return "200K"
+            end,
+            get_cost_amount_raw = function()
+                return cost_raw
+            end,
+            get_cost_amount = function()
+                return cost_raw and string.format("%.2f", cost_raw) or nil
+            end,
+        }
+        return stub
+    end
+
+    it("builds rich chat header without any key-hint suffix", function()
+        -- suffix is present but the chat panel must ignore it; the hints
+        -- belong on the input header.
+        local parts =
+            { title = "Agentic Chat", suffix = "change mode: <S-Tab>" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(0.5)
+        )
+
+        assert.equal(
+            "Agentic Chat | Claude - Sonnet - Ask (1K/200K) $0.50",
+            text
+        )
+    end)
+
+    it("omits cost segment when cost is nil", function()
+        local parts = { title = "Agentic Chat" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(nil)
+        )
+
+        assert.equal("Agentic Chat | Claude - Sonnet - Ask (1K/200K)", text)
+    end)
+
+    it("omits cost segment when cost is zero", function()
+        local parts = { title = "Agentic Chat" }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            parts,
+            fake_session_state(0)
+        )
+
+        assert.equal("Agentic Chat | Claude - Sonnet - Ask (1K/200K)", text)
+    end)
+
+    it("keeps the input header carrying both key hints", function()
+        local parts =
+            { title = "Prompt", suffix = "submit: <C-s> change mode: <S-Tab>" }
+
+        local text = WindowDecoration._build_default_header(
+            "input",
+            parts,
+            fake_session_state(0.5)
+        )
+
+        assert.equal("Prompt | submit: <C-s> change mode: <S-Tab>", text)
+    end)
+
+    it("falls back to plain concat when session_state is nil", function()
+        local chat = WindowDecoration._build_default_header(
+            "chat",
+            { title = "Agentic Chat", suffix = "change mode: <S-Tab>" },
+            nil
+        )
+        assert.equal("Agentic Chat | change mode: <S-Tab>", chat)
+
+        local input = WindowDecoration._build_default_header(
+            "input",
+            { title = "Prompt", suffix = "submit: <C-s>" },
+            nil
+        )
+        assert.equal("Prompt | submit: <C-s>", input)
+    end)
+end)
+
 describe("WindowDecoration.render_header", function()
     local child = Child:new()
 

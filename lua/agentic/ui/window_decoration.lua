@@ -34,9 +34,11 @@ local WindowDecoration = {}
 local WINDOW_HEADERS = {
     chat = {
         title = "󰻞 Agentic Chat",
-        suffix = "<S-Tab>: change mode",
     },
-    input = { title = "󰦨 Prompt", suffix = "<C-s>: submit" },
+    input = {
+        title = "󰦨 Prompt",
+        suffix = "submit: <C-s> change mode: <S-Tab>",
+    },
     code = {
         title = "󰪸 Selected Code Snippets",
         suffix = "d: remove block",
@@ -68,14 +70,65 @@ local default_config = {
 --- @param parts agentic.ui.ChatWidget.HeaderParts
 --- @return string header_text
 local function concat_header_parts(parts)
+    --- @type string[]
     local pieces = { parts.title }
     if parts.context ~= nil then
-        table.insert(pieces, parts.context)
+        pieces[#pieces + 1] = parts.context
     end
     if parts.suffix ~= nil then
-        table.insert(pieces, parts.suffix)
+        pieces[#pieces + 1] = parts.suffix
     end
     return table.concat(pieces, " | ")
+end
+
+--- Builds the rich default header for the chat panel from live session state:
+--- `title | provider - model - mode (used/size) $cost`. The chat panel carries
+--- no key hint; submit/change-mode hints live on the input header.
+--- @param parts agentic.ui.ChatWidget.HeaderParts
+--- @param session_state agentic.acp.SessionState
+--- @return string header_text
+local function build_chat_header(parts, session_state)
+    local header = string.format(
+        "%s | %s - %s - %s (%s/%s)",
+        parts.title,
+        session_state:get_provider_name() or "",
+        session_state:get_model_name() or "unknown",
+        session_state:get_mode_name() or "",
+        session_state:get_context_used() or "0",
+        session_state:get_context_size() or "0"
+    )
+
+    local cost = session_state:get_cost_amount_raw()
+    if cost ~= nil and cost ~= 0 then
+        header = header .. " $" .. (session_state:get_cost_amount() or "")
+    end
+
+    return header
+end
+
+--- Builds the default header from live session state. The chat panel gets the
+--- rich provider/model/mode/usage/cost line. Every other panel (including
+--- input, whose `parts.suffix` carries the mode-aware submit/change-mode
+--- hints), and any panel with a nil session_state, falls back to the plain
+--- title|context|suffix concatenation.
+--- @param window_name string
+--- @param parts agentic.ui.ChatWidget.HeaderParts
+--- @param session_state agentic.acp.SessionState|nil
+--- @return string header_text
+function WindowDecoration._build_default_header(
+    window_name,
+    parts,
+    session_state
+)
+    if session_state == nil then
+        return concat_header_parts(parts)
+    end
+
+    if window_name == "chat" then
+        return build_chat_header(parts, session_state)
+    end
+
+    return concat_header_parts(parts)
 end
 
 --- Gets or initializes headers for a tabpage
@@ -141,9 +194,15 @@ end
 --- @return string|nil error_message Error message if user function failed
 local function resolve_header_text(dynamic_header, window_name, session_state)
     local user_header = Config.headers and Config.headers[window_name]
-    -- No user customization: use default parts
+    -- No user customization: build the default header (rich for chat/input
+    -- when a session is live, plain concat otherwise)
     if user_header == nil then
-        return concat_header_parts(dynamic_header), nil
+        return WindowDecoration._build_default_header(
+            window_name,
+            dynamic_header,
+            session_state
+        ),
+            nil
     end
 
     -- User function: call it and validate return
@@ -420,9 +479,11 @@ function WindowDecoration.render_header(
         local text = (header_text and header_text ~= "") and header_text or ""
 
         set_winbar(winid, text)
+        -- Buffer name mirrors the header title, not the rich winbar text:
+        -- the rich format embeds "/" and "$" which corrupt buffer basenames.
         set_buffer_name(
             bufnr,
-            header_text,
+            concat_header_parts(dynamic_header),
             tab_page_id,
             window_name,
             dynamic_header,

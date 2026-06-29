@@ -891,6 +891,8 @@ function SessionManager:_handle_new_config_options(new_config_options)
     if mode_id then
         self:_set_mode_to_chat_header(mode_id)
     end
+
+    self.widget:schedule_header_refresh()
 end
 
 function SessionManager:destroy()

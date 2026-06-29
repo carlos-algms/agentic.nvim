@@ -93,6 +93,8 @@ describe("agentic.SessionManager", function()
     describe("_on_session_update: config_option_update", function()
         --- @type TestSpy
         local render_header_spy
+        --- @type TestSpy
+        local refresh_spy
         --- @type agentic.SessionManager
         local session
         --- @type integer
@@ -100,6 +102,7 @@ describe("agentic.SessionManager", function()
 
         before_each(function()
             render_header_spy = spy.new(function() end)
+            refresh_spy = spy.new(function() end)
             test_bufnr = vim.api.nvim_create_buf(false, true)
 
             local AgentConfigOptions =
@@ -119,6 +122,7 @@ describe("agentic.SessionManager", function()
                 config_options = config_opts,
                 widget = {
                     render_header = render_header_spy,
+                    schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
                 },
                 _on_session_update = SessionManager._on_session_update,
@@ -159,6 +163,7 @@ describe("agentic.SessionManager", function()
             assert.equal("plan", session.config_options.mode.currentValue)
             assert.spy(render_header_spy).was.called(1)
             assert.equal("Mode: Plan", render_header_spy.calls[1][3])
+            assert.spy(refresh_spy).was.called(1)
         end)
     end)
 

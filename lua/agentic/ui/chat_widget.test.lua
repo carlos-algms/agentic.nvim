@@ -953,4 +953,66 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
         end)
     end)
+
+    describe("_render_dynamic_headers", function()
+        local tab_page_id
+        local widget
+        local original_headers
+
+        before_each(function()
+            original_headers = Config.headers
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+            widget = ChatWidget:new(
+                tab_page_id,
+                spy.new(function() end) --[[@as function]]
+            )
+        end)
+
+        after_each(function()
+            Config.headers = original_headers
+            pcall(function()
+                widget:destroy()
+            end)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "refreshes chat and input with default (empty) Config.headers",
+            function()
+                Config.headers = {}
+                local render_spy = spy.new(function() end)
+                widget.render_header = render_spy
+
+                widget:_render_dynamic_headers()
+
+                local panels = {}
+                for _, call in ipairs(render_spy.calls) do
+                    panels[call[2]] = true
+                end
+                assert.is_true(panels.chat)
+                assert.is_true(panels.input)
+            end
+        )
+
+        it("refreshes a user-function panel too", function()
+            Config.headers = {
+                files = function(parts)
+                    return parts.title
+                end,
+            }
+            local render_spy = spy.new(function() end)
+            widget.render_header = render_spy
+
+            widget:_render_dynamic_headers()
+
+            local panels = {}
+            for _, call in ipairs(render_spy.calls) do
+                panels[call[2]] = true
+            end
+            assert.is_true(panels.files)
+        end)
+    end)
 end)

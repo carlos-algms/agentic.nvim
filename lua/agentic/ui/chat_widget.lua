@@ -559,30 +559,33 @@ function ChatWidget:_bind_events_to_change_headers()
                         WindowDecoration.get_headers_state(tab_page_id)
 
                     local mode = vim.fn.mode()
+                    local submit_key =
+                        find_keymap(Config.keymaps.prompt.submit, mode)
                     local change_mode_key =
                         find_keymap(Config.keymaps.widget.change_mode, mode)
 
-                    if change_mode_key ~= nil then
-                        headers.chat.suffix =
-                            string.format("%s: change mode", change_mode_key)
-                    else
-                        headers.chat.suffix = nil
-                    end
-
-                    local submit_key =
-                        find_keymap(Config.keymaps.prompt.submit, mode)
-
+                    -- Both hints live on the input header only.
+                    local hints = {}
                     if submit_key ~= nil then
-                        headers.input.suffix =
-                            string.format("%s: submit", submit_key)
-                    else
-                        headers.input.suffix = nil
+                        hints[#hints + 1] =
+                            string.format("submit: %s", submit_key)
                     end
+                    if change_mode_key ~= nil then
+                        hints[#hints + 1] =
+                            string.format("change mode: %s", change_mode_key)
+                    end
+
+                    -- Modes with no relevant binding (e.g. command mode) keep
+                    -- the last shown hint instead of going bare.
+                    if #hints == 0 then
+                        return
+                    end
+
+                    headers.input.suffix = table.concat(hints, " ")
 
                     -- Reassign to persist changes
                     WindowDecoration.set_headers_state(tab_page_id, headers)
 
-                    self:render_header("chat")
                     self:render_header("input")
                 end)
             end,
@@ -787,18 +790,29 @@ function ChatWidget:schedule_header_refresh()
     -- re-renders when multiple updates come in quick succession
     vim.defer_fn(function()
         self._header_refresh_scheduled = false
+        self:_render_dynamic_headers()
+    end, 150)
+end
 
-        local headers = Config.headers
-        if type(headers) ~= "table" then
-            return
-        end
+--- Re-render every session-driven header. The chat and input panels are
+--- always dynamic (their default headers consume session_state), plus any
+--- panel the user configured as a header function.
+function ChatWidget:_render_dynamic_headers()
+    --- @type table<agentic.ui.ChatWidget.PanelNames, boolean>
+    local panels = { chat = true, input = true }
 
+    local headers = Config.headers
+    if type(headers) == "table" then
         for panel_name, header_config in pairs(headers) do
             if type(header_config) == "function" then
-                self:render_header(panel_name)
+                panels[panel_name] = true
             end
         end
-    end, 150)
+    end
+
+    for panel_name in pairs(panels) do
+        self:render_header(panel_name)
+    end
 end
 
 return ChatWidget
