@@ -301,6 +301,44 @@ describe("WindowDecoration._build_default_header", function()
         assert.equal("Agentic Chat | Sonnet - Ask (1K/200K)", text)
     end)
 
+    it("omits provider and mode segments when names are empty", function()
+        --- @type any
+        local stub = {
+            get_provider_name = function()
+                return ""
+            end,
+            get_model_name = function()
+                return "Sonnet"
+            end,
+            get_mode_name = function()
+                return ""
+            end,
+            get_context_used = function()
+                return nil
+            end,
+            get_context_size = function()
+                return nil
+            end,
+            get_cost_amount_raw = function()
+                return nil
+            end,
+            get_cost_amount = function()
+                return nil
+            end,
+            get_cost_currency = function()
+                return nil
+            end,
+        }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            { title = "Agentic Chat" },
+            stub
+        )
+
+        assert.equal("Agentic Chat | Sonnet", text)
+    end)
+
     it("omits the mode segment when mode name is nil", function()
         --- @type any
         local stub = {

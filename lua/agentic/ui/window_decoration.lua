@@ -90,9 +90,16 @@ end
 local function build_chat_header(parts, session_state)
     --- @type string[]
     local segments = {}
-    segments[#segments + 1] = session_state:get_provider_name()
-    segments[#segments + 1] = session_state:get_model_name() or "unknown"
-    segments[#segments + 1] = session_state:get_mode_name()
+    --- @param value string|nil
+    local function add_segment(value)
+        if value ~= nil and value ~= "" then
+            segments[#segments + 1] = value
+        end
+    end
+
+    add_segment(session_state:get_provider_name())
+    add_segment(session_state:get_model_name() or "unknown")
+    add_segment(session_state:get_mode_name())
 
     local header =
         string.format("%s | %s", parts.title, table.concat(segments, " - "))
