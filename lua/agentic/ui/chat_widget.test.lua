@@ -2,6 +2,7 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local WindowDecoration = require("agentic.ui.window_decoration")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
@@ -951,6 +952,37 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_false(vim.api.nvim_win_is_valid(first_hidden))
             assert.is_not_nil(widget._hidden_chat_winid)
             assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
+        end)
+    end)
+
+    describe("input header suffix", function()
+        local tab_page_id
+        local widget
+
+        before_each(function()
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+            widget = ChatWidget:new(
+                tab_page_id,
+                spy.new(function() end) --[[@as function]]
+            )
+        end)
+
+        after_each(function()
+            pcall(function()
+                widget:destroy()
+            end)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("seeds normal-mode hints at construction time", function()
+            local headers = WindowDecoration.get_headers_state(tab_page_id)
+            assert.equal(
+                "submit: <CR> | change mode: <S-Tab>",
+                headers.input.suffix
+            )
         end)
     end)
 

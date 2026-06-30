@@ -538,10 +538,58 @@ local function find_keymap(keymaps, mode)
     end
 end
 
+--- Computes the mode-aware submit/change-mode hint for the input header.
+--- Both hints live on the input header only. Returns nil for modes with no
+--- relevant binding (e.g. command mode) so callers keep the last shown hint.
+--- @param mode string
+--- @return string|nil suffix
+function ChatWidget._compute_input_suffix(mode)
+    local submit_key = find_keymap(Config.keymaps.prompt.submit, mode)
+    local change_mode_key = find_keymap(Config.keymaps.widget.change_mode, mode)
+
+    local hints = {}
+    if submit_key ~= nil then
+        hints[#hints + 1] = string.format("submit: %s", submit_key)
+    end
+    if change_mode_key ~= nil then
+        hints[#hints + 1] = string.format("change mode: %s", change_mode_key)
+    end
+
+    if #hints == 0 then
+        return nil
+    end
+
+    return table.concat(hints, " | ")
+end
+
+--- Persists the input header suffix for the current mode and re-renders it.
+--- @param mode string
+function ChatWidget:_apply_input_suffix(mode)
+    if not vim.api.nvim_tabpage_is_valid(self.tab_page_id) then
+        return
+    end
+
+    local suffix = ChatWidget._compute_input_suffix(mode)
+    if suffix == nil then
+        return
+    end
+
+    -- Get headers from tabpage-local storage (must reassign after modification)
+    local headers = WindowDecoration.get_headers_state(self.tab_page_id)
+    headers.input.suffix = suffix
+
+    -- Reassign to persist changes
+    WindowDecoration.set_headers_state(self.tab_page_id, headers)
+
+    self:render_header("input")
+end
+
 --- Binds events to change the suffix header texts based on current mode keymaps
 --- For the Chat and Input buffers only
 function ChatWidget:_bind_events_to_change_headers()
-    local tab_page_id = self.tab_page_id
+    -- Seed the input header with the normal-mode hints immediately so it does
+    -- not show the hard-coded default keys until the first mode change.
+    self:_apply_input_suffix("n")
 
     for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
         vim.api.nvim_create_autocmd("ModeChanged", {
@@ -550,43 +598,7 @@ function ChatWidget:_bind_events_to_change_headers()
                 vim.schedule(function()
                     -- Check if tabpage is still valid before accessing vim.t
                     -- I couldn't test it, it seems to only happen from command -> normal, not from insert -> normal
-                    if not vim.api.nvim_tabpage_is_valid(tab_page_id) then
-                        return
-                    end
-
-                    -- Get headers from tabpage-local storage (must reassign after modification)
-                    local headers =
-                        WindowDecoration.get_headers_state(tab_page_id)
-
-                    local mode = vim.fn.mode()
-                    local submit_key =
-                        find_keymap(Config.keymaps.prompt.submit, mode)
-                    local change_mode_key =
-                        find_keymap(Config.keymaps.widget.change_mode, mode)
-
-                    -- Both hints live on the input header only.
-                    local hints = {}
-                    if submit_key ~= nil then
-                        hints[#hints + 1] =
-                            string.format("submit: %s", submit_key)
-                    end
-                    if change_mode_key ~= nil then
-                        hints[#hints + 1] =
-                            string.format("change mode: %s", change_mode_key)
-                    end
-
-                    -- Modes with no relevant binding (e.g. command mode) keep
-                    -- the last shown hint instead of going bare.
-                    if #hints == 0 then
-                        return
-                    end
-
-                    headers.input.suffix = table.concat(hints, " | ")
-
-                    -- Reassign to persist changes
-                    WindowDecoration.set_headers_state(tab_page_id, headers)
-
-                    self:render_header("input")
+                    self:_apply_input_suffix(vim.fn.mode())
                 end)
             end,
         })
