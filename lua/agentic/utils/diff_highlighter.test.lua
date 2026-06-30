@@ -103,4 +103,70 @@ describe("diff_highlighter", function()
             end
         end)
     end)
+
+    describe("apply_new_line_word_highlights", function()
+        local Theme = require("agentic.theme")
+        local ns = vim.api.nvim_create_namespace("test_diff_hl")
+        --- @type integer
+        local bufnr
+
+        before_each(function()
+            bufnr = vim.api.nvim_create_buf(false, true)
+        end)
+
+        after_each(function()
+            if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+            end
+        end)
+
+        --- @param hl_group string
+        --- @return table|nil mark { start_col, details }
+        local function find_mark(hl_group)
+            local marks = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                ns,
+                0,
+                -1,
+                { details = true }
+            )
+            for _, mark in ipairs(marks) do
+                local details = mark[4] --- @type table
+                if details.hl_group == hl_group then
+                    return { start_col = mark[3], details = details }
+                end
+            end
+            return nil
+        end
+
+        it(
+            "changed line gets line-level DIFF_ADD background under the word overlay",
+            function()
+                vim.api.nvim_buf_set_lines(
+                    bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "local x = 2" }
+                )
+
+                DiffHighlighter.apply_new_line_word_highlights(
+                    bufnr,
+                    ns,
+                    0,
+                    "local x = 1",
+                    "local x = 2"
+                )
+
+                local line_mark = find_mark(Theme.HL_GROUPS.DIFF_ADD)
+                assert.is_not_nil(line_mark)
+                if line_mark then
+                    assert.equal(0, line_mark.start_col)
+                end
+
+                local word_mark = find_mark(Theme.HL_GROUPS.DIFF_ADD_WORD)
+                assert.is_not_nil(word_mark)
+            end
+        )
+    end)
 end)
