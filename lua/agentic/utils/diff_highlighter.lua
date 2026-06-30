@@ -116,57 +116,17 @@ local function validate_buffer_line(bufnr, line_number)
     return line_number >= 0 and line_number < line_count
 end
 
--- Line backgrounds must sit BELOW the word-level overlays, which use
--- vim.highlight.range at vim.highlight.priorities.user (200). A higher priority
--- would paint the full-line color over the changed word and hide it.
-local LINE_BG_PRIORITY = 100
-
---- Apply a full-width line background highlight.
---- Uses an extmark with hl_eol so the background extends past the last byte to
---- the window edge. vim.highlight.range stops at the final column, leaving
---- trailing space and empty lines unhighlighted.
---- @param bufnr integer
---- @param ns_id integer
---- @param line_number integer
---- @param line_content string
---- @param hl_group string
-local function apply_line_background(
-    bufnr,
-    ns_id,
-    line_number,
-    line_content,
-    hl_group
-)
-    -- The diff text can be longer than the real buffer line (fuzzy/whitespace
-    -- matching), so clamp end_col to the buffer line; an out-of-range end_col
-    -- raises "Invalid 'end_col': out of range".
-    local buffer_line = vim.api.nvim_buf_get_lines(
-        bufnr,
-        line_number,
-        line_number + 1,
-        false
-    )[1] or ""
-
-    vim.api.nvim_buf_set_extmark(bufnr, ns_id, line_number, 0, {
-        end_row = line_number,
-        end_col = math.min(#line_content, #buffer_line),
-        hl_group = hl_group,
-        hl_eol = true,
-        priority = LINE_BG_PRIORITY,
-    })
-end
-
 --- @param bufnr integer
 --- @param ns_id integer
 --- @param line_number integer
 --- @param line_content string
 local function apply_add_line_highlight(bufnr, ns_id, line_number, line_content)
-    apply_line_background(
+    vim.highlight.range(
         bufnr,
         ns_id,
-        line_number,
-        line_content,
-        Theme.HL_GROUPS.DIFF_ADD
+        Theme.HL_GROUPS.DIFF_ADD,
+        { line_number, 0 },
+        { line_number, #line_content }
     )
 end
 
@@ -184,12 +144,12 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
     -- Apply line-level highlight for deleted lines
     if old_line and not new_line then
         -- Pure deletion - full line highlight
-        apply_line_background(
+        vim.highlight.range(
             bufnr,
             ns_id,
-            line_number,
-            old_line,
-            Theme.HL_GROUPS.DIFF_DELETE
+            Theme.HL_GROUPS.DIFF_DELETE,
+            { line_number, 0 },
+            { line_number, #old_line }
         )
     elseif new_line and not old_line then
         -- Pure addition - full line highlight
@@ -201,12 +161,12 @@ function M.apply_diff_highlights(bufnr, ns_id, line_number, old_line, new_line)
         end
 
         -- Modification: apply line-level highlight first
-        apply_line_background(
+        vim.highlight.range(
             bufnr,
             ns_id,
-            line_number,
-            old_line,
-            Theme.HL_GROUPS.DIFF_DELETE
+            Theme.HL_GROUPS.DIFF_DELETE,
+            { line_number, 0 },
+            { line_number, #old_line }
         )
 
         -- Then apply word-level highlight on top for changed portion
@@ -248,9 +208,10 @@ function M.apply_new_line_word_highlights(
     -- Find word-level changes
     local change = M.find_inline_change(old_line, new_line)
     if change and change.new_end > change.new_start then
-        -- Full-width line background first so unchanged portions and trailing
-        -- space keep the added-line color, then the word overlay on top.
+        -- Line-level background first so unchanged portions of the changed
+        -- line keep the added-line color, matching the deleted/modified path.
         apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
+        -- Word-level highlight on top for the changed portion.
         vim.highlight.range(
             bufnr,
             ns_id,
