@@ -263,6 +263,82 @@ describe("WindowDecoration._build_default_header", function()
         assert.equal("Agentic Chat | Claude - Sonnet - Ask", text)
     end)
 
+    it("omits the provider segment when provider name is nil", function()
+        --- @type any
+        local stub = {
+            get_provider_name = function()
+                return nil
+            end,
+            get_model_name = function()
+                return "Sonnet"
+            end,
+            get_mode_name = function()
+                return "Ask"
+            end,
+            get_context_used = function()
+                return "1K"
+            end,
+            get_context_size = function()
+                return "200K"
+            end,
+            get_cost_amount_raw = function()
+                return nil
+            end,
+            get_cost_amount = function()
+                return nil
+            end,
+            get_cost_currency = function()
+                return nil
+            end,
+        }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            { title = "Agentic Chat" },
+            stub
+        )
+
+        assert.equal("Agentic Chat | Sonnet - Ask (1K/200K)", text)
+    end)
+
+    it("omits the mode segment when mode name is nil", function()
+        --- @type any
+        local stub = {
+            get_provider_name = function()
+                return "Claude"
+            end,
+            get_model_name = function()
+                return "Sonnet"
+            end,
+            get_mode_name = function()
+                return nil
+            end,
+            get_context_used = function()
+                return nil
+            end,
+            get_context_size = function()
+                return nil
+            end,
+            get_cost_amount_raw = function()
+                return nil
+            end,
+            get_cost_amount = function()
+                return nil
+            end,
+            get_cost_currency = function()
+                return nil
+            end,
+        }
+
+        local text = WindowDecoration._build_default_header(
+            "chat",
+            { title = "Agentic Chat" },
+            stub
+        )
+
+        assert.equal("Agentic Chat | Claude - Sonnet", text)
+    end)
+
     it("keeps the input header carrying both key hints", function()
         local parts =
             { title = "Prompt", suffix = "submit: <C-s> change mode: <S-Tab>" }

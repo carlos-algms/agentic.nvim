@@ -88,13 +88,14 @@ end
 --- @param session_state agentic.acp.SessionState
 --- @return string header_text
 local function build_chat_header(parts, session_state)
-    local header = string.format(
-        "%s | %s - %s - %s",
-        parts.title,
-        session_state:get_provider_name() or "",
-        session_state:get_model_name() or "unknown",
-        session_state:get_mode_name() or ""
-    )
+    --- @type string[]
+    local segments = {}
+    segments[#segments + 1] = session_state:get_provider_name()
+    segments[#segments + 1] = session_state:get_model_name() or "unknown"
+    segments[#segments + 1] = session_state:get_mode_name()
+
+    local header =
+        string.format("%s | %s", parts.title, table.concat(segments, " - "))
 
     local used = session_state:get_context_used()
     local size = session_state:get_context_size()
