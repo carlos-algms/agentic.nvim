@@ -106,6 +106,13 @@ describe("race: stale create_session after load_acp_session", function()
                 mode = nil,
                 model = nil,
                 thought_level = nil,
+                snapshot = function()
+                    return {}
+                end,
+                restore_snapshot = function() end,
+                get_mode_id = function()
+                    return nil
+                end,
                 legacy_agent_modes = {
                     save = function()
                         return {}
@@ -130,6 +137,9 @@ describe("race: stale create_session after load_acp_session", function()
                 write_structural_message = function() end,
                 write_message = function() end,
                 reset_sender_tracking = function() end,
+                generate_welcome_header = function()
+                    return ""
+                end,
                 tool_call_blocks = {},
             },
             chat_history = ChatHistory:new(),
