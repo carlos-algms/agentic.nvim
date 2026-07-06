@@ -170,10 +170,7 @@ describe("race: stale create_session after load_acp_session", function()
             load_cb_ref.cb(nil)
 
             assert.equal("restored-id", session.session_id)
-            assert.is_true(
-                vim.tbl_contains(session._cancelled, "new-id"),
-                "stale new session should be cancelled"
-            )
+            assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
         end
     )
 
@@ -197,15 +194,8 @@ describe("race: stale create_session after load_acp_session", function()
             -- Step 3: stale create fires after load already finished
             create_cb_ref.cb({ sessionId = "new-id" }, nil)
 
-            assert.equal(
-                "restored-id",
-                session.session_id,
-                "stale create_session must not overwrite the restored session"
-            )
-            assert.is_true(
-                vim.tbl_contains(session._cancelled, "new-id"),
-                "stale new session should be cancelled"
-            )
+            assert.equal("restored-id", session.session_id)
+            assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
         end
     )
 
@@ -232,16 +222,8 @@ describe("race: stale create_session after load_acp_session", function()
             -- Step 3: stale create fails after restore already finished
             create_cb_ref.cb(nil, { message = "boom" })
 
-            assert.equal(
-                "restored-id",
-                session.session_id,
-                "failed stale create must not null out the restored session"
-            )
-            assert.equal(
-                0,
-                #session._cancelled,
-                "a failed stale create has no sessionId to cancel"
-            )
+            assert.equal("restored-id", session.session_id)
+            assert.equal(0, #session._cancelled)
         end
     )
 end)

@@ -16,8 +16,7 @@ local M = {}
 --- Basic equality assertion
 --- @param actual any Actual value
 --- @param expected any Expected value
---- @param _message? string Optional failure message (not forwarded; kept for call-site readability)
-function M.equal(actual, expected, _message)
+function M.equal(actual, expected)
     expect.equality(actual, expected)
 end
 
@@ -37,8 +36,7 @@ end
 
 --- Assert value is true
 --- @param value any Value to check
---- @param _message? string Optional failure message (not forwarded; kept for call-site readability)
-function M.is_true(value, _message)
+function M.is_true(value)
     expect.equality(value, true)
 end
 
