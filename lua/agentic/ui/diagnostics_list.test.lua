@@ -330,7 +330,7 @@ describe("agentic.ui.DiagnosticsList", function()
         end)
 
         it("truncates long lines with ellipsis to fit window width", function()
-            vim.api.nvim_win_set_width(winid, 40)
+            vim.api.nvim_win_set_config(winid, { width = 40 })
 
             diagnostics_list:add(create_diagnostic({
                 message = "A very long diagnostic message that should definitely be truncated to fit",
