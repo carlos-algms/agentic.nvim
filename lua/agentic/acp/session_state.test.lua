@@ -142,7 +142,17 @@ describe("agentic.acp.SessionState", function()
             assert.equal(state:get_context_size_raw(), 0)
         end)
 
-        it("overwrites prior usage on a later set_usage", function()
+        it("overwrites used/size on a later set_usage", function()
+            local state = SessionState:new(config_provider_fake(), "Claude")
+
+            state:set_usage({ used = 1, size = 2 })
+            state:set_usage({ used = 5, size = 6 })
+
+            assert.equal(state:get_context_used_raw(), 5)
+            assert.equal(state:get_context_size_raw(), 6)
+        end)
+
+        it("preserves prior cost when a later update omits cost", function()
             local state = SessionState:new(config_provider_fake(), "Claude")
 
             state:set_usage({
@@ -152,10 +162,22 @@ describe("agentic.acp.SessionState", function()
             })
             state:set_usage({ used = 5, size = 6 })
 
-            assert.equal(state:get_context_used_raw(), 5)
-            assert.equal(state:get_context_size_raw(), 6)
-            assert.is_nil(state:get_cost_amount_raw())
-            assert.is_nil(state:get_cost_currency())
+            assert.equal(state:get_cost_amount_raw(), 9)
+            assert.equal(state:get_cost_currency(), "EUR")
+        end)
+
+        it("preserves prior cost when a later cost has no amount", function()
+            local state = SessionState:new(config_provider_fake(), "Claude")
+
+            state:set_usage({
+                used = 1,
+                size = 2,
+                cost = { amount = 9, currency = "EUR" },
+            })
+            state:set_usage({ used = 5, size = 6, cost = { currency = "USD" } })
+
+            assert.equal(state:get_cost_amount_raw(), 9)
+            assert.equal(state:get_cost_currency(), "EUR")
         end)
     end)
 

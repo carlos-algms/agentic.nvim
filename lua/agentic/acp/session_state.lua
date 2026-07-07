@@ -169,13 +169,22 @@ function SessionState:get_provider_name()
     return self._provider_name
 end
 
+--- Merges new-over-existing so a partial `usage_update` (Claude streams
+--- cost-less updates before the cost-bearing one) does not wipe known values.
+--- Absent/null `used`/`size`/`cost` keys survive; a malformed cost object
+--- without a numeric `amount` is rejected rather than overwriting a good cost.
 --- @param update agentic.acp.UsageUpdate
 function SessionState:set_usage(update)
-    self._usage = {
-        used = update.used,
-        size = update.size,
-        cost = update.cost,
-    }
+    local fields = { used = update.used, size = update.size }
+
+    if
+        type(update.cost) == "table"
+        and type(update.cost.amount) == "number"
+    then
+        fields.cost = update.cost
+    end
+
+    self._usage = vim.tbl_extend("force", self._usage or {}, fields)
 end
 
 function SessionState:clear()

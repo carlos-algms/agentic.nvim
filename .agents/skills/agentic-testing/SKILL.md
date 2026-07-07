@@ -28,8 +28,18 @@ For every bug fix or behavioral change:
 4. Implement the minimum code to pass.
 5. Re-run `make test-file FILE=<path>`.
 6. Run the relevant full check.
-7. After adding or changing tests, run `make test` and verify reported marks for
-   the changed file match the number of `it()` blocks.
+7. After adding or changing tests, reconcile the case count. This guards against
+   silently dropped OR unexpectedly generated tests. Both are failures.
+   1. Compute EXPECTED cases by reading the file, not grepping:
+      - each static `it()` = 1 case
+      - each `it()` inside a `for`/`each`/table-driven loop = the loop's
+        iteration count (a single `it(` line can emit many cases, or zero)
+      - a grep of `it(` is a lower bound, never the answer
+   2. Read ACTUAL from `Total number of cases: N` in the
+      `make test-file FILE=<path>` output.
+   3. EXPECTED MUST equal ACTUAL. Mismatch = a test was dropped, a loop is empty,
+      or a generator misfired; stop and reconcile before claiming green.
+      Eyeballing ACTUAL alone is NOT the check - you must derive EXPECTED first.
 
 Pure refactors, formatting, and docs can skip red/green, but say that in the PR.
 
