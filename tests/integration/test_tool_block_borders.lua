@@ -66,7 +66,7 @@ describe("Tool block borders", function()
         local chat_winid = widget.win_nrs.chat
         ---@cast chat_winid integer
         vim.wo[chat_winid].scrolloff = 0
-        vim.api.nvim_win_set_width(chat_winid, 24)
+        vim.api.nvim_win_set_config(chat_winid, { width = 24 })
     end
 
     --- @param tool_call_id string
