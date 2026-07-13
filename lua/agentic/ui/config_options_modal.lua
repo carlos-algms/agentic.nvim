@@ -1,0 +1,189 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
+local Logger = require("agentic.utils.logger")
+
+--- @class agentic.ui.ConfigOptionsModal
+--- @field _config_options agentic.acp.AgentConfigOptions
+--- @field _opened_session_id string
+--- @field _bufnr? integer
+--- @field _winid? integer
+--- @field _line_option_ids table<integer, string>
+local ConfigOptionsModal = {}
+ConfigOptionsModal.__index = ConfigOptionsModal
+
+--- @param option agentic.acp.ConfigOption
+--- @return string value_name
+local function get_select_value_name(option)
+    for _, value in ipairs(option.options or {}) do
+        if value.value == option.currentValue then
+            return value.name
+        end
+    end
+
+    return option.currentValue
+end
+
+--- @param options agentic.acp.AnyConfigOption[]
+--- @param id string
+--- @return agentic.acp.AnyConfigOption|nil option
+local function find_option(options, id)
+    for _, option in ipairs(options) do
+        if option.id == id then
+            return option
+        end
+    end
+
+    return nil
+end
+
+--- @param config_options agentic.acp.AgentConfigOptions
+--- @param opened_session_id string
+--- @return agentic.ui.ConfigOptionsModal
+function ConfigOptionsModal:new(config_options, opened_session_id)
+    self = setmetatable({
+        _config_options = config_options,
+        _opened_session_id = opened_session_id,
+        _bufnr = nil,
+        _winid = nil,
+        _line_option_ids = {},
+    }, self)
+    return self
+end
+
+function ConfigOptionsModal:open()
+    local width = math.floor(vim.o.columns * 0.5)
+    local height = math.max(#self._config_options.options, 1)
+    local row = math.floor((vim.o.lines - height) / 2)
+    local col = math.floor((vim.o.columns - width) / 2)
+
+    self._bufnr = vim.api.nvim_create_buf(false, true)
+    vim.bo[self._bufnr].bufhidden = "wipe"
+
+    self._winid = vim.api.nvim_open_win(self._bufnr, true, {
+        relative = "editor",
+        width = width,
+        height = height,
+        row = row,
+        col = col,
+        style = "minimal",
+        border = "rounded",
+        title = " Agentic Settings ",
+        title_pos = "center",
+        footer = " <CR> toggle/select · q/<Esc> close ",
+        footer_pos = "right",
+    })
+
+    BufHelpers.keymap_set(self._bufnr, "n", "q", function()
+        if self._winid and vim.api.nvim_win_is_valid(self._winid) then
+            vim.api.nvim_win_close(self._winid, true)
+        end
+    end)
+    BufHelpers.keymap_set(self._bufnr, "n", "<Esc>", function()
+        if self._winid and vim.api.nvim_win_is_valid(self._winid) then
+            vim.api.nvim_win_close(self._winid, true)
+        end
+    end)
+    BufHelpers.keymap_set(self._bufnr, "n", "<CR>", function()
+        self:_activate_current_option()
+    end)
+
+    self:_render()
+end
+
+function ConfigOptionsModal:_render()
+    if
+        not self._bufnr
+        or not self._winid
+        or not vim.api.nvim_buf_is_valid(self._bufnr)
+        or not vim.api.nvim_win_is_valid(self._winid)
+    then
+        return
+    end
+
+    self._line_option_ids = {}
+    --- @type string[]
+    local lines = {}
+
+    for line_number, option in ipairs(self._config_options.options) do
+        local rendered_value
+        if option.type == "boolean" then
+            rendered_value = option.currentValue and "[x]" or "[ ]"
+        else
+            rendered_value = get_select_value_name(option)
+        end
+
+        lines[#lines + 1] = option.name .. ": " .. rendered_value
+        self._line_option_ids[line_number] = option.id
+    end
+
+    if #lines == 0 then
+        lines[1] = "No settings available"
+    end
+
+    vim.bo[self._bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, false, lines)
+    vim.bo[self._bufnr].modifiable = false
+end
+
+function ConfigOptionsModal:_activate_current_option()
+    if
+        not self._bufnr
+        or not self._winid
+        or not vim.api.nvim_buf_is_valid(self._bufnr)
+        or not vim.api.nvim_win_is_valid(self._winid)
+    then
+        return
+    end
+
+    local line_number = vim.api.nvim_win_get_cursor(self._winid)[1]
+    local option_id = self._line_option_ids[line_number]
+    if not option_id then
+        return
+    end
+
+    if self._config_options:get_session_id() ~= self._opened_session_id then
+        Logger.notify(
+            "The agent session changed. Reopen settings to make changes.",
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+        return
+    end
+
+    local option = find_option(self._config_options.options, option_id)
+    if not option then
+        return
+    end
+
+    local on_applied = function()
+        vim.schedule(function()
+            if
+                self._bufnr
+                and self._winid
+                and vim.api.nvim_buf_is_valid(self._bufnr)
+                and vim.api.nvim_win_is_valid(self._winid)
+            then
+                self:_render()
+            end
+        end)
+    end
+
+    if option.type == "boolean" then
+        self._config_options:handle_change(
+            option.id,
+            not option.currentValue,
+            on_applied
+        )
+        return
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    self._config_options:_show_selector(
+        option,
+        "Select " .. option.name .. ":",
+        function(value)
+            self._config_options:handle_change(option.id, value, on_applied)
+        end
+    )
+end
+
+return ConfigOptionsModal
