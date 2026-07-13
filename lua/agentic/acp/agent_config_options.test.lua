@@ -392,6 +392,17 @@ describe("agentic.acp.AgentConfigOptions", function()
                 assert.is_nil(config_options.thought_level)
             end)
 
+            it("does not log known generic or uncategorized options", function()
+                config_options:set_options({
+                    fast_option,
+                    boolean_option,
+                    agent_option,
+                })
+
+                assert.equal(0, debug_stub.call_count)
+                assert.equal(3, #config_options.options)
+            end)
+
             it("logs debug for unknown non-underscore categories", function()
                 local unknown = vim.tbl_extend("force", mode_option, {
                     category = "totally_made_up",
@@ -400,6 +411,7 @@ describe("agentic.acp.AgentConfigOptions", function()
                 config_options:set_options({ unknown })
 
                 assert.equal(1, debug_stub.call_count)
+                assert.equal(1, #config_options.options)
                 assert.is_nil(config_options.mode)
                 assert.is_nil(config_options.model)
                 assert.is_nil(config_options.thought_level)
