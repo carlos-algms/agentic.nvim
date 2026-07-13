@@ -304,6 +304,63 @@ describe("ACPClient", function()
         end)
     end)
 
+    describe("set_config_option", function()
+        it("sends select values without a type", function()
+            local client = create_ready_client()
+            --- @diagnostic disable-next-line: invisible
+            local send_request_stub = spy.stub(client, "_send_request")
+
+            client:set_config_option("s1", "model", "opus", function() end)
+
+            local params = send_request_stub.calls[1][3]
+            assert.equal(
+                "session/set_config_option",
+                send_request_stub.calls[1][2]
+            )
+            assert.same({
+                sessionId = "s1",
+                configId = "model",
+                value = "opus",
+            }, params)
+            assert.is_nil(params.type)
+        end)
+
+        it("sends boolean true with the boolean type", function()
+            local client = create_ready_client()
+            --- @diagnostic disable-next-line: invisible
+            local send_request_stub = spy.stub(client, "_send_request")
+
+            client:set_config_option("s1", "fast", true, function() end, true)
+
+            assert.equal(
+                "session/set_config_option",
+                send_request_stub.calls[1][2]
+            )
+            assert.same({
+                sessionId = "s1",
+                configId = "fast",
+                type = "boolean",
+                value = true,
+            }, send_request_stub.calls[1][3])
+        end)
+
+        it("sends boolean false with the boolean type", function()
+            local client = create_ready_client()
+            --- @diagnostic disable-next-line: invisible
+            local send_request_stub = spy.stub(client, "_send_request")
+
+            client:set_config_option("s1", "fast", false, function() end, true)
+
+            local params = send_request_stub.calls[1][3]
+            assert.equal(
+                "session/set_config_option",
+                send_request_stub.calls[1][2]
+            )
+            assert.is_false(params.value)
+            assert.equal("boolean", params.type)
+        end)
+    end)
+
     describe("_drain_pending_callbacks", function()
         local original_schedule = vim.schedule
 
