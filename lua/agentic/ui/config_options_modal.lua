@@ -10,6 +10,14 @@ local Logger = require("agentic.utils.logger")
 local ConfigOptionsModal = {}
 ConfigOptionsModal.__index = ConfigOptionsModal
 
+local function notify_session_changed()
+    Logger.notify(
+        "The agent session changed. Reopen settings to make changes.",
+        vim.log.levels.WARN,
+        { title = "Agentic" }
+    )
+end
+
 --- @param option agentic.acp.ConfigOption
 --- @return string value_name
 local function get_select_value_name(option)
@@ -141,11 +149,7 @@ function ConfigOptionsModal:_activate_current_option()
     end
 
     if self._config_options:get_session_id() ~= self._opened_session_id then
-        Logger.notify(
-            "The agent session changed. Reopen settings to make changes.",
-            vim.log.levels.WARN,
-            { title = "Agentic" }
-        )
+        notify_session_changed()
         return
     end
 
@@ -181,6 +185,14 @@ function ConfigOptionsModal:_activate_current_option()
         option,
         "Select " .. option.name .. ":",
         function(value)
+            if
+                self._config_options:get_session_id()
+                ~= self._opened_session_id
+            then
+                notify_session_changed()
+                return
+            end
+
             self._config_options:handle_change(option.id, value, on_applied)
         end
     )

@@ -167,6 +167,16 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end
     )
 
+    it("rejects a selected value after the session changes", function()
+        open_modal()
+        press_enter(1)
+        session_id = "sess-2"
+
+        show_selector_spy.calls[1][3]("sonnet")
+
+        assert.spy(handle_change_spy).was.called(0)
+    end)
+
     it("rejects dispatch after the session changes", function()
         open_modal()
         session_id = "sess-2"
