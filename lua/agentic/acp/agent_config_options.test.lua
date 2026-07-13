@@ -168,19 +168,116 @@ describe("agentic.acp.AgentConfigOptions", function()
     end)
 
     describe("constructor", function()
-        it(
-            "registers 3 keymaps per buffer (mode, model, thought_level)",
-            function()
-                assert.stub(multi_keymap_stub).was.called(3)
+        it("registers 4 keymaps per buffer", function()
+            local Config = require("agentic.config")
 
-                for i = 1, 3 do
-                    assert.equal(
-                        "function",
-                        type(multi_keymap_stub.calls[i][3])
-                    )
+            assert.stub(multi_keymap_stub).was.called(4)
+            assert.equal("<localLeader>o", Config.keymaps.widget.open_settings)
+
+            for i = 1, 4 do
+                assert.equal("function", type(multi_keymap_stub.calls[i][3]))
+            end
+
+            assert.equal(
+                Config.keymaps.widget.open_settings,
+                multi_keymap_stub.calls[4][1]
+            )
+            assert.equal(test_bufnr, multi_keymap_stub.calls[4][2])
+            assert.equal(
+                "Agentic: Open Settings",
+                multi_keymap_stub.calls[4][4].desc
+            )
+        end)
+    end)
+
+    describe("open settings keymap", function()
+        local modal_module_name = "agentic.ui.config_options_modal"
+        local original_modal_module
+        --- @type TestStub
+        local notify_stub
+        --- @type TestSpy
+        local modal_new_spy
+        --- @type TestSpy
+        local modal_open_spy
+
+        --- @return function callback
+        local function get_open_settings_callback()
+            local open_settings =
+                require("agentic.config").keymaps.widget.open_settings
+
+            for i = #multi_keymap_stub.calls, 1, -1 do
+                local call = multi_keymap_stub.calls[i]
+                if vim.deep_equal(call[1], open_settings) then
+                    return call[3]
                 end
             end
-        )
+
+            error("open_settings keymap was not registered")
+        end
+
+        before_each(function()
+            original_modal_module = package.loaded[modal_module_name]
+            modal_open_spy = spy.new()
+            local modal = { open = modal_open_spy }
+            modal_new_spy = spy.new(function()
+                return modal
+            end)
+            package.loaded[modal_module_name] = { new = modal_new_spy }
+            notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+            package.loaded[modal_module_name] = original_modal_module
+        end)
+
+        it("warns without opening when no config options exist", function()
+            local config = make_with_agent({}, { id = "sess-1" })
+
+            get_open_settings_callback()()
+
+            assert.stub(notify_stub).was.called(1)
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+            assert.spy(modal_new_spy).was.called(0)
+            assert.spy(modal_open_spy).was.called(0)
+            assert.equal(0, #config.options)
+        end)
+
+        it("warns without opening when the session id is nil", function()
+            local config = make_with_agent({}, { id = nil })
+            config:set_options({ model_option })
+
+            get_open_settings_callback()()
+
+            assert.stub(notify_stub).was.called(1)
+            assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+            assert.spy(modal_new_spy).was.called(0)
+            assert.spy(modal_open_spy).was.called(0)
+        end)
+
+        it("opens the modal with the owning instance and session id", function()
+            local get_session_id_spy = spy.new(function()
+                return "sess-captured"
+            end)
+            local config = AgentConfigOptions:new({ chat = test_bufnr }, {
+                on_set_mode_success = function() end,
+                on_config_options_applied = function() end,
+                get_agent_instance = function()
+                    return nil
+                end,
+                get_session_id = get_session_id_spy --[[@as fun(): string|nil]],
+            })
+            config:set_options({ model_option })
+
+            get_open_settings_callback()()
+
+            assert.spy(get_session_id_spy).was.called(1)
+            assert.spy(modal_new_spy).was.called(1)
+            assert.is_true(modal_new_spy.calls[1][2] == config)
+            assert.equal("sess-captured", modal_new_spy.calls[1][3])
+            assert.spy(modal_open_spy).was.called(1)
+            assert.stub(notify_stub).was.called(0)
+        end)
     end)
 
     describe("set_options", function()

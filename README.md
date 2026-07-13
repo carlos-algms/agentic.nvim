@@ -725,6 +725,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
 | `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
 | `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
+| `<localLeader>o` | n     | Open settings modal                                             |
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -758,6 +759,7 @@ your setup:
         switch_provider = "<localLeader>s",  -- Switch ACP provider
         switch_model = "<localLeader>m",     -- Switch model
         change_thought_level = "<localLeader>t",  -- Select thought effort level
+        open_settings = "<localLeader>o",  -- Open settings modal
       },
 
       -- Keybindings for the prompt buffer only

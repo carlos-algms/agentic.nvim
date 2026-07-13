@@ -72,6 +72,15 @@ function AgentConfigOptions:new(buffers, callbacks)
             end,
             { desc = "Agentic: Select Thought Effort Level" }
         )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.open_settings,
+            bufnr,
+            function()
+                self:_show_settings_modal()
+            end,
+            { desc = "Agentic: Open Settings" }
+        )
     end
 
     return self
@@ -293,6 +302,22 @@ end
 --- @return string|nil session_id
 function AgentConfigOptions:get_session_id()
     return self.callbacks.get_session_id()
+end
+
+function AgentConfigOptions:_show_settings_modal()
+    local session_id = self:get_session_id()
+
+    if #self.options == 0 or not session_id then
+        Logger.notify(
+            "No config options are available",
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+        return
+    end
+
+    local ConfigOptionsModal = require("agentic.ui.config_options_modal")
+    ConfigOptionsModal:new(self, session_id):open()
 end
 
 --- @param mode_value string
