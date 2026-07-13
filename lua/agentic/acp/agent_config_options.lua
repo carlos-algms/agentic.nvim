@@ -290,6 +290,11 @@ function AgentConfigOptions:get_model_id()
         or self.legacy_agent_models.current_model_id
 end
 
+--- @return string|nil session_id
+function AgentConfigOptions:get_session_id()
+    return self.callbacks.get_session_id()
+end
+
 --- @param mode_value string
 --- @return agentic.acp.ConfigOption.Option|nil
 function AgentConfigOptions:get_mode(mode_value)
@@ -525,9 +530,79 @@ function AgentConfigOptions:_make_change_response(
     end
 end
 
+--- @param config_id string
+--- @param value string|boolean
+--- @param on_applied fun()|nil
+function AgentConfigOptions:handle_change(config_id, value, on_applied)
+    --- @type agentic.acp.AnyConfigOption|nil
+    local target
+    for _, option in ipairs(self.options) do
+        if option.id == config_id then
+            target = option
+            break
+        end
+    end
+
+    if not target then
+        Logger.debug("Unknown config option", config_id)
+        return
+    end
+
+    local is_boolean = target.type == "boolean"
+    local session_id = self.callbacks.get_session_id()
+
+    if not session_id then
+        return
+    end
+
+    local agent = self.callbacks.get_agent_instance()
+
+    if not agent then
+        return
+    end
+
+    local response = self:_make_change_response(
+        session_id,
+        target.name,
+        tostring(value),
+        function(result)
+            target.currentValue = value
+
+            if target.category == "mode" then
+                self.legacy_agent_modes.current_mode_id = value --[[@as string]]
+                self.callbacks.on_set_mode_success(value --[[@as string]])
+            elseif target.category == "model" then
+                self.legacy_agent_models.current_model_id = value --[[@as string]]
+            end
+
+            if result and type(result.configOptions) == "table" then
+                self:set_options(result.configOptions)
+            end
+
+            self.callbacks.on_config_options_applied()
+            Logger.notify(
+                target.name .. " changed to: " .. tostring(value),
+                vim.log.levels.INFO,
+                { title = "Agentic Setting changed" }
+            )
+
+            if on_applied then
+                on_applied()
+            end
+        end
+    )
+
+    agent:set_config_option(session_id, config_id, value, response, is_boolean)
+end
+
 --- @param mode_id string
 --- @param is_legacy boolean
 function AgentConfigOptions:handle_mode_change(mode_id, is_legacy)
+    if not is_legacy then
+        self:handle_change(self.mode.id, mode_id)
+        return
+    end
+
     local session_id = self.callbacks.get_session_id()
 
     if not session_id then
@@ -547,9 +622,6 @@ function AgentConfigOptions:handle_mode_change(mode_id, is_legacy)
         function(result)
             -- keep legacy state in sync so legacy selectors reflect the change
             self.legacy_agent_modes.current_mode_id = mode_id
-            if not is_legacy and self.mode then
-                self.mode.currentValue = mode_id
-            end
 
             if result and type(result.configOptions) == "table" then
                 Logger.debug("received result after setting mode")
@@ -567,17 +639,18 @@ function AgentConfigOptions:handle_mode_change(mode_id, is_legacy)
         end
     )
 
-    if is_legacy then
-        agent:set_mode(session_id, mode_id, response)
-    else
-        agent:set_config_option(session_id, self.mode.id, mode_id, response)
-    end
+    agent:set_mode(session_id, mode_id, response)
 end
 
 --- @param model_id string
 --- @param is_legacy boolean
 --- @param on_done fun()|nil
 function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
+    if not is_legacy then
+        self:handle_change(self.model.id, model_id, on_done)
+        return
+    end
+
     local session_id = self.callbacks.get_session_id()
 
     if not session_id then
@@ -597,9 +670,6 @@ function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
         function(result)
             -- keep legacy state in sync so legacy selectors reflect the change
             self.legacy_agent_models.current_model_id = model_id
-            if not is_legacy and self.model then
-                self.model.currentValue = model_id
-            end
 
             if result and type(result.configOptions) == "table" then
                 Logger.debug("received result after setting model")
@@ -619,59 +689,17 @@ function AgentConfigOptions:handle_model_change(model_id, is_legacy, on_done)
         end
     )
 
-    if is_legacy then
-        agent:set_model(session_id, model_id, response)
-    else
-        agent:set_config_option(session_id, self.model.id, model_id, response)
-    end
+    agent:set_model(session_id, model_id, response)
 end
 
 --- @param value string
 function AgentConfigOptions:handle_thought_level_change(value)
-    local session_id = self.callbacks.get_session_id()
-
-    if not session_id then
-        return
-    end
-
-    local thought = self.thought_level
-
-    if not thought then
+    if not self.thought_level then
         Logger.debug("no thought_level option available")
         return
     end
 
-    local config_id = thought.id
-    local agent = self.callbacks.get_agent_instance()
-
-    if not agent then
-        return
-    end
-
-    local response = self:_make_change_response(
-        session_id,
-        "thought effort level",
-        value,
-        function(result)
-            if self.thought_level then
-                self.thought_level.currentValue = value
-            end
-
-            if result and type(result.configOptions) == "table" then
-                Logger.debug("received result after setting thought_level")
-                self:set_options(result.configOptions)
-            end
-            self.callbacks.on_config_options_applied()
-
-            Logger.notify(
-                "Thought effort level changed to: " .. value,
-                vim.log.levels.INFO,
-                { title = "Agentic Thought Effort Level changed" }
-            )
-        end
-    )
-
-    agent:set_config_option(session_id, config_id, value, response)
+    self:handle_change(self.thought_level.id, value)
 end
 
 return AgentConfigOptions

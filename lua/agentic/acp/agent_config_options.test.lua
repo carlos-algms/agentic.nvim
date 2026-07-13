@@ -132,14 +132,16 @@ describe("agentic.acp.AgentConfigOptions", function()
     --- @param agent any Fake ACP client capturing setter calls
     --- @param session_holder { id: string|nil }
     --- @param on_config_options_applied? fun() Override to spy header refresh
+    --- @param on_set_mode_success? fun(mode_id: string)
     --- @return agentic.acp.AgentConfigOptions
     local function make_with_agent(
         agent,
         session_holder,
-        on_config_options_applied
+        on_config_options_applied,
+        on_set_mode_success
     )
         return AgentConfigOptions:new({ chat = test_bufnr }, {
-            on_set_mode_success = function() end,
+            on_set_mode_success = on_set_mode_success or function() end,
             on_config_options_applied = on_config_options_applied
                 or function() end,
             get_agent_instance = function()
@@ -617,6 +619,129 @@ describe("agentic.acp.AgentConfigOptions", function()
         )
     end)
 
+    describe("handle_change", function()
+        --- @type TestStub
+        local notify_stub
+        --- @type TestStub
+        local set_config_stub
+        --- @type { id: string|nil }
+        local session_holder
+        --- @type agentic.acp.AgentConfigOptions
+        local config
+
+        before_each(function()
+            --- @type any
+            local agent = { set_config_option = function() end }
+            session_holder = { id = "s1" }
+            config = make_with_agent(agent, session_holder)
+            config:set_options({
+                model_option,
+                thought_option,
+                {
+                    id = "darkmode",
+                    category = "other",
+                    type = "boolean",
+                    currentValue = false,
+                    name = "Dark Mode",
+                },
+            })
+            set_config_stub = spy.stub(agent, "set_config_option")
+            notify_stub = spy.stub(require("agentic.utils.logger"), "notify")
+        end)
+
+        after_each(function()
+            set_config_stub:revert()
+            notify_stub:revert()
+        end)
+
+        it("exposes the current session id", function()
+            assert.equal("s1", config:get_session_id())
+        end)
+
+        it("dispatches select options without the boolean flag", function()
+            config:handle_change("model-1", "claude-opus")
+
+            assert.stub(set_config_stub).was.called(1)
+            local call = set_config_stub.calls[1]
+            assert.equal("s1", call[2])
+            assert.equal("model-1", call[3])
+            assert.equal("claude-opus", call[4])
+            assert.equal("function", type(call[5]))
+            assert.is_falsy(call[6])
+        end)
+
+        it("dispatches boolean options with the boolean flag", function()
+            config:handle_change("darkmode", true)
+
+            assert.stub(set_config_stub).was.called(1)
+            local call = set_config_stub.calls[1]
+            assert.equal("s1", call[2])
+            assert.equal("darkmode", call[3])
+            assert.is_true(call[4])
+            assert.equal("function", type(call[5]))
+            assert.is_true(call[6])
+        end)
+
+        it("skips unknown options and missing sessions", function()
+            config:handle_change("nonexistent", "x")
+            session_holder.id = nil
+            config:handle_change("model-1", "claude-opus")
+
+            assert.stub(set_config_stub).was.called(0)
+        end)
+
+        it("applies the value and invokes callbacks in order", function()
+            local applied = spy.new(function() end)
+            local on_applied = spy.new(function()
+                assert.equal("claude-opus", config.model.currentValue)
+                assert.equal(1, applied.call_count)
+            end)
+            --- @type any
+            local agent = {
+                set_config_option = function(_self, _sid, _cid, _val, cb)
+                    cb({}, nil)
+                end,
+            }
+            config =
+                make_with_agent(agent, session_holder, applied --[[@as fun()]])
+            config:set_options({ model_option })
+
+            config:handle_change(
+                "model-1",
+                "claude-opus",
+                on_applied --[[@as fun()]]
+            )
+
+            assert.equal("claude-opus", config.model.currentValue)
+            assert.equal(1, applied.call_count)
+            assert.equal(1, on_applied.call_count)
+            assert.has_no_errors(function()
+                config:handle_change("model-1", "claude-sonnet")
+            end)
+        end)
+
+        it("refreshes returned config options before on_applied", function()
+            local refreshed_model = vim.tbl_extend("force", model_option, {
+                currentValue = "claude-opus",
+            }) --[[@as agentic.acp.ConfigOption]]
+            --- @type any
+            local agent = {
+                set_config_option = function(_self, _sid, _cid, _val, cb)
+                    cb({ configOptions = { refreshed_model } }, nil)
+                end,
+            }
+            config = make_with_agent(agent, session_holder)
+            config:set_options({ model_option })
+
+            config:handle_change("model-1", "claude-opus", function()
+                assert.equal("claude-opus", config.model.currentValue)
+                assert.is_true(config.model ~= model_option)
+            end)
+
+            assert.equal("claude-opus", config.model.currentValue)
+        end)
+    end)
+
     describe("successful changes without returned configOptions", function()
         --- @type TestStub
         local notify_stub
@@ -630,18 +755,25 @@ describe("agentic.acp.AgentConfigOptions", function()
         end)
 
         it("updates modern mode currentValue", function()
+            local mode_applied = spy.new(function() end)
             --- @type any
             local agent = {
                 set_config_option = function(_self, _sid, _cid, _val, cb)
                     cb({}, nil)
                 end,
             }
-            local config = make_with_agent(agent, { id = "s1" })
+            local config = make_with_agent(
+                agent,
+                { id = "s1" },
+                nil,
+                mode_applied --[[@as fun(mode_id: string)]]
+            )
             config:set_options({ mode_option })
 
             config:handle_mode_change("plan", false)
 
             assert.equal("plan", config:get_mode_id())
+            assert.spy(mode_applied).was.called_with("plan")
         end)
 
         it("updates modern model currentValue and refreshes headers", function()
@@ -656,10 +788,16 @@ describe("agentic.acp.AgentConfigOptions", function()
                 make_with_agent(agent, { id = "s1" }, applied --[[@as fun()]])
             config:set_options({ model_option })
 
-            config:handle_model_change("claude-opus", false)
+            local on_done = spy.new(function() end)
+            config:handle_model_change(
+                "claude-opus",
+                false,
+                on_done --[[@as fun()]]
+            )
 
             assert.equal("claude-opus", config:get_model_id())
             assert.equal(1, applied.call_count)
+            assert.equal(1, on_done.call_count)
         end)
 
         it(
@@ -685,6 +823,44 @@ describe("agentic.acp.AgentConfigOptions", function()
                 assert.equal(1, applied.call_count)
             end
         )
+
+        it("preserves legacy mode and model success callbacks", function()
+            local mode_applied = spy.new(function() end)
+            local model_done = spy.new(function() end)
+            --- @type any
+            local agent = {
+                set_mode = function(_self, _sid, _value, cb)
+                    cb({}, nil)
+                end,
+                set_model = function(_self, _sid, _value, cb)
+                    cb({}, nil)
+                end,
+            }
+            local config = make_with_agent(
+                agent,
+                { id = "s1" },
+                nil,
+                mode_applied --[[@as fun(mode_id: string)]]
+            )
+            config:set_legacy_modes({
+                availableModes = {
+                    { id = "plan", name = "Plan", description = "" },
+                },
+                currentModeId = "normal",
+            })
+            config:set_legacy_models({
+                availableModels = {
+                    { modelId = "opus", name = "Opus", description = "" },
+                },
+                currentModelId = "sonnet",
+            })
+
+            config:handle_mode_change("plan", true)
+            config:handle_model_change("opus", true, model_done --[[@as fun()]])
+
+            assert.spy(mode_applied).was.called_with("plan")
+            assert.equal(1, model_done.call_count)
+        end)
     end)
 
     --- _show_mode_selector and _show_model_selector share legacy-fallback
