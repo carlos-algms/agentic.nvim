@@ -86,6 +86,15 @@ describe("agentic.acp.AgentConfigOptions", function()
         },
     }
 
+    --- @type agentic.acp.BooleanConfigOption
+    local boolean_option = {
+        id = "auto-approve",
+        category = "other",
+        type = "boolean",
+        currentValue = true,
+        name = "Auto Approve",
+    }
+
     --- @type agentic.acp.ConfigOption
     local multi_thought = {
         id = "thought-multi",
@@ -182,14 +191,17 @@ describe("agentic.acp.AgentConfigOptions", function()
                     thought_option,
                     fast_option,
                     agent_option,
+                    boolean_option,
                 })
 
-                assert.equal(5, #config_options.options)
+                assert.equal(6, #config_options.options)
                 assert.equal("mode-1", config_options.options[1].id)
                 assert.equal("model-1", config_options.options[2].id)
                 assert.equal("thought-1", config_options.options[3].id)
                 assert.equal("fast", config_options.options[4].id)
                 assert.equal("agent", config_options.options[5].id)
+                assert.equal("auto-approve", config_options.options[6].id)
+                assert.equal(true, config_options.options[6].currentValue)
                 assert.is_true(config_options.mode == config_options.options[1])
                 assert.is_true(
                     config_options.model == config_options.options[2]
@@ -1099,6 +1111,9 @@ describe("agentic.acp.AgentConfigOptions", function()
                 mode_option,
                 model_option,
                 thought_option,
+                fast_option,
+                agent_option,
+                boolean_option,
             })
             config_options.legacy_agent_modes:set_modes({
                 availableModes = {
@@ -1137,6 +1152,9 @@ describe("agentic.acp.AgentConfigOptions", function()
                 mode_option,
                 model_option,
                 thought_option,
+                fast_option,
+                agent_option,
+                boolean_option,
             })
             config_options.legacy_agent_modes:set_modes({
                 availableModes = {
@@ -1159,7 +1177,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             config_options:clear()
             config_options:restore_snapshot(snapshot)
 
-            assert.equal(3, #config_options.options)
+            assert.equal(6, #config_options.options)
+            assert.equal("fast", config_options.options[4].id)
+            assert.equal("agent", config_options.options[5].id)
+            assert.equal("auto-approve", config_options.options[6].id)
+            assert.equal(true, config_options.options[6].currentValue)
             assert.equal("mode-1", config_options.mode.id)
             assert.equal("model-1", config_options.model.id)
             assert.equal("thought-1", config_options.thought_level.id)
@@ -1185,7 +1207,11 @@ describe("agentic.acp.AgentConfigOptions", function()
             local snapshot = config_options:snapshot()
             config_options:clear()
 
-            assert.equal(3, #snapshot.options)
+            assert.equal(6, #snapshot.options)
+            assert.equal("fast", snapshot.options[4].id)
+            assert.equal("agent", snapshot.options[5].id)
+            assert.equal("auto-approve", snapshot.options[6].id)
+            assert.equal(true, snapshot.options[6].currentValue)
             assert.equal("mode-1", snapshot.mode.id)
             assert.equal("model-1", snapshot.model.id)
             assert.equal("thought-1", snapshot.thought_level.id)

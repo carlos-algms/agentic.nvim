@@ -885,7 +885,7 @@ function SessionManager:add_buffer_diagnostics_to_context(bufnr)
     return self.diagnostics_list:add_many(diagnostics)
 end
 
---- @param new_config_options agentic.acp.ConfigOption[]
+--- @param new_config_options agentic.acp.AnyConfigOption[]
 function SessionManager:_handle_new_config_options(new_config_options)
     self.config_options:set_options(new_config_options)
     local mode_id = self.config_options:get_mode_id()

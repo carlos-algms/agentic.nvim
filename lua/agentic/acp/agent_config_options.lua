@@ -121,7 +121,7 @@ function AgentConfigOptions:restore_snapshot(snapshot)
     self.legacy_agent_models:restore(snapshot.legacy_models)
 end
 
---- @param configOptions agentic.acp.ConfigOption[]|nil
+--- @param configOptions agentic.acp.AnyConfigOption[]|nil
 function AgentConfigOptions:set_options(configOptions)
     self:clear()
 
@@ -141,11 +141,11 @@ function AgentConfigOptions:set_options(configOptions)
             self.options[#self.options + 1] = stored_option
 
             if cat == "mode" then
-                self.mode = stored_option
+                self.mode = stored_option --[[@as agentic.acp.ConfigOption]]
             elseif cat == "model" then
-                self.model = stored_option
+                self.model = stored_option --[[@as agentic.acp.ConfigOption]]
             elseif cat == "thought_level" then
-                self.thought_level = stored_option
+                self.thought_level = stored_option --[[@as agentic.acp.ConfigOption]]
             else
                 Logger.debug("Unknown config option", option)
             end
