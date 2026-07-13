@@ -155,7 +155,7 @@ function AgentConfigOptions:set_options(configOptions)
                 self.model = stored_option --[[@as agentic.acp.ConfigOption]]
             elseif cat == "thought_level" then
                 self.thought_level = stored_option --[[@as agentic.acp.ConfigOption]]
-            else
+            elseif cat ~= "" and cat ~= "model_config" and cat ~= "other" then
                 Logger.debug("Unknown config option", option)
             end
         end
@@ -358,7 +358,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_mode_selector()
-    local shown = self:_show_selector(
+    local shown = self:show_selector(
         self.mode,
         "Select agent mode config:",
         function(mode)
@@ -389,7 +389,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_thought_level_selector()
-    local shown = self:_show_selector(
+    local shown = self:show_selector(
         self.thought_level,
         "Select thought effort level:",
         function(value)
@@ -412,7 +412,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_model_selector()
-    local shown = self:_show_selector(
+    local shown = self:show_selector(
         self.model,
         "Select model to change:",
         function(model)
@@ -488,7 +488,7 @@ end
 --- @param prompt string
 --- @param handle_change fun(value: string): any
 --- @return boolean shown
-function AgentConfigOptions:_show_selector(target, prompt, handle_change)
+function AgentConfigOptions:show_selector(target, prompt, handle_change)
     if not target or not target.options or #target.options == 0 then
         return false
     end

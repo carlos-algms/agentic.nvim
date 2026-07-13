@@ -67,7 +67,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
             handle_change = function(_, id, value, on_applied)
                 handle_change_spy(id, value, on_applied)
             end,
-            _show_selector = function(_, option, prompt, callback)
+            show_selector = function(_, option, prompt, callback)
                 show_selector_spy(option, prompt, callback)
             end,
             get_session_id = function()

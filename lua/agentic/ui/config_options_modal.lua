@@ -180,8 +180,7 @@ function ConfigOptionsModal:_activate_current_option()
         return
     end
 
-    --- @diagnostic disable-next-line: invisible
-    self._config_options:_show_selector(
+    self._config_options:show_selector(
         option,
         "Select " .. option.name .. ":",
         function(value)
