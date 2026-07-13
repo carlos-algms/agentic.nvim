@@ -30,6 +30,9 @@ describe("ACPClient", function()
     --- @type fun(message: agentic.acp.ResponseRaw)|nil
     local captured_on_message
 
+    --- @type agentic.acp.InitializeParams|nil
+    local captured_initialize_params
+
     local PROMPT_CAPS =
         { image = false, audio = false, embeddedContext = false }
 
@@ -71,6 +74,7 @@ describe("ACPClient", function()
         transport_send_stub:invokes(function(_self, data)
             local decoded = vim.json.decode(data)
             if decoded.method == "initialize" and captured_on_message then
+                captured_initialize_params = decoded.params
                 captured_on_message({
                     jsonrpc = "2.0",
                     method = "initialize",
@@ -118,6 +122,7 @@ describe("ACPClient", function()
     before_each(function()
         package.loaded["agentic.acp.acp_client"] = nil
         package.loaded["agentic.acp.acp_transport"] = nil
+        captured_initialize_params = nil
 
         local Logger = require("agentic.utils.logger")
         logger_debug_stub = spy.stub(Logger, "debug")
@@ -149,6 +154,27 @@ describe("ACPClient", function()
         transport_start_stub:revert()
         transport_stop_stub:revert()
         create_transport_stub:revert()
+    end)
+
+    describe("initialize", function()
+        it("advertises boolean session config options as an object", function()
+            create_ready_client()
+
+            assert.is_not_nil(captured_initialize_params)
+            --- @cast captured_initialize_params agentic.acp.InitializeParams
+            assert.is_not_nil(
+                captured_initialize_params.clientCapabilities.session
+            )
+
+            local config_options =
+                captured_initialize_params.clientCapabilities.session.configOptions
+            assert.is_not_nil(config_options)
+            --- @cast config_options agentic.acp.SessionConfigOptionsCapabilities
+            assert.is_not_nil(config_options.boolean)
+
+            local encoded = vim.json.encode(captured_initialize_params)
+            assert.is_not_nil(encoded:find('"boolean":{}', 1, true))
+        end)
     end)
 
     describe("list_sessions", function()

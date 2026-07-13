@@ -73,6 +73,11 @@ function ACPClient:new(config, on_ready)
                 writeTextFile = false,
             },
             terminal = false,
+            session = {
+                configOptions = {
+                    boolean = vim.empty_dict(),
+                },
+            },
         },
         auth_methods = {},
         ready_listeners = {},
