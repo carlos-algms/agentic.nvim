@@ -194,7 +194,7 @@
 --- @class agentic.acp.ConfigOption
 --- @field id string
 --- @field category? agentic.acp.ConfigOption.Category
---- @field type? "select"|"boolean"
+--- @field type? "select"
 --- @field currentValue string
 --- @field description string
 --- @field name string
@@ -216,7 +216,7 @@
 --- @field sessionId string
 --- @field modes? agentic.acp.ModesInfo
 --- @field models? agentic.acp.ModelsInfo
---- @field configOptions? agentic.acp.ConfigOption[]
+--- @field configOptions? agentic.acp.AnyConfigOption[]
 
 --- @alias agentic.acp.ResponseRawParams
 --- | { sessionId: string, update: agentic.acp.SessionUpdateMessage }
@@ -279,7 +279,7 @@
 
 --- @class agentic.acp.ConfigOptionsUpdate
 --- @field sessionUpdate "config_option_update"
---- @field configOptions agentic.acp.ConfigOption[]
+--- @field configOptions agentic.acp.AnyConfigOption[]
 
 --- @alias agentic.acp.SessionUpdateMessage
 --- | agentic.acp.UserMessageChunk
