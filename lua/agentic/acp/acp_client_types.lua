@@ -7,9 +7,16 @@
 --- @field name string
 --- @field version string
 
+--- @class agentic.acp.SessionConfigOptionsCapabilities
+--- @field boolean? table
+
+--- @class agentic.acp.ClientSessionCapabilities
+--- @field configOptions? agentic.acp.SessionConfigOptionsCapabilities
+
 --- @class agentic.acp.ClientCapabilities
 --- @field fs agentic.acp.FileSystemCapability
 --- @field terminal boolean
+--- @field session? agentic.acp.ClientSessionCapabilities
 
 --- @class agentic.acp.InitializeParams
 --- @field protocolVersion number
@@ -173,22 +180,37 @@
 --- @field currentModelId string
 
 --- @class agentic.acp.ConfigOption.Option
---- @field description string
+--- @field description? string
 --- @field name string
 --- @field value string
 
 --- @alias agentic.acp.ConfigOption.Category
 --- | "mode"
 --- | "model"
+--- | "model_config"
 --- | "thought_level"
+--- | "other"
 
 --- @class agentic.acp.ConfigOption
 --- @field id string
---- @field category agentic.acp.ConfigOption.Category
+--- @field category? agentic.acp.ConfigOption.Category
+--- @field type? "select"|"boolean"
 --- @field currentValue string
 --- @field description string
 --- @field name string
---- @field options agentic.acp.ConfigOption.Option[]
+--- @field options? agentic.acp.ConfigOption.Option[]
+
+--- @class agentic.acp.BooleanConfigOption
+--- @field id string
+--- @field category? agentic.acp.ConfigOption.Category
+--- @field type "boolean"
+--- @field currentValue boolean
+--- @field description? string
+--- @field name string
+
+--- @alias agentic.acp.AnyConfigOption
+--- | agentic.acp.ConfigOption
+--- | agentic.acp.BooleanConfigOption
 
 --- @class agentic.acp.SessionCreationResponse
 --- @field sessionId string
