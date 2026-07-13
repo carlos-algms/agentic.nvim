@@ -63,6 +63,30 @@ describe("agentic.acp.AgentConfigOptions", function()
     }
 
     --- @type agentic.acp.ConfigOption
+    local fast_option = {
+        id = "fast",
+        category = "model_config",
+        currentValue = "off",
+        description = "Fast mode",
+        name = "Fast",
+        options = {
+            { value = "on", name = "On" },
+            { value = "off", name = "Off" },
+        },
+    }
+
+    --- @type agentic.acp.ConfigOption
+    local agent_option = {
+        id = "agent",
+        currentValue = "default",
+        description = "Agent selection",
+        name = "Agent",
+        options = {
+            { value = "default", name = "Default" },
+        },
+    }
+
+    --- @type agentic.acp.ConfigOption
     local multi_thought = {
         id = "thought-multi",
         category = "thought_level",
@@ -149,6 +173,38 @@ describe("agentic.acp.AgentConfigOptions", function()
     end)
 
     describe("set_options", function()
+        it(
+            "retains non-extension options in wire order with named views",
+            function()
+                config_options:set_options({
+                    mode_option,
+                    model_option,
+                    thought_option,
+                    fast_option,
+                    agent_option,
+                })
+
+                assert.equal(5, #config_options.options)
+                assert.equal("mode-1", config_options.options[1].id)
+                assert.equal("model-1", config_options.options[2].id)
+                assert.equal("thought-1", config_options.options[3].id)
+                assert.equal("fast", config_options.options[4].id)
+                assert.equal("agent", config_options.options[5].id)
+                assert.is_true(config_options.mode == config_options.options[1])
+                assert.is_true(
+                    config_options.model == config_options.options[2]
+                )
+                assert.is_true(
+                    config_options.thought_level == config_options.options[3]
+                )
+
+                config_options:set_options({ agent_option })
+
+                assert.equal(1, #config_options.options)
+                assert.equal("agent", config_options.options[1].id)
+            end
+        )
+
         it("assigns all known categories from a single call", function()
             config_options:set_options({
                 mode_option,
@@ -164,6 +220,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         it("does nothing when configOptions is nil", function()
             config_options:set_options(nil)
 
+            assert.equal(0, #config_options.options)
             assert.is_nil(config_options.mode)
             assert.is_nil(config_options.model)
             assert.is_nil(config_options.thought_level)
@@ -218,6 +275,7 @@ describe("agentic.acp.AgentConfigOptions", function()
                 config_options:set_options({ custom })
 
                 assert.equal(0, debug_stub.call_count)
+                assert.equal(0, #config_options.options)
                 assert.is_nil(config_options.mode)
                 assert.is_nil(config_options.model)
                 assert.is_nil(config_options.thought_level)
@@ -1061,6 +1119,7 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             config_options:clear()
 
+            assert.equal(0, #config_options.options)
             assert.is_nil(config_options.mode)
             assert.is_nil(config_options.model)
             assert.is_nil(config_options.thought_level)
@@ -1100,6 +1159,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             config_options:clear()
             config_options:restore_snapshot(snapshot)
 
+            assert.equal(3, #config_options.options)
             assert.equal("mode-1", config_options.mode.id)
             assert.equal("model-1", config_options.model.id)
             assert.equal("thought-1", config_options.thought_level.id)
@@ -1125,6 +1185,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             local snapshot = config_options:snapshot()
             config_options:clear()
 
+            assert.equal(3, #snapshot.options)
             assert.equal("mode-1", snapshot.mode.id)
             assert.equal("model-1", snapshot.model.id)
             assert.equal("thought-1", snapshot.thought_level.id)

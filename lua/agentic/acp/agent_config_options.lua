@@ -18,6 +18,7 @@ local CATEGORY_ALIASES = {
 --- @field get_session_id fun(): string|nil
 
 --- @class agentic.acp.AgentConfigOptions
+--- @field options agentic.acp.AnyConfigOption[]
 --- @field mode? agentic.acp.ConfigOption
 --- @field model? agentic.acp.ConfigOption
 --- @field thought_level? agentic.acp.ConfigOption
@@ -35,6 +36,7 @@ function AgentConfigOptions:new(buffers, callbacks)
     local AgentModels = require("agentic.acp.agent_models")
 
     self = setmetatable({
+        options = {},
         mode = nil,
         model = nil,
         thought_level = nil,
@@ -76,6 +78,7 @@ function AgentConfigOptions:new(buffers, callbacks)
 end
 
 function AgentConfigOptions:clear()
+    self.options = {}
     self.mode = nil
     self.model = nil
     self.thought_level = nil
@@ -84,6 +87,7 @@ function AgentConfigOptions:clear()
 end
 
 --- @class agentic.acp.AgentConfigOptions.Snapshot
+--- @field options agentic.acp.AnyConfigOption[]
 --- @field mode? agentic.acp.ConfigOption
 --- @field model? agentic.acp.ConfigOption
 --- @field thought_level? agentic.acp.ConfigOption
@@ -97,6 +101,7 @@ end
 function AgentConfigOptions:snapshot()
     --- @type agentic.acp.AgentConfigOptions.Snapshot
     local snapshot = {
+        options = self.options,
         mode = self.mode,
         model = self.model,
         thought_level = self.thought_level,
@@ -108,6 +113,7 @@ end
 
 --- @param snapshot agentic.acp.AgentConfigOptions.Snapshot
 function AgentConfigOptions:restore_snapshot(snapshot)
+    self.options = snapshot.options
     self.mode = snapshot.mode
     self.model = snapshot.model
     self.thought_level = snapshot.thought_level
@@ -130,16 +136,19 @@ function AgentConfigOptions:set_options(configOptions)
         local raw = type(option.category) == "string" and option.category or ""
         local cat = CATEGORY_ALIASES[raw] or raw
 
-        local stored_option = vim.deepcopy(option)
+        if cat:sub(1, 1) ~= "_" then
+            local stored_option = vim.deepcopy(option)
+            self.options[#self.options + 1] = stored_option
 
-        if cat == "mode" then
-            self.mode = stored_option
-        elseif cat == "model" then
-            self.model = stored_option
-        elseif cat == "thought_level" then
-            self.thought_level = stored_option
-        elseif cat:sub(1, 1) ~= "_" then
-            Logger.debug("Unknown config option", option)
+            if cat == "mode" then
+                self.mode = stored_option
+            elseif cat == "model" then
+                self.model = stored_option
+            elseif cat == "thought_level" then
+                self.thought_level = stored_option
+            else
+                Logger.debug("Unknown config option", option)
+            end
         end
     end
 end
