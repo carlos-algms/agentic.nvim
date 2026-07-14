@@ -119,7 +119,7 @@ function ConfigOptionsModal:_render()
         if option.type == "boolean" then
             rendered_value = option.currentValue and "[x]" or "[ ]"
         else
-            rendered_value = get_select_value_name(option)
+            rendered_value = " " .. get_select_value_name(option)
         end
 
         lines[#lines + 1] = option.name .. ": " .. rendered_value

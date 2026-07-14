@@ -96,7 +96,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
     it("renders select names and unchecked booleans", function()
         open_modal()
 
-        assert.same(get_lines(), { "Model: Opus", "Fast mode: [ ]" })
+        assert.same(get_lines(), { "Model:  Opus", "Fast mode: [ ]" })
         assert.is_false(vim.bo[bufnr].modifiable)
     end)
 
@@ -111,7 +111,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         config_options.options[1].currentValue = "unknown"
         open_modal()
 
-        assert.equal(get_lines()[1], "Model: unknown")
+        assert.equal(get_lines()[1], "Model:  unknown")
     end)
 
     it("renders an empty placeholder with no dispatch", function()
