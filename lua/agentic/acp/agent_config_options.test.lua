@@ -255,7 +255,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             assert.spy(modal_open_spy).was.called(0)
         end)
 
-        it("opens the modal with the owning instance and session id", function()
+        it("opens the modal with config option callbacks", function()
             local get_session_id_spy = spy.new(function()
                 return "sess-captured"
             end)
@@ -273,8 +273,11 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             assert.spy(get_session_id_spy).was.called(1)
             assert.spy(modal_new_spy).was.called(1)
-            assert.is_true(modal_new_spy.calls[1][2] == config)
-            assert.equal("sess-captured", modal_new_spy.calls[1][3])
+            local modal_callbacks = modal_new_spy.calls[1][2]
+            assert.is_true(modal_callbacks.get_options() == config.options)
+            assert.is_true(modal_callbacks.is_session_active())
+            assert.equal("function", type(modal_callbacks.handle_change))
+            assert.equal("function", type(modal_callbacks.show_selector))
             assert.spy(modal_open_spy).was.called(1)
             assert.stub(notify_stub).was.called(0)
         end)
@@ -609,10 +612,9 @@ describe("agentic.acp.AgentConfigOptions", function()
                     assert.stub(set_config_stub).was.called(1)
                     assert.stub(legacy_stub).was.called(0)
                     local call = set_config_stub.calls[1]
-                    -- call[1]=self, [2]=session_id, [3]=configId, [4]=value
-                    assert.equal("s1", call[2])
-                    assert.equal(case.config_id, call[3])
-                    assert.equal(case.other_value, call[4])
+                    assert.equal("s1", call[2].sessionId)
+                    assert.equal(case.config_id, call[2].configId)
+                    assert.equal(case.other_value, call[2].value)
                 end
             )
 
@@ -722,8 +724,8 @@ describe("agentic.acp.AgentConfigOptions", function()
 
                 assert.stub(set_config_stub).was.called(1)
                 local call = set_config_stub.calls[1]
-                assert.equal("model-1", call[3])
-                assert.equal("claude-opus", call[4])
+                assert.equal("model-1", call[2].configId)
+                assert.equal("claude-opus", call[2].value)
             end
         )
     end)
@@ -763,38 +765,44 @@ describe("agentic.acp.AgentConfigOptions", function()
             notify_stub:revert()
         end)
 
-        it("exposes the current session id", function()
-            assert.equal("s1", config:get_session_id())
-        end)
-
-        it("dispatches select options without the boolean flag", function()
+        it("dispatches select option params", function()
             config:handle_change("model-1", "claude-opus")
 
             assert.stub(set_config_stub).was.called(1)
             local call = set_config_stub.calls[1]
-            assert.equal("s1", call[2])
-            assert.equal("model-1", call[3])
-            assert.equal("claude-opus", call[4])
-            assert.equal("function", type(call[5]))
-            assert.is_falsy(call[6])
+            assert.same(call[2], {
+                sessionId = "s1",
+                configId = "model-1",
+                value = "claude-opus",
+            })
+            assert.equal("function", type(call[3]))
         end)
 
-        it("dispatches boolean options with the boolean flag", function()
+        it("dispatches boolean option params", function()
             config:handle_change("darkmode", true)
 
             assert.stub(set_config_stub).was.called(1)
             local call = set_config_stub.calls[1]
-            assert.equal("s1", call[2])
-            assert.equal("darkmode", call[3])
-            assert.is_true(call[4])
-            assert.equal("function", type(call[5]))
-            assert.is_true(call[6])
+            assert.same(call[2], {
+                sessionId = "s1",
+                configId = "darkmode",
+                type = "boolean",
+                value = true,
+            })
+            assert.equal("function", type(call[3]))
         end)
 
         it("skips unknown options and missing sessions", function()
             config:handle_change("nonexistent", "x")
             session_holder.id = nil
             config:handle_change("model-1", "claude-opus")
+
+            assert.stub(set_config_stub).was.called(0)
+        end)
+
+        it("skips values that do not match the option type", function()
+            config:handle_change("model-1", true)
+            config:handle_change("darkmode", "yes")
 
             assert.stub(set_config_stub).was.called(0)
         end)
@@ -807,7 +815,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({}, nil)
                 end,
             }
@@ -835,7 +843,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             }) --[[@as agentic.acp.ConfigOption]]
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({ configOptions = { refreshed_model } }, nil)
                 end,
             }
@@ -867,7 +875,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             local mode_applied = spy.new(function() end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({}, nil)
                 end,
             }
@@ -889,7 +897,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             local applied = spy.new(function() end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({}, nil)
                 end,
             }
@@ -915,7 +923,7 @@ describe("agentic.acp.AgentConfigOptions", function()
                 local applied = spy.new(function() end)
                 --- @type any
                 local agent = {
-                    set_config_option = function(_self, _sid, _cid, _val, cb)
+                    set_config_option = function(_self, _params, cb)
                         cb({}, nil)
                     end,
                 }
@@ -1088,8 +1096,8 @@ describe("agentic.acp.AgentConfigOptions", function()
                     assert.stub(set_config_stub).was.called(1)
                     assert.stub(legacy_stub).was.called(0)
                     local call = set_config_stub.calls[1]
-                    assert.equal(case.config_id, call[3])
-                    assert.equal(case.second_value, call[4])
+                    assert.equal(case.config_id, call[2].configId)
+                    assert.equal(case.second_value, call[2].value)
                 end
             )
 
@@ -1310,9 +1318,8 @@ describe("agentic.acp.AgentConfigOptions", function()
 
             assert.stub(set_config_stub).was.called(1)
             local call = set_config_stub.calls[1]
-            -- call[3]=configId (option.id), call[4]=value
-            assert.equal("thought-multi", call[3])
-            assert.equal("high", call[4])
+            assert.equal("thought-multi", call[2].configId)
+            assert.equal("high", call[2].value)
 
             set_config_stub:revert()
         end)
@@ -1372,7 +1379,7 @@ describe("agentic.acp.AgentConfigOptions", function()
                 assert.equal(case.notify, notify_stub.call_count)
 
                 if case.dispatch == 1 then
-                    assert.equal(case.target, set_config_stub.calls[1][4])
+                    assert.equal(case.target, set_config_stub.calls[1][2].value)
                 end
             end)
         end

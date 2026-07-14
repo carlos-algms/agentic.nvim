@@ -90,8 +90,11 @@ describe("config selector", function()
         it("marks default model and updates after selection", function()
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, model_id, cb)
-                    cb({ configOptions = { make_model_option(model_id) } }, nil)
+                set_config_option = function(_self, params, cb)
+                    cb(
+                        { configOptions = { make_model_option(params.value) } },
+                        nil
+                    )
                 end,
             }
             local config =
@@ -145,7 +148,7 @@ describe("config selector", function()
             --- @type any
             local agent = {
                 set_model = set_model_fn,
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({ configOptions = {} }, nil)
                 end,
             }
@@ -255,12 +258,11 @@ describe("config selector", function()
             config:handle_thought_level_change("max")
 
             assert.equal(1, set_config_stub.call_count)
-            -- call[1]=self, [2]=session_id, [3]=configId, [4]=value, [5]=cb
             local call = set_config_stub.calls[1]
-            assert.equal("sess-1", call[2])
-            assert.equal("claude-effort-cfg", call[3])
-            assert.equal("max", call[4])
-            assert.equal("function", type(call[5]))
+            assert.equal("sess-1", call[2].sessionId)
+            assert.equal("claude-effort-cfg", call[2].configId)
+            assert.equal("max", call[2].value)
+            assert.equal("function", type(call[3]))
         end)
 
         it("uses Codex id when provider sends thought_level", function()
@@ -271,15 +273,15 @@ describe("config selector", function()
             config:handle_thought_level_change("high")
 
             local call = set_config_stub.calls[1]
-            assert.equal("codex-thought-cfg", call[3])
-            assert.equal("high", call[4])
+            assert.equal("codex-thought-cfg", call[2].configId)
+            assert.equal("high", call[2].value)
         end)
 
         it("applies new configOptions on success", function()
             config:set_options({
                 make_thought_option("claude-effort-cfg", "effort"),
             })
-            set_config_stub:invokes(function(_self, _sid, _cid, _value, cb)
+            set_config_stub:invokes(function(_self, _params, cb)
                 cb({
                     configOptions = {
                         make_thought_option("claude-effort-cfg", "effort"),
@@ -297,7 +299,7 @@ describe("config selector", function()
             config:set_options({
                 make_thought_option("claude-effort-cfg", "effort"),
             })
-            set_config_stub:invokes(function(_self, _sid, _cid, _value, cb)
+            set_config_stub:invokes(function(_self, _params, cb)
                 cb(nil, { message = "boom" })
             end)
 
@@ -314,7 +316,7 @@ describe("config selector", function()
                 make_thought_option("claude-effort-cfg", "effort"),
             })
             local captured_cb
-            set_config_stub:invokes(function(_self, _sid, _cid, _value, cb)
+            set_config_stub:invokes(function(_self, _params, cb)
                 captured_cb = cb
             end)
 
@@ -356,8 +358,11 @@ describe("config selector", function()
             local applied = spy.new(function() end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, model_id, cb)
-                    cb({ configOptions = { make_model_option(model_id) } }, nil)
+                set_config_option = function(_self, params, cb)
+                    cb(
+                        { configOptions = { make_model_option(params.value) } },
+                        nil
+                    )
                 end,
             }
             local config = AgentConfigOptions:new(
@@ -378,7 +383,7 @@ describe("config selector", function()
                 local applied = spy.new(function() end)
                 --- @type any
                 local agent = {
-                    set_config_option = function(_self, _sid, _cid, _val, cb)
+                    set_config_option = function(_self, _params, cb)
                         cb({ configOptions = { make_thought_option() } }, nil)
                     end,
                 }
@@ -398,7 +403,7 @@ describe("config selector", function()
             local applied = spy.new(function() end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb({}, nil)
                 end,
             }
@@ -418,7 +423,7 @@ describe("config selector", function()
             local applied = spy.new(function() end)
             --- @type any
             local agent = {
-                set_config_option = function(_self, _sid, _cid, _val, cb)
+                set_config_option = function(_self, _params, cb)
                     cb(nil, { message = "boom" })
                 end,
             }

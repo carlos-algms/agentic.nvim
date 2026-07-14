@@ -149,12 +149,12 @@ function AgentConfigOptions:set_options(configOptions)
             local stored_option = vim.deepcopy(option)
             self.options[#self.options + 1] = stored_option
 
-            if cat == "mode" then
-                self.mode = stored_option --[[@as agentic.acp.ConfigOption]]
-            elseif cat == "model" then
-                self.model = stored_option --[[@as agentic.acp.ConfigOption]]
-            elseif cat == "thought_level" then
-                self.thought_level = stored_option --[[@as agentic.acp.ConfigOption]]
+            if option.type ~= "boolean" and cat == "mode" then
+                self.mode = stored_option
+            elseif option.type ~= "boolean" and cat == "model" then
+                self.model = stored_option
+            elseif option.type ~= "boolean" and cat == "thought_level" then
+                self.thought_level = stored_option
             elseif cat ~= "" and cat ~= "model_config" and cat ~= "other" then
                 Logger.debug("Unknown config option", option)
             end
@@ -299,13 +299,8 @@ function AgentConfigOptions:get_model_id()
         or self.legacy_agent_models.current_model_id
 end
 
---- @return string|nil session_id
-function AgentConfigOptions:get_session_id()
-    return self.callbacks.get_session_id()
-end
-
 function AgentConfigOptions:_show_settings_modal()
-    local session_id = self:get_session_id()
+    local session_id = self.callbacks.get_session_id()
 
     if #self.options == 0 or not session_id then
         Logger.notify(
@@ -317,7 +312,20 @@ function AgentConfigOptions:_show_settings_modal()
     end
 
     local ConfigOptionsModal = require("agentic.ui.config_options_modal")
-    ConfigOptionsModal:new(self, session_id):open()
+    ConfigOptionsModal:new({
+        get_options = function()
+            return self.options
+        end,
+        is_session_active = function()
+            return self.callbacks.get_session_id() == session_id
+        end,
+        handle_change = function(config_id, value, on_done)
+            self:handle_change(config_id, value, on_done)
+        end,
+        show_selector = function(option, prompt, handle_change)
+            self:_show_selector(option, prompt, handle_change)
+        end,
+    }):open()
 end
 
 --- @param mode_value string
@@ -358,7 +366,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_mode_selector()
-    local shown = self:show_selector(
+    local shown = self:_show_selector(
         self.mode,
         "Select agent mode config:",
         function(mode)
@@ -389,7 +397,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_thought_level_selector()
-    local shown = self:show_selector(
+    local shown = self:_show_selector(
         self.thought_level,
         "Select thought effort level:",
         function(value)
@@ -412,7 +420,7 @@ end
 
 --- @return boolean shown
 function AgentConfigOptions:_show_model_selector()
-    local shown = self:show_selector(
+    local shown = self:_show_selector(
         self.model,
         "Select model to change:",
         function(model)
@@ -488,7 +496,7 @@ end
 --- @param prompt string
 --- @param handle_change fun(value: string): any
 --- @return boolean shown
-function AgentConfigOptions:show_selector(target, prompt, handle_change)
+function AgentConfigOptions:_show_selector(target, prompt, handle_change)
     if not target or not target.options or #target.options == 0 then
         return false
     end
@@ -557,8 +565,8 @@ end
 
 --- @param config_id string
 --- @param value string|boolean
---- @param on_applied fun()|nil
-function AgentConfigOptions:handle_change(config_id, value, on_applied)
+--- @param on_done fun()|nil
+function AgentConfigOptions:handle_change(config_id, value, on_done)
     --- @type agentic.acp.AnyConfigOption|nil
     local target
     for _, option in ipairs(self.options) do
@@ -573,7 +581,6 @@ function AgentConfigOptions:handle_change(config_id, value, on_applied)
         return
     end
 
-    local is_boolean = target.type == "boolean"
     local session_id = self.callbacks.get_session_id()
 
     if not session_id then
@@ -591,13 +598,17 @@ function AgentConfigOptions:handle_change(config_id, value, on_applied)
         target.name,
         tostring(value),
         function(result)
-            target.currentValue = value
+            if target.type == "boolean" and type(value) == "boolean" then
+                target.currentValue = value
+            elseif target.type ~= "boolean" and type(value) == "string" then
+                target.currentValue = value
 
-            if target.category == "mode" then
-                self.legacy_agent_modes.current_mode_id = value --[[@as string]]
-                self.callbacks.on_set_mode_success(value --[[@as string]])
-            elseif target.category == "model" then
-                self.legacy_agent_models.current_model_id = value --[[@as string]]
+                if target.category == "mode" then
+                    self.legacy_agent_modes.current_mode_id = value
+                    self.callbacks.on_set_mode_success(value)
+                elseif target.category == "model" then
+                    self.legacy_agent_models.current_model_id = value
+                end
             end
 
             if result and type(result.configOptions) == "table" then
@@ -611,13 +622,26 @@ function AgentConfigOptions:handle_change(config_id, value, on_applied)
                 { title = "Agentic Setting changed" }
             )
 
-            if on_applied then
-                on_applied()
+            if on_done then
+                on_done()
             end
         end
     )
 
-    agent:set_config_option(session_id, config_id, value, response, is_boolean)
+    if target.type == "boolean" and type(value) == "boolean" then
+        agent:set_config_option({
+            sessionId = session_id,
+            configId = config_id,
+            type = "boolean",
+            value = value,
+        }, response)
+    elseif target.type ~= "boolean" and type(value) == "string" then
+        agent:set_config_option({
+            sessionId = session_id,
+            configId = config_id,
+            value = value,
+        }, response)
+    end
 end
 
 --- @param mode_id string

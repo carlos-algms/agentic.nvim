@@ -200,13 +200,25 @@
 --- @field name string
 --- @field options? agentic.acp.ConfigOption.Option[]
 
---- @class agentic.acp.BooleanConfigOption
---- @field id string
---- @field category? agentic.acp.ConfigOption.Category
+--- @class agentic.acp.BooleanConfigOption : agentic.acp.ConfigOption
 --- @field type "boolean"
 --- @field currentValue boolean
 --- @field description? string
---- @field name string
+
+--- @class agentic.acp.SelectConfigOptionParams
+--- @field sessionId string
+--- @field configId string
+--- @field value string
+
+--- @class agentic.acp.BooleanConfigOptionParams
+--- @field sessionId string
+--- @field configId string
+--- @field type "boolean"
+--- @field value boolean
+
+--- @alias agentic.acp.SetConfigOptionParams
+--- | agentic.acp.SelectConfigOptionParams
+--- | agentic.acp.BooleanConfigOptionParams
 
 --- @alias agentic.acp.AnyConfigOption
 --- | agentic.acp.ConfigOption

@@ -2,13 +2,18 @@ local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.ui.ConfigOptionsModal
---- @field _config_options agentic.acp.AgentConfigOptions
---- @field _opened_session_id string
+--- @field _callbacks agentic.ui.ConfigOptionsModal.Callbacks
 --- @field _bufnr? integer
 --- @field _winid? integer
 --- @field _line_option_ids table<integer, string>
 local ConfigOptionsModal = {}
 ConfigOptionsModal.__index = ConfigOptionsModal
+
+--- @class agentic.ui.ConfigOptionsModal.Callbacks
+--- @field get_options fun(): agentic.acp.AnyConfigOption[]
+--- @field is_session_active fun(): boolean
+--- @field handle_change fun(config_id: string, value: string|boolean, on_done: fun())
+--- @field show_selector fun(option: agentic.acp.ConfigOption, prompt: string, handle_change: fun(value: string))
 
 local function notify_session_changed()
     Logger.notify(
@@ -43,13 +48,11 @@ local function find_option(options, id)
     return nil
 end
 
---- @param config_options agentic.acp.AgentConfigOptions
---- @param opened_session_id string
+--- @param callbacks agentic.ui.ConfigOptionsModal.Callbacks
 --- @return agentic.ui.ConfigOptionsModal
-function ConfigOptionsModal:new(config_options, opened_session_id)
+function ConfigOptionsModal:new(callbacks)
     self = setmetatable({
-        _config_options = config_options,
-        _opened_session_id = opened_session_id,
+        _callbacks = callbacks,
         _bufnr = nil,
         _winid = nil,
         _line_option_ids = {},
@@ -59,7 +62,7 @@ end
 
 function ConfigOptionsModal:open()
     local width = math.floor(vim.o.columns * 0.5)
-    local height = math.max(#self._config_options.options, 1)
+    local height = math.max(#self._callbacks.get_options(), 1)
     local row = math.floor((vim.o.lines - height) / 2)
     local col = math.floor((vim.o.columns - width) / 2)
 
@@ -111,7 +114,7 @@ function ConfigOptionsModal:_render()
     --- @type string[]
     local lines = {}
 
-    for line_number, option in ipairs(self._config_options.options) do
+    for line_number, option in ipairs(self._callbacks.get_options()) do
         local rendered_value
         if option.type == "boolean" then
             rendered_value = option.currentValue and "[x]" or "[ ]"
@@ -132,6 +135,12 @@ function ConfigOptionsModal:_render()
     vim.bo[self._bufnr].modifiable = false
 end
 
+function ConfigOptionsModal:_render_after_applied()
+    vim.schedule(function()
+        self:_render()
+    end)
+end
+
 function ConfigOptionsModal:_activate_current_option()
     if
         not self._bufnr
@@ -148,51 +157,39 @@ function ConfigOptionsModal:_activate_current_option()
         return
     end
 
-    if self._config_options:get_session_id() ~= self._opened_session_id then
+    if not self._callbacks.is_session_active() then
         notify_session_changed()
         return
     end
 
-    local option = find_option(self._config_options.options, option_id)
+    local option = find_option(self._callbacks.get_options(), option_id)
     if not option then
         return
     end
 
-    local on_applied = function()
-        vim.schedule(function()
-            if
-                self._bufnr
-                and self._winid
-                and vim.api.nvim_buf_is_valid(self._bufnr)
-                and vim.api.nvim_win_is_valid(self._winid)
-            then
-                self:_render()
-            end
-        end)
+    local on_done = function()
+        self:_render_after_applied()
     end
 
     if option.type == "boolean" then
-        self._config_options:handle_change(
+        self._callbacks.handle_change(
             option.id,
             not option.currentValue,
-            on_applied
+            on_done
         )
         return
     end
 
-    self._config_options:show_selector(
+    self._callbacks.show_selector(
         option,
         "Select " .. option.name .. ":",
         function(value)
-            if
-                self._config_options:get_session_id()
-                ~= self._opened_session_id
-            then
+            if not self._callbacks.is_session_active() then
                 notify_session_changed()
                 return
             end
 
-            self._config_options:handle_change(option.id, value, on_applied)
+            self._callbacks.handle_change(option.id, value, on_done)
         end
     )
 end

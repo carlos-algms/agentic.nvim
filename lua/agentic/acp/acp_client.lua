@@ -785,30 +785,9 @@ function ACPClient:set_mode(session_id, mode_id, callback)
 end
 
 --- Set a config option value for a session
---- @param session_id string
---- @param config_id string
---- @param config_value string|boolean
+--- @param params agentic.acp.SetConfigOptionParams
 --- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
---- @param is_boolean boolean|nil
-function ACPClient:set_config_option(
-    session_id,
-    config_id,
-    config_value,
-    callback,
-    is_boolean
-)
-    local params = {
-        sessionId = session_id,
-        configId = config_id,
-    }
-
-    if is_boolean then
-        params.type = "boolean"
-        params.value = config_value
-    else
-        params.value = config_value
-    end
-
+function ACPClient:set_config_option(params, callback)
     self:_send_request("session/set_config_option", params, callback)
 end
 

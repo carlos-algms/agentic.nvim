@@ -21,7 +21,20 @@ describe("agentic.ui.ConfigOptionsModal", function()
     local session_id
 
     local function open_modal()
-        modal = ConfigOptionsModal:new(config_options, "sess-1")
+        modal = ConfigOptionsModal:new({
+            get_options = function()
+                return config_options.options
+            end,
+            is_session_active = function()
+                return session_id == "sess-1"
+            end,
+            handle_change = function(id, value, on_done)
+                handle_change_spy(id, value, on_done)
+            end,
+            show_selector = function(option, prompt, callback)
+                show_selector_spy(option, prompt, callback)
+            end,
+        })
         modal:open()
         bufnr = vim.api.nvim_get_current_buf()
         winid = vim.api.nvim_get_current_win()
@@ -64,15 +77,6 @@ describe("agentic.ui.ConfigOptionsModal", function()
                     name = "Fast mode",
                 },
             },
-            handle_change = function(_, id, value, on_applied)
-                handle_change_spy(id, value, on_applied)
-            end,
-            show_selector = function(_, option, prompt, callback)
-                show_selector_spy(option, prompt, callback)
-            end,
-            get_session_id = function()
-                return session_id
-            end,
         }
     end)
 
