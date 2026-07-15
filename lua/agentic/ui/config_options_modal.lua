@@ -13,7 +13,7 @@ ConfigOptionsModal.__index = ConfigOptionsModal
 --- @field get_options fun(): agentic.acp.AnyConfigOption[]
 --- @field is_session_active fun(): boolean
 --- @field handle_change fun(config_id: string, value: string|boolean, on_done: fun())
---- @field show_selector fun(option: agentic.acp.ConfigOption, prompt: string, handle_change: fun(value: string))
+--- @field show_selector fun(option: agentic.acp.ConfigOption, prompt: string, handle_change: fun(value: string)): boolean
 
 local function notify_session_changed()
     Logger.notify(
@@ -83,16 +83,13 @@ function ConfigOptionsModal:open()
         footer_pos = "right",
     })
 
-    BufHelpers.keymap_set(self._bufnr, "n", "q", function()
-        if self._winid and vim.api.nvim_win_is_valid(self._winid) then
-            vim.api.nvim_win_close(self._winid, true)
-        end
-    end)
-    BufHelpers.keymap_set(self._bufnr, "n", "<Esc>", function()
-        if self._winid and vim.api.nvim_win_is_valid(self._winid) then
-            vim.api.nvim_win_close(self._winid, true)
-        end
-    end)
+    for _, key in ipairs({ "q", "<Esc>" }) do
+        BufHelpers.keymap_set(self._bufnr, "n", key, function()
+            if self._winid and vim.api.nvim_win_is_valid(self._winid) then
+                vim.api.nvim_win_close(self._winid, true)
+            end
+        end)
+    end
     BufHelpers.keymap_set(self._bufnr, "n", "<CR>", function()
         self:_activate_current_option()
     end)
@@ -180,7 +177,7 @@ function ConfigOptionsModal:_activate_current_option()
         return
     end
 
-    self._callbacks.show_selector(
+    local shown = self._callbacks.show_selector(
         option,
         "Select " .. option.name .. ":",
         function(value)
@@ -192,6 +189,14 @@ function ConfigOptionsModal:_activate_current_option()
             self._callbacks.handle_change(option.id, value, on_done)
         end
     )
+
+    if not shown then
+        Logger.notify(
+            "This option has no selectable values.",
+            vim.log.levels.WARN,
+            { title = "Agentic" }
+        )
+    end
 end
 
 return ConfigOptionsModal

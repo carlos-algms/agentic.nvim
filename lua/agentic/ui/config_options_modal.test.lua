@@ -2,7 +2,8 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 describe("agentic.ui.ConfigOptionsModal", function()
-    local ConfigOptionsModal = require("agentic.ui.config_options_modal")
+    --- @type agentic.ui.ConfigOptionsModal
+    local ConfigOptionsModal
 
     --- @type integer
     local bufnr
@@ -32,7 +33,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
                 handle_change_spy(id, value, on_done)
             end,
             show_selector = function(option, prompt, callback)
-                show_selector_spy(option, prompt, callback)
+                return show_selector_spy(option, prompt, callback)
             end,
         })
         modal:open()
@@ -54,9 +55,14 @@ describe("agentic.ui.ConfigOptionsModal", function()
     end
 
     before_each(function()
+        package.loaded["agentic.ui.config_options_modal"] = nil
+        ConfigOptionsModal = require("agentic.ui.config_options_modal")
+
         session_id = "sess-1"
         handle_change_spy = spy.new()
-        show_selector_spy = spy.new()
+        show_selector_spy = spy.new(function()
+            return true
+        end)
         config_options = {
             options = {
                 {
@@ -170,6 +176,21 @@ describe("agentic.ui.ConfigOptionsModal", function()
             assert.is_true(vim.api.nvim_win_is_valid(winid))
         end
     )
+
+    it("notifies when the selector has no selectable values", function()
+        local Logger = require("agentic.utils.logger")
+        local notify_stub = spy.stub(Logger, "notify")
+        show_selector_spy = spy.new(function()
+            return false
+        end)
+        open_modal()
+
+        press_enter(1)
+
+        assert.spy(show_selector_spy).was.called(1)
+        assert.spy(notify_stub).was.called(1)
+        notify_stub:revert()
+    end)
 
     it("rejects a selected value after the session changes", function()
         open_modal()

@@ -323,7 +323,7 @@ function AgentConfigOptions:_show_settings_modal()
             self:handle_change(config_id, value, on_done)
         end,
         show_selector = function(option, prompt, handle_change)
-            self:_show_selector(option, prompt, handle_change)
+            return self:_show_selector(option, prompt, handle_change)
         end,
     }):open()
 end
