@@ -21,6 +21,8 @@ describe("agentic.ui.ConfigOptionsModal", function()
     local schedule_stub
     local session_id
 
+    local select_icon = string.char(0xef, 0x81, 0xb8)
+
     local function open_modal()
         modal = ConfigOptionsModal:new({
             get_options = function()
@@ -50,8 +52,34 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end)
     end
 
+    --- @param key string
+    local function press_key(key)
+        vim.api.nvim_buf_call(bufnr, function()
+            local mapping = vim.fn.maparg(key, "n", false, true)
+            mapping.callback()
+        end)
+    end
+
+    local function cursor_line()
+        return vim.api.nvim_win_get_cursor(winid)[1]
+    end
+
     local function get_lines()
         return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    end
+
+    --- @return integer[] rows 0-indexed lines carrying a Comment highlight
+    local function comment_rows()
+        local ns = vim.api.nvim_get_namespaces()["agentic_config_options"]
+        local marks =
+            vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
+        local rows = {}
+        for _, mark in ipairs(marks) do
+            if mark[4].hl_group == "Comment" then
+                rows[#rows + 1] = mark[2]
+            end
+        end
+        return rows
     end
 
     before_each(function()
@@ -99,25 +127,61 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end
     end)
 
-    it("renders select names and unchecked booleans", function()
+    it("renders aligned rows with descriptions and booleans", function()
         open_modal()
 
-        assert.same(get_lines(), { "Model:  Opus", "Fast mode: [ ]" })
+        assert.same(get_lines(), {
+            "Model:      " .. select_icon .. " Opus",
+            "Model to use",
+            "",
+            "Fast mode:  [ ]",
+        })
         assert.is_false(vim.bo[bufnr].modifiable)
+    end)
+
+    it("highlights description lines as Comment", function()
+        open_modal()
+
+        assert.same(comment_rows(), { 1 })
+    end)
+
+    it("starts the cursor on the first option row", function()
+        open_modal()
+
+        assert.equal(cursor_line(), 1)
+    end)
+
+    it("jumps j/k across option rows and wraps", function()
+        open_modal()
+
+        press_key("j")
+        assert.equal(cursor_line(), 4)
+
+        press_key("j")
+        assert.equal(cursor_line(), 1)
+
+        press_key("k")
+        assert.equal(cursor_line(), 4)
+
+        press_key("k")
+        assert.equal(cursor_line(), 1)
     end)
 
     it("renders checked booleans", function()
         config_options.options[2].currentValue = true
         open_modal()
 
-        assert.equal(get_lines()[2], "Fast mode: [x]")
+        assert.equal(get_lines()[4], "Fast mode:  [x]")
     end)
 
     it("falls back to the raw select value", function()
         config_options.options[1].currentValue = "unknown"
         open_modal()
 
-        assert.equal(get_lines()[1], "Model:  unknown")
+        assert.equal(
+            get_lines()[1],
+            "Model:      " .. select_icon .. " unknown"
+        )
     end)
 
     it("renders an empty placeholder with no dispatch", function()
@@ -133,7 +197,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
     it("toggles a false boolean and keeps the window open", function()
         open_modal()
 
-        press_enter(2)
+        press_enter(4)
 
         assert.spy(handle_change_spy).was.called(1)
         assert.equal(handle_change_spy.calls[1][1], "fast")
@@ -146,7 +210,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         config_options.options[2].currentValue = true
         open_modal()
 
-        press_enter(2)
+        press_enter(4)
 
         assert.spy(handle_change_spy).was.called(1)
         assert.equal(handle_change_spy.calls[1][1], "fast")
@@ -206,7 +270,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         open_modal()
         session_id = "sess-2"
 
-        press_enter(2)
+        press_enter(4)
 
         assert.spy(handle_change_spy).was.called(0)
         assert.spy(show_selector_spy).was.called(0)
@@ -218,13 +282,13 @@ describe("agentic.ui.ConfigOptionsModal", function()
             callback()
         end)
         open_modal()
-        press_enter(2)
+        press_enter(4)
         config_options.options[2].currentValue = true
 
         assert.spy(handle_change_spy).was.called(1)
         handle_change_spy.calls[1][3]()
 
         assert.spy(schedule_stub).was.called(1)
-        assert.equal(get_lines()[2], "Fast mode: [x]")
+        assert.equal(get_lines()[4], "Fast mode:  [x]")
     end)
 end)

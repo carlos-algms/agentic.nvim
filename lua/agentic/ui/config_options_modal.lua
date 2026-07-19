@@ -1,11 +1,17 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 
+local NS_CONFIG_OPTIONS =
+    vim.api.nvim_create_namespace("agentic_config_options")
+
+local SELECT_ICON = string.char(0xef, 0x81, 0xb8)
+
 --- @class agentic.ui.ConfigOptionsModal
 --- @field _callbacks agentic.ui.ConfigOptionsModal.Callbacks
 --- @field _bufnr? integer
 --- @field _winid? integer
 --- @field _line_option_ids table<integer, string>
+--- @field _option_rows integer[] sorted 1-based rows of `name: value` lines
 local ConfigOptionsModal = {}
 ConfigOptionsModal.__index = ConfigOptionsModal
 
@@ -48,6 +54,63 @@ local function find_option(options, id)
     return nil
 end
 
+--- Build the rendered buffer content for the given options.
+--- Each option renders a `name: value` row, an optional description row, and a
+--- blank separator between blocks. `line_option_ids` maps the 1-based row of a
+--- `name: value` line to its option id; description and separator rows are
+--- unmapped. `description_rows` holds 0-based rows carrying a description.
+--- @param options agentic.acp.AnyConfigOption[]
+--- @return string[] lines
+--- @return table<integer, string> line_option_ids
+--- @return integer[] description_rows
+--- @return integer[] option_rows
+local function build_lines(options)
+    --- @type string[]
+    local lines = {}
+    --- @type table<integer, string>
+    local line_option_ids = {}
+    --- @type integer[]
+    local description_rows = {}
+    --- @type integer[]
+    local option_rows = {}
+
+    local label_width = 0
+    for _, option in ipairs(options) do
+        label_width = math.max(label_width, #option.name + 1)
+    end
+    label_width = label_width + 2
+
+    for index, option in ipairs(options) do
+        local rendered_value
+        if option.type == "boolean" then
+            rendered_value = option.currentValue and "[x]" or "[ ]"
+        else
+            rendered_value = SELECT_ICON .. " " .. get_select_value_name(option)
+        end
+
+        local label = option.name .. ":"
+        local padding = string.rep(" ", label_width - #label)
+        lines[#lines + 1] = label .. padding .. rendered_value
+        line_option_ids[#lines] = option.id
+        option_rows[#option_rows + 1] = #lines
+
+        if option.description and option.description ~= "" then
+            lines[#lines + 1] = option.description
+            description_rows[#description_rows + 1] = #lines - 1
+        end
+
+        if index < #options then
+            lines[#lines + 1] = ""
+        end
+    end
+
+    if #lines == 0 then
+        lines[1] = "No settings available"
+    end
+
+    return lines, line_option_ids, description_rows, option_rows
+end
+
 --- @param callbacks agentic.ui.ConfigOptionsModal.Callbacks
 --- @return agentic.ui.ConfigOptionsModal
 function ConfigOptionsModal:new(callbacks)
@@ -56,14 +119,16 @@ function ConfigOptionsModal:new(callbacks)
         _bufnr = nil,
         _winid = nil,
         _line_option_ids = {},
+        _option_rows = {},
     }, self)
     return self
 end
 
 function ConfigOptionsModal:open()
-    local width = math.floor(vim.o.columns * 0.5)
-    local height = math.max(#self._callbacks.get_options(), 1)
-    local row = math.floor((vim.o.lines - height) / 2)
+    local width = math.floor(vim.o.columns * 0.35)
+    local lines = build_lines(self._callbacks.get_options())
+    local height = math.max(#lines, 1)
+    local row = math.floor(vim.o.lines * 0.25)
     local col = math.floor((vim.o.columns - width) / 2)
 
     self._bufnr = vim.api.nvim_create_buf(false, true)
@@ -93,6 +158,16 @@ function ConfigOptionsModal:open()
     BufHelpers.keymap_set(self._bufnr, "n", "<CR>", function()
         self:_activate_current_option()
     end)
+    for _, key in ipairs({ "j", "<Down>" }) do
+        BufHelpers.keymap_set(self._bufnr, "n", key, function()
+            self:_jump_to_option(1)
+        end)
+    end
+    for _, key in ipairs({ "k", "<Up>" }) do
+        BufHelpers.keymap_set(self._bufnr, "n", key, function()
+            self:_jump_to_option(-1)
+        end)
+    end
 
     self:_render()
 end
@@ -107,29 +182,56 @@ function ConfigOptionsModal:_render()
         return
     end
 
-    self._line_option_ids = {}
-    --- @type string[]
-    local lines = {}
-
-    for line_number, option in ipairs(self._callbacks.get_options()) do
-        local rendered_value
-        if option.type == "boolean" then
-            rendered_value = option.currentValue and "[x]" or "[ ]"
-        else
-            rendered_value = " " .. get_select_value_name(option)
-        end
-
-        lines[#lines + 1] = option.name .. ": " .. rendered_value
-        self._line_option_ids[line_number] = option.id
-    end
-
-    if #lines == 0 then
-        lines[1] = "No settings available"
-    end
+    local lines, line_option_ids, description_rows, option_rows =
+        build_lines(self._callbacks.get_options())
+    self._line_option_ids = line_option_ids
+    self._option_rows = option_rows
 
     vim.bo[self._bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(self._bufnr, 0, -1, false, lines)
     vim.bo[self._bufnr].modifiable = false
+
+    vim.api.nvim_buf_clear_namespace(self._bufnr, NS_CONFIG_OPTIONS, 0, -1)
+    for _, row in ipairs(description_rows) do
+        vim.api.nvim_buf_set_extmark(self._bufnr, NS_CONFIG_OPTIONS, row, 0, {
+            end_col = #lines[row + 1],
+            hl_group = "Comment",
+        })
+    end
+end
+
+--- Move the cursor to the next/previous `name: value` row, wrapping at the
+--- ends. Description and separator rows are skipped. If the cursor sits between
+--- option rows, the nearest option row in `direction` is chosen.
+--- @param direction integer 1 for down, -1 for up
+--- @protected
+function ConfigOptionsModal:_jump_to_option(direction)
+    if
+        not self._winid
+        or not vim.api.nvim_win_is_valid(self._winid)
+        or #self._option_rows == 0
+    then
+        return
+    end
+
+    local cursor_row = vim.api.nvim_win_get_cursor(self._winid)[1]
+
+    local current = 1
+    for index, row in ipairs(self._option_rows) do
+        if row == cursor_row then
+            current = index
+            break
+        end
+    end
+
+    local n = #self._option_rows
+    local target = ((current - 1 + direction + n) % n) + 1
+
+    pcall(
+        vim.api.nvim_win_set_cursor,
+        self._winid,
+        { self._option_rows[target], 0 }
+    )
 end
 
 function ConfigOptionsModal:_render_after_applied()
