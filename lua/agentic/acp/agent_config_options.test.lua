@@ -172,25 +172,25 @@ describe("agentic.acp.AgentConfigOptions", function()
             local Config = require("agentic.config")
 
             assert.stub(multi_keymap_stub).was.called(4)
-            assert.equal("<localLeader>o", Config.keymaps.widget.open_settings)
+            assert.equal("<localLeader>o", Config.keymaps.widget.open_options)
 
             for i = 1, 4 do
                 assert.equal("function", type(multi_keymap_stub.calls[i][3]))
             end
 
             assert.equal(
-                Config.keymaps.widget.open_settings,
+                Config.keymaps.widget.open_options,
                 multi_keymap_stub.calls[4][1]
             )
             assert.equal(test_bufnr, multi_keymap_stub.calls[4][2])
             assert.equal(
-                "Agentic: Open Settings",
+                "Agentic: Open Options",
                 multi_keymap_stub.calls[4][4].desc
             )
         end)
     end)
 
-    describe("open settings keymap", function()
+    describe("open options keymap", function()
         local modal_module_name = "agentic.ui.config_options_modal"
         local original_modal_module
         --- @type TestStub
@@ -201,18 +201,18 @@ describe("agentic.acp.AgentConfigOptions", function()
         local modal_open_spy
 
         --- @return function callback
-        local function get_open_settings_callback()
-            local open_settings =
-                require("agentic.config").keymaps.widget.open_settings
+        local function get_open_options_callback()
+            local open_options =
+                require("agentic.config").keymaps.widget.open_options
 
             for i = #multi_keymap_stub.calls, 1, -1 do
                 local call = multi_keymap_stub.calls[i]
-                if vim.deep_equal(call[1], open_settings) then
+                if vim.deep_equal(call[1], open_options) then
                     return call[3]
                 end
             end
 
-            error("open_settings keymap was not registered")
+            error("open_options keymap was not registered")
         end
 
         before_each(function()
@@ -234,7 +234,7 @@ describe("agentic.acp.AgentConfigOptions", function()
         it("warns without opening when no config options exist", function()
             local config = make_with_agent({}, { id = "sess-1" })
 
-            get_open_settings_callback()()
+            get_open_options_callback()()
 
             assert.stub(notify_stub).was.called(1)
             assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
@@ -247,7 +247,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             local config = make_with_agent({}, { id = nil })
             config:set_options({ model_option })
 
-            get_open_settings_callback()()
+            get_open_options_callback()()
 
             assert.stub(notify_stub).was.called(1)
             assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
@@ -269,7 +269,7 @@ describe("agentic.acp.AgentConfigOptions", function()
             })
             config:set_options({ model_option })
 
-            get_open_settings_callback()()
+            get_open_options_callback()()
 
             assert.spy(get_session_id_spy).was.called(1)
             assert.spy(modal_new_spy).was.called(1)

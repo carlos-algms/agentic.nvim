@@ -188,7 +188,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         config_options.options = {}
         open_modal()
 
-        assert.same(get_lines(), { "No settings available" })
+        assert.same(get_lines(), { "No options available" })
         press_enter(1)
         assert.spy(handle_change_spy).was.called(0)
         assert.spy(show_selector_spy).was.called(0)

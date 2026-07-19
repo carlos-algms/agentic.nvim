@@ -445,7 +445,7 @@ local ConfigDefault = {
             switch_provider = "<localLeader>s",
             switch_model = "<localLeader>m",
             change_thought_level = "<localLeader>t",
-            open_settings = "<localLeader>o",
+            open_options = "<localLeader>o",
         },
 
         --- Keys bindings for the prompt buffer

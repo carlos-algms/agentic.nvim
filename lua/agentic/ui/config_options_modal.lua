@@ -23,7 +23,7 @@ ConfigOptionsModal.__index = ConfigOptionsModal
 
 local function notify_session_changed()
     Logger.notify(
-        "The agent session changed. Reopen settings to make changes.",
+        "The agent session changed. Reopen options to make changes.",
         vim.log.levels.WARN,
         { title = "Agentic" }
     )
@@ -105,7 +105,7 @@ local function build_lines(options)
     end
 
     if #lines == 0 then
-        lines[1] = "No settings available"
+        lines[1] = "No options available"
     end
 
     return lines, line_option_ids, description_rows, option_rows
@@ -142,7 +142,7 @@ function ConfigOptionsModal:open()
         col = col,
         style = "minimal",
         border = "rounded",
-        title = " Agentic Settings ",
+        title = " Agentic Options ",
         title_pos = "center",
         footer = " <CR> toggle/select · q/<Esc> close ",
         footer_pos = "right",

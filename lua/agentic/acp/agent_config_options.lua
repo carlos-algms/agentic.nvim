@@ -74,12 +74,12 @@ function AgentConfigOptions:new(buffers, callbacks)
         )
 
         BufHelpers.multi_keymap_set(
-            Config.keymaps.widget.open_settings,
+            Config.keymaps.widget.open_options,
             bufnr,
             function()
-                self:_show_settings_modal()
+                self:_show_options_modal()
             end,
-            { desc = "Agentic: Open Settings" }
+            { desc = "Agentic: Open Options" }
         )
     end
 
@@ -299,7 +299,7 @@ function AgentConfigOptions:get_model_id()
         or self.legacy_agent_models.current_model_id
 end
 
-function AgentConfigOptions:_show_settings_modal()
+function AgentConfigOptions:_show_options_modal()
     local session_id = self.callbacks.get_session_id()
 
     if #self.options == 0 or not session_id then
