@@ -151,6 +151,19 @@ describe("agentic.ui.ConfigOptionsModal", function()
         assert.equal(cursor_line(), 1)
     end)
 
+    it("picks the nearest option row from a non-option row", function()
+        open_modal()
+
+        -- Row 3 is the blank separator between option rows 1 and 4.
+        vim.api.nvim_win_set_cursor(winid, { 3, 0 })
+        press_key("k")
+        assert.equal(cursor_line(), 1)
+
+        vim.api.nvim_win_set_cursor(winid, { 3, 0 })
+        press_key("j")
+        assert.equal(cursor_line(), 4)
+    end)
+
     it("jumps j/k across option rows and wraps", function()
         open_modal()
 

@@ -215,17 +215,40 @@ function ConfigOptionsModal:_jump_to_option(direction)
     end
 
     local cursor_row = vim.api.nvim_win_get_cursor(self._winid)[1]
+    local rows = self._option_rows
+    local n = #rows
 
-    local current = 1
-    for index, row in ipairs(self._option_rows) do
+    local current
+    for index, row in ipairs(rows) do
         if row == cursor_row then
             current = index
             break
         end
     end
 
-    local n = #self._option_rows
-    local target = ((current - 1 + direction + n) % n) + 1
+    local target
+    if current then
+        target = ((current - 1 + direction + n) % n) + 1
+    elseif direction > 0 then
+        -- Cursor sits between option rows: pick the first row below it,
+        -- wrapping to the top when none remain.
+        target = 1
+        for index, row in ipairs(rows) do
+            if row > cursor_row then
+                target = index
+                break
+            end
+        end
+    else
+        -- Pick the first row above the cursor, wrapping to the bottom.
+        target = n
+        for index = n, 1, -1 do
+            if rows[index] < cursor_row then
+                target = index
+                break
+            end
+        end
+    end
 
     pcall(
         vim.api.nvim_win_set_cursor,
