@@ -385,6 +385,10 @@ function SessionManager:_on_tool_call(tool_call)
 
     self.message_writer:write_tool_call_block(tool_call)
 
+    if tool_call.kind == "edit" and tool_call.diff and tool_call.file_path then
+        self.diff_coordinator:show(tool_call.tool_call_id)
+    end
+
     -- Store merged block from MessageWriter (has normalized/accumulated fields)
     local merged = self.message_writer.tool_call_blocks[tool_call.tool_call_id]
     --- @type agentic.ui.ChatHistory.ToolCall

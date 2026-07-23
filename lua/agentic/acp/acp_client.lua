@@ -1,4 +1,5 @@
 local Logger = require("agentic.utils.logger")
+local FileSystem = require("agentic.utils.file_system")
 local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
 
@@ -448,8 +449,20 @@ function ACPClient:__build_tool_call_message(update)
     end
 
     -- Fallback: build diff from rawInput when content is missing (e.g. OpenCode)
+    --- @type table|nil
     local raw_input = type(update.rawInput) == "table" and update.rawInput
         or nil
+
+    if not message.file_path and raw_input then
+        message.file_path = raw_input.file_path or raw_input.filePath
+    end
+
+    if not message.file_path and type(update.locations) == "table" then
+        local first_location = update.locations[1]
+        if first_location and first_location.path then
+            message.file_path = first_location.path
+        end
+    end
 
     if not message.diff and update.kind == "edit" and raw_input then
         local new_string = raw_input.new_string or raw_input.newString
@@ -461,17 +474,58 @@ function ACPClient:__build_tool_call_message(update)
                 old = self:safe_split(old_string),
                 all = raw_input.replace_all or false,
             }
-        end
-    end
+        --- @diagnostic disable: undefined-field
+        elseif type(raw_input.edits) == "table" and #raw_input.edits > 0 then
+            --- @diagnostic enable: undefined-field
+            --- multi_edit: compute combined diff by reading the current
+            --- file content and applying all edits in memory, so the diff
+            --- preview shows the complete before/after picture
 
-    if not message.file_path and raw_input then
-        message.file_path = raw_input.file_path or raw_input.filePath
-    end
+            if message.file_path then
+                local file_lines, fs_err =
+                    FileSystem.read_from_buffer_or_disk(message.file_path)
+                --- @cast file_lines string[]
+                if fs_err == nil then
+                    local content = table.concat(file_lines, "\n")
 
-    if not message.file_path and type(update.locations) == "table" then
-        local first_location = update.locations[1]
-        if first_location and first_location.path then
-            message.file_path = first_location.path
+                    for _, edit in ipairs(raw_input.edits) do
+                        local old_s = edit.old_string or edit.oldString
+                        local new_s = edit.new_string or edit.newString
+
+                        if old_s and old_s ~= "" and new_s then
+                            local parts = {}
+                            local start = 1
+
+                            while true do
+                                local idx = content:find(old_s, start, true)
+                                if not idx then
+                                    break
+                                end
+
+                                parts[#parts + 1] = content:sub(start, idx - 1)
+                                parts[#parts + 1] = new_s
+
+                                start = idx + #old_s
+
+                                if not edit.replace_all then
+                                    break
+                                end
+                            end
+
+                            parts[#parts + 1] = content:sub(start)
+                            content = table.concat(parts)
+                        end
+                    end
+
+                    local new_lines = vim.split(content, "\n")
+                    --- @cast new_lines string[]
+                    message.diff = {
+                        new = new_lines,
+                        old = file_lines,
+                        all = false,
+                    }
+                end
+            end
         end
     end
 

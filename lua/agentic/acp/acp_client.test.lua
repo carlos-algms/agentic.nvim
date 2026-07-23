@@ -673,5 +673,43 @@ describe("ACPClient", function()
             assert.is_true(message.diff ~= nil)
             assert.equal(nil, message.body)
         end)
+
+        it("extracts diff from multi_edit edits array", function()
+            local client = create_ready_client()
+
+            -- Create a temp file with known content
+            local tmpfile = os.tmpname()
+            vim.fn.writefile(
+                { "line1", "line2 foo line2", "line3", "line4 baz line4" },
+                tmpfile
+            )
+
+            ---@diagnostic disable: invisible, assign-type-mismatch
+            local message = client:__build_tool_call_message({
+                toolCallId = "tc-me",
+                kind = "edit",
+                locations = { { path = tmpfile } },
+                rawInput = {
+                    edits = {
+                        { old_string = "foo", new_string = "bar" },
+                        { old_string = "baz", new_string = "qux" },
+                    },
+                },
+            })
+            ---@diagnostic enable: invisible, assign-type-mismatch
+
+            assert.is_not_nil(message.diff)
+            assert.same(
+                { "line1", "line2 bar line2", "line3", "line4 qux line4", "" },
+                message.diff.new
+            )
+            assert.same(
+                { "line1", "line2 foo line2", "line3", "line4 baz line4", "" },
+                message.diff.old
+            )
+
+            -- Cleanup
+            os.remove(tmpfile)
+        end)
     end)
 end)

@@ -1130,6 +1130,74 @@ describe("agentic.SessionManager", function()
         )
     end)
 
+    describe("_on_tool_call: diff preview", function()
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestSpy
+        local show_stub
+
+        before_each(function()
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+            show_stub = spy.new(function() end)
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+        end)
+
+        it(
+            "shows diff preview via diff_coordinator for edit tool calls with diff",
+            function()
+                local session = {
+                    session_id = "session-1",
+                    tab_page_id = 42,
+                    message_writer = {
+                        tool_call_blocks = {},
+                        write_tool_call_block = function(_self, block)
+                            _self.tool_call_blocks[block.tool_call_id] = block
+                        end,
+                        repaint_status_row = function() end,
+                    },
+                    chat_history = {
+                        add_message = function() end,
+                        update_tool_call = function() end,
+                    },
+                    diff_coordinator = {
+                        show = show_stub,
+                        clear = function() end,
+                    },
+                    permission_manager = {
+                        pending = {},
+                        has_pending = function()
+                            return false
+                        end,
+                        remove_request_by_tool_call_id = function() end,
+                    },
+                    status_animation = { start = function() end },
+                    is_generating = true,
+                    _start_spinner = SessionManager._start_spinner,
+                } --[[@as agentic.SessionManager]]
+
+                SessionManager._on_tool_call(session, {
+                    tool_call_id = "tc-edit-1",
+                    kind = "edit",
+                    status = "pending",
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 2" },
+                    },
+                    file_path = "/tmp/test.lua",
+                })
+
+                assert.spy(show_stub).was.called(1)
+                assert.equal("tc-edit-1", show_stub.calls[1][2])
+            end
+        )
+    end)
+
     describe("on_tool_call_update: buffer reload", function()
         local Config = require("agentic.config")
         local DiffPreview = require("agentic.ui.diff_preview")

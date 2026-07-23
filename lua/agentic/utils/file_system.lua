@@ -40,9 +40,11 @@ FileSystem.AUDIO_MIMES = {
 --- @return string[]|nil lines
 --- @return string|nil error
 function FileSystem.read_from_buffer_or_disk(abs_path)
-    local bufnr = vim.fn.bufnr(abs_path)
+    -- pcall guards against E5560 when called from fast event context
+    -- (e.g. libuv callbacks where Vimscript functions are forbidden)
+    local ok, bufnr = pcall(vim.fn.bufnr, abs_path)
 
-    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
+    if ok and bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
         return lines, nil
     end
