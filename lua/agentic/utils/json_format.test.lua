@@ -64,6 +64,21 @@ describe("JsonFormat", function()
             local twice = JsonFormat.format_line(once)
             assert.equal(once, twice)
         end)
+
+        it(
+            "expands an escaped newline in a string value into a real line break",
+            function()
+                local padding = string.rep("v", 60)
+                local input = '{"summary":"first paragraph '
+                    .. padding
+                    .. '\\n\\nsecond paragraph","x":1}'
+                local result = JsonFormat.format_line(input)
+
+                assert.is_nil(result:find("\\n", 1, true))
+                assert.is_true(result:find("first paragraph") ~= nil)
+                assert.is_true(result:find("second paragraph") ~= nil)
+            end
+        )
     end)
 
     describe("format_lines", function()
@@ -126,6 +141,29 @@ describe("JsonFormat", function()
 
             assert.same(once, twice)
         end)
+
+        it(
+            "expands an escaped newline in a string value across multiple output lines",
+            function()
+                local padding = string.rep("v", 60)
+                local input = {
+                    '{"summary":"first paragraph '
+                        .. padding
+                        .. '\\n\\nsecond paragraph","x":1}',
+                }
+                local result = JsonFormat.format_lines(input)
+
+                for _, line in ipairs(result) do
+                    assert.is_nil(line:find("\\n", 1, true))
+                end
+
+                local joined = table.concat(result, "\n")
+                assert.is_true(joined:find("first paragraph") ~= nil)
+                assert.is_true(joined:find("second paragraph") ~= nil)
+                -- x:1 must still be present and intact after the string field
+                assert.is_true(joined:find('"x": 1') ~= nil)
+            end
+        )
     end)
 
     describe("format_value", function()
@@ -181,5 +219,38 @@ describe("JsonFormat", function()
             assert.is_true(result:find('"count": 3') ~= nil)
             assert.is_true(result:find('"flag": true') ~= nil)
         end)
+
+        it(
+            "renders embedded newlines in a string value as real line breaks, not \\n",
+            function()
+                local result = JsonFormat.format_value({
+                    summary = "first paragraph\n\nsecond paragraph",
+                })
+
+                assert.is_nil(result:find("\\n", 1, true))
+
+                local lines = vim.split(result, "\n")
+                assert.equal('  "summary": "first paragraph', lines[2])
+                -- Blank paragraph-separator line still carries the
+                -- continuation indent (one level deeper than the key).
+                assert.equal("    ", lines[3])
+                assert.equal('    second paragraph"', lines[4])
+                assert.equal("}", lines[5])
+            end
+        )
+
+        it(
+            "keeps sibling keys intact around a multi-line string value",
+            function()
+                local result = JsonFormat.format_value({
+                    ok = true,
+                    summary = "line one\nline two",
+                })
+
+                assert.is_true(result:find('"ok": true', 1, true) ~= nil)
+                assert.is_true(result:find("line one", 1, true) ~= nil)
+                assert.is_true(result:find("line two", 1, true) ~= nil)
+            end
+        )
     end)
 end)

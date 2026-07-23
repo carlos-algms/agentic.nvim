@@ -85,6 +85,29 @@ local function encode(value, depth, parts)
     end
 
     if t == "string" then
+        -- A string value that itself contains newlines (e.g. a tool's
+        -- multi-paragraph "summary" field) would otherwise round-trip
+        -- through vim.json.encode() as a spec-correct but unreadable
+        -- single line, with every real line break turned into the literal
+        -- two-character escape sequence "\n". Since this output is for
+        -- human reading in the chat buffer, not JSON re-parsing, render
+        -- those as actual line breaks instead, indented one level deeper
+        -- than the surrounding key/item so they read as a continuation.
+        if value:find("\n", 1, true) then
+            local cont_indent = string.rep(INDENT, depth + 1)
+            local str_lines = vim.split(value, "\n", { plain = true })
+            table.insert(parts, '"')
+            for i, str_line in ipairs(str_lines) do
+                if i > 1 then
+                    table.insert(parts, "\n")
+                    table.insert(parts, cont_indent)
+                end
+                table.insert(parts, str_line)
+            end
+            table.insert(parts, '"')
+            return
+        end
+
         table.insert(parts, vim.json.encode(value))
         return
     end
