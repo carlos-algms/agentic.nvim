@@ -131,6 +131,17 @@ describe("race: stale create_session after load_acp_session", function()
                 end,
                 set_initial_mode = function() end,
                 set_initial_thought_level = function() end,
+                _legacy_modes_set = nil,
+                _legacy_models_set = nil,
+                set_legacy_modes = function(self, modes_info)
+                    self._legacy_modes_set = modes_info
+                end,
+                set_legacy_models = function(self, models_info)
+                    self._legacy_models_set = models_info
+                end,
+                set_options = function(self, opts)
+                    self._config_options_set = opts
+                end,
             },
             permission_manager = { clear = function() end },
             message_writer = {
@@ -208,6 +219,74 @@ describe("race: stale create_session after load_acp_session", function()
             assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
         end
     )
+
+    -- Regression #277 / #180: modes come ONLY from the stale create_session
+    -- response when restore is the first action (no prior session populated
+    -- legacy modes). The staleness guard must adopt the provider's mode/model
+    -- capabilities from the stale response before returning, otherwise mode
+    -- switching fails with "This provider does not support mode switching".
+    it(
+        "Race A: stale create adopts legacy modes/models from response",
+        function()
+            local create_cb_ref = {}
+            local load_cb_ref = {}
+            local session = make_session(create_cb_ref, load_cb_ref)
+
+            session:new_session()
+            session:load_acp_session("restored-id", "title", nil)
+            assert.is_true(session._is_restoring_session)
+
+            -- Stale create response carries the provider's legacy modes/models.
+            create_cb_ref.cb({
+                sessionId = "new-id",
+                modes = {
+                    currentModeId = "chat",
+                    availableModes = {
+                        { id = "chat", name = "Chat" },
+                        { id = "plan", name = "Plan" },
+                    },
+                },
+                models = { currentModelId = "sonnet", availableModels = {} },
+            }, nil)
+            load_cb_ref.cb(nil)
+
+            assert.equal("restored-id", session.session_id)
+            assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
+            --- @type agentic.acp.ModesInfo
+            local modes_set = session.config_options._legacy_modes_set
+            assert.is_not_nil(modes_set)
+            assert.equal("chat", modes_set.currentModeId)
+            assert.is_not_nil(session.config_options._legacy_models_set)
+        end
+    )
+
+    -- Same regression on the new Config Options path: providers that announce
+    -- configOptions (instead of legacy modes/models) must also have their
+    -- capabilities adopted from the stale create response on restore-first.
+    it("Race A: stale create adopts configOptions from response", function()
+        local create_cb_ref = {}
+        local load_cb_ref = {}
+        local session = make_session(create_cb_ref, load_cb_ref)
+
+        session:new_session()
+        session:load_acp_session("restored-id", "title", nil)
+        assert.is_true(session._is_restoring_session)
+
+        local config_options = {
+            { category = "mode", currentValue = "chat" },
+        }
+        create_cb_ref.cb({
+            sessionId = "new-id",
+            configOptions = config_options,
+        }, nil)
+        load_cb_ref.cb(nil)
+
+        assert.equal("restored-id", session.session_id)
+        assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
+        assert.equal(config_options, session.config_options._config_options_set)
+        -- configOptions path must NOT touch the legacy setters.
+        assert.is_nil(session.config_options._legacy_modes_set)
+    end)
 
     -- Race B with a FAILED stale create: response is nil and err is set.
     -- The staleness guard runs before the `if err or not response` branch, so

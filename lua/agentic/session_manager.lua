@@ -719,8 +719,23 @@ function SessionManager:new_session(opts)
         -- Race B: load already completed → session_id is already set.
         -- Check staleness first so a failed stale callback can't wipe restored state.
         if self._is_restoring_session or self.session_id ~= nil then
-            if response and response.sessionId then
-                self.agent:cancel_session(response.sessionId)
+            if response then
+                -- Adopt agent-instance capabilities before dropping the stale session
+                -- on restore-first this response is their only source.
+                if response.configOptions then
+                    self.config_options:set_options(response.configOptions)
+                else
+                    if response.modes then
+                        self.config_options:set_legacy_modes(response.modes)
+                    end
+                    if response.models then
+                        self.config_options:set_legacy_models(response.models)
+                    end
+                end
+
+                if response.sessionId then
+                    self.agent:cancel_session(response.sessionId)
+                end
             end
             return
         end
