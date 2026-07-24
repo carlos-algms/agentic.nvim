@@ -286,6 +286,7 @@ describe("race: stale create_session after load_acp_session", function()
         assert.equal(config_options, session.config_options._config_options_set)
         -- configOptions path must NOT touch the legacy setters.
         assert.is_nil(session.config_options._legacy_modes_set)
+        assert.is_nil(session.config_options._legacy_models_set)
     end)
 
     -- Race B with a FAILED stale create: response is nil and err is set.
