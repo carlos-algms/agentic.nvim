@@ -167,6 +167,12 @@ function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
         instance = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager|nil]]
         if instance ~= nil then
             SessionRegistry.sessions[tab_page_id] = instance
+            -- Published on the widget only, never on the session: `init.lua`'s
+            -- TabClosed cleanup uses a nil `session.session_key` to tell this
+            -- legacy path apart from a session-keyed one. Without a key here,
+            -- both tabs' buffers ask for the same name and E95 is raised, which
+            -- demotes the first tab's chat buffer to `<name>-old-1`.
+            instance.widget.session_key = tab_page_id
         end
     end
 

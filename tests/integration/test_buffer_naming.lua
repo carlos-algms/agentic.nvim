@@ -59,6 +59,51 @@ session.widget:render_header("%s")
         child.flush()
     end
 
+    --- Opens the widget through the public API, the path a user actually takes
+    --- @return integer tab_page_id
+    local function open_via_public_api()
+        return child.lua_get([[
+(function()
+    require("agentic").open({ auto_add_to_context = false })
+    return vim.api.nvim_get_current_tabpage()
+end)()
+]])
+    end
+
+    --- Gets the chat buffer basename of the session owning the given tab page
+    --- @param tab_page_id integer
+    --- @return string basename
+    local function get_chat_basename_for_tab(tab_page_id)
+        return child.lua_get(string.format(
+            [[
+(function()
+    local session = require("agentic.session_registry").sessions[%d]
+    return vim.fn.fnamemodify(
+        vim.api.nvim_buf_get_name(session.widget.buf_nrs.chat),
+        ":t"
+    )
+end)()
+]],
+            tab_page_id
+        ))
+    end
+
+    it("keeps names unique when opened through the public API", function()
+        local tab1 = open_via_public_api()
+        child.flush()
+
+        child.cmd("tabnew")
+        local tab2 = open_via_public_api()
+        child.flush()
+
+        local basename1 = get_chat_basename_for_tab(tab1)
+        local basename2 = get_chat_basename_for_tab(tab2)
+
+        -- Opening the second session must not demote the first one's buffer
+        assert.is_nil(basename1:match("%-old%-"))
+        assert.is_not.equal(basename1, basename2)
+    end)
+
     it("buffer names mirror header titles", function()
         local key = open_session()
         child.flush()
