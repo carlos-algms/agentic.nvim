@@ -18,8 +18,11 @@ local SessionRegistry = {
 --- @return agentic.SessionManager|nil
 local function registered_most_recent()
     local session = SessionRegistry._most_recent
+    -- Legacy `get_session_for_tab_page` sessions carry no key, so they are never
+    -- reachable by key and can never be `_most_recent`.
+    local session_key = session and session.session_key
 
-    if session and SessionRegistry.sessions[session.session_key] == session then
+    if session_key and SessionRegistry.sessions[session_key] == session then
         return session
     end
 
@@ -109,7 +112,9 @@ function SessionRegistry.destroy(session_key)
     end
 end
 
---- @return agentic.SessionManager[] sessions ordered most-recently-visible first
+--- Lists every registered session: `_most_recent` first when it is still
+--- registered, then the rest by ascending session key.
+--- @return agentic.SessionManager[] sessions
 function SessionRegistry.list()
     --- @type integer[]
     local keys = {}

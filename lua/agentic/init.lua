@@ -386,8 +386,12 @@ function Agentic.setup(opts)
                 valid[tab] = true
             end
 
-            for tab_page_id in pairs(SessionRegistry.sessions) do
-                if not valid[tab_page_id] then
+            for tab_page_id, session in pairs(SessionRegistry.sessions) do
+                -- `session_key` is nil only on the legacy tabpage-keyed path,
+                -- so a session that has one is stored under a session key, not
+                -- a tabpage handle. Both key spaces start at 1, so without this
+                -- guard closing tab handle 1 would destroy session key 1.
+                if session.session_key == nil and not valid[tab_page_id] then
                     SessionRegistry.destroy_session(tab_page_id)
                 end
             end

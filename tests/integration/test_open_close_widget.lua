@@ -101,6 +101,41 @@ describe("Open and Close Chat Widget", function()
         assert.equal(1, session_count_after)
     end)
 
+    it(
+        "tabclose keeps a session-keyed session whose key equals the handle",
+        function()
+            -- `sessions` transiently holds two key spaces: legacy tabpage handles
+            -- and new session keys, both starting at 1. The first tabpage handle is
+            -- 1, so closing it must not destroy the session stored under key 1.
+            child.lua([[
+            _G.destroyed = false
+            require("agentic.session_registry").sessions[1] = {
+                session_key = 1,
+                widget = {
+                    visible_tab = function()
+                        return nil
+                    end,
+                },
+                destroy = function()
+                    _G.destroyed = true
+                end,
+            }
+        ]])
+
+            -- A second tab is required before the first one can be closed
+            child.cmd("tabnew")
+            assert.has_no_errors(function()
+                child.cmd("tabclose 1")
+                child.flush()
+            end)
+
+            assert.is_false(child.lua_get([[_G.destroyed]]))
+            assert.is_true(child.lua_get([[
+            require("agentic.session_registry").sessions[1] ~= nil
+        ]]))
+        end
+    )
+
     it("handles tabclose while in insert mode without errors", function()
         -- Open widget
         child.lua([[ require("agentic").toggle() ]])

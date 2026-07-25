@@ -18,7 +18,7 @@ local Hooks = require("agentic.utils.hooks")
 
 --- @class agentic.SessionManager
 --- @field session_id? string
---- @field session_key integer Registry key, assigned by SessionRegistry.create
+--- @field session_key? integer Registry key, assigned by SessionRegistry.create
 --- @field tab_page_id integer
 --- @field _is_first_message boolean
 --- @field is_generating boolean

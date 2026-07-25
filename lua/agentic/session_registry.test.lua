@@ -689,6 +689,23 @@ describe("agentic.SessionRegistry", function()
             assert.equal(second, sessions[2])
         end)
 
+        it(
+            "omits a stale _most_recent alongside registered sessions",
+            function()
+                local kept = create_mock_session(nil)
+                local stale = create_mock_session(nil)
+                kept.session_key = 1
+                stale.session_key = 9
+                SessionRegistry.sessions[1] = kept
+                SessionRegistry._most_recent = stale
+
+                local sessions = SessionRegistry.list()
+
+                assert.equal(1, #sessions)
+                assert.equal(kept, sessions[1])
+            end
+        )
+
         it("returns an empty list for an empty registry", function()
             assert.equal(0, #SessionRegistry.list())
         end)
