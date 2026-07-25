@@ -90,7 +90,7 @@ function SessionManager:new(tab_page_id)
 
     self.chat_history = ChatHistory:new()
 
-    self.widget = ChatWidget:new(tab_page_id, function(input_text)
+    self.widget = ChatWidget:new(function(input_text)
         return self:_handle_input_submit(input_text)
     end)
 

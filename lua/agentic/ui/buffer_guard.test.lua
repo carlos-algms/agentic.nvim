@@ -50,7 +50,9 @@ local function create_widget_setup()
 
     --- @type agentic.ui.BufferGuard.Callbacks
     local callbacks = {
-        tab_page_id = tab,
+        get_tab_page_id = function()
+            return tab
+        end,
         find_target_window = function()
             if editor_win and vim.api.nvim_win_is_valid(editor_win) then
                 return editor_win
@@ -157,7 +159,9 @@ describe("BufferGuard", function()
         vim.w[chat_win].agentic_bufnr = chat_buf
 
         local augroup = BufferGuard.attach({
-            tab_page_id = tab,
+            get_tab_page_id = function()
+                return tab
+            end,
             find_target_window = function()
                 -- Mimics open_editor_window: create a split
                 local new_buf = vim.api.nvim_create_buf(false, true)
@@ -251,7 +255,6 @@ describe("BufferGuard", function()
             local editor_win = vim.api.nvim_get_current_win()
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -272,7 +275,9 @@ describe("BufferGuard", function()
             }
 
             local augroup = BufferGuard.attach({
-                tab_page_id = tab_page_id,
+                get_tab_page_id = function()
+                    return tab_page_id
+                end,
                 find_target_window = function()
                     if vim.api.nvim_win_is_valid(editor_win) then
                         return editor_win
@@ -366,7 +371,7 @@ describe("BufferGuard cursor follow (child)", function()
             vim.w[chat_win].agentic_bufnr = chat_buf
 
             BG.attach({
-                tab_page_id = vim.api.nvim_get_current_tabpage(),
+                get_tab_page_id = vim.api.nvim_get_current_tabpage,
                 find_target_window = function()
                     if vim.api.nvim_win_is_valid(editor_win) then
                         return editor_win

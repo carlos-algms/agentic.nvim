@@ -5,7 +5,7 @@ local Logger = require("agentic.utils.logger")
 local BufferGuard = {}
 
 --- @class agentic.ui.BufferGuard.Callbacks
---- @field tab_page_id integer
+--- @field get_tab_page_id fun(): integer|nil Owning widget's live tabpage, nil while hidden
 --- @field find_target_window fun(): integer|nil
 
 --- Redirect a foreign buffer out of a widget window.
@@ -41,8 +41,9 @@ end
 --- If a non-widget buffer lands in a widget window, redirect it.
 --- @param cb agentic.ui.BufferGuard.Callbacks
 local function on_buf_enter(cb)
-    -- Only handle events on this widget's tabpage
-    if vim.api.nvim_get_current_tabpage() ~= cb.tab_page_id then
+    -- Only handle events on this widget's tabpage. A hidden widget reports no
+    -- tabpage and owns no windows, so it never handles anything.
+    if vim.api.nvim_get_current_tabpage() ~= cb.get_tab_page_id() then
         return
     end
 
@@ -87,12 +88,19 @@ local function on_buf_enter(cb)
     end
 end
 
+--- Counts attachments so each guard gets its own augroup name. A shared name
+--- would silently clear the previous guard: nvim_create_augroup(name,
+--- { clear = true }) returns the existing id after wiping its autocommands.
+local attach_count = 0
+
 --- Attach buffer guard using callback functions.
 --- @param callbacks agentic.ui.BufferGuard.Callbacks
 --- @return integer augroup_id Used to detach later
 function BufferGuard.attach(callbacks)
+    attach_count = attach_count + 1
+
     local augroup = vim.api.nvim_create_augroup(
-        "AgenticBufferGuard_" .. tostring(callbacks.tab_page_id),
+        "AgenticBufferGuard_" .. tostring(attach_count),
         { clear = true }
     )
 

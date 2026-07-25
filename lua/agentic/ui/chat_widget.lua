@@ -36,7 +36,6 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- A sidebar-style chat widget with multiple windows stacked vertically
 --- The main chat window is the first, and contains the width, the below ones adapt to its size
 --- @class agentic.ui.ChatWidget
---- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field current_position agentic.UserConfig.Windows.Position
@@ -51,9 +50,8 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
---- @param tab_page_id integer
 --- @param on_submit_input fun(prompt: string): boolean
-function ChatWidget:new(tab_page_id, on_submit_input)
+function ChatWidget:new(on_submit_input)
     self = setmetatable({}, self)
 
     self.win_nrs = {}
@@ -62,7 +60,6 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     self.session_state = nil
 
     self.on_submit_input = on_submit_input
-    self.tab_page_id = tab_page_id
 
     self:_initialize()
     self:_bind_events_to_change_headers()
@@ -71,8 +68,7 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 end
 
 --- The tabpage the widget is currently visible in, derived from its live chat
---- window instead of read from stored state. `self.tab_page_id` still exists;
---- its removal is pending.
+--- window. Nothing stores a tabpage.
 --- The hidden chat float lives outside `win_nrs`, so it never counts as visible.
 --- @return integer|nil tabpage nil when the widget is not visible
 function ChatWidget:visible_tab()
@@ -124,7 +120,6 @@ function ChatWidget:show(opts)
     self:_close_hidden_chat_window()
 
     WidgetLayout.open({
-        tab_page_id = self.tab_page_id,
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
@@ -185,23 +180,16 @@ end
 function ChatWidget:hide()
     vim.cmd("stopinsert")
 
-    -- Check if we're on the correct tabpage before trying to find/create fallback window
-    local current_tabpage = vim.api.nvim_get_current_tabpage()
-    local should_create_fallback = current_tabpage == self.tab_page_id
-
-    if should_create_fallback then
-        local fallback_winid = self:find_first_non_widget_window()
-
-        if not fallback_winid then
-            -- Fallback: create a new left window to avoid closing the last window error
-            local created_winid = self:open_editor_window()
-            if not created_winid then
-                Logger.notify(
-                    "Failed to create fallback window; cannot hide widget safely, run `:tabclose` to close the tab instead.",
-                    vim.log.levels.ERROR
-                )
-                return
-            end
+    -- A non-widget window must survive in the widget's OWN tab, whichever tab
+    -- the cursor sits in: closing a tab's last window fires E444.
+    -- `open_editor_window` is cross-tab safe, it splits inside
+    -- `nvim_win_call(anchor_win, ...)`.
+    if self:visible_tab() and not self:find_first_non_widget_window() then
+        if not self:open_editor_window() then
+            Logger.notify(
+                "Failed to create a fallback window; the widget's windows may not close cleanly.",
+                vim.log.levels.ERROR
+            )
         end
     end
 
@@ -209,6 +197,9 @@ function ChatWidget:hide()
         WidgetLayout.close(self.win_nrs)
     end)
 
+    -- Recreate the float unconditionally, including when no fallback window
+    -- could be made: it is the chat buffer's only remaining window, and ADR
+    -- 0001's manual folds die with it.
     -- Close prior float before reopen to avoid leaking the winid.
     self:_close_hidden_chat_window()
     self._hidden_chat_winid =
@@ -249,16 +240,11 @@ function ChatWidget:destroy()
         self._winclosed_augroup = nil
     end
 
-    -- During TabClosed, the tabpage is removed from nvim_list_tabpages()
-    -- but nvim_tabpage_is_valid() still returns true. Neovim tears down
-    -- the windows itself; calling nvim_win_close on those handles crashes
-    -- Neovim 0.11.x. Detect this by checking the tabpages list.
-    local tab_closing =
-        not vim.tbl_contains(vim.api.nvim_list_tabpages(), self.tab_page_id)
-
-    if not tab_closing then
-        self:hide()
-    end
+    -- Close the windows directly rather than through `hide`: a destroyed widget
+    -- needs neither a fallback window nor a fresh hidden float.
+    -- `WidgetLayout.close` skips every handle whose tabpage is already gone,
+    -- which is what keeps this safe during a tabclose teardown on 0.11.x.
+    WidgetLayout.close(self.win_nrs)
 
     self:_close_hidden_chat_window()
 
@@ -349,7 +335,9 @@ function ChatWidget:_initialize()
     self:_bind_keymaps()
 
     self._guard_augroup = BufferGuard.attach({
-        tab_page_id = self.tab_page_id,
+        get_tab_page_id = function()
+            return self:visible_tab()
+        end,
         find_target_window = function()
             return self:find_first_non_widget_window()
                 or self:open_editor_window()
@@ -360,8 +348,13 @@ function ChatWidget:_initialize()
     -- to avoid recursive hide() calls
     self._closing = false
 
+    -- Named after the chat buffer: buffer numbers are globally unique and each
+    -- widget creates its own chat buffer, so two widgets can never share a
+    -- group name. A shared name would silently wipe the other widget's
+    -- WinClosed autocmd, because nvim_create_augroup(name, { clear = true })
+    -- returns the existing id after clearing it.
     self._winclosed_augroup = vim.api.nvim_create_augroup(
-        "AgenticWinClosed_" .. tostring(self.tab_page_id),
+        "AgenticWinClosed_" .. tostring(self.buf_nrs.chat),
         { clear = true }
     )
 
@@ -589,21 +582,23 @@ end
 --- Persists the input header suffix for the current mode and re-renders it.
 --- @param mode string
 function ChatWidget:_apply_input_suffix(mode)
-    if not vim.api.nvim_tabpage_is_valid(self.tab_page_id) then
-        return
-    end
-
     local suffix = ChatWidget._compute_input_suffix(mode)
     if suffix == nil then
         return
     end
 
+    -- Header state still lives in `vim.t`, so a tabpage is required. Fall back
+    -- to the current tab while the widget is hidden — that is where it will be
+    -- shown next, and it matches what the stored tabpage used to be at
+    -- construction time. Task 4 moves this state onto the widget.
+    local tab_page_id = self:visible_tab() or vim.api.nvim_get_current_tabpage()
+
     -- Get headers from tabpage-local storage (must reassign after modification)
-    local headers = WindowDecoration.get_headers_state(self.tab_page_id)
+    local headers = WindowDecoration.get_headers_state(tab_page_id)
     headers.input.suffix = suffix
 
     -- Reassign to persist changes
-    WindowDecoration.set_headers_state(self.tab_page_id, headers)
+    WindowDecoration.set_headers_state(tab_page_id, headers)
 
     self:render_header("input")
 end
@@ -620,8 +615,6 @@ function ChatWidget:_bind_events_to_change_headers()
             buffer = bufnr,
             callback = function()
                 vim.schedule(function()
-                    -- Check if tabpage is still valid before accessing vim.t
-                    -- I couldn't test it, it seems to only happen from command -> normal, not from insert -> normal
                     self:_apply_input_suffix(vim.fn.mode())
                 end)
             end,
@@ -699,29 +692,35 @@ local EXCLUDED_FILETYPES = {
     ["mason"] = true, -- Mason installer
 }
 
---- Finds the first window on the current tabpage that is NOT part of the chat widget
+--- Finds the first window in the widget's own tabpage that belongs to no widget.
+---
+--- Two independent exclusions, both required:
+--- 1. `vim.w[winid].agentic_bufnr` marks every window a widget created, this one
+---    or another session's. BufferGuard's repurpose path swaps an unregistered
+---    scratch buffer into such a window, so the buffer check alone would hand
+---    that window back as a redirect target and bounce the file straight into
+---    the chat window. Regression: chat_widget.test.lua::"never returns a
+---    window a widget created, even after its buffer was swapped".
+--- 2. Any registered widget buffer, so one session cannot eject a foreign
+---    buffer into a window showing another session's panel.
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
-    local all_windows = vim.api.nvim_tabpage_list_wins(self.tab_page_id)
-
-    -- Build a set of widget window IDs for fast lookup
-    local widget_win_ids = {}
-    for _, winid in pairs(self.win_nrs) do
-        if winid then
-            widget_win_ids[winid] = true
-        end
+    local tab_page_id = self:visible_tab()
+    if not tab_page_id then
+        return nil
     end
 
+    local all_windows = vim.api.nvim_tabpage_list_wins(tab_page_id)
+    local widget_bufnrs = WidgetRegistry.all_bufnrs()
+
     for _, winid in ipairs(all_windows) do
-        if not widget_win_ids[winid] then
-            -- Skip floating windows (pickers, popups, etc.)
-            local win_config = vim.api.nvim_win_get_config(winid)
-            if win_config.relative == "" then
-                local bufnr = vim.api.nvim_win_get_buf(winid)
-                local ft = vim.bo[bufnr].filetype
-                if not EXCLUDED_FILETYPES[ft] then
-                    return winid
-                end
+        -- Skip floating windows (pickers, popups, etc.)
+        local win_config = vim.api.nvim_win_get_config(winid)
+        if win_config.relative == "" and not vim.w[winid].agentic_bufnr then
+            local bufnr = vim.api.nvim_win_get_buf(winid)
+            local ft = vim.bo[bufnr].filetype
+            if not widget_bufnrs[bufnr] and not EXCLUDED_FILETYPES[ft] then
+                return winid
             end
         end
     end

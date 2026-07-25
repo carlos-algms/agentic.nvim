@@ -196,34 +196,66 @@ describe("WidgetLayout", function()
     end)
 
     describe("open", function()
-        it("should not error with invalid tabpage", function()
-            assert.has_no_errors(function()
-                WidgetLayout.open({
-                    tab_page_id = 99999,
-                    buf_nrs = {},
-                    win_nrs = {},
-                    position = "right",
-                })
-            end)
-            assert.equal(1, notify_stub.call_count)
-        end)
+        it(
+            "creates a fresh chat window when the cached one is in another tab",
+            function()
+                vim.cmd("tabnew")
 
-        it("should not error with nil tabpage", function()
-            assert.has_no_errors(function()
+                local win_nrs = {}
+                local buf_nrs = {
+                    chat = vim.api.nvim_create_buf(false, true),
+                    input = vim.api.nvim_create_buf(false, true),
+                    code = vim.api.nvim_create_buf(false, true),
+                    files = vim.api.nvim_create_buf(false, true),
+                    diagnostics = vim.api.nvim_create_buf(false, true),
+                    todos = vim.api.nvim_create_buf(false, true),
+                }
+
                 WidgetLayout.open({
-                    ---@diagnostic disable-next-line: assign-type-mismatch
-                    tab_page_id = nil,
-                    buf_nrs = {},
-                    win_nrs = {},
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
                     position = "right",
+                    focus_prompt = false,
                 })
-            end)
-            assert.equal(1, notify_stub.call_count)
-        end)
+
+                local first_chat = win_nrs.chat
+                assert.is_not_nil(first_chat)
+
+                vim.cmd("tabnew")
+                local second_tab = vim.api.nvim_get_current_tabpage()
+
+                WidgetLayout.open({
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
+                    position = "right",
+                    focus_prompt = false,
+                })
+
+                -- A valid handle from another tab renders nothing where the
+                -- user is looking, so it must not be reused.
+                assert.is_not.equal(first_chat, win_nrs.chat)
+                assert.equal(
+                    second_tab,
+                    vim.api.nvim_win_get_tabpage(win_nrs.chat)
+                )
+                assert.equal(
+                    second_tab,
+                    vim.api.nvim_win_get_tabpage(win_nrs.input)
+                )
+
+                WidgetLayout.close(win_nrs)
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+                pcall(vim.api.nvim_win_close, first_chat, true)
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+            end
+        )
 
         it("should fall back to right for invalid position", function()
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local win_nrs = {}
             local buf_nrs = {
@@ -237,7 +269,6 @@ describe("WidgetLayout", function()
 
             assert.has_no_errors(function()
                 WidgetLayout.open({
-                    tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
                     --- @diagnostic disable-next-line: assign-type-mismatch
@@ -268,7 +299,6 @@ describe("WidgetLayout", function()
             }
 
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local chat_buf = vim.api.nvim_create_buf(false, true)
             vim.bo[chat_buf].buftype = "nofile"
@@ -292,7 +322,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -312,7 +341,6 @@ describe("WidgetLayout", function()
             WidgetLayout.close(win_nrs)
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -338,7 +366,6 @@ describe("WidgetLayout", function()
             "applies the tool block statuscolumn only to the chat window",
             function()
                 vim.cmd("tabnew")
-                local tab_page_id = vim.api.nvim_get_current_tabpage()
 
                 local win_nrs = {}
                 local buf_nrs = {
@@ -351,7 +378,6 @@ describe("WidgetLayout", function()
                 }
 
                 WidgetLayout.open({
-                    tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
                     position = "right",
@@ -382,7 +408,6 @@ describe("WidgetLayout", function()
 
         it("sizes panel to visual rows when content wraps", function()
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local files_buf = vim.api.nvim_create_buf(false, true)
             local long = string.rep("a/very/long/path/segment/", 20)
@@ -405,7 +430,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -436,7 +460,6 @@ describe("WidgetLayout", function()
                 })
 
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local win_nrs = {}
             local buf_nrs = {
@@ -449,7 +472,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",

@@ -38,10 +38,7 @@ describe("agentic.ui.ChatWidget", function()
                 tab_page_id = vim.api.nvim_get_current_tabpage()
 
                 local on_submit_spy = spy.new(function() end)
-                widget = ChatWidget:new(
-                    tab_page_id,
-                    on_submit_spy --[[@as function]]
-                )
+                widget = ChatWidget:new(on_submit_spy --[[@as function]])
             end)
 
             after_each(function()
@@ -575,10 +572,7 @@ describe("agentic.ui.ChatWidget", function()
                 vim.cmd("tabnew")
 
                 local on_submit_spy = spy.new(function() end)
-                widget = ChatWidget:new(
-                    vim.api.nvim_get_current_tabpage(),
-                    on_submit_spy --[[@as function]]
-                )
+                widget = ChatWidget:new(on_submit_spy --[[@as function]])
             end)
 
             after_each(function()
@@ -629,10 +623,7 @@ describe("agentic.ui.ChatWidget", function()
             vim.cmd("tabnew")
 
             local on_submit_spy = spy.new(function() end)
-            widget = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy --[[@as function]]
-            )
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -693,10 +684,7 @@ describe("agentic.ui.ChatWidget", function()
             Config.windows.position = "right"
 
             local on_submit_spy = spy.new(function() end)
-            widget = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy --[[@as function]]
-            )
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
 
             show_stub = spy.stub(widget, "show")
             notify_stub = spy.stub(Logger, "notify")
@@ -791,10 +779,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("two widgets rotate independently", function()
             local on_submit_spy2 = spy.new(function() end)
-            widget2 = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy2 --[[@as function]]
-            )
+            widget2 = ChatWidget:new(on_submit_spy2 --[[@as function]])
             show_stub2 = spy.stub(widget2, "show")
 
             -- Both start at "right" (Config default)
@@ -820,15 +805,12 @@ describe("agentic.ui.ChatWidget", function()
 
     describe("hidden chat window lifecycle", function()
         local widget
-        local tab_page_id
 
         before_each(function()
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local on_submit_spy = spy.new(function() end)
-            widget =
-                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -964,8 +946,7 @@ describe("agentic.ui.ChatWidget", function()
             tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local on_submit_spy = spy.new(function() end)
-            widget =
-                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -1027,11 +1008,9 @@ describe("agentic.ui.ChatWidget", function()
 
         before_each(function()
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local on_submit_spy = spy.new(function() end)
-            widget =
-                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -1065,6 +1044,228 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end)
 
+    describe("find_first_non_widget_window", function()
+        local widget
+        local widget2
+        local notify_stub
+
+        before_each(function()
+            vim.cmd("tabnew")
+            notify_stub = spy.stub(Logger, "notify")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            for _, w in ipairs({ widget, widget2 }) do
+                if w then
+                    pcall(function()
+                        w:destroy()
+                    end)
+                end
+            end
+            widget = nil
+            widget2 = nil
+            notify_stub:revert()
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("returns nil for a hidden widget", function()
+            assert.is_nil(widget:find_first_non_widget_window())
+
+            widget:show({ focus_prompt = false })
+            assert.is_not_nil(widget:find_first_non_widget_window())
+
+            widget:hide()
+            assert.is_nil(widget:find_first_non_widget_window())
+        end)
+
+        it("never returns another widget's window in the same tab", function()
+            widget:show({ focus_prompt = false })
+            widget2 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget2:show({ focus_prompt = false })
+
+            local own = widget:find_first_non_widget_window()
+            local other = widget2:find_first_non_widget_window()
+            assert.is_not_nil(own)
+            assert.is_not_nil(other)
+
+            for _, pair in ipairs({
+                { own, widget2.win_nrs },
+                { own, widget.win_nrs },
+                { other, widget.win_nrs },
+                { other, widget2.win_nrs },
+            }) do
+                for _, winid in pairs(pair[2]) do
+                    assert.is_not.equal(pair[1], winid)
+                end
+            end
+        end)
+
+        it(
+            "never returns a window a widget created, even after its buffer was swapped",
+            function()
+                widget:show({ focus_prompt = false })
+
+                -- BufferGuard's repurpose path swaps an unregistered scratch
+                -- buffer into a widget window; only vim.w.agentic_bufnr still
+                -- identifies it. Returning it bounces the redirected file back
+                -- into the widget window.
+                local chat_win = widget.win_nrs.chat
+                local orphan = vim.api.nvim_create_buf(false, true)
+                vim.bo[orphan].buftype = "nofile"
+                vim.api.nvim_win_set_buf(chat_win, orphan)
+
+                assert.is_not.equal(
+                    chat_win,
+                    widget:find_first_non_widget_window()
+                )
+
+                vim.api.nvim_win_set_buf(chat_win, widget.buf_nrs.chat)
+                vim.api.nvim_buf_delete(orphan, { force = true })
+            end
+        )
+    end)
+
+    describe("hide across tabs", function()
+        local widget
+        local notify_stub
+
+        before_each(function()
+            vim.cmd("tabnew")
+            notify_stub = spy.stub(Logger, "notify")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            notify_stub:revert()
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "keeps the chat buffer attached when no fallback window can be created",
+            function()
+                widget:show({ focus_prompt = false })
+
+                -- ADR 0001: the hidden float is the chat buffer's only window
+                -- once the widget is hidden. Losing it loses the fold anchor.
+                widget.find_first_non_widget_window = function()
+                    return nil
+                end
+                widget.open_editor_window = function()
+                    return nil
+                end
+
+                widget:hide()
+
+                assert.is_true(#vim.fn.win_findbuf(widget.buf_nrs.chat) > 0)
+                assert.is_not_nil(widget._hidden_chat_winid)
+                assert.spy(notify_stub).was.called(1)
+            end
+        )
+
+        it("does not report a fallback failure for a hidden widget", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            -- A hidden widget owns no windows, so there is nothing to keep the
+            -- tab alive and no fallback to create.
+            widget:hide()
+
+            assert.equal(0, notify_stub.call_count)
+        end)
+
+        it(
+            "creates the fallback window in the widget's tab, not the current one",
+            function()
+                widget:show({ focus_prompt = false })
+                local widget_tab = widget:visible_tab()
+
+                -- Leave only widget windows in the widget's tab
+                for _, winid in
+                    ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
+                do
+                    if not vim.w[winid].agentic_bufnr then
+                        pcall(vim.api.nvim_win_close, winid, true)
+                    end
+                end
+
+                vim.cmd("tabnew")
+                local other_tab = vim.api.nvim_get_current_tabpage()
+
+                widget:hide()
+
+                assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+                assert.is_true(#vim.api.nvim_tabpage_list_wins(widget_tab) > 0)
+                assert.equal(0, notify_stub.call_count)
+
+                vim.cmd("tabclose")
+            end
+        )
+    end)
+
+    describe("destroy", function()
+        local widget
+
+        before_each(function()
+            vim.cmd("tabnew")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "closes the windows and deletes the buffers of a visible widget",
+            function()
+                widget:show({ focus_prompt = false })
+                local chat_win = widget.win_nrs.chat
+                local input_win = widget.win_nrs.input
+                local bufnrs = vim.tbl_values(widget.buf_nrs)
+
+                widget:destroy()
+                widget = nil
+
+                assert.is_false(vim.api.nvim_win_is_valid(chat_win))
+                assert.is_false(vim.api.nvim_win_is_valid(input_win))
+                for _, bufnr in ipairs(bufnrs) do
+                    assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+                end
+            end
+        )
+
+        it("deletes the buffers of a hidden widget without raising", function()
+            local bufnrs = vim.tbl_values(widget.buf_nrs)
+
+            assert.has_no_errors(function()
+                widget:destroy()
+            end)
+            widget = nil
+
+            for _, bufnr in ipairs(bufnrs) do
+                assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            end
+        end)
+    end)
+
     describe("input header suffix", function()
         local tab_page_id
         local widget
@@ -1072,10 +1273,7 @@ describe("agentic.ui.ChatWidget", function()
         before_each(function()
             vim.cmd("tabnew")
             tab_page_id = vim.api.nvim_get_current_tabpage()
-            widget = ChatWidget:new(
-                tab_page_id,
-                spy.new(function() end) --[[@as function]]
-            )
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
         after_each(function()
@@ -1097,18 +1295,13 @@ describe("agentic.ui.ChatWidget", function()
     end)
 
     describe("_render_dynamic_headers", function()
-        local tab_page_id
         local widget
         local original_headers
 
         before_each(function()
             original_headers = Config.headers
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
-            widget = ChatWidget:new(
-                tab_page_id,
-                spy.new(function() end) --[[@as function]]
-            )
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
         after_each(function()

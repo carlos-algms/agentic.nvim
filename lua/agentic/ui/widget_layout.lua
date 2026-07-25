@@ -7,7 +7,6 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.ui.WidgetLayout.Params
---- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field focus_prompt? boolean
@@ -172,9 +171,16 @@ local function get_or_create_window(
     open_opts,
     win_opts
 )
+    -- A cached handle is reusable only in the current tabpage. A valid handle
+    -- from another tab would be returned and the widget would render nothing
+    -- where the user is looking.
     local cached_winid = win_nrs[panel_name]
     if cached_winid and vim.api.nvim_win_is_valid(cached_winid) then
-        return cached_winid
+        local tab_ok, win_tab =
+            pcall(vim.api.nvim_win_get_tabpage, cached_winid)
+        if tab_ok and win_tab == vim.api.nvim_get_current_tabpage() then
+            return cached_winid
+        end
     end
 
     local new_winid =
@@ -356,18 +362,6 @@ end
 
 --- @param params agentic.ui.WidgetLayout.Params
 function WidgetLayout.open(params)
-    if
-        not params.tab_page_id
-        or not vim.api.nvim_tabpage_is_valid(params.tab_page_id)
-    then
-        Logger.notify(
-            "Invalid tab_page_id in WidgetLayout.open: "
-                .. tostring(params.tab_page_id),
-            vim.log.levels.ERROR
-        )
-        return
-    end
-
     local position = params.position
 
     if position ~= "right" and position ~= "left" and position ~= "bottom" then
@@ -385,9 +379,8 @@ function WidgetLayout.open(params)
     if not ok then
         Logger.notify(
             string.format(
-                "Failed to show %s layout (tab: %d): %s",
+                "Failed to show %s layout: %s",
                 position,
-                params.tab_page_id,
                 tostring(err)
             ),
             vim.log.levels.ERROR
