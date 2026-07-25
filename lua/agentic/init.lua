@@ -275,15 +275,25 @@ local function cycle_session(step)
 
     table.sort(keys)
 
-    local current = SessionRegistry.resolve()
+    -- `current`, never `resolve`: cycling must not CREATE the session it cycles
+    -- away from when `_most_recent` is unregistered and nothing is visible here.
+    local current = SessionRegistry.current()
     local current_key = current and current.session_key
-    local index = 1
+
+    --- @type integer|nil
+    local index
 
     for i, key in ipairs(keys) do
         if key == current_key then
             index = i
             break
         end
+    end
+
+    -- No starting point is not "start at the first key": defaulting to 1 would
+    -- silently show `keys[2]`, a session the user never asked for.
+    if not index then
+        return
     end
 
     -- Lua's `%` is non-negative for a positive divisor, so `step = -1` wraps to

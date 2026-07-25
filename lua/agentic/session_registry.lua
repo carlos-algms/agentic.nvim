@@ -56,26 +56,33 @@ function SessionRegistry.create()
     return session
 end
 
+--- The session the user is acting on WITHOUT creating one: the session visible in
+--- the current tab, else the most recently visible one while it is still
+--- registered. Callers that only navigate between existing sessions must use this
+--- instead of `resolve`: `resolve` answers a miss by creating a session, so
+--- cycling with a stale `_most_recent` would spawn a provider subprocess just to
+--- pick a starting point.
+--- Regression: agentic.test.lua::"cycles nowhere, and creates nothing, without a
+--- start point".
+--- @return agentic.SessionManager|nil
+function SessionRegistry.current()
+    local current_tab = vim.api.nvim_get_current_tabpage()
+
+    for _, session in pairs(SessionRegistry.sessions) do
+        if session.widget:visible_tab() == current_tab then
+            return session
+        end
+    end
+
+    return registered_most_recent()
+end
+
 --- Resolves the session the user is acting on: the one visible in the current
 --- tab, else the most recently visible one, else a brand new session.
 --- @param callback fun(session: agentic.SessionManager)|nil
 --- @return agentic.SessionManager|nil
 function SessionRegistry.resolve(callback)
-    local current_tab = vim.api.nvim_get_current_tabpage()
-
-    --- @type agentic.SessionManager|nil
-    local instance
-
-    for _, session in pairs(SessionRegistry.sessions) do
-        if session.widget:visible_tab() == current_tab then
-            instance = session
-            break
-        end
-    end
-
-    if not instance then
-        instance = registered_most_recent() or SessionRegistry.create()
-    end
+    local instance = SessionRegistry.current() or SessionRegistry.create()
 
     -- Resolve-only entry points (`stop_generation`, `restore_session`,
     -- `restore_session_by_id`) never reach `show_session`, so nothing else would

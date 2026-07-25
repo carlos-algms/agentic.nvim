@@ -20,15 +20,29 @@ describe("agentic.SessionRegistry", function()
     --- @type TestStub|nil
     local ui_select_stub
 
+    --- Every `hide`/`show` appends to this, so ordering assertions read one list
+    --- instead of comparing per-spy call counts.
+    --- @type string[]
+    local widget_events = {}
+
     --- @param tab_page_id integer|nil
     --- @param visible_tab integer|nil Tab the mock widget reports as visible
+    --- @param label string|nil Prefix for this session's `widget_events` entries
     --- @return table mock_session
-    local function create_mock_session(tab_page_id, visible_tab)
+    local function create_mock_session(tab_page_id, visible_tab, label)
+        local name = label or "session"
+
         return {
             tab_page_id = tab_page_id,
             widget = {
                 visible_tab = function()
                     return visible_tab
+                end,
+                hide = function()
+                    widget_events[#widget_events + 1] = name .. ":hide"
+                end,
+                show = function()
+                    widget_events[#widget_events + 1] = name .. ":show"
                 end,
             },
             destroy = function() end,
@@ -97,6 +111,7 @@ describe("agentic.SessionRegistry", function()
     end
 
     before_each(function()
+        widget_events = {}
         package.loaded["agentic.session_manager"] = session_manager_mock
 
         acp_health_mock.check_configured_provider = function()
@@ -457,6 +472,91 @@ describe("agentic.SessionRegistry", function()
 
         it("returns an empty list for an empty registry", function()
             assert.equal(0, #SessionRegistry.list())
+        end)
+    end)
+
+    describe("show_session", function()
+        it("hides the outgoing session before showing the target", function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            local outgoing = create_mock_session(nil, current_tab, "outgoing")
+            local target = create_mock_session(nil, nil, "target")
+            outgoing.session_key = 1
+            target.session_key = 2
+            SessionRegistry.sessions[1] = outgoing
+            SessionRegistry.sessions[2] = target
+
+            SessionRegistry.show_session(2)
+
+            -- The order is the contract: `ChatWidget:hide` captures the outgoing
+            -- size, which the incoming widget's first `show` reads back.
+            assert.same({ "outgoing:hide", "target:show" }, widget_events)
+            assert.equal(target, SessionRegistry._most_recent)
+        end)
+
+        it(
+            "does not hide a target already visible in the current tab",
+            function()
+                local current_tab = vim.api.nvim_get_current_tabpage()
+                local target = create_mock_session(nil, current_tab, "target")
+                target.session_key = 1
+                SessionRegistry.sessions[1] = target
+
+                SessionRegistry.show_session(1)
+
+                assert.same({ "target:show" }, widget_events)
+            end
+        )
+
+        it("hides a target visible in another tab before showing it", function()
+            local other_tab = vim.api.nvim_get_current_tabpage() + 1
+            local target = create_mock_session(nil, other_tab, "target")
+            target.session_key = 1
+            SessionRegistry.sessions[1] = target
+
+            SessionRegistry.show_session(1)
+
+            -- At most one tab per session: the widget moves, it is not cloned.
+            assert.same({ "target:hide", "target:show" }, widget_events)
+        end)
+
+        it("is a no-op for an unknown key", function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            local visible = create_mock_session(nil, current_tab, "visible")
+            visible.session_key = 1
+            SessionRegistry.sessions[1] = visible
+
+            assert.has_no_errors(function()
+                SessionRegistry.show_session(42)
+            end)
+
+            -- The early return happens BEFORE the eviction sweep, so a bad key
+            -- cannot hide the session the user is looking at.
+            assert.same({}, widget_events)
+            assert.is_nil(SessionRegistry._most_recent)
+        end)
+    end)
+
+    describe("set_most_recent", function()
+        it("points _most_recent at the session without showing it", function()
+            local session = create_mock_session(nil, nil, "session")
+            session.session_key = 1
+            SessionRegistry.sessions[1] = session
+
+            SessionRegistry.set_most_recent(1)
+
+            assert.equal(session, SessionRegistry._most_recent)
+            assert.same({}, widget_events)
+        end)
+
+        it("leaves _most_recent alone for an unknown key", function()
+            local session = create_mock_session(nil, nil, "session")
+            session.session_key = 1
+            SessionRegistry.sessions[1] = session
+            SessionRegistry._most_recent = session
+
+            SessionRegistry.set_most_recent(42)
+
+            assert.equal(session, SessionRegistry._most_recent)
         end)
     end)
 

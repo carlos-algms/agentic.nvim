@@ -2014,6 +2014,64 @@ describe("agentic.SessionManager", function()
             assert.equal(0, #session.chat_history.messages)
         end)
 
+        --- @param session agentic.SessionManager
+        --- @return fun(err: table|nil) fire_load_response
+        local function pending_load(session)
+            --- @type fun(err: table|nil)|nil
+            local fire_load_response
+
+            fake_agent.agent_capabilities = { loadSession = true }
+            function fake_agent:load_session(_id, _cwd, _mcp, _handlers, cb)
+                fire_load_response = cb
+            end
+
+            session:load_acp_session("restored-session")
+            flush_schedule()
+
+            assert.is_not_nil(fire_load_response)
+
+            return fire_load_response --[[@as fun(err: table|nil)]]
+        end
+
+        it("cancels an ACP session loaded after destroy", function()
+            local session = pending_session()
+            local fire_load_response = pending_load(session)
+
+            session:destroy()
+
+            assert.has_no_errors(function()
+                fire_load_response(nil)
+                flush_schedule()
+            end)
+
+            -- Never adopted, and never left orphaned on the provider. The cancel
+            -- is also what drops the subscriber `load_session` registered before
+            -- the request.
+            assert.is_nil(session.session_id)
+            assert.is_true(
+                cancel_spy:called_with(fake_agent, "restored-session")
+            )
+        end)
+
+        it("stays silent when a failed load lands after destroy", function()
+            local session = pending_session()
+            local fire_load_response = pending_load(session)
+
+            session:destroy()
+            notify_stub:reset()
+            cancel_spy:reset()
+
+            assert.has_no_errors(function()
+                fire_load_response({ message = "boom" })
+                flush_schedule()
+            end)
+
+            -- Nothing loaded, so nothing to cancel, and the failure belongs to a
+            -- session the user already closed
+            assert.spy(notify_stub).was.called(0)
+            assert.spy(cancel_spy).was.called(0)
+        end)
+
         it("is a no-op the second time it is called", function()
             local session = pending_session()
             local widget_destroy_spy = spy.on(session.widget, "destroy")

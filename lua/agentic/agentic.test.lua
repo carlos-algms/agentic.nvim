@@ -504,6 +504,27 @@ describe("agentic: switch_provider", function()
         anim_stop_spy:revert()
     end)
 
+    it("cycles nowhere, and creates nothing, without a start point", function()
+        local Agentic = require("agentic")
+
+        local first = create_session()
+        local second = create_session()
+
+        -- Two registered sessions, none visible in this tab, and `_most_recent`
+        -- pointing at a session that is no longer registered: `resolve` answers
+        -- that by CREATING a session, so cycling would spawn a provider
+        -- subprocess just to pick a starting point — and then cycle off the
+        -- wrong key.
+        SessionRegistry._most_recent = { session_key = 99 }
+
+        Agentic.next_session()
+        flush_schedule()
+
+        assert.is_nil(SessionRegistry.sessions[3])
+        assert.is_nil(first.widget:visible_tab())
+        assert.is_nil(second.widget:visible_tab())
+    end)
+
     it("does not clear prompt buffer when session cannot submit", function()
         -- Create session without flushing — session_id is nil
         local session = SessionRegistry.create() --[[@as agentic.SessionManager]]

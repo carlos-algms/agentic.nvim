@@ -38,7 +38,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
---- @field _destroyed boolean Set by `destroy`; every scheduled callback checks it at RUN time
+--- @field _destroyed boolean Set by `destroy`; every ACP handler and every `session/new` or `session/load` response callback checks it at RUN time
 --- @field _session_ready_callbacks fun()[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -1019,6 +1019,26 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
         -- vim.schedule to run AFTER deferred session update notifications
         -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
         vim.schedule(function()
+            -- Destroyed while `session/load` was in flight, mirroring the
+            -- `session/new` guard above. Cancelling is what drops the subscriber
+            -- `ACPClient:load_session` registered BEFORE the request; without it
+            -- the entry pins this dead manager's handlers for the process
+            -- lifetime, and the provider session is never cancelled because
+            -- `_cancel_session` ran while `session_id` was still nil.
+            -- On error there is no loaded session to cancel, `load_session`
+            -- already dropped the subscriber, and the notify would surface a
+            -- failure for a session the user has already closed.
+            -- Regression: session_manager.test.lua::"cancels an ACP session
+            -- loaded after destroy" and ::"stays silent when a failed load lands
+            -- after destroy".
+            if self._destroyed then
+                if not err then
+                    self.agent:cancel_session(session_id)
+                end
+
+                return
+            end
+
             self._is_restoring_session = false
             self.status_animation:stop()
 
