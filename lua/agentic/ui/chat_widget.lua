@@ -20,6 +20,12 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts>
 
+--- Remembered chat window size. Only the axis the layout controls is stored per
+--- `hide`, so both survive a `right -> bottom -> right` rotation.
+--- @class agentic.ui.ChatWidget.Size
+--- @field width? integer
+--- @field height? integer
+
 --- Options for controlling widget display behavior
 --- @class agentic.ui.ChatWidget.AddToContextOpts
 --- @field focus_prompt? boolean
@@ -43,6 +49,8 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
+--- @field _size? agentic.ui.ChatWidget.Size Chat window size to reopen at, refreshed on every `hide`
+--- @field session_key? integer Registry key, published by SessionRegistry.create so a bufnr can reach it
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 --- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Returned by `WindowDecoration.get_headers_state`, whose callers mutate it in place
 --- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
@@ -118,12 +126,34 @@ function ChatWidget:show(opts)
 
     self:_close_hidden_chat_window()
 
+    self._size = self._size or self:_inherited_size()
+
     WidgetLayout.open({
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
+        size = self._size,
     })
+end
+
+--- Size the widget starts from when it has never been shown: the most recently
+--- visible session's remembered size, so switching sessions does not resize the
+--- sidebar. Copied, so two widgets never share one table.
+--- Read at `show` time, not at construction: the outgoing widget's `hide` — which
+--- refreshes its size — runs between the two.
+--- @return agentic.ui.ChatWidget.Size|nil
+function ChatWidget:_inherited_size()
+    local SessionRegistry = require("agentic.session_registry")
+
+    for _, session in ipairs(SessionRegistry.list()) do
+        local size = session.widget._size
+        if size then
+            return vim.deepcopy(size)
+        end
+    end
+
+    return nil
 end
 
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
@@ -154,12 +184,14 @@ function ChatWidget:rotate_layout(layouts)
         end
     end
 
-    self.current_position = next_layout
-
     local previous_mode = vim.fn.mode()
     local previous_buf = vim.api.nvim_get_current_buf()
 
+    -- `hide` remembers the axis the CURRENT layout controls, so the position
+    -- must still be the old one while it runs. Rotating first stored a bottom
+    -- height taken from a full-height right-layout chat window.
     self:hide()
+    self.current_position = next_layout
     self:show({
         focus_prompt = false,
     })
@@ -183,6 +215,8 @@ end
 --- Closes all windows but keeps buffers in memory
 function ChatWidget:hide()
     vim.cmd("stopinsert")
+
+    self:_remember_size()
 
     -- A non-widget window must survive in the widget's OWN tab, whichever tab
     -- the cursor sits in: closing the last window of a tab destroys that tab.
@@ -210,6 +244,27 @@ function ChatWidget:hide()
     self:_close_hidden_chat_window()
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
+end
+
+--- Stores the chat window's size along the axis the current layout controls, so a
+--- manual resize survives hide/show and seeds the next session.
+--- Only the dominant axis: `left`/`right` give the input panel a fixed
+--- `windows.input.height`, so forcing a chat height there shuffles the panels, and
+--- in `bottom` the chat spans the editor width, making a stored width meaningless.
+--- Must run BEFORE `WidgetLayout.close`, which nils `win_nrs`.
+function ChatWidget:_remember_size()
+    local winid = self.win_nrs.chat
+    if not winid or not self:visible_tab() then
+        return
+    end
+
+    self._size = self._size or {}
+
+    if self.current_position == "bottom" then
+        self._size.height = vim.api.nvim_win_get_height(winid)
+    else
+        self._size.width = vim.api.nvim_win_get_width(winid)
+    end
 end
 
 --- Cleans up all buffers content without destroying them

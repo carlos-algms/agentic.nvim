@@ -2,6 +2,7 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local SessionRegistry = require("agentic.session_registry")
 local WindowDecoration = require("agentic.ui.window_decoration")
 
 describe("agentic.ui.ChatWidget", function()
@@ -810,6 +811,112 @@ describe("agentic.ui.ChatWidget", function()
             widget:rotate_layout({ "right", "bottom", "left" })
             assert.equal("left", widget.current_position)
             assert.equal("bottom", widget2.current_position)
+        end)
+    end)
+
+    describe("size memory", function()
+        local widget
+        local widget2
+        local original_position
+        local saved_sessions
+
+        before_each(function()
+            original_position = Config.windows.position
+            Config.windows.position = "right"
+            saved_sessions = SessionRegistry.sessions
+            SessionRegistry.sessions = {}
+
+            vim.cmd("tabnew")
+
+            local on_submit_spy = spy.new(function() end)
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            for _, w in ipairs({ widget, widget2 }) do
+                pcall(function()
+                    w:destroy()
+                end)
+            end
+            widget = nil
+            widget2 = nil
+
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+
+            SessionRegistry.sessions = saved_sessions
+            Config.windows.position = original_position
+        end)
+
+        --- Registers `w`'s session under `key` so size seeding can reach it
+        --- @param key integer
+        --- @param w any
+        local function register_session(key, w)
+            --- @type any
+            local session = { widget = w }
+            SessionRegistry.sessions[key] = session
+        end
+
+        it("uses the configured width for the first widget", function()
+            widget:show({ focus_prompt = false })
+
+            -- 40% of the 80-column headless editor
+            assert.equal(32, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+
+        it("preserves a manual chat width across hide and show", function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+
+            widget:hide()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+
+        it("inherits the stored width of an existing session", function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            widget:hide()
+            register_session(1, widget)
+
+            local on_submit_spy = spy.new(function() end)
+            widget2 = ChatWidget:new(on_submit_spy --[[@as function]])
+            register_session(2, widget2)
+            widget2:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget2.win_nrs.chat))
+        end)
+
+        it("preserves height but not width in the bottom layout", function()
+            widget.current_position = "bottom"
+            widget:show({ focus_prompt = false })
+            local initial_width =
+                vim.api.nvim_win_get_width(widget.win_nrs.chat)
+            vim.api.nvim_win_set_height(widget.win_nrs.chat, 12)
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 20)
+
+            widget:hide()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(12, vim.api.nvim_win_get_height(widget.win_nrs.chat))
+            assert.equal(
+                initial_width,
+                vim.api.nvim_win_get_width(widget.win_nrs.chat)
+            )
+        end)
+
+        it("restores the width after rotating away and back", function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+
+            widget:rotate_layout({ "right", "bottom" })
+            assert.equal("bottom", widget.current_position)
+            widget:rotate_layout({ "right", "bottom" })
+
+            assert.equal("right", widget.current_position)
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
         end)
     end)
 

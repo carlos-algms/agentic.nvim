@@ -11,6 +11,7 @@ local Logger = require("agentic.utils.logger")
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field focus_prompt? boolean
 --- @field position agentic.UserConfig.Windows.Position
+--- @field size? agentic.ui.ChatWidget.Size Overrides the configured chat size on the axis this layout controls
 
 --- @class agentic.ui.WidgetLayout
 local WidgetLayout = {}
@@ -252,10 +253,14 @@ local function show_layout(params, position)
         split = split_direction,
     }
 
+    local size = params.size or {}
+
     if is_bottom then
-        chat_opts.height = WidgetLayout.calculate_height(Config.windows.height)
+        chat_opts.height = size.height
+            or WidgetLayout.calculate_height(Config.windows.height)
     else
-        chat_opts.width = WidgetLayout.calculate_width(Config.windows.width)
+        chat_opts.width = size.width
+            or WidgetLayout.calculate_width(Config.windows.width)
     end
 
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
