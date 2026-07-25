@@ -389,6 +389,43 @@ describe("agentic.SessionRegistry", function()
             assert.is_nil(SessionRegistry._most_recent)
         end)
 
+        it(
+            "clears _previous_most_recent when the last session is destroyed",
+            function()
+                local only = create_mock_session()
+                only.session_key = 1
+                SessionRegistry.sessions[1] = only
+                SessionRegistry.set_most_recent(1)
+
+                SessionRegistry.destroy(1)
+
+                -- The repoint itself is what plants the corpse: it writes the
+                -- outgoing `_most_recent` — the session just destroyed — into
+                -- `_previous_most_recent`, pinning its whole object graph.
+                assert.is_nil(SessionRegistry._most_recent)
+                assert.is_nil(SessionRegistry._previous_most_recent)
+            end
+        )
+
+        it(
+            "clears _previous_most_recent when that session is destroyed",
+            function()
+                local displaced = create_mock_session()
+                local current = create_mock_session()
+                displaced.session_key = 1
+                current.session_key = 2
+                SessionRegistry.sessions[1] = displaced
+                SessionRegistry.sessions[2] = current
+                SessionRegistry.set_most_recent(1)
+                SessionRegistry.set_most_recent(2)
+
+                SessionRegistry.destroy(1)
+
+                assert.equal(current, SessionRegistry._most_recent)
+                assert.is_nil(SessionRegistry._previous_most_recent)
+            end
+        )
+
         it("leaves _most_recent alone when another key is destroyed", function()
             local kept = create_mock_session()
             local other = create_mock_session()

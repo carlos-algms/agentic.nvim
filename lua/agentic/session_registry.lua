@@ -156,6 +156,19 @@ function SessionRegistry.destroy(session_key)
         remember_most_recent(SessionRegistry.list()[1])
     end
 
+    -- AFTER the repoint, never before: `remember_most_recent` demotes the
+    -- outgoing `_most_recent` — the session being destroyed — into
+    -- `_previous_most_recent`, so a pre-clear would be overwritten by the branch
+    -- above. `list` only filters the corpse out of the ORDER; the cursor keeps a
+    -- hard reference, pinning the chat history, widget and diff coordinator for
+    -- the rest of the Neovim session.
+    -- Regression: session_registry.test.lua::"clears _previous_most_recent when
+    -- the last session is destroyed" and ::"clears _previous_most_recent when
+    -- that session is destroyed".
+    if SessionRegistry._previous_most_recent == session then
+        SessionRegistry._previous_most_recent = nil
+    end
+
     local ok, err = pcall(function()
         session:destroy()
     end)
