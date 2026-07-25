@@ -190,6 +190,44 @@ end)()
         assert.equal(tab2, session_tab(1))
     end)
 
+    it("keeps a hidden session hidden when its file list changes", function()
+        child.lua(
+            [[ require("agentic").open({ auto_add_to_context = false }) ]]
+        )
+        child.flush()
+
+        local tab = child.api.nvim_get_current_tabpage()
+
+        child.lua([[
+            require("agentic").new_session({ auto_add_to_context = false })
+        ]])
+        child.flush()
+
+        -- A background session's content callback must never surface its widget:
+        -- `show_session` is the only path allowed to make one visible, and two
+        -- widgets in one tab leave `close` hiding whichever `pairs` reaches first
+        -- and stranding the other.
+        child.lua([[
+            require("agentic.session_registry").sessions[1].file_list:add(
+                vim.fn.fnamemodify("README.md", ":p")
+            )
+        ]])
+        child.flush()
+
+        assert.equal(-1, session_tab(1))
+        assert.same({ "AgenticChat", "AgenticInput" }, widget_filetypes(tab))
+
+        -- Not lost: the panel buffer is written before the callback fires, and
+        -- `show` opens every panel whose buffer is non-empty.
+        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.flush()
+
+        assert.same(
+            { "AgenticChat", "AgenticFiles", "AgenticInput" },
+            widget_filetypes(tab)
+        )
+    end)
+
     it("keeps the previous session alive when a new one is created", function()
         child.lua([[ require("agentic").open() ]])
         child.flush()

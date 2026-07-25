@@ -155,7 +155,7 @@ function SessionManager:new(tab_page_id)
             self.widget:move_cursor_to(self.widget.win_nrs.input)
         else
             self.widget:render_header("files", tostring(#file_list:get_files()))
-            self.widget:show({ focus_prompt = false })
+            self.widget:show_if_visible()
         end
     end)
 
@@ -170,7 +170,7 @@ function SessionManager:new(tab_page_id)
                     "code",
                     tostring(#code_selection:get_selections())
                 )
-                self.widget:show({ focus_prompt = false })
+                self.widget:show_if_visible()
             end
         end
     )
@@ -187,14 +187,14 @@ function SessionManager:new(tab_page_id)
                     "diagnostics",
                     tostring(#diagnostics_list:get_diagnostics())
                 )
-                self.widget:show({ focus_prompt = false })
+                self.widget:show_if_visible()
             end
         end
     )
 
     self.todo_list = TodoList:new(self.widget.buf_nrs.todos, function(todo_list)
         if not todo_list:is_empty() then
-            self.widget:show({ focus_prompt = false })
+            self.widget:show_if_visible()
         end
     end, function()
         self.widget:close_optional_window("todos")

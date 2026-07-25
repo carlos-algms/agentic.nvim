@@ -265,6 +265,14 @@ describe("agentic.SessionRegistry", function()
             assert.equal(session, SessionRegistry.sessions[1])
         end)
 
+        it("reuses the session it created on the next resolve", function()
+            local first = SessionRegistry.resolve()
+            local second = SessionRegistry.resolve()
+
+            assert.equal(first, second)
+            assert.equal(1, #SessionRegistry.list())
+        end)
+
         it(
             "creates a session when _most_recent is no longer registered",
             function()

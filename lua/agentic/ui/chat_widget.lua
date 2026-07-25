@@ -168,6 +168,26 @@ function ChatWidget:show(opts)
     WidgetLayout.open(params)
 end
 
+--- Re-renders the layout ONLY when the widget is already on screen somewhere.
+--- Content callbacks (files, code, diagnostics, todos) fire for BACKGROUND
+--- sessions too — a `plan` update needs no user action at all — and a bare `show`
+--- would build a SECOND widget in the tab the user is looking at, bypassing
+--- `SessionRegistry.show_session`. Measured: four widget windows in one tab, and
+--- `Agentic.close` then hid whichever `pairs` reached first and stranded the
+--- other.
+--- Skipping loses nothing: the panel buffer is written before the callback runs,
+--- and `show` opens every panel whose buffer is non-empty, so the content appears
+--- when the user opens the session. Same gate as `DiffCoordinator:show`.
+--- Regression: test_multi_session.lua::"keeps a hidden session hidden when its
+--- file list changes".
+function ChatWidget:show_if_visible()
+    if not self:visible_tab() then
+        return
+    end
+
+    self:show({ focus_prompt = false })
+end
+
 --- Size the widget starts from when it has never been shown: the most recently
 --- visible session's remembered size, so switching sessions does not resize the
 --- sidebar. Copied, so two widgets never share one table.

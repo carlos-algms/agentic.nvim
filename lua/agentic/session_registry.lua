@@ -77,6 +77,20 @@ function SessionRegistry.resolve(callback)
         instance = registered_most_recent() or SessionRegistry.create()
     end
 
+    -- Resolve-only entry points (`stop_generation`, `restore_session`,
+    -- `restore_session_by_id`) never reach `show_session`, so nothing else would
+    -- publish the resolved session. Without this write `_most_recent` stays nil
+    -- and every call creates another session — and another ACP subprocess.
+    -- Measured: three `stop_generation` calls, three sessions.
+    -- Written HERE and not in `create`: `create` must leave `_most_recent`
+    -- pointing at the PREVIOUS session while the new widget is built, which is
+    -- what seeds its size.
+    -- Regression: session_registry.test.lua::"reuses the session it created on
+    -- the next resolve".
+    if instance then
+        SessionRegistry._most_recent = instance
+    end
+
     if instance and callback then
         local ok, err = pcall(callback, instance)
 
