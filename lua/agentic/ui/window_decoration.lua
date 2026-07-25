@@ -177,6 +177,8 @@ end
 
 --- The header parts owned by the widget holding `bufnr`, or a fresh copy of the
 --- defaults when no widget owns it. Callers mutate the returned table in place.
+--- That persists ONLY on the owned path; on the unowned fallback every call
+--- returns a new copy, so the mutation is silently discarded.
 --- @param bufnr integer
 --- @return agentic.ui.ChatWidget.Headers
 function WindowDecoration.get_headers_state(bufnr)

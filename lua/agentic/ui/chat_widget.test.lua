@@ -1316,21 +1316,21 @@ describe("agentic.ui.ChatWidget", function()
                 "submit: <CR> | change mode: <S-Tab>",
                 headers.input.suffix
             )
-        end)
-
-        it("writes the suffix onto the widget's own header state", function()
-            assert.equal(
-                "submit: <CR> | change mode: <S-Tab>",
-                widget.headers.input.suffix
-            )
+            -- Identity, not deep equality: the accessor must hand back the
+            -- widget's OWN table so caller mutations persist without a
+            -- write-back step. `assert.equal` deep-compares, so it would still
+            -- pass against a copy; only `==` pins ownership.
+            assert.is_true(headers == widget.headers)
         end)
     end)
 
     describe("header state ownership", function()
         local widget_a
         local widget_b
+        local base_tabs
 
         before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
             vim.cmd("tabnew")
             widget_a =
                 ChatWidget:new(spy.new(function() end) --[[@as function]])
@@ -1338,15 +1338,24 @@ describe("agentic.ui.ChatWidget", function()
                 ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
+        -- Closes down to the pre-case tab count instead of a fixed single
+        -- `tabclose`: the hide/show case opens a SECOND tab, and a red
+        -- assertion there used to skip its trailing cleanup and leak a tabpage
+        -- into every later case in this file.
         after_each(function()
             for _, widget in ipairs({ widget_a, widget_b }) do
                 pcall(function()
                     widget:destroy()
                 end)
             end
-            pcall(function()
-                vim.cmd("tabclose")
-            end)
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose")
+                end)
+                if not ok then
+                    break
+                end
+            end
         end)
 
         it("keeps each widget's header context independent", function()
@@ -1357,7 +1366,10 @@ describe("agentic.ui.ChatWidget", function()
             local headers_b =
                 WindowDecoration.get_headers_state(widget_b.buf_nrs.chat)
 
-            assert.equal("context A", widget_a.headers.chat.context)
+            assert.equal(
+                "context A",
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.chat).chat.context
+            )
             assert.is_nil(headers_b.chat.context)
         end)
 
@@ -1376,32 +1388,28 @@ describe("agentic.ui.ChatWidget", function()
                     "3 files",
                     WindowDecoration.get_headers_state(widget_a.buf_nrs.input).input.context
                 )
-
-                widget_a:hide()
-                pcall(function()
-                    vim.cmd("tabclose")
-                end)
             end
         )
 
-        it("returns the default panels for a bufnr no widget owns", function()
-            local bufnr = vim.api.nvim_create_buf(false, true)
+        it(
+            "hands out a fresh default table per call when no widget owns the bufnr",
+            function()
+                local bufnr = vim.api.nvim_create_buf(false, true)
 
-            local headers = WindowDecoration.get_headers_state(bufnr)
+                -- The owned path returns the widget's own table, which callers
+                -- MUST mutate in place. The unowned fallback cannot honour that:
+                -- each call deep-copies the module defaults, so a mutation here is
+                -- discarded rather than shared with the next caller.
+                WindowDecoration.get_headers_state(bufnr).chat.context =
+                    "leaked"
+                local second = WindowDecoration.get_headers_state(bufnr)
 
-            for _, panel in ipairs({
-                "chat",
-                "input",
-                "code",
-                "files",
-                "diagnostics",
-                "todos",
-            }) do
-                assert.is_not_nil(headers[panel])
+                -- Deleted before asserting so a red assertion cannot leak the buffer.
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+
+                assert.is_nil(second.chat.context)
             end
-
-            vim.api.nvim_buf_delete(bufnr, { force = true })
-        end)
+        )
     end)
 
     describe("_render_dynamic_headers", function()

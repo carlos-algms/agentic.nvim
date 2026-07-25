@@ -532,14 +532,15 @@ describe("WindowDecoration.render_header", function()
             local WindowDecoration = require("agentic.ui.window_decoration")
 
             local bufnr = vim.api.nvim_create_buf(false, true)
-            -- Mirrors the hidden chat float: hidden and non-focusable.
+            -- Only `focusable = false` here. The real hidden chat float is
+            -- also `hide = true`, but setting both would pass whichever axis
+            -- the lookup actually filters on; this isolates the focusable one.
             _G.target_win = vim.api.nvim_open_win(bufnr, false, {
                 relative = "editor",
                 row = 0,
                 col = 0,
                 width = 10,
                 height = 5,
-                hide = true,
                 focusable = false,
             })
 
