@@ -40,7 +40,6 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field current_position agentic.UserConfig.Windows.Position
 --- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
---- @field _guard_augroup? integer BufferGuard autocmd group ID
 --- @field _winclosed_augroup? integer WinClosed autocmd group ID
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
@@ -233,11 +232,6 @@ end
 function ChatWidget:destroy()
     WidgetRegistry.unregister(self)
 
-    if self._guard_augroup then
-        BufferGuard.detach(self._guard_augroup)
-        self._guard_augroup = nil
-    end
-
     if self._winclosed_augroup then
         pcall(vim.api.nvim_del_augroup_by_id, self._winclosed_augroup)
         self._winclosed_augroup = nil
@@ -340,15 +334,9 @@ function ChatWidget:_initialize()
 
     self:_bind_keymaps()
 
-    self._guard_augroup = BufferGuard.attach({
-        get_tab_page_id = function()
-            return self:visible_tab()
-        end,
-        find_target_window = function()
-            return self:find_first_non_widget_window()
-                or self:open_editor_window()
-        end,
-    })
+    -- One shared augroup for every widget; the handler resolves the owning
+    -- widget per event through `WidgetRegistry`.
+    BufferGuard.ensure()
 
     -- Track whether we're programmatically closing windows
     -- to avoid recursive hide() calls
@@ -689,18 +677,13 @@ local EXCLUDED_FILETYPES = {
 
 --- Finds the first window in the widget's own tabpage that belongs to no widget.
 ---
---- Two independent exclusions, both required:
---- 1. `vim.w[winid].agentic_bufnr` marks every window a widget created, this one
----    or another session's. BufferGuard's repurpose path swaps an unregistered
----    scratch buffer into such a window, so the buffer check alone would hand
----    that window back as a redirect target and bounce the file straight into
----    the chat window. Regression: chat_widget.test.lua::"never returns a
----    window a widget created, even after its buffer was swapped".
---- 2. Any registered widget buffer, so one session cannot eject a foreign
----    buffer into a window showing another session's panel. A window that no
----    widget created has no `agentic_bufnr`, so check 1 cannot see it.
----    Regression: chat_widget.test.lua::"never returns a window showing a
----    registered widget buffer it did not create".
+--- Excludes any window showing a registered widget buffer, so one session cannot
+--- eject a foreign buffer into a window showing another session's panel.
+--- `BufferGuard`'s repurpose path re-registers the replacement buffer it swaps
+--- in, so every window a widget created shows a registered buffer and this one
+--- check sees them all.
+--- Regression: chat_widget.test.lua::"never returns a window showing a
+--- registered widget buffer it did not create".
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
     local tab_page_id = self:visible_tab()
@@ -714,7 +697,7 @@ function ChatWidget:find_first_non_widget_window()
     for _, winid in ipairs(all_windows) do
         -- Skip floating windows (pickers, popups, etc.)
         local win_config = vim.api.nvim_win_get_config(winid)
-        if win_config.relative == "" and not vim.w[winid].agentic_bufnr then
+        if win_config.relative == "" then
             local bufnr = vim.api.nvim_win_get_buf(winid)
             local ft = vim.bo[bufnr].filetype
             if not widget_bufnrs[bufnr] and not EXCLUDED_FILETYPES[ft] then

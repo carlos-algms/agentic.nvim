@@ -271,15 +271,25 @@ describe("agentic.ui.ChatWidget", function()
                     end
                 )
 
-                it("guard is cleaned up after destroy", function()
-                    widget:show()
-                    widget:destroy()
+                it(
+                    "leaves the shared buffer guard alive after destroy",
+                    function()
+                        widget:show()
+                        widget:destroy()
 
-                    assert.is_nil(widget._guard_augroup)
+                        -- The augroup is module-wide now, so a widget that took it
+                        -- down on destroy would silently disarm every other
+                        -- session's guard.
+                        local autocmds = vim.api.nvim_get_autocmds({
+                            group = "AgenticBufferGuard",
+                            event = "BufEnter",
+                        })
+                        assert.equal(1, #autocmds)
 
-                    -- Prevent double-destroy in after_each
-                    widget = nil
-                end)
+                        -- Prevent double-destroy in after_each
+                        widget = nil
+                    end
+                )
 
                 it(
                     "skips floating windows in find_first_non_widget_window",
@@ -1102,30 +1112,6 @@ describe("agentic.ui.ChatWidget", function()
                 end
             end
         end)
-
-        it(
-            "never returns a window a widget created, even after its buffer was swapped",
-            function()
-                widget:show({ focus_prompt = false })
-
-                -- BufferGuard's repurpose path swaps an unregistered scratch
-                -- buffer into a widget window; only vim.w.agentic_bufnr still
-                -- identifies it. Returning it bounces the redirected file back
-                -- into the widget window.
-                local chat_win = widget.win_nrs.chat
-                local orphan = vim.api.nvim_create_buf(false, true)
-                vim.bo[orphan].buftype = "nofile"
-                vim.api.nvim_win_set_buf(chat_win, orphan)
-
-                assert.is_not.equal(
-                    chat_win,
-                    widget:find_first_non_widget_window()
-                )
-
-                vim.api.nvim_win_set_buf(chat_win, widget.buf_nrs.chat)
-                vim.api.nvim_buf_delete(orphan, { force = true })
-            end
-        )
 
         it(
             "never returns a window showing a registered widget buffer it did not create",

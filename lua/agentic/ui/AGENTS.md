@@ -151,9 +151,11 @@ tests.
   - Overwrites the stored winid and leaks the prior window.
 - `:edit` on a widget buffer
   - Buffer keeps its ID but gains a name and `buftype != "nofile"`.
-    `BufferGuard` detects this on `BufWinEnter` and swaps a fresh scratch buffer
-    into the widget window, redirecting the named buffer out. Re-grep
-    `BufferGuard` for the exact entry point before refactoring.
+    `BufferGuard` detects this on `BufEnter` and swaps a fresh scratch buffer
+    into the widget window, redirecting the named buffer out. The replacement
+    buffer takes over the panel's `buf_nrs` entry and is re-registered, so the
+    single shared augroup can still resolve the window's owner on the next
+    event. Re-grep `BufferGuard` for the exact entry point before refactoring.
 - Mutating nested fields of `vim.t[tab].agentic_headers` in place
   - `vim.t` returns copies; nested edits do not persist. Read via
     `WindowDecoration.get_headers_state`, mutate, write back via
