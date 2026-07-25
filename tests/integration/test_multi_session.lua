@@ -122,6 +122,30 @@ end)()
         assert.same({}, widget_filetypes(tab1))
     end)
 
+    it("closes only the session visible in the current tab", function()
+        child.lua([[ require("agentic").open() ]])
+        child.flush()
+
+        local tab1 = child.api.nvim_get_current_tabpage()
+
+        child.cmd("tabnew")
+
+        -- `close` must not reach `_most_recent`: hiding a widget the user is not
+        -- looking at, in another tab, is never what `close` here means.
+        child.lua([[ require("agentic").close() ]])
+        child.flush()
+
+        assert.equal(tab1, session_tab(1))
+        assert.equal(1, session_count())
+    end)
+
+    it("creates no session when closing with none open", function()
+        child.lua([[ require("agentic").close() ]])
+        child.flush()
+
+        assert.equal(0, session_count())
+    end)
+
     it("renders in its own tab when shown from another one", function()
         child.lua([[ require("agentic").open() ]])
         child.flush()

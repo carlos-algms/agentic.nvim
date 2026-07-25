@@ -9,6 +9,9 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.Agentic
 local Agentic = {}
 
+--- Passing `session` shows that exact session and IGNORES `auto_add_to_context`:
+--- naming a session is a switch, not a context-gathering command, so the selection
+--- or file is added only on the resolved path.
 --- @class agentic.OpenOpts : agentic.ui.ChatWidget.ShowOpts
 --- @field session? integer Session key to open; defaults to the resolved session
 
@@ -46,12 +49,23 @@ function Agentic.open(opts)
     end)
 end
 
---- Closes the chat widget for the current tab page
+--- Hides the session visible in the current tab page, and nothing else
 --- Safe to call multiple times
+--- Never routed through `SessionRegistry.resolve`: it falls back to
+--- `_most_recent`, so closing from a tab with no widget would hide the widget the
+--- user is looking at in ANOTHER tab, and on an empty registry `resolve` creates a
+--- session — spawning an ACP subprocess just to hide it.
+--- Regression: test_multi_session.lua::"closes only the session visible in the
+--- current tab" and ::"creates no session when closing with none open".
 function Agentic.close()
-    SessionRegistry.resolve(function(session)
-        session.widget:hide()
-    end)
+    local current_tab = vim.api.nvim_get_current_tabpage()
+
+    for _, session in pairs(SessionRegistry.sessions) do
+        if session.widget:visible_tab() == current_tab then
+            session.widget:hide()
+            return
+        end
+    end
 end
 
 --- Toggles the chat widget in the current tab page
@@ -417,35 +431,47 @@ local function apply_provider_switch(provider_name)
         -- key, and it is what repoints `_most_recent` at it.
         local new_key = new_session.session_key
 
-        if widget_was_open and new_key then
-            --- @type integer|nil
-            local anchor_tab = nil
+        if not new_key then
+            return
+        end
 
-            if anchor_win and vim.api.nvim_win_is_valid(anchor_win) then
-                anchor_tab = vim.api.nvim_win_get_tabpage(anchor_win)
-            end
+        if not widget_was_open then
+            -- Nothing to show, but the old key is gone: without this
+            -- `_most_recent` stays nil and the next `Agentic.open` creates a THIRD
+            -- session, leaving the replayed history reachable only via the picker.
+            -- Regression: agentic.test.lua::"reuses the switched session on the
+            -- next open".
+            SessionRegistry.set_most_recent(new_key)
+            return
+        end
 
-            if
-                anchor_win
-                and anchor_tab
-                and anchor_tab ~= vim.api.nvim_get_current_tabpage()
-            then
-                -- `focus_prompt = false` is required, not cosmetic: the focus hop
-                -- is scheduled inside `show_layout`, so it runs after
-                -- `nvim_win_call` has restored the window and would drag the
-                -- cursor into another tabpage.
-                -- Regression: agentic.test.lua::"rebuilds the widget in the
-                -- session's tab without moving the cursor".
-                vim.api.nvim_win_call(anchor_win, function()
-                    SessionRegistry.show_session(new_key, {
-                        focus_prompt = false,
-                    })
-                end)
-            else
-                -- Same tab, or no surviving anchor: the current tab is where it
-                -- goes, focused exactly as before.
-                SessionRegistry.show_session(new_key)
-            end
+        --- @type integer|nil
+        local anchor_tab = nil
+
+        if anchor_win and vim.api.nvim_win_is_valid(anchor_win) then
+            anchor_tab = vim.api.nvim_win_get_tabpage(anchor_win)
+        end
+
+        if
+            anchor_win
+            and anchor_tab
+            and anchor_tab ~= vim.api.nvim_get_current_tabpage()
+        then
+            -- `focus_prompt = false` is required, not cosmetic: the focus hop is
+            -- scheduled inside `show_layout`, so it runs after `nvim_win_call`
+            -- has restored the window and would drag the cursor into another
+            -- tabpage.
+            -- Regression: agentic.test.lua::"rebuilds the widget in the
+            -- session's tab without moving the cursor".
+            vim.api.nvim_win_call(anchor_win, function()
+                SessionRegistry.show_session(new_key, {
+                    focus_prompt = false,
+                })
+            end)
+        else
+            -- Same tab, or no surviving anchor: the current tab is where it goes,
+            -- focused exactly as before.
+            SessionRegistry.show_session(new_key)
         end
     end)
 end

@@ -195,6 +195,29 @@ describe("agentic: switch_provider", function()
         )
     end)
 
+    it("reuses the switched session on the next open", function()
+        local Agentic = require("agentic")
+
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+        assert.is_false(session.widget:is_open())
+
+        Agentic.switch_provider({ provider = "ClosedWidgetProvider" })
+        flush_schedule()
+
+        local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+        assert.is_not_nil(replacement)
+
+        -- The switch must repoint `_most_recent`, closed widget or not: otherwise
+        -- `resolve` finds nothing and `open` spawns a THIRD session, leaving the
+        -- replayed history reachable only through the picker.
+        Agentic.open()
+        flush_schedule()
+
+        assert.is_nil(SessionRegistry.sessions[3])
+        assert.equal(replacement, SessionRegistry.resolve())
+    end)
+
     it("blocks switch when session is initializing", function()
         local Agentic = require("agentic")
 

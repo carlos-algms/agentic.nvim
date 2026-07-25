@@ -184,6 +184,21 @@ function SessionRegistry.show_session(session_key, opts)
     target.widget:show(opts)
 end
 
+--- Points `_most_recent` at a registered session WITHOUT showing it.
+--- `show_session` is the choke point for everything visible; this is the one path
+--- that has nothing to show: the provider switch replaces a session whose widget
+--- was already closed, and leaving `_most_recent` nil makes the next `resolve`
+--- create yet another session instead of returning the replacement.
+--- Regression: agentic.test.lua::"reuses the switched session on the next open".
+--- @param session_key integer
+function SessionRegistry.set_most_recent(session_key)
+    local session = SessionRegistry.sessions[session_key]
+
+    if session then
+        SessionRegistry._most_recent = session
+    end
+end
+
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
 function SessionRegistry.select_provider(on_selected)
     local available_providers = ACPHealth.get_default_provider_names()
