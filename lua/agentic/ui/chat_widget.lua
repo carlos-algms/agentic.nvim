@@ -46,7 +46,7 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
---- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Read by `WindowDecoration.get_headers_state`, which mutates it in place
+--- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Returned by `WindowDecoration.get_headers_state`, whose callers mutate it in place
 --- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget

@@ -466,7 +466,10 @@ local function set_buffer_name(
 end
 
 --- Renders a header for a window, handling user customization, winbar, and buffer naming
---- Derives all context from bufnr: winid, tab_page_id, and dynamic header from vim.t
+--- Everything is derived from `bufnr`: the header parts come from the owning
+--- widget via `get_headers_state`, and the target window from
+--- `find_focusable_win`. `context` is stored on the header parts even when no
+--- window is showing the buffer; only the winbar and buffer-name writes need one.
 --- @param bufnr integer Buffer number - stable reference to derive window and tab context
 --- @param window_name string Name of the window (for Config.headers lookup and error messages)
 --- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
@@ -478,12 +481,6 @@ function WindowDecoration.render_header(
     session_state
 )
     vim.schedule(function()
-        local winid = find_focusable_win(bufnr)
-        if winid == nil then
-            -- Buffer not displayed in any focusable window, skip rendering
-            return
-        end
-
         local headers = WindowDecoration.get_headers_state(bufnr)
         local dynamic_header = headers[window_name]
 
@@ -499,8 +496,20 @@ function WindowDecoration.render_header(
 
         -- `headers` is the owning widget's own table, so mutating in place
         -- persists it. No write-back step.
+        -- Stored BEFORE the window lookup: `_set_mode_to_chat_header` renders
+        -- `"Mode: X"` from `current_mode_update` and from session restore, and
+        -- neither is followed by a synchronous `show()`. Returning early here
+        -- dropped the context, and nothing re-supplies it — `WidgetLayout.open`
+        -- and `_render_dynamic_headers` both re-render with no context — so a
+        -- background session's chat winbar lost `Mode: X` on open.
         if context ~= nil then
             dynamic_header.context = context
+        end
+
+        local winid = find_focusable_win(bufnr)
+        if winid == nil then
+            -- Buffer not displayed in any focusable window, nothing to paint
+            return
         end
 
         local callback_session_state = nil

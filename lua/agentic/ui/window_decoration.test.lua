@@ -550,6 +550,37 @@ describe("WindowDecoration.render_header", function()
         assert.equal("", child.lua_get([[vim.wo[_G.target_win].winbar]]))
     end)
 
+    it("stores the context when the widget has no focusable window", function()
+        -- `_set_mode_to_chat_header` -> `render_header("chat", "Mode: X")` runs
+        -- from the provider `current_mode_update` handler and from session
+        -- restore, neither followed by a synchronous `show()`. Dropping the
+        -- context there loses `Mode: X` from a background session's winbar
+        -- until the next mode change: `WidgetLayout.open` and
+        -- `_render_dynamic_headers` both re-render with no context argument.
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+
+            -- No window at all: mirrors a hidden widget, whose chat buffer is
+            -- held only by the non-focusable hidden float.
+            _G.bufnr = vim.api.nvim_create_buf(false, true)
+            WidgetRegistry.register({
+                buf_nrs = { chat = _G.bufnr },
+                headers = WindowDecoration.default_headers(),
+            })
+
+            WindowDecoration.render_header(_G.bufnr, "chat", "Mode: X", nil)
+        ]])
+        child.flush()
+
+        assert.equal(
+            "Mode: X",
+            child.lua_get(
+                [[require("agentic.ui.window_decoration").get_headers_state(_G.bufnr).chat.context]]
+            )
+        )
+    end)
+
     it("legacy single-arg header fn still works", function()
         child.lua([[
             local WindowDecoration = require("agentic.ui.window_decoration")
