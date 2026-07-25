@@ -71,7 +71,8 @@ function ChatWidget:new(tab_page_id, on_submit_input)
 end
 
 --- The tabpage the widget is currently visible in, derived from its live chat
---- window. Nothing stores a tabpage.
+--- window instead of read from stored state. `self.tab_page_id` still exists;
+--- its removal is pending.
 --- The hidden chat float lives outside `win_nrs`, so it never counts as visible.
 --- @return integer|nil tabpage nil when the widget is not visible
 function ChatWidget:visible_tab()
@@ -82,7 +83,7 @@ function ChatWidget:visible_tab()
 
     -- 0.11.5 Linux post-tabclose segfault, see WidgetLayout.close.
     local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
-    if not tab_ok then
+    if not tab_ok or not vim.api.nvim_tabpage_is_valid(win_tab) then
         return nil
     end
 
