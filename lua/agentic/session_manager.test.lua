@@ -1975,6 +1975,25 @@ describe("agentic.SessionManager", function()
             return session, captured_create_callback --[[@as fun(response: table|nil, err: table|nil)]]
         end
 
+        it(
+            "sends no session/new when destroy lands before the bootstrap",
+            function()
+                -- `SessionRegistry.create` schedules the bootstrap, so a create and a
+                -- destroy in the SAME tick leave it queued against a dead manager:
+                -- `_cancel_session` over emptied `buf_nrs`, a spinner on a deleted
+                -- buffer, and a real `session/new` on the wire.
+                local session = SessionManager:new() --[[@as agentic.SessionManager]]
+
+                session:destroy()
+
+                assert.has_no_errors(function()
+                    flush_schedule()
+                end)
+
+                assert.is_nil(captured_create_callback)
+            end
+        )
+
         it("cancels an ACP session that arrives after destroy", function()
             local session, fire_create_response = pending_session()
 
@@ -2182,6 +2201,27 @@ describe("agentic.SessionManager", function()
             assert.equal("test-session-123", data.session_id)
             assert.equal(1, data.tab_page_id)
             assert.equal(mock_request, data.request)
+        end)
+
+        it("answers a request that lands after destroy", function()
+            -- The only handler where "return early" is not a no-op: it owes a
+            -- JSON-RPC response, and the provider subprocess is shared across
+            -- every session (ADR 0004), so an unanswered request outlives the
+            -- session that caused it.
+            ---@diagnostic disable-next-line: invisible
+            session._destroyed = true
+
+            local handlers = session:_build_handlers()
+            local callback_spy = spy.new(function() end)
+
+            handlers.on_request_permission({
+                sessionId = "test-session-123",
+                toolCall = { toolCallId = "tool-1", kind = "edit" },
+                options = {},
+            }, callback_spy --[[@as function]])
+
+            assert.spy(callback_spy).was.called(1)
+            assert.is_nil(callback_spy.calls[1][1])
         end)
 
         it("does not fail when hook is not configured", function()

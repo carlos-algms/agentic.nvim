@@ -7,17 +7,19 @@ local ACPHealth = require("agentic.acp.acp_health")
 --- @field sessions table<integer, agentic.SessionManager|nil> Map: session_key -> SessionManager instance
 --- @field _next_id integer Last assigned session key
 --- @field _most_recent? agentic.SessionManager Most recently visible session
+--- @field _previous_most_recent? agentic.SessionManager The one it displaced
 local SessionRegistry = {
     sessions = {},
     _next_id = 0,
     _most_recent = nil,
+    _previous_most_recent = nil,
 }
 
---- Returns `_most_recent` only while it is still registered. A destroyed session
---- leaves the field pointing at a session that no longer exists.
+--- Returns `session` only while it is still registered. A destroyed session
+--- leaves the recency cursors pointing at a session that no longer exists.
+--- @param session agentic.SessionManager|nil
 --- @return agentic.SessionManager|nil
-local function registered_most_recent()
-    local session = SessionRegistry._most_recent
+local function registered(session)
     local session_key = session and session.session_key
 
     if session_key and SessionRegistry.sessions[session_key] == session then
@@ -25,6 +27,24 @@ local function registered_most_recent()
     end
 
     return nil
+end
+
+--- The single writer for both recency cursors. `_previous_most_recent` is what
+--- makes `list` a real recency order instead of "the incoming session, then
+--- ascending key": every path that shows a session repoints `_most_recent` at it
+--- BEFORE its widget's first `show`, so the incoming session is always `list[1]`
+--- with no size of its own, and without the second cursor `_inherited_size` falls
+--- through to the LOWEST-KEYED donor rather than the one the user last used.
+--- Regression: test_multi_session.lua::"inherits the width of the session shown
+--- before it".
+--- @param session agentic.SessionManager|nil
+local function remember_most_recent(session)
+    if session == SessionRegistry._most_recent then
+        return
+    end
+
+    SessionRegistry._previous_most_recent = SessionRegistry._most_recent
+    SessionRegistry._most_recent = session
 end
 
 --- Creates a new session and registers it under a fresh session key
@@ -81,7 +101,8 @@ end
 --- point".
 --- @return agentic.SessionManager|nil
 function SessionRegistry.current()
-    return SessionRegistry.visible_here() or registered_most_recent()
+    return SessionRegistry.visible_here()
+        or registered(SessionRegistry._most_recent)
 end
 
 --- Resolves the session the user is acting on: the one visible in the current
@@ -104,7 +125,7 @@ function SessionRegistry.resolve_or_create(callback)
     -- Regression: session_registry.test.lua::"reuses the session it created on
     -- the next resolve".
     if instance then
-        SessionRegistry._most_recent = instance
+        remember_most_recent(instance)
     end
 
     if instance and callback then
@@ -131,8 +152,8 @@ function SessionRegistry.destroy(session_key)
 
     if SessionRegistry._most_recent == session then
         -- The key is already gone, so `list` skips the destroyed session and
-        -- orders the rest by ascending key.
-        SessionRegistry._most_recent = SessionRegistry.list()[1]
+        -- hands back the next most recent one.
+        remember_most_recent(SessionRegistry.list()[1])
     end
 
     local ok, err = pcall(function()
@@ -143,8 +164,9 @@ function SessionRegistry.destroy(session_key)
     end
 end
 
---- Lists every registered session: `_most_recent` first when it is still
---- registered, then the rest by ascending session key.
+--- Lists every registered session in recency order: `_most_recent`, then the
+--- session it displaced, then the rest by ascending session key. Unregistered
+--- cursors are skipped, and no session appears twice.
 --- @return agentic.SessionManager[] sessions
 function SessionRegistry.list()
     --- @type integer[]
@@ -156,21 +178,24 @@ function SessionRegistry.list()
 
     table.sort(keys)
 
-    local most_recent = registered_most_recent()
-
     --- @type agentic.SessionManager[]
     local sessions = {}
+    --- @type table<agentic.SessionManager, boolean>
+    local seen = {}
 
-    if most_recent then
-        sessions[1] = most_recent
-    end
-
-    for _, key in ipairs(keys) do
-        local session = SessionRegistry.sessions[key]
-
-        if session and session ~= most_recent then
+    --- @param session agentic.SessionManager|nil
+    local function push(session)
+        if session and not seen[session] then
+            seen[session] = true
             sessions[#sessions + 1] = session
         end
+    end
+
+    push(registered(SessionRegistry._most_recent))
+    push(registered(SessionRegistry._previous_most_recent))
+
+    for _, key in ipairs(keys) do
+        push(SessionRegistry.sessions[key])
     end
 
     return sessions
@@ -210,7 +235,7 @@ function SessionRegistry.show_session(session_key, opts)
         target.widget:hide(true)
     end
 
-    SessionRegistry._most_recent = target
+    remember_most_recent(target)
     target.widget:show(opts)
 end
 
@@ -226,7 +251,7 @@ function SessionRegistry.set_most_recent(session_key)
     local session = SessionRegistry.sessions[session_key]
 
     if session then
-        SessionRegistry._most_recent = session
+        remember_most_recent(session)
     end
 end
 

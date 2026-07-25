@@ -188,11 +188,19 @@ function ChatWidget:show_if_visible()
     self:show({ focus_prompt = false })
 end
 
---- Size the widget starts from when it has never been shown: the most recently
---- visible session's remembered size, so switching sessions does not resize the
+--- Size the widget starts from when it has never been shown: the remembered size
+--- of the session the user was last on, so switching sessions does not resize the
 --- sidebar. Copied, so two widgets never share one table.
 --- Read at `show` time, not at construction: the outgoing widget's `hide` — which
 --- refreshes its size — runs between the two.
+--- The donor comes from `SessionRegistry.list`, and its recency order is what
+--- makes this correct. THIS session is already `_most_recent` by the time `show`
+--- runs — every path repoints the cursor before showing — so `list[1]` is the
+--- sizeless session being seeded and the donor is `list[2]`, the one it displaced.
+--- Ordering by ascending key instead handed over the LOWEST-KEYED donor, never the
+--- session the user last used.
+--- Regression: test_multi_session.lua::"inherits the width of the session shown
+--- before it".
 --- Only a session carrying THIS layout's axis counts: `_remember_size` stores one
 --- axis per layout, so a `bottom`-only session holds a height and no width, and
 --- stopping at it would drop back to the configured width.

@@ -563,6 +563,135 @@ describe("ACPClient", function()
         end)
     end)
 
+    describe("__handle_request_permission", function()
+        --- @return fun()[] queue, TestStub schedule_stub
+        local function queue_schedules()
+            --- @type fun()[]
+            local queue = {}
+            local schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                queue[#queue + 1] = fn
+            end)
+
+            return queue, schedule_stub
+        end
+
+        --- @return table[] sent decoded JSON-RPC frames
+        local function capture_sent()
+            --- @type table[]
+            local sent = {}
+            transport_send_stub:invokes(function(_self, data)
+                sent[#sent + 1] = vim.json.decode(data)
+            end)
+
+            return sent
+        end
+
+        local REQUEST = {
+            sessionId = "s1",
+            toolCall = { toolCallId = "tc-1", kind = "edit" },
+            options = {
+                {
+                    optionId = "allow_once",
+                    name = "Allow",
+                    kind = "allow_once",
+                },
+            },
+        }
+
+        it("answers cancelled when the subscriber is gone", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue, schedule_stub = queue_schedules()
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            ---@diagnostic disable-next-line: invisible
+            client:__handle_request_permission(7, REQUEST)
+
+            -- `cancel_session` drops the subscriber while the request is queued.
+            -- The JSON-RPC request still owes a response: the subprocess is
+            -- shared across every session (ADR 0004).
+            client.subscribers["s1"] = nil
+
+            for _, fn in ipairs(queue) do
+                fn()
+            end
+            schedule_stub:revert()
+
+            assert.equal(1, #sent)
+            assert.equal(7, sent[1].id)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
+        it(
+            "answers cancelled when the handler resolves with no option",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue, schedule_stub = queue_schedules()
+
+                --- @type agentic.acp.ClientHandlers
+                local handlers = {
+                    on_session_update = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                    -- `PermissionManager:clear` resolves every pending request
+                    -- with a nil option when the session is torn down.
+                    on_request_permission = function(_request, callback)
+                        callback(nil)
+                    end,
+                }
+
+                client.subscribers["s1"] = handlers
+                ---@diagnostic disable-next-line: invisible
+                client:__handle_request_permission(9, REQUEST)
+
+                for _, fn in ipairs(queue) do
+                    fn()
+                end
+                schedule_stub:revert()
+
+                assert.equal(1, #sent)
+                assert.same(
+                    { outcome = { outcome = "cancelled" } },
+                    sent[1].result
+                )
+            end
+        )
+
+        it("answers selected when the user picks an option", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue, schedule_stub = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(_request, callback)
+                    callback("allow_once")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+            ---@diagnostic disable-next-line: invisible
+            client:__handle_request_permission(11, REQUEST)
+
+            for _, fn in ipairs(queue) do
+                fn()
+            end
+            schedule_stub:revert()
+
+            assert.equal(1, #sent)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "allow_once" },
+            }, sent[1].result)
+        end)
+    end)
+
     describe("__build_tool_call_message", function()
         it("handles vim.NIL content and locations (JSON null)", function()
             local client = create_ready_client()

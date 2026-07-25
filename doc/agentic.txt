@@ -616,6 +616,8 @@ agentic.restore_session_by_id({session_id})
                                               *agentic.rotate_layout()*
 agentic.rotate_layout({layouts})
   Rotate through window positions (right -> bottom -> left).
+  Acts on the session visible in the current tab page only, and does
+  nothing when there is none.
 
   Parameters: ~
     {layouts}  (table|nil)  List of position strings. Default:

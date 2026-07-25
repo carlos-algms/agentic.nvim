@@ -120,12 +120,22 @@ function ACPClient:_subscribe(session_id, handlers)
     self.subscribers[session_id] = handlers
 end
 
+--- `on_missing` runs instead of `callback` when no subscriber answers, in either
+--- window: none registered at call time, or one dropped while the callback sat in
+--- the schedule queue. Notifications need nothing there; a JSON-RPC REQUEST does,
+--- and `__handle_request_permission` uses it to answer `cancelled`.
 --- @protected
 --- @param session_id string
 --- @param callback fun(sub: agentic.acp.ClientHandlers): nil
-function ACPClient:__with_subscriber(session_id, callback)
+--- @param on_missing fun()|nil
+function ACPClient:__with_subscriber(session_id, callback, on_missing)
     if not self.subscribers[session_id] then
         Logger.debug("No subscriber found for session_id: " .. session_id)
+
+        if on_missing then
+            on_missing()
+        end
+
         return
     end
 
@@ -140,6 +150,8 @@ function ACPClient:__with_subscriber(session_id, callback)
 
         if subscriber then
             callback(subscriber)
+        elseif on_missing then
+            on_missing()
         end
     end)
 end
@@ -547,18 +559,35 @@ function ACPClient:__handle_request_permission(message_id, request)
 
     local session_id = request.sessionId
 
+    --- A nil option is a cancellation, not a selection with no `optionId`:
+    --- `PermissionManager:clear` resolves every pending request that way when a
+    --- session is torn down, and `SessionManager` answers the same way for a
+    --- request that lands after `destroy`. `selected` without `optionId` is not a
+    --- valid `RequestPermissionOutcome`.
+    --- @param option_id string|nil
+    local function answer(option_id)
+        --- @type agentic.acp.RequestPermissionOutcome
+        local outcome = option_id
+                and { outcome = "selected", optionId = option_id }
+            or { outcome = "cancelled" }
+
+        self:__send_result(message_id, {
+            outcome = outcome,
+        })
+    end
+
     self:__with_subscriber(session_id, function(subscriber)
         local message = self:__build_tool_call_message(request.toolCall)
         subscriber.on_tool_call_update(message)
 
-        subscriber.on_request_permission(request, function(option_id)
-            --- @type agentic.acp.RequestPermissionOutcome
-            local outcome = { outcome = "selected", optionId = option_id }
-
-            self:__send_result(message_id, {
-                outcome = outcome,
-            })
-        end)
+        subscriber.on_request_permission(request, answer)
+    end, function()
+        -- No subscriber left to ask. The request is still outstanding on the
+        -- SHARED provider subprocess (ADR 0004), so it outlives the session that
+        -- caused it unless it is answered here.
+        -- Regression: acp_client.test.lua::"answers cancelled when the
+        -- subscriber is gone".
+        answer(nil)
     end)
 end
 

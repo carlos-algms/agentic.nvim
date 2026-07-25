@@ -62,7 +62,8 @@ _Avoid_: keying anything off a **Tabpage** handle.
 **SessionRegistry**:
 The module-level singleton mapping **Session key** -> **SessionManager**. The
 only sanctioned entry point from `init.lua`. `show_session` is the single path
-that makes a **SessionManager** visible. See ADR 0008.
+that moves a **SessionManager** into a **Tabpage**; three in-place re-render
+sites call `ChatWidget:show` directly. See ADR 0008.
 
 ### Tabpage scope
 

@@ -308,6 +308,55 @@ end)()
         )
     end)
 
+    it("inherits the width of the session shown before it", function()
+        -- TWO donors carrying DIFFERENT widths. With one donor, recency order
+        -- and ascending-key order coincide and a donor scan that falls back to
+        -- the lowest key still looks right.
+        child.lua([[ require("agentic").open() ]])
+        child.flush()
+
+        -- Session 1 is hidden at the configured width; session 2 replaces it and
+        -- is the one the user resizes.
+        child.lua([[ require("agentic").new_session() ]])
+        child.flush()
+
+        child.lua([[
+            local session = require("agentic.session_registry").sessions[2]
+            vim.api.nvim_win_set_width(session.widget.win_nrs.chat, 50)
+        ]])
+
+        child.lua([[ require("agentic").new_session() ]])
+        child.flush()
+
+        assert.equal(
+            50,
+            child.lua_get([[
+                vim.api.nvim_win_get_width(
+                    require("agentic.session_registry").sessions[3].widget.win_nrs.chat
+                )
+            ]])
+        )
+    end)
+
+    it("rotates nothing from a tab with no visible session", function()
+        -- Same tab-locality rule as `Agentic.close`: a widget the user is not
+        -- looking at must not be torn down and rebuilt in the current tabpage.
+        child.lua([[ require("agentic").open() ]])
+        child.flush()
+
+        local tab1 = child.api.nvim_get_current_tabpage()
+
+        child.cmd("tabnew")
+        local tab2 = child.api.nvim_get_current_tabpage()
+
+        child.lua([[ require("agentic").rotate_layout() ]])
+        child.flush()
+
+        assert.equal(tab1, session_tab(1))
+        assert.same({}, widget_filetypes(tab2))
+        assert.equal(1, session_count())
+    end)
+
     it("shows one session per tab simultaneously", function()
         child.lua([[ require("agentic").open() ]])
         child.flush()

@@ -151,6 +151,7 @@ describe("agentic.SessionRegistry", function()
             end
             SessionRegistry._next_id = 0
             SessionRegistry._most_recent = nil
+            SessionRegistry._previous_most_recent = nil
         end
 
         package.loaded["agentic.session_manager"] =
@@ -441,6 +442,31 @@ describe("agentic.SessionRegistry", function()
             assert.equal(second, sessions[1])
             assert.equal(first, sessions[2])
             assert.equal(third, sessions[3])
+        end)
+
+        it("puts the session _most_recent displaced second", function()
+            -- Recency, not ascending key. Every path that shows a session
+            -- repoints `_most_recent` at it BEFORE its widget's first `show`, so
+            -- `ChatWidget:_inherited_size` finds itself at `list[1]` with no size
+            -- and takes the donor from `list[2]`.
+            local first = create_mock_session()
+            local second = create_mock_session()
+            local third = create_mock_session()
+            first.session_key = 1
+            second.session_key = 2
+            third.session_key = 3
+            SessionRegistry.sessions[1] = first
+            SessionRegistry.sessions[2] = second
+            SessionRegistry.sessions[3] = third
+            SessionRegistry.set_most_recent(2)
+            SessionRegistry.set_most_recent(3)
+
+            local sessions = SessionRegistry.list()
+
+            assert.equal(3, #sessions)
+            assert.equal(third, sessions[1])
+            assert.equal(second, sessions[2])
+            assert.equal(first, sessions[3])
         end)
 
         it("orders by ascending key when _most_recent is nil", function()

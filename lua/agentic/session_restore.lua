@@ -44,12 +44,10 @@ end
 --- `SessionRegistry.create` can answer nil, and a destroy already done by then
 --- leaves the user with no session at all; and `ChatWidget:_inherited_size` reads
 --- its donor at `show` time from `SessionRegistry.list`, while `ChatWidget:destroy`
---- captures no size. The donor is whichever session `list` reaches first carrying
---- this layout's axis — `show_session` has already pointed `_most_recent` at the
---- new session, which has no size, so the scan falls through to ascending key
---- order. With one session open that donor IS the resolved one, and destroying it
---- earlier hands a resized sidebar back its configured default. Measured: 32
---- columns after a resize to 50.
+--- captures no size. `show_session` has already pointed `_most_recent` at the new
+--- session, which has no size, so the donor is the session it displaced — the
+--- resolved one. Destroying it earlier hands a resized sidebar back its configured
+--- default. Measured: 32 columns after a resize to 50.
 --- The capability check comes before `create`, not from `load_acp_session`: a
 --- provider without `loadSession` would otherwise get a session created, shown and
 --- another destroyed for an operation that could never run.

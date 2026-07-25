@@ -90,12 +90,22 @@ function Agentic.toggle(opts)
     end)
 end
 
---- Rotates through predefined window layouts for the chat widget
+--- Rotates the layout of the session visible in the current tab page, and nothing
+--- else
+--- Tab-local for the same reason as `Agentic.close`: `rotate_layout` is a
+--- `hide` + `show` pair, and `resolve_or_create` falls back to `_most_recent`, so
+--- rotating from a tab with no widget silently relocated the widget the user was
+--- watching in ANOTHER tab into this one — and created a session on an empty
+--- registry to do it.
+--- Regression: test_multi_session.lua::"rotates nothing from a tab with no
+--- visible session".
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
 function Agentic.rotate_layout(layouts)
-    SessionRegistry.resolve_or_create(function(session)
+    local session = SessionRegistry.visible_here()
+
+    if session then
         session.widget:rotate_layout(layouts)
-    end)
+    end
 end
 
 --- Add the current visual selection to the Chat context

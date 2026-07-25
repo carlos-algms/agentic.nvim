@@ -91,8 +91,11 @@ Ownership is keyed by **session**, never by tabpage. `SessionRegistry` maps an
 integer session key to a `SessionManager`; placement is derived live from
 `ChatWidget:visible_tab()` and nothing stores a tabpage handle. A session can be
 visible in any tabpage, or in none, and it keeps generating while hidden. ADR
-0008 holds the invariants; `SessionRegistry.show_session` is the single
-switching path that enforces them.
+0008 holds the invariants; `SessionRegistry.show_session` is the only path that
+SWITCHES a session between tabpages, and it enforces them. `ChatWidget:show` is
+also called in place by `show_if_visible`, `rotate_layout` and the clipboard
+paste handler — ADR 0008 lists why each cannot move a widget between tabpages.
+Adding a fourth needs the same proof.
 
 Two consequences bite every runtime change:
 

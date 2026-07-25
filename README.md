@@ -404,7 +404,8 @@ Configure the widget layout position and sizing:
 ### Rotating Layouts dynamically at runtime
 
 You can rotate between layouts, dynamically, without closing Neovim with
-`rotate_layout()`:
+`rotate_layout()`. It acts on the session visible in the current tab page, and
+does nothing when there is none:
 
 ```lua
 -- Rotates through all three layouts: right → bottom → left → right ...

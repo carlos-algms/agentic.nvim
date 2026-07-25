@@ -120,6 +120,7 @@ describe("agentic: switch_provider", function()
         end
         SessionRegistry._next_id = 0
         SessionRegistry._most_recent = nil
+        SessionRegistry._previous_most_recent = nil
 
         -- Close any extra tabs created during the test
         vim.api.nvim_set_current_tabpage(initial_tab_id)

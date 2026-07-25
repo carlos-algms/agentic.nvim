@@ -708,6 +708,15 @@ function SessionManager:_build_handlers()
 
         on_request_permission = function(request, callback)
             if self._destroyed then
+                -- The ONLY handler where returning early is not a no-op: this
+                -- one owes a JSON-RPC response. `PermissionManager:clear`
+                -- answers every request already registered, so the hole is a
+                -- request landing between `destroy` and this run — and the
+                -- provider subprocess is shared across every session (ADR 0004),
+                -- so it outlives the session that caused it.
+                -- Regression: session_manager.test.lua::"answers a request that
+                -- lands after destroy".
+                callback(nil)
                 return
             end
 
@@ -756,7 +765,13 @@ end
 --- Regression: session_restore_race.test.lua::"load before the bootstrap sends no
 --- competing create".
 function SessionManager:_bootstrap_session()
-    if self._is_restoring_session then
+    -- Destroyed in the same tick it was created (`new_session()` then
+    -- `destroy_session()`): without this the bootstrap runs `_cancel_session`
+    -- over emptied `buf_nrs`, starts the spinner on a deleted buffer, and puts a
+    -- real `session/new` on the wire for a manager nothing can reach.
+    -- Regression: session_manager.test.lua::"sends no session/new when destroy
+    -- lands before the bootstrap".
+    if self._destroyed or self._is_restoring_session then
         return
     end
 
