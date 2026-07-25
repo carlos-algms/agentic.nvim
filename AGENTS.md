@@ -115,6 +115,17 @@ Three entry points on `SessionRegistry`. Only one creates:
   session. Four call sites shipped the wrong one on the branch that introduced
   the name, each silently spawning a subprocess.
 
+All three return `SessionManager|nil`, `resolve_or_create` included:
+`SessionRegistry.create` returns `nil` when
+`ACPHealth.check_configured_provider()` fails, so a user with no configured
+provider gets `nil` from the creating entry point too. Nil-check every bare
+return.
+
+`resolve_or_create(callback)` also takes an optional callback, invoked with the
+resolved session. It is `pcall`ed: a callback error is reported through
+`Logger.notify` and NOT re-raised, so the caller sees a normal return. Do not
+rely on an error escaping the callback to abort the caller.
+
 ### Scoped storage
 
 Use the narrowest valid scope. Per-session state belongs on the owning instance
@@ -186,7 +197,11 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   `vim.api.nvim_tabpage_list_wins(self:visible_tab())`, and return early when
   `visible_tab()` is `nil` — a hidden widget sits in no tabpage. A global
   enumeration reaches other sessions' windows. This is window placement, not
-  isolation.
+  isolation. Regressions:
+  `lua/agentic/ui/chat_widget.test.lua::"returns nil for a hidden widget"` (the
+  nil-tab early return) and
+  `::"never returns another widget's window in the same tab"` (the tabpage
+  scoping).
 - **FORBIDDEN: `vim.fn.bufwinid`** -> use `BufHelpers.find_visible_win`.
   `bufwinid` "Only deals with the current tabpage"
   (`$VIMRUNTIME/doc/vimfn.txt`), so it finds nothing for a session visible

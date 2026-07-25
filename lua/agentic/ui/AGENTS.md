@@ -163,11 +163,16 @@ tests.
     single shared augroup can still resolve the window's owner on the next
     event. Re-grep `BufferGuard` for the exact entry point before refactoring.
 - Writing header state back after reading it
-  - There is no setter, and adding one would be a bug. `WindowDecoration`'s
-    header-state getter hands back the owning widget's own `ChatWidget.headers`
-    table (or the module default when no widget owns the bufnr). Mutate it in
-    place. Tab-scoped storage returned copies and needed a write-back; a real
-    table does not, and copying one back would drop concurrent edits.
+  - `WindowDecoration`'s header-state getter hands back the owning widget's own
+    `ChatWidget.headers` table, so an in-place mutation is already visible to
+    the next reader. Mutate it in place; there is no setter and none is needed.
+    Tab-scoped storage returned copies and needed a write-back; a real table
+    does not, and a copying setter would drop concurrent edits. When no widget
+    owns the bufnr the getter deep-copies the module defaults instead, so a
+    mutation on that path is discarded — do not treat the fallback as shared
+    state. Regressions:
+    `chat_widget.test.lua::"keeps each widget's header context independent"` and
+    `::"hands out a fresh default table per call when no widget owns the bufnr"`.
 - Direct `nvim_buf_set_name` for widget buffers
   - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
     persists agentic buffer names; direct calls raise E95 on reopen. Use

@@ -637,27 +637,28 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 
 ### Commands
 
-| Function                                                     | Description                                                       |
-| ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                               |
-| `:lua require("agentic").open()`                             | Open chat sidebar (keep open if already visible)                  |
-| `:lua require("agentic").close()`                            | Close chat sidebar                                                |
-| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                   |
-| `:lua require("agentic").add_file()`                         | Add current file to context                                       |
-| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                     |
-| `:lua require("agentic").add_files_to_context(opts)`         | Add a list of file paths or buffer numbers to context             |
-| `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
-| `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
-| `:lua require("agentic").new_session()`                      | Start an additional chat session; existing sessions keep running  |
-| `:lua require("agentic").destroy_session(opts)`              | Destroy a session and its widget                                  |
-| `:lua require("agentic").select_session()`                   | Pick any live session from a list and open it here                |
-| `:lua require("agentic").next_session()`                     | Open the next session, wrapping at the end                        |
-| `:lua require("agentic").prev_session()`                     | Open the previous session, wrapping at the start                  |
-| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
-| `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session      |
-| `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
-| `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
-| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
+| Function                                                     | Description                                                                       |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                                               |
+| `:lua require("agentic").open(opts)`                         | Open chat sidebar (keep open if already visible); `session` opt picks the session |
+| `:lua require("agentic").close()`                            | Hide chat sidebar (session keeps running; nothing is destroyed)                   |
+| `:lua require("agentic").add_selection()`                    | Add visual selection to context                                                   |
+| `:lua require("agentic").add_file()`                         | Add current file to context                                                       |
+| `:lua require("agentic").add_selection_or_file_to_context()` | Add selection (if any) or file to the context                                     |
+| `:lua require("agentic").add_files_to_context(opts)`         | Add a list of file paths or buffer numbers to context                             |
+| `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                                         |
+| `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                                |
+| `:lua require("agentic").new_session()`                      | Start an additional chat session; existing sessions keep running                  |
+| `:lua require("agentic").destroy_session(opts)`              | Destroy a session and its widget                                                  |
+| `:lua require("agentic").select_session()`                   | Pick any live session from a list and open it here                                |
+| `:lua require("agentic").next_session()`                     | Open the next session, wrapping at the end                                        |
+| `:lua require("agentic").prev_session()`                     | Open the previous session, wrapping at the start                                  |
+| `:lua require("agentic").new_session_with_provider()`        | Pick a provider, then start a new session with it                                 |
+| `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)                  |
+| `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session                      |
+| `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                                       |
+| `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history)                 |
+| `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)                    |
 
 ### Optional Parameters
 
@@ -755,6 +756,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<C-s>`          | n/v/i | Submit prompt                                                   |
 | `<localLeader>p` | n     | Paste image from clipboard in the Prompt buffer                 |
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
+| `<Tab>`          | i     | Accept file completion                                          |
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
 | `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
 | `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
@@ -762,7 +764,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<localLeader>l` | n     | List every live session and open the chosen one                 |
 | `<localLeader>]` | n     | Open the next session                                           |
 | `<localLeader>[` | n     | Open the previous session                                       |
-| `q`              | n     | Close chat widget                                               |
+| `q`              | n     | Hide chat widget (session keeps running)                        |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
 | `]]`             | n     | Navigate to next chat heading                                   |

@@ -339,9 +339,12 @@ end
 --- @return integer|nil winid nil on failure (graceful degradation)
 function WidgetLayout.open_hidden_chat_window(bufnr)
     -- Sized from the CONFIGURED width so nvim_win_text_height has a stable basis.
-    -- ADR 0001. It is not the visible chat's actual width: a manually resized
-    -- widget (ChatWidget._size) measures wrapped rows against the config value
-    -- while hidden.
+    -- ADR 0001. It is not always the visible chat's actual width: whenever that
+    -- width is not calculate_width(Config.windows.width) -- after a manual
+    -- resize (ChatWidget._size), and unconditionally in `bottom` layout, where
+    -- the chat is a full-width split and only its height comes from the config
+    -- -- the widget measures wrapped rows against the configured width while
+    -- hidden.
     local width = WidgetLayout.calculate_width(Config.windows.width)
 
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
