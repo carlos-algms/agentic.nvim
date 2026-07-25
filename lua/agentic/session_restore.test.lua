@@ -23,10 +23,13 @@ describe("SessionRestore", function()
     --- Stands in for the session `SessionRegistry.create` hands back
     local restored_session
 
-    --- @param opts {chat_history?: table, list_sessions?: TestSpy, empty?: boolean}|nil
+    --- @param opts {chat_history?: table, list_sessions?: TestSpy, empty?: boolean, load_session_capable?: boolean}|nil
     local function create_mock_session(opts)
         opts = opts or {}
         local is_empty = opts.empty ~= false
+        local caps = opts.load_session_capable ~= false
+                and { loadSession = true }
+            or nil
 
         return {
             session_id = "current-session",
@@ -51,6 +54,7 @@ describe("SessionRestore", function()
             -- against a real one in test_multi_session.lua
             widget = { buf_nrs = {} },
             agent = {
+                agent_capabilities = caps,
                 cancel_session = spy.new(function() end),
                 list_sessions = opts.list_sessions or spy.new(function() end),
                 when_ready = spy.new(function(_self, cb)
@@ -167,6 +171,25 @@ describe("SessionRestore", function()
 
             assert.spy(destroy_stub).was.called(0)
             assert.spy(show_session_stub).was.called(0)
+            assert.spy(logger_notify_stub).was.called(1)
+        end)
+
+        -- Checked before `create`, not inside `load_acp_session`: a late check
+        -- leaves the user a churned session key and a widget swap for an
+        -- operation the provider never supported.
+        it("creates nothing when the agent cannot load sessions", function()
+            local session = create_mock_session({
+                load_session_capable = false,
+            })
+
+            SessionRestore.restore_by_id(
+                session --[[@as agentic.SessionManager]],
+                "abc-123"
+            )
+
+            assert.spy(create_stub).was.called(0)
+            assert.spy(show_session_stub).was.called(0)
+            assert.spy(destroy_stub).was.called(0)
             assert.spy(logger_notify_stub).was.called(1)
         end)
 

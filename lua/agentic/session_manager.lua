@@ -756,7 +756,7 @@ end
 --- Regression: session_restore_race.test.lua::"load before the bootstrap sends no
 --- competing create".
 function SessionManager:_bootstrap_session()
-    if self._is_restoring_session or self.session_id ~= nil then
+    if self._is_restoring_session then
         return
     end
 

@@ -1453,6 +1453,38 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
             end
         end)
+
+        -- Destroying a session visible in ANOTHER tab is reachable from
+        -- `Agentic.destroy_session` and from `SessionRestore`, both of which
+        -- resolve through `_most_recent`. Closing the last windows of that tab
+        -- invalidates the tabpage silently, so the user loses a tab with no
+        -- error.
+        it(
+            "keeps the tabpage alive when the widget holds its only windows",
+            function()
+                widget:show({ focus_prompt = false })
+                local widget_tab = widget:visible_tab()
+
+                for _, winid in
+                    ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
+                do
+                    if not vim.w[winid].agentic_bufnr then
+                        pcall(vim.api.nvim_win_close, winid, true)
+                    end
+                end
+
+                vim.cmd("tabnew")
+                local other_tab = vim.api.nvim_get_current_tabpage()
+
+                widget:destroy()
+                widget = nil
+
+                assert.is_true(vim.api.nvim_tabpage_is_valid(widget_tab))
+                assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+
+                vim.cmd("tabclose")
+            end
+        )
     end)
 
     describe("input header suffix", function()

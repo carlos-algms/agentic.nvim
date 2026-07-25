@@ -67,15 +67,23 @@ end)()
         child.flush()
     end
 
-    --- Restore needs a connected client and an ACP `session/load`; the transport
-    --- mock answers neither, so `when_ready` would never fire. Stubbing both
-    --- leaves exactly the registry bookkeeping this file covers. `vim.ui.select`
-    --- is counted so a resurrected conflict prompt shows up as a call.
+    --- Restore needs a connected client, an announced `loadSession` capability and
+    --- an ACP `session/load`; the transport mock answers none of them, so
+    --- `when_ready` would never fire and `SessionRestore` would bail before
+    --- creating anything. Stubbing all three leaves exactly the registry
+    --- bookkeeping this file covers. `vim.ui.select` is counted so a resurrected
+    --- conflict prompt shows up as a call.
+    --- The capability lands on the class, not an instance: `ACPClient.__index` is
+    --- the class table, so every client created in this child inherits it.
     local function stub_restore()
         child.lua([[
             require("agentic.acp.acp_client").when_ready = function(_self, cb)
                 cb()
             end
+
+            require("agentic.acp.acp_client").agent_capabilities = {
+                loadSession = true,
+            }
 
             local SessionManager = require("agentic.session_manager")
             SessionManager.load_acp_session = function(self, session_id, title)

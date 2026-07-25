@@ -287,20 +287,7 @@ function ChatWidget:hide(keep_insert)
 
     self:_remember_size()
 
-    -- A non-widget window must survive in the widget's OWN tab, whichever tab
-    -- the cursor sits in: closing the last window of a tab destroys that tab.
-    -- For a non-current tab it happens silently, so the user loses a tabpage
-    -- with no error; E444 only fires when it is also the last tabpage.
-    -- `open_editor_window` is cross-tab safe, it splits inside
-    -- `nvim_win_call(anchor_win, ...)`.
-    if self:visible_tab() and not self:find_first_non_widget_window() then
-        if not self:open_editor_window() then
-            Logger.notify(
-                "Failed to create a fallback window; the widget's windows may not close cleanly.",
-                vim.log.levels.ERROR
-            )
-        end
-    end
+    self:_ensure_fallback_window()
 
     self:_avoid_auto_close_cmd(function()
         WidgetLayout.close(self.win_nrs)
@@ -313,6 +300,34 @@ function ChatWidget:hide(keep_insert)
     self:_close_hidden_chat_window()
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
+end
+
+--- A non-widget window must survive in the widget's OWN tab, whichever tab the
+--- cursor sits in: closing the last window of a tab destroys that tab. For a
+--- non-current tab it happens silently, so the user loses a tabpage with no
+--- error; E444 only fires when it is also the last tabpage.
+--- Shared by `hide` and `destroy`: both reach `WidgetLayout.close`, and both are
+--- driven from another tab — `SessionRegistry.show_session` evicts a widget it
+--- finds elsewhere, and `Agentic.destroy_session` / `SessionRestore` resolve
+--- through `SessionRegistry._most_recent`, which is not tab-scoped.
+--- `open_editor_window` is cross-tab safe, it splits inside
+--- `nvim_win_call(anchor_win, ...)`.
+--- No-op once `visible_tab` answers nil, which covers a hidden widget and a
+--- tabclose teardown where Neovim already invalidated the windows.
+--- Regressions: chat_widget.test.lua::"keeps the tabpage alive when the widget
+--- holds its only windows" and ::"creates the fallback window in the widget's tab,
+--- not the current one".
+function ChatWidget:_ensure_fallback_window()
+    if not self:visible_tab() or self:find_first_non_widget_window() then
+        return
+    end
+
+    if not self:open_editor_window() then
+        Logger.notify(
+            "Failed to create a fallback window; the widget's windows may not close cleanly.",
+            vim.log.levels.ERROR
+        )
+    end
 end
 
 --- Stores the chat window's size along the axis the current layout controls, so a
@@ -358,6 +373,15 @@ end
 --- Deletes all buffers and removes them from memory
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
+    -- The tab must outlive the widget, so the same fallback `hide` needs applies
+    -- here. Everything else `hide` does is wrong for a destroy: it would capture
+    -- a size no one can read back and reopen a float over deleted buffers.
+    -- BEFORE `unregister`: `find_first_non_widget_window` recognises widget
+    -- windows through `WidgetRegistry.all_bufnrs`, so unregistering first makes
+    -- this widget's own chat window look like the fallback and no window is
+    -- created.
+    self:_ensure_fallback_window()
+
     WidgetRegistry.unregister(self)
 
     if self._winclosed_augroup then
@@ -365,8 +389,7 @@ function ChatWidget:destroy()
         self._winclosed_augroup = nil
     end
 
-    -- Close the windows directly rather than through `hide`: a destroyed widget
-    -- needs neither a fallback window nor a fresh hidden float.
+    -- Close the windows directly rather than through `hide`.
     -- `WidgetLayout.close` skips every handle whose tabpage is already gone,
     -- which is what keeps this safe during a tabclose teardown on 0.11.x.
     WidgetLayout.close(self.win_nrs)
