@@ -52,6 +52,7 @@ describe("agentic.SessionManager", function()
                     render_header = render_header_spy,
                     schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
+                    visible_tab = function() end,
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
@@ -130,6 +131,7 @@ describe("agentic.SessionManager", function()
                     render_header = render_header_spy,
                     schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
+                    visible_tab = function() end,
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
@@ -305,8 +307,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("returns false when connection error occurred", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             flush_schedule()
             session.session_id = "test-session" --[[@as string]]
             session._connection_error = true
@@ -398,8 +399,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("fires immediately via schedule when session_id exists", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             flush_schedule()
             session.session_id = "ready-session" --[[@as string]]
 
@@ -420,8 +420,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("queues callback when session_id is nil", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             -- Don't flush — session_id stays nil
 
             local callback_called = false
@@ -500,8 +499,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("clears session_ready_callbacks", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             -- Session stays uninitialized (schedule is no-op), queue a callback
             session:on_session_ready(function() end)
             assert.equal(1, #session._session_ready_callbacks)
@@ -592,13 +590,12 @@ describe("agentic.SessionManager", function()
         end)
 
         it("prepends history on first submit and clears it", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             flush_schedule()
             session.session_id = "test-session" --[[@as string]]
 
             local SessionRegistry = require("agentic.session_registry")
-            SessionRegistry.sessions[tab_page_id] = session
+            SessionRegistry.sessions[1] = session
 
             --- @type agentic.ui.ChatHistory.Message[]
             local history = {
@@ -651,7 +648,12 @@ describe("agentic.SessionManager", function()
         local function make_session()
             return {
                 session_id = "session-1",
-                tab_page_id = 42,
+                session_key = 3,
+                widget = {
+                    visible_tab = function()
+                        return 42
+                    end,
+                },
                 _is_restoring_session = false,
                 todo_list = { render = function() end },
                 message_writer = {
@@ -789,8 +791,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("schedules a refresh from on_config_options_applied", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             local refresh_spy = spy.new(function() end)
             session.widget.schedule_header_refresh = refresh_spy
 
@@ -800,8 +801,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("schedules a refresh from on_set_mode_success", function()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             local refresh_spy = spy.new(function() end)
             session.widget.schedule_header_refresh = refresh_spy
 
@@ -853,13 +853,16 @@ describe("agentic.SessionManager", function()
 
             session = {
                 session_id = "session-1",
-                tab_page_id = 7,
+                session_key = 3,
                 _is_restoring_session = false,
                 config_options = config_options,
                 session_state = SessionState:new(config_options, "Test"),
                 widget = {
                     schedule_header_refresh = refresh_spy,
                     render_header = render_header_spy,
+                    visible_tab = function()
+                        return 7
+                    end,
                 },
                 agent = { provider_config = { name = "Test" } },
                 _on_session_update = SessionManager._on_session_update,
@@ -1093,6 +1096,7 @@ describe("agentic.SessionManager", function()
                 },
                 agent = { provider_config = { name = "test-provider" } },
                 chat_history = { add_message = spy.new(function() end) },
+                widget = { visible_tab = function() end },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
         end)
@@ -1145,7 +1149,12 @@ describe("agentic.SessionManager", function()
         local function make_session(tool_call_blocks)
             return {
                 session_id = "session-1",
-                tab_page_id = 42,
+                session_key = 3,
+                widget = {
+                    visible_tab = function()
+                        return 42
+                    end,
+                },
                 message_writer = {
                     update_tool_call_block = function() end,
                     tool_call_blocks = tool_call_blocks,
@@ -1582,7 +1591,12 @@ describe("agentic.SessionManager", function()
             --- @type agentic.SessionManager
             local session = {
                 session_id = "original-session",
-                tab_page_id = 1,
+                session_key = 3,
+                widget = {
+                    visible_tab = function()
+                        return 1
+                    end,
+                },
                 is_generating = false,
                 _connection_error = false,
                 _is_restoring_session = false,
@@ -1674,7 +1688,12 @@ describe("agentic.SessionManager", function()
         --- @return agentic.SessionManager
         local function make_session()
             return {
-                tab_page_id = 99,
+                session_key = 3,
+                widget = {
+                    visible_tab = function()
+                        return 99
+                    end,
+                },
                 session_id = nil,
                 status_animation = {
                     start = function() end,
@@ -1870,8 +1889,7 @@ describe("agentic.SessionManager", function()
         it(
             "applies default_thought_level when no model change is triggered",
             function()
-                local tab_page_id = vim.api.nvim_get_current_tabpage()
-                local _session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+                local _session = SessionManager:new() --[[@as agentic.SessionManager]]
                 flush_schedule()
 
                 assert.equal(1, set_initial_thought_level_stub.call_count)
@@ -1969,7 +1987,7 @@ describe("agentic.SessionManager", function()
         --- @return agentic.SessionManager session with `session/new` in flight
         --- @return fun(response: table|nil, err: table|nil) fire_create_response
         local function pending_session()
-            local session = SessionManager:new(1) --[[@as agentic.SessionManager]]
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
             flush_schedule()
 
             assert.is_nil(session.session_id)
@@ -2126,7 +2144,12 @@ describe("agentic.SessionManager", function()
 
             session = {
                 session_id = "test-session-123",
-                tab_page_id = 1,
+                session_key = 3,
+                widget = {
+                    visible_tab = function()
+                        return 1
+                    end,
+                },
                 status_animation = {
                     stop = function() end,
                     start = function() end,
@@ -2195,6 +2218,324 @@ describe("agentic.SessionManager", function()
 
             -- Should not throw an error
             handlers.on_request_permission(mock_request, mock_callback)
+        end)
+    end)
+
+    describe("hook payloads: session identity", function()
+        local Config = require("agentic.config")
+        local SessionRegistry = require("agentic.session_registry")
+        --- @type TestStub
+        local get_instance_stub
+        --- @type TestStub
+        local health_check_stub
+        --- @type TestStub
+        local notify_stub
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestSpy
+        local hook_spy
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+            local ACPHealth = require("agentic.acp.acp_health")
+
+            notify_stub = spy.stub(Logger, "notify")
+            -- Inline, not queued: `Hooks.invoke` defers every payload through
+            -- `vim.schedule`. Animation frames go through `vim.defer_fn`, so
+            -- nothing here re-enters.
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                fn()
+            end)
+            health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
+            health_check_stub:returns(true)
+
+            -- No ready callback: `SessionManager:new` would otherwise drive a
+            -- real `session/new`, and this block only needs the widget.
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:invokes(function(provider_name)
+                --- @type agentic.acp.ACPClient
+                local fake = {}
+                fake.state = "ready"
+                fake.provider_config = { name = provider_name or "Test" }
+                fake.agent_info = {}
+                function fake:cancel_session() end
+                return fake
+            end)
+
+            hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_session_update = function(data)
+                hook_spy(data)
+            end
+        end)
+
+        after_each(function()
+            Config.hooks.on_session_update = nil
+
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
+            end
+
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if tabpage ~= vim.api.nvim_list_tabpages()[1] then
+                    vim.api.nvim_win_close(
+                        vim.api.nvim_tabpage_list_wins(tabpage)[1],
+                        true
+                    )
+                end
+            end
+
+            notify_stub:revert()
+            schedule_stub:revert()
+            health_check_stub:revert()
+            get_instance_stub:revert()
+        end)
+
+        --- @return agentic.SessionManager
+        local function create_session()
+            local session = SessionRegistry.create()
+            assert.is_not_nil(session)
+            return session --[[@as agentic.SessionManager]]
+        end
+
+        --- @param session agentic.SessionManager
+        --- @return agentic.UserConfig.SessionUpdateData
+        local function fire_update(session)
+            session:_on_session_update({
+                sessionUpdate = "session_info_update",
+            })
+            return hook_spy.calls[#hook_spy.calls][1]
+        end
+
+        it("reports the registry key and the visible tabpage", function()
+            local session = create_session()
+            SessionRegistry.show_session(session.session_key)
+
+            local data = fire_update(session)
+
+            assert.equal(session.session_key, data.session_key)
+            assert.equal(vim.api.nvim_get_current_tabpage(), data.tab_page_id)
+        end)
+
+        it(
+            "keeps session_key stable across hide, show and tab switches",
+            function()
+                local session = create_session()
+                local key = session.session_key
+
+                local hidden = fire_update(session)
+                assert.equal(key, hidden.session_key)
+                assert.is_nil(hidden.tab_page_id)
+
+                SessionRegistry.show_session(key)
+                local shown = fire_update(session)
+                assert.equal(key, shown.session_key)
+                assert.equal(
+                    vim.api.nvim_get_current_tabpage(),
+                    shown.tab_page_id
+                )
+
+                vim.cmd("tabnew")
+                local tab2 = vim.api.nvim_get_current_tabpage()
+                SessionRegistry.show_session(key)
+
+                local moved = fire_update(session)
+                assert.equal(key, moved.session_key)
+                assert.equal(tab2, moved.tab_page_id)
+            end
+        )
+
+        it("distinguishes two background sessions by key", function()
+            local first = create_session()
+            local second = create_session()
+
+            local first_data = fire_update(first)
+            local second_data = fire_update(second)
+
+            assert.is_not.equal(first_data.session_key, second_data.session_key)
+            assert.equal(first.session_key, first_data.session_key)
+            assert.equal(second.session_key, second_data.session_key)
+            assert.is_nil(first_data.tab_page_id)
+            assert.is_nil(second_data.tab_page_id)
+        end)
+    end)
+
+    describe("_handle_input_submit: placement and title", function()
+        local Config = require("agentic.config")
+        --- @type TestStub
+        local schedule_stub
+        --- @type fun()[]
+        local schedule_queue
+        --- @type fun(response: table|nil, err: table|nil)|nil
+        local send_prompt_callback
+        --- @type integer|nil
+        local widget_tab
+
+        before_each(function()
+            schedule_queue = {}
+            send_prompt_callback = nil
+            widget_tab = 11
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                table.insert(schedule_queue, fn)
+            end)
+        end)
+
+        after_each(function()
+            schedule_stub:revert()
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_prompt_submit = nil
+            Config.hooks.on_response_complete = nil
+        end)
+
+        local function flush_schedule()
+            while #schedule_queue > 0 do
+                local fn = table.remove(schedule_queue, 1)
+                fn()
+            end
+        end
+
+        --- @return agentic.SessionManager
+        local function make_session()
+            return {
+                session_id = "session-1",
+                session_key = 7,
+                is_generating = false,
+                _connection_error = false,
+                _is_restoring_session = false,
+                _is_first_message = false,
+                history_to_send = nil,
+                chat_history = {
+                    title = "",
+                    add_message = function() end,
+                },
+                todo_list = { close_if_all_completed = function() end },
+                code_selection = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                file_list = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                diagnostics_list = {
+                    is_empty = function()
+                        return true
+                    end,
+                },
+                message_writer = {
+                    write_message = function() end,
+                    write_finish_message = function() end,
+                },
+                status_animation = {
+                    start = function() end,
+                    stop = function() end,
+                },
+                widget = {
+                    visible_tab = function()
+                        return widget_tab
+                    end,
+                },
+                agent = {
+                    provider_config = { name = "TestProvider" },
+                    send_prompt = function(_self, _sid, _prompt, callback)
+                        send_prompt_callback = callback
+                    end,
+                },
+                can_submit_prompt = function()
+                    return true
+                end,
+                _handle_input_submit = SessionManager._handle_input_submit,
+            } --[[@as agentic.SessionManager]]
+        end
+
+        --- @return agentic.UserConfig.ResponseCompleteData
+        local function complete_response()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_response_complete = function(data)
+                hook_spy(data)
+            end
+
+            assert.is_not_nil(send_prompt_callback)
+            --- @diagnostic disable-next-line: need-check-nil
+            send_prompt_callback(nil, nil)
+            flush_schedule()
+
+            assert.spy(hook_spy).was.called(1)
+            return hook_spy.calls[1][1]
+        end
+
+        it("reports where the widget is at submit time", function()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_prompt_submit = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            session:_handle_input_submit("hello")
+            flush_schedule()
+
+            assert.spy(hook_spy).was.called(1)
+            assert.equal(7, hook_spy.calls[1][1].session_key)
+            assert.equal(11, hook_spy.calls[1][1].tab_page_id)
+        end)
+
+        -- The completion payload is built inside a `vim.schedule`, so reading a
+        -- tabpage captured at submit time reports a window the user may have
+        -- hidden minutes ago.
+        it("reports a nil tab when the widget was hidden meanwhile", function()
+            local session = make_session()
+            session:_handle_input_submit("hello")
+
+            widget_tab = nil
+
+            assert.is_nil(complete_response().tab_page_id)
+        end)
+
+        it("reports the tab the widget moved to before completing", function()
+            local session = make_session()
+            session:_handle_input_submit("hello")
+
+            widget_tab = 22
+
+            local data = complete_response()
+            assert.equal(22, data.tab_page_id)
+            assert.equal(7, data.session_key)
+        end)
+
+        it("titles the session from the first prompt only", function()
+            local session = make_session()
+
+            session:_handle_input_submit("add a retry to the http client")
+            session:_handle_input_submit("now write the tests")
+
+            assert.equal(
+                "add a retry to the http client",
+                session.chat_history.title
+            )
+        end)
+
+        it("truncates a long first prompt to 60 characters", function()
+            local session = make_session()
+
+            session:_handle_input_submit(("x"):rep(120))
+
+            local title = session.chat_history.title
+            assert.equal(60, vim.fn.strchars(title))
+            assert.equal(("x"):rep(59) .. "…", title)
+        end)
+
+        it("collapses whitespace in the derived title", function()
+            local session = make_session()
+
+            session:_handle_input_submit("  fix  the\n  parser  ")
+
+            assert.equal("fix the parser", session.chat_history.title)
         end)
     end)
 end)

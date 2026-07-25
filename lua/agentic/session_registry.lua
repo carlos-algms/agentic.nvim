@@ -40,7 +40,7 @@ function SessionRegistry.create()
     -- The key is assigned only after `new` returns: the widget's first `show`
     -- reads the previous session's stored size, so `_most_recent` and the
     -- registry must still describe the old world while `new` runs.
-    local session = SessionManager:new(vim.api.nvim_get_current_tabpage()) --[[@as agentic.SessionManager|nil]]
+    local session = SessionManager:new() --[[@as agentic.SessionManager|nil]]
 
     if not session then
         return nil

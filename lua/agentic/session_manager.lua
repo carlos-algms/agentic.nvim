@@ -19,7 +19,6 @@ local Hooks = require("agentic.utils.hooks")
 --- @class agentic.SessionManager
 --- @field session_id? string
 --- @field session_key? integer Registry key, assigned by SessionRegistry.create
---- @field tab_page_id integer
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -43,8 +42,26 @@ local Hooks = require("agentic.utils.hooks")
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
---- @param tab_page_id integer
-function SessionManager:new(tab_page_id)
+--- `Agentic.select_session` appends " (current tab)" to the label, so 60 leaves
+--- the whole row inside a default 80-column `vim.ui.select` prompt.
+local TITLE_MAX_CHARS = 60
+
+--- A one-line, bounded label for the session picker. Whitespace is collapsed
+--- because a multi-line prompt would otherwise render as one unreadable run.
+--- @param prompt string
+--- @return string title
+local function title_from_prompt(prompt)
+    local title = vim.trim((prompt:gsub("%s+", " ")))
+
+    if vim.fn.strchars(title) > TITLE_MAX_CHARS then
+        -- Character-wise, never `sub`: a byte cut lands mid-UTF-8 sequence
+        title = vim.fn.strcharpart(title, 0, TITLE_MAX_CHARS - 1) .. "…"
+    end
+
+    return title
+end
+
+function SessionManager:new()
     local AgentInstance = require("agentic.acp.agent_instance")
     local ChatWidget = require("agentic.ui.chat_widget")
     local CodeSelection = require("agentic.ui.code_selection")
@@ -59,7 +76,6 @@ function SessionManager:new(tab_page_id)
 
     self = setmetatable({
         session_id = nil,
-        tab_page_id = tab_page_id,
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
@@ -367,7 +383,8 @@ function SessionManager:_on_session_update(update)
     --- @type agentic.UserConfig.SessionUpdateData
     local hook_data = {
         session_id = self.session_id,
-        tab_page_id = self.tab_page_id,
+        session_key = self.session_key,
+        tab_page_id = self.widget:visible_tab(),
         update = update,
     }
     Hooks.invoke("on_session_update", hook_data)
@@ -467,7 +484,8 @@ function SessionManager:_on_tool_call_update(tool_call_update)
                 local hook_data = {
                     filepath = abs_path,
                     session_id = self.session_id,
-                    tab_page_id = self.tab_page_id,
+                    session_key = self.session_key,
+                    tab_page_id = self.widget:visible_tab(),
                     bufnr = bufnr,
                 }
                 Hooks.invoke("on_file_edit", hook_data)
@@ -517,11 +535,15 @@ function SessionManager:_handle_input_submit(input_text)
 
     -- If restored/switched session, prepend history on first submit
     if self.history_to_send then
-        self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self.history_to_send, prompt)
         self.history_to_send = nil
-    elseif self.chat_history.title == "" then
-        self.chat_history.title = input_text -- Set title for new session
+    end
+
+    -- First submit only. A restored session already carries the provider's
+    -- title, and rewriting it on every prompt would make the session picker
+    -- relabel itself mid-conversation.
+    if self.chat_history.title == "" then
+        self.chat_history.title = title_from_prompt(input_text)
     end
 
     table.insert(prompt, {
@@ -590,12 +612,14 @@ function SessionManager:_handle_input_submit(input_text)
     local prompt_hook_data = {
         prompt = input_text,
         session_id = self.session_id,
-        tab_page_id = self.tab_page_id,
+        session_key = self.session_key,
+        tab_page_id = self.widget:visible_tab(),
     }
     Hooks.invoke("on_prompt_submit", prompt_hook_data)
 
+    -- Captured, and NOT re-read in the callback below: it is the staleness guard
+    -- that drops responses belonging to a cancelled or restored session.
     local session_id = self.session_id
-    local tab_page_id = self.tab_page_id
 
     self.is_generating = true
 
@@ -613,7 +637,11 @@ function SessionManager:_handle_input_submit(input_text)
             --- @type agentic.UserConfig.ResponseCompleteData
             local response_hook_data = {
                 session_id = session_id --[[@as string]],
-                tab_page_id = tab_page_id,
+                session_key = self.session_key,
+                -- Resolved HERE, inside the deferred callback: a value captured
+                -- before the schedule reports where the widget sat when the
+                -- prompt was submitted, not when the response landed.
+                tab_page_id = self.widget:visible_tab(),
                 success = err == nil,
                 error = err,
             }
@@ -683,7 +711,8 @@ function SessionManager:_build_handlers()
             Hooks.invoke("on_request_permission", {
                 request = request,
                 session_id = self.session_id,
-                tab_page_id = self.tab_page_id,
+                session_key = self.session_key,
+                tab_page_id = self.widget:visible_tab(),
             })
 
             self.status_animation:stop()
@@ -745,7 +774,8 @@ function SessionManager:new_session(opts)
         --- @type agentic.UserConfig.CreateSessionResponseData
         local hook_data = {
             session_id = response and response.sessionId,
-            tab_page_id = self.tab_page_id,
+            session_key = self.session_key,
+            tab_page_id = self.widget:visible_tab(),
             response = response,
             err = err,
         }

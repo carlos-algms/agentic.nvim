@@ -64,7 +64,7 @@ describe("race: stale create_session after load_acp_session", function()
             _connection_error = false,
             _header_refresh_scheduled = false,
             history_to_send = nil,
-            tab_page_id = 1,
+            session_key = 1,
 
             agent = {
                 agent_capabilities = { loadSession = true },
@@ -96,6 +96,9 @@ describe("race: stale create_session after load_acp_session", function()
             widget = {
                 clear = function() end,
                 buf_nrs = { input = 0, chat = 0 },
+                visible_tab = function()
+                    return 1
+                end,
             },
             todo_list = { clear = function() end },
             file_list = { clear = function() end },
