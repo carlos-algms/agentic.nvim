@@ -871,12 +871,12 @@ local EXCLUDED_FILETYPES = {
 --- registered widget buffer it did not create".
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
-    local tab_page_id = self:visible_tab()
-    if not tab_page_id then
+    local widget_tab = self:visible_tab()
+    if not widget_tab then
         return nil
     end
 
-    local all_windows = vim.api.nvim_tabpage_list_wins(tab_page_id)
+    local all_windows = vim.api.nvim_tabpage_list_wins(widget_tab)
     local widget_bufnrs = WidgetRegistry.all_bufnrs()
 
     for _, winid in ipairs(all_windows) do

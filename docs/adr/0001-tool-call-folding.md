@@ -45,9 +45,12 @@ the two.
 A hidden chat float (`ChatWidget._hidden_chat_winid`) keeps exactly one window
 on the chat buffer at all times — visible chat window OR hidden float, never
 both, never neither — so the fold-state snapshot pipeline is uninterrupted
-across hide/show. The hidden float matches the visible chat window's width
-(`Config.windows.width`), `wrap`/`linebreak`, and statuscolumn so screen-row
-measurements (`nvim_win_text_height`) agree across hidden and visible states.
+across hide/show. The hidden float is sized from `Config.windows.width` — the
+configured width, not the visible chat window's actual width, which differs
+after a manual resize (`ChatWidget._size`) — and matches its `wrap`/`linebreak`
+and statuscolumn so screen-row measurements (`nvim_win_text_height`) agree
+across hidden and visible states. A resized widget therefore measures wrapped
+rows against the configured width while hidden.
 
 `Fold.should_fold` decides folding by **screen rows**, not buffer lines.
 Counts wrapped rows via `nvim_win_text_height` against whichever window holds

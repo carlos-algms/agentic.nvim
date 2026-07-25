@@ -87,10 +87,52 @@ implementations expecting the user to fill gaps.
 
 ## Runtime safety
 
-**EVERY FEATURE MUST BE MULTI-TAB SAFE.** Load the `agentic-runtime-safety`
-skill before editing runtime Lua under `lua/agentic`, except pure tests or docs.
-It owns the full multi-tab architecture, public API call chain, scoped Neovim
-state rules, keymap isolation, and scheduled callback guidance.
+Ownership is keyed by **session**, never by tabpage. `SessionRegistry` maps an
+integer session key to a `SessionManager`; placement is derived live from
+`ChatWidget:visible_tab()` and nothing stores a tabpage handle. A session can be
+visible in any tabpage, or in none, and it keeps generating while hidden. ADR
+0008 holds the invariants; `SessionRegistry.show_session` is the single
+switching path that enforces them.
+
+Two consequences bite every runtime change:
+
+- **A session may have no window.** `visible_tab()` returns `nil` for a
+  background session. Nil-check and degrade; never assume a window exists.
+- **Liveness cannot be captured across an async boundary.** A scheduled callback
+  can outlive the session that queued it. Check `SessionManager._destroyed`, and
+  re-resolve subscribers and windows, _inside_ the callback — not at schedule
+  time.
+
+### Resolving a session
+
+Three entry points on `SessionRegistry`. Only one creates:
+
+- `visible_here()` — the session visible in the current tabpage, else `nil`.
+- `current()` — `visible_here()`, falling back to the registered most-recent
+  session. Never creates. **This is the default choice.**
+- `resolve_or_create()` — `current()` plus creation. Creating a session spawns
+  work on a provider subprocess, so use it only when you actively want a new
+  session. Four call sites shipped the wrong one on the branch that introduced
+  the name, each silently spawning a subprocess.
+
+### Scoped storage
+
+Use the narrowest valid scope. Per-session state belongs on the owning instance
+(`SessionManager`, `ChatWidget`, `DiffCoordinator`), not in Neovim scoped
+storage.
+
+| Scope  | Accessor        | Purpose          |
+| ------ | --------------- | ---------------- |
+| Buffer | `vim.b[bufnr]`  | Custom variables |
+| Buffer | `vim.bo[bufnr]` | Built-in options |
+| Window | `vim.w[winid]`  | Custom variables |
+| Window | `vim.wo[winid]` | Built-in options |
+
+- `vim.b` and `vim.w` are custom variables; `vim.bo` and `vim.wo` are built-in
+  options. An invalid option name in `vim.bo` / `vim.wo` throws.
+- Write window-local options through `vim.wo[winid][0]` — see the trap below.
+- `vim.t[tabpage]` is not used by this plugin. Tab-scoped storage cannot follow
+  a session that moves between tabpages or runs in none.
 
 ### Logger
 
@@ -127,14 +169,30 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   end
   ```
 
-- **FORBIDDEN: module-level mutable state for per-tab data** -> store on per-tab
-  instances. Load `agentic-runtime-safety` for the full architecture.
+- **FORBIDDEN: module-level mutable state for per-session data** -> store it on
+  the owning instance. Module-level constants are fine. So are module-level
+  namespace ids (namespaces are global, extmarks are buffer-scoped) and
+  `WidgetRegistry`'s `bufnr -> widget` map (buffer numbers are global).
+  Highlight groups are global and live in `lua/agentic/theme.lua`.
 - **FORBIDDEN: global keymaps, and direct `vim.keymap.set`/`vim.keymap.del` with
   `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
-  `BufHelpers.keymap_del`. Load `agentic-runtime-safety` for the Neovim `buffer`
-  -> `buf` compatibility rationale.
-- **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
-  `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
+  `BufHelpers.keymap_del`. They pick the right option name per version:
+  `buffer` was renamed to `buf` in `neovim#38360` (shipped in 0.12.0 final,
+  `buffer` removed in 0.15), and the helpers gate on `nvim-0.12.1` so 0.12.0-dev
+  nightlies built before the rename — which answer `has("nvim-0.12") == 1` but
+  reject `buf` — still work.
+- **FORBIDDEN: `vim.api.nvim_list_wins()` to enumerate a widget's windows** ->
+  enumerate through the widget's own tabpage,
+  `vim.api.nvim_tabpage_list_wins(self:visible_tab())`, and return early when
+  `visible_tab()` is `nil` — a hidden widget sits in no tabpage. A global
+  enumeration reaches other sessions' windows. This is window placement, not
+  isolation.
+- **FORBIDDEN: `vim.fn.bufwinid`** -> use `BufHelpers.find_visible_win`.
+  `bufwinid` "Only deals with the current tabpage"
+  (`$VIMRUNTIME/doc/vimfn.txt`), so it finds nothing for a session visible
+  elsewhere, and it returns the hidden chat float. The helper filters
+  non-focusable and `hide` windows and takes an optional tabpage. Regression:
+  `lua/agentic/utils/buf_helpers.test.lua::"restricts the search to a given tabpage"`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
   `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
   `nvim_set_option_value(opt, val, { win = winid })`. `[0]` is the `:setlocal`

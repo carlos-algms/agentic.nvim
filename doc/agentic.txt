@@ -433,9 +433,35 @@ USAGE                                                    *agentic-usage*
 
 All functions are accessed via `require("agentic")`.
 
+Multiple sessions ~
+                                                      *agentic-sessions*
+Sessions are not tied to tabs. Each session gets a session key -- a
+small integer assigned at creation and stable for its whole life.
+
+  - A session keeps running while hidden. Pressing `q`, closing its
+    window, or closing its tab does not stop it or lose it.
+  - Opening a session in a tab hides whatever session was there, and
+    removes it from any other tab. At most one session is visible per
+    tab.
+  - Only |agentic.destroy_session()| and switching provider end a
+    session.
+
+|agentic.open()| and |agentic.destroy_session()| take a `session` field
+naming the key to act on. Without it they use the session visible in
+the current tab, falling back to the most recently opened one.
+>lua
+  -- Open session 2 here, wherever it was before
+  require("agentic").open({ session = 2 })
+
+  -- Destroy session 2 without opening it
+  require("agentic").destroy_session({ session = 2 })
+<
+Session keys appear in the chat buffer names once more than one session
+exists. |agentic.select_session()| lists every live session.
+
                                                       *agentic.toggle()*
 agentic.toggle({opts})
-  Toggle the chat sidebar for the current tabpage.
+  Toggle the chat sidebar in the current tab.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -446,12 +472,17 @@ agentic.toggle({opts})
 
                                                         *agentic.open()*
 agentic.open({opts})
-  Open the chat sidebar. Keeps it open if already visible.
-  Accepts the same {opts} as |agentic.toggle()|.
+  Open a chat session in the current tab. Keeps it open if already
+  visible. Accepts the same {opts} as |agentic.toggle()|, plus:
+      `session`  (integer)  Session key to open. Defaults to the
+                            session visible in this tab, else the
+                            most recently opened one.
+  See |agentic-sessions|.
 
                                                        *agentic.close()*
 agentic.close()
-  Close the chat sidebar for the current tabpage.
+  Hide the chat sidebar. The session keeps running; nothing is
+  destroyed. See |agentic.destroy_session()|.
 
                                                *agentic.add_selection()*
 agentic.add_selection({opts})
@@ -513,13 +544,41 @@ agentic.add_buffer_diagnostics({opts})
 
                                                  *agentic.new_session()*
 agentic.new_session({opts})
-  Destroy the current session and start a new one.
+  Create an additional session and show it. Existing sessions stay
+  alive and keep running. See |agentic-sessions|.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
       `provider`              (string)   Switch provider for the
                                          new session.
       `auto_add_to_context`   (boolean)  Default: `true`.
+
+                                             *agentic.destroy_session()*
+agentic.destroy_session({opts})
+  Destroy a session and its widget. This is the only way to end a
+  session; hiding it does not.
+
+  Parameters: ~
+    {opts}  (table|nil)  Optional fields:
+      `session`  (integer)  Session key to destroy. Defaults to the
+                            session visible in this tab, else the
+                            most recently opened one.
+
+                                              *agentic.select_session()*
+agentic.select_session()
+  Show a picker listing every live session and open the chosen one
+  in the current tab. Entries are labelled with the session title,
+  and the session visible in the current tab is marked.
+
+                                                *agentic.next_session()*
+agentic.next_session()
+  Open the session with the next higher session key, wrapping at the
+  end. A no-op with fewer than two sessions.
+
+                                                *agentic.prev_session()*
+agentic.prev_session()
+  Open the session with the next lower session key, wrapping at the
+  start. A no-op with fewer than two sessions.
 
                                      *agentic.new_session_with_provider()*
 agentic.new_session_with_provider({opts})
@@ -578,7 +637,10 @@ These keybindings are automatically set in Agentic buffers:
   <localLeader>m         n       Switch model (keeps history)
   <localLeader>t         n       Select thought effort level (model-dependent)
   <localLeader>o         n       Open options modal
-  q                      n       Close chat widget
+  <localLeader>l         n       List sessions and open one
+  <localLeader>]         n       Open the next session
+  <localLeader>[         n       Open the previous session
+  q                      n       Hide chat widget (session keeps running)
   d                      n/v     Remove file/selection/diagnostic
   ]]                     n       Next chat heading
   [[                     n       Previous chat heading
@@ -614,6 +676,9 @@ Override default keybindings via the `keymaps` config option:
         switch_model = "<localLeader>m",
         change_thought_level = "<localLeader>t",
         open_options = "<localLeader>o",
+        select_session = "<localLeader>l",
+        next_session = "<localLeader>]",
+        prev_session = "<localLeader>[",
       },
       prompt = {
         submit = {
@@ -738,8 +803,14 @@ Session restoration ~
                                             *agentic-session-restore*
 Sessions are interchangeable between Neovim and the terminal. Call
 |agentic.restore_session()| to see previous sessions from your
-provider. If the current tab has an active conversation, you will be
-prompted to cancel or clear and restore.
+provider.
+
+Restoring never clobbers a conversation: it always creates an
+additional session and shows it, leaving the session you were on alive
+and reachable through |agentic.select_session()|. The one exception is
+a completely empty session -- no messages, no attached files, no code
+selections, no diagnostics, and nothing typed in the prompt -- which is
+reclaimed instead of being left behind.
 
 System information ~
                                              *agentic-system-context*
@@ -749,47 +820,85 @@ This reduces time to first response by providing immediate context.
 
 Event hooks ~
                                                      *agentic-hooks*
+Identify a session by `data.session_key`, not by `data.tab_page_id`.
+`session_key` is the session's key (see |agentic-sessions|) and never
+changes. `tab_page_id` only says which tab the session is showing in
+right now, and it is `nil` for a session running in the background --
+hidden, or in a tab that was closed. `on_session_update` and
+`on_response_complete` fire for background sessions, so guard
+`tab_page_id` before passing it to any `nvim_tabpage_*` function;
+those raise on `nil`.
 >lua
+  -- Token usage per session, keyed by session_key. A plain Lua table,
+  -- because a session may be running in no tab at all.
+  local agentic_usage = {}
+
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
       on_create_session_response = function(data)
         -- Fires on both success and failure. Check `data.err` first.
         -- data.session_id: string|nil (nil if err is set)
-        -- data.tab_page_id: number (may be invalid if tab was closed;
-        --   guard with vim.api.nvim_tabpage_is_valid before use)
+        -- data.session_key: integer (stable session identity)
+        -- data.tab_page_id: number|nil (nil while in the background)
         -- data.response: table|nil (nil if err is set)
         -- data.err: table|nil (nil on success)
+        agentic_usage[data.session_key] = nil
       end,
       on_prompt_submit = function(data)
         -- data.prompt: string
         -- data.session_id: string
-        -- data.tab_page_id: number
+        -- data.session_key: integer
+        -- data.tab_page_id: number|nil
       end,
       on_response_complete = function(data)
         -- data.session_id: string
-        -- data.tab_page_id: number
+        -- data.session_key: integer
+        -- data.tab_page_id: number|nil (where the session is at
+        --   completion, not at submit time)
         -- data.success: boolean
         -- data.error: table|nil
       end,
       on_session_update = function(data)
         -- data.session_id: string
-        -- data.tab_page_id: number
+        -- data.session_key: integer
+        -- data.tab_page_id: number|nil
         -- data.update: table
+        if data.update.sessionUpdate == "usage_update" then
+          agentic_usage[data.session_key] = {
+            used = data.update.used,
+            size = data.update.size,
+          }
+        end
       end,
       on_file_edit = function(data)
         -- data.filepath: string (absolute path)
         -- data.session_id: string
-        -- data.tab_page_id: number
+        -- data.session_key: integer
+        -- data.tab_page_id: number|nil
         -- data.bufnr: number|nil (if file is loaded in a buffer)
       end,
       on_request_permission = function(data)
         -- data.request: table (contains .toolCall)
         -- data.session_id: string
-        -- data.tab_page_id: number
+        -- data.session_key: integer
+        -- data.tab_page_id: number|nil
       end,
     },
   }
+<
+Migrating from `tab_page_id`: it used to be a `number` that always
+named a live tabpage. It is now `number|nil` and is a placement hint
+only. Anything using it as an identity or a storage key -- for example
+`vim.t[data.tab_page_id]` or a bare
+`nvim_tabpage_is_valid(data.tab_page_id)` -- should move to
+`data.session_key`. If you genuinely need the tab, guard it:
+>lua
+  if data.tab_page_id
+    and vim.api.nvim_tabpage_is_valid(data.tab_page_id)
+  then
+    -- the session is visible in that tab
+  end
 <
 Note: mutating the file inside `on_file_edit` (for example
 formatters that save) may cause the agent to re-read or retry

@@ -13,14 +13,15 @@ Hard rules and traps. Read code before changing behavior.
 ## Topology
 
 ```text
-SessionManager (per tab)
-└── ChatWidget (per tab)  owns buffers + windows + autocmds
+SessionManager (per session)
+└── ChatWidget (per session)  owns buffers + windows + autocmds
     ├── WidgetLayout      open/close/resize panels, applies PANEL_WINDOW_OPTS
     ├── _hidden_chat_winid  float keeping chat buffer attached while widget
     │                       hidden — managed by ChatWidget._hidden_chat_winid
     │                       + WidgetLayout.open_hidden_chat_window — ADR 0001
     ├── BufferGuard       redirects foreign buffers out of widget windows
-    ├── WindowDecoration  winbar + buf names, headers in vim.t[tab]
+    ├── WindowDecoration  winbar + buf names; header state read from the
+    │                     owning widget via WidgetRegistry.get(bufnr).headers
     ├── DiffPreview       inline/split diff in real file buf (not chat)
     └── MessageWriter (per chat bufnr) ── owns chat-buffer content
         ├── tool_call_blocks    id -> ToolCallBlock (extmark-tracked range)
@@ -119,8 +120,10 @@ tests.
   `Fold.setup_window`) MUST be written via `vim.wo[winid][0]`. See the
   general `:set`-style ban in root `AGENTS.md` "Common traps". Regression:
   `buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.
-- Module-level state is forbidden for per-tab data. Namespace IDs are exempt —
-  IDs are global, isolation comes from per-buffer `nvim_buf_clear_namespace`.
+- Module-level state is forbidden for per-session data. Namespace IDs are
+  exempt — IDs are global, isolation comes from per-buffer
+  `nvim_buf_clear_namespace`. So is `WidgetRegistry`'s `bufnr -> widget` map:
+  buffer numbers are global too.
 
 ## Traps
 
@@ -131,11 +134,6 @@ tests.
   - Only `Fold.setup_window` (in `lua/agentic/ui/tool_call_fold.lua`) is allowed
     to write these. The set-handler triggers even on no-op assigns, closing the
     user's `zo`-opened folds. See ADR 0001.
-- Querying windows globally for tab-scoped lookups
-  - Hits other tabs' chat windows. Use
-    `nvim_tabpage_list_wins(self:visible_tab())`, and return early when
-    `visible_tab()` is nil — a hidden widget sits in no tabpage, so there is
-    nothing to scope the lookup to.
 - Calling `nvim_win_close` after tabclose
   - Handle returns valid from `nvim_win_is_valid` but segfaults on 0.11.5. In
     `WidgetLayout.close`, check
@@ -143,8 +141,16 @@ tests.
     `nvim_win_close` — not just once at the start of the loop.
 - `vim.notify` directly
   - Fast-context errors. Use `Logger.notify`.
-- Module-level mutable state for per-tab data
-  - Cross-tab leakage. See root `AGENTS.md`.
+- Module-level mutable state for per-session data
+  - Leaks one session's state into another. See root `AGENTS.md`.
+- Restarting the spinner without bumping `StatusAnimation._epoch`
+  - `vim.defer_fn` cannot un-queue a callback that already fired, so a
+    `stop` -> `start` cycle straddling a fired-but-unrun timer leaves the old
+    callback to schedule a second chain. Two live chains, double frame rate,
+    and the first is unreferenced so nothing can cancel it. `start` bumps
+    `_epoch`; `_render_frame` returns without rescheduling when the epoch it
+    was scheduled with no longer matches. Regression:
+    `status_animation.test.lua::"drops a stale frame instead of scheduling a successor"`.
 - Two windows holding the chat buffer concurrently
   - Breaks fold-state preservation. ADR 0001.
 - Reopening the hidden chat float without closing the previous one
@@ -156,10 +162,12 @@ tests.
     buffer takes over the panel's `buf_nrs` entry and is re-registered, so the
     single shared augroup can still resolve the window's owner on the next
     event. Re-grep `BufferGuard` for the exact entry point before refactoring.
-- Mutating nested fields of `vim.t[tab].agentic_headers` in place
-  - `vim.t` returns copies; nested edits do not persist. Read via
-    `WindowDecoration.get_headers_state`, mutate, write back via
-    `set_headers_state`.
+- Writing header state back after reading it
+  - There is no setter, and adding one would be a bug. `WindowDecoration`'s
+    header-state getter hands back the owning widget's own `ChatWidget.headers`
+    table (or the module default when no widget owns the bufnr). Mutate it in
+    place. Tab-scoped storage returned copies and needed a write-back; a real
+    table does not, and copying one back would drop concurrent edits.
 - Direct `nvim_buf_set_name` for widget buffers
   - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
     persists agentic buffer names; direct calls raise E95 on reopen. Use

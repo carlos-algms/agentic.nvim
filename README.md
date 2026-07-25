@@ -141,8 +141,10 @@ _...and any future ACP-compatible provider._
 - **🛡️ Permission System** - Interactive approval workflow for AI tool calls,
   mimicking Claude-code's approach, with 1, 2, 3, ... one-key press for quick
   responses
-- **🤖 🤖 Multiple agents** - Independent Chat sessions for each Neovim Tab let
-  you have multiple agents working simultaneously on different tasks
+- **🤖 🤖 Multiple agents** - Run as many independent Chat sessions as you like,
+  simultaneously and on different tasks. A session keeps working while it is
+  hidden, closing its window or its tab does not stop it, and you can bring any
+  session up in any tab
 - **🎯 Clean UI** - Sidebar interface with markdown rendering and syntax
   highlighting
 - **⌨️ Slash Commands** - Native Neovim completion for ACP slash commands with
@@ -646,7 +648,11 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 | `:lua require("agentic").add_files_to_context(opts)`         | Add a list of file paths or buffer numbers to context             |
 | `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
 | `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
-| `:lua require("agentic").new_session()`                      | Start new chat session, destroying and cleaning the current one   |
+| `:lua require("agentic").new_session()`                      | Start an additional chat session; existing sessions keep running  |
+| `:lua require("agentic").destroy_session(opts)`              | Destroy a session and its widget                                  |
+| `:lua require("agentic").select_session()`                   | Pick any live session from a list and open it here                |
+| `:lua require("agentic").next_session()`                     | Open the next session, wrapping at the end                        |
+| `:lua require("agentic").prev_session()`                     | Open the previous session, wrapping at the start                  |
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
 | `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session      |
 | `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
@@ -711,6 +717,33 @@ listing sessions.
 require("agentic").restore_session_by_id("58e5cf8a-1277-4e43-bc29-10c1246a2c66")
 ```
 
+### Working with Multiple Sessions
+
+Sessions are not tied to tabs. Each one gets a **session key** — a small integer
+assigned when it is created and stable for its whole life.
+
+- A session keeps running while hidden. Pressing `q`, closing the window, or
+  closing the tab does not stop it or lose it
+- Opening a session in a tab hides whatever session was there, and removes it
+  from any other tab. At most one session is visible per tab
+- Only `destroy_session()` (and switching provider) ends a session
+
+`open(opts)` and `destroy_session(opts)` accept a **session** field with the key
+of the session to act on. Without it they use the session visible in the current
+tab, falling back to the most recently opened one.
+
+```lua
+-- Open session 2 here, wherever it was before
+require("agentic").open({ session = 2 })
+
+-- Destroy session 2 without opening it
+require("agentic").destroy_session({ session = 2 })
+```
+
+Session keys show up in the chat buffer names once more than one session exists,
+and `select_session()` lists every live session by title, marking the one
+visible in the current tab.
+
 ### Built-in Keybindings
 
 These keybindings are automatically set in Agentic buffers:
@@ -726,6 +759,9 @@ These keybindings are automatically set in Agentic buffers:
 | `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
 | `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
 | `<localLeader>o` | n     | Open options modal                                              |
+| `<localLeader>l` | n     | List every live session and open the chosen one                 |
+| `<localLeader>]` | n     | Open the next session                                           |
+| `<localLeader>[` | n     | Open the previous session                                       |
 | `q`              | n     | Close chat widget                                               |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -760,6 +796,9 @@ your setup:
         switch_model = "<localLeader>m",     -- Switch model
         change_thought_level = "<localLeader>t",  -- Select thought effort level
         open_options = "<localLeader>o",  -- Open options modal
+        select_session = "<localLeader>l",  -- List and open a session
+        next_session = "<localLeader>]",    -- Open the next session
+        prev_session = "<localLeader>[",    -- Open the previous session
       },
 
       -- Keybindings for the prompt buffer only
@@ -933,13 +972,15 @@ If you know the session ID, call
 session directly. This skips listing sessions, so it also works with providers
 that don't support session listing.
 
-**Conflict handling:**
+**Restoring never clobbers a conversation.**
 
-If you try to restore a session when the current tab already has an active
-conversation, you'll be prompted to:
+A restore always creates an additional session and shows it. The session you
+were on is left alive and reachable through
+`require("agentic").select_session()`.
 
-- Cancel the restoration (keep current session)
-- Clear current session and restore the selected one
+The one exception: if the session you were on is completely empty — no
+messages, no attached files, no code selections, no diagnostics, and no text
+typed in the prompt — it is reclaimed rather than left behind as an empty shell.
 
 ### System Information
 
@@ -965,8 +1006,21 @@ Agentic.nvim provides hooks that let you respond to specific events during the
 chat lifecycle. These are useful for logging, notifications, analytics, or
 integrating with other plugins.
 
+> [!IMPORTANT]
+> **Identify a session by `data.session_key`, not by `data.tab_page_id`.**
+> `session_key` is the session's registry key and never changes.
+> `tab_page_id` only says which tab the session is showing in **right now**, and
+> it is **`nil` for a session running in the background** — hidden, or in a tab
+> that was closed. Hooks like `on_session_update` and `on_response_complete`
+> fire for background sessions, so any code that passes `tab_page_id` to a
+> `nvim_tabpage_*` call must guard it first; those functions raise on `nil`.
+
 ```lua
-{
+-- Token usage per session, keyed by session_key. A plain Lua table, because a
+-- session is not tied to a tab and may be running in no tab at all.
+local agentic_usage = {}
+
+return {
   "carlos-algms/agentic.nvim",
   --- @type agentic.PartialUserConfig
   opts = {
@@ -975,7 +1029,9 @@ integrating with other plugins.
       -- Fires on both success and failure; check `data.err` first.
       on_create_session_response = function(data)
         -- data.session_id: string|nil - The ACP session ID (nil if err is set)
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - Tab the session shows in right now;
+        --   nil when it is running in the background
         -- data.response: table|nil - The ACP session creation response
         --   (nil if err is set)
         -- data.err: table|nil - Error details if session creation failed
@@ -988,48 +1044,49 @@ integrating with other plugins.
         end
         vim.notify("New session: " .. data.response.sessionId)
 
-        -- Reset the agentic_usage tabpage var (set by the on_session_update
-        -- example below) so a new session starts with a clean usage counter.
-        if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
-          vim.t[data.tab_page_id].agentic_usage = nil
-        end
+        -- Reset this session's usage counter (set by the on_session_update
+        -- example below).
+        agentic_usage[data.session_key] = nil
       end,
 
       -- Called when the user submits a prompt
       on_prompt_submit = function(data)
         -- data.prompt: string - The user's prompt text
         -- data.session_id: string - The ACP session ID
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - nil for a background session
         vim.notify("Prompt submitted: " .. data.prompt:sub(1, 50))
       end,
 
       -- Called when the agent finishes responding
       on_response_complete = function(data)
         -- data.session_id: string - The ACP session ID
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - Where the session is when the response
+        --   completed, not where it was when the prompt was submitted
         -- data.success: boolean - Whether response completed without error
         -- data.error: table|nil - Error details if failed
         if data.success then
-          vim.notify("Agent finished!", vim.log.levels.INFO)
+          vim.notify("Session " .. data.session_key .. " finished!")
         else
           vim.notify("Agent error: " .. vim.inspect(data.error), vim.log.levels.ERROR)
         end
       end,
 
       -- Called when the session is updated.
+      -- Fires for background sessions too, so key everything off session_key.
       on_session_update = function(data)
         -- data.session_id: string - The ACP session ID
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - nil for a background session
         -- data.update: table -- The update
 
           if data.update.sessionUpdate == "usage_update" then
-            -- Use this in your status line, scoped per tab/session.
-            if vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
-              vim.t[data.tab_page_id].agentic_usage = {
-                used = data.update.used,
-                size = data.update.size,
-              }
-            end
+            -- Use this in your status line, scoped per session.
+            agentic_usage[data.session_key] = {
+              used = data.update.used,
+              size = data.update.size,
+            }
           end
       end,
 
@@ -1039,7 +1096,8 @@ integrating with other plugins.
       on_file_edit = function(data)
         -- data.filepath: string - Absolute path to the edited file
         -- data.session_id: string - The ACP session ID
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - nil for a background session
         -- data.bufnr: number|nil - Buffer number if the file is loaded
         if data.bufnr then
           vim.lsp.buf.format({ bufnr = data.bufnr, timeout_ms = 5000 })
@@ -1052,7 +1110,8 @@ integrating with other plugins.
         -- data.request: table - The ACP permission request object
         -- data.request.toolCall: table - contains .kind, .title, etc.
         -- data.session_id: string - The ACP session ID
-        -- data.tab_page_id: number - The Neovim tabpage ID
+        -- data.session_key: integer - Stable session identity
+        -- data.tab_page_id: number|nil - nil for a background session
         local tool = data.request.toolCall
         local label = tool.title or tool.kind or "action"
         vim.notify("Agent needs permission for: " .. label)
@@ -1060,6 +1119,18 @@ integrating with other plugins.
     }
   }
 }
+```
+
+**Migrating from `tab_page_id`:** it used to be a `number` that always named a
+live tabpage. It is now `number|nil` and is a placement hint only. Anything
+using it as an identity or as a storage key — `vim.t[data.tab_page_id]`,
+`nvim_tabpage_is_valid(data.tab_page_id)` — should move to `data.session_key`.
+If you genuinely need the tab (to render into it, for instance), guard it:
+
+```lua
+if data.tab_page_id and vim.api.nvim_tabpage_is_valid(data.tab_page_id) then
+  -- the session is visible in that tab
+end
 ```
 
 ## 🍚 Customization (Ricing)

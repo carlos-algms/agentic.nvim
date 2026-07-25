@@ -18,7 +18,7 @@ Newline-delimited JSON-RPC protocol used to talk to a **Provider**.
 
 **AgentInstance**:
 The single, shared **ACPClient** held per **Provider** name. One subprocess per
-provider, multiplexed across tabpages.
+provider, multiplexed across every **Session**.
 _Avoid_: agent, client (use the precise term).
 
 **ACPClient**:
@@ -43,31 +43,47 @@ _Avoid_: "listener", "consumer".
 **ACP Session**:
 A protocol-level session id, opaque string issued by the **Provider** via
 `session/new`. One **AgentInstance** can hold many; this plugin activates one
-per **Tabpage**.
+per **SessionManager**.
 _Avoid_: bare "session" when discussing protocol traffic.
 
 **SessionManager**:
-The per-**Tabpage** Lua orchestrator. Owns the **ChatWidget**, holds the active
-**ACP Session** id, routes `session/update` events to the **MessageWriter**,
-**PermissionManager**, and **ChatHistory**.
+The Lua orchestrator for one conversation. Owns the **ChatWidget**, holds the
+active **ACP Session** id, routes `session/update` events to the
+**MessageWriter**, **PermissionManager**, and **ChatHistory**. The isolation
+unit for this plugin.
 _Avoid_: "the session" — say SessionManager.
 
+**Session key**:
+The integer **SessionRegistry** key, assigned at creation and stable for the
+**SessionManager**'s whole life. The only stable identity a **Session** has;
+published to users on every hook payload.
+_Avoid_: keying anything off a **Tabpage** handle.
+
 **SessionRegistry**:
-The module-level singleton mapping `tab_page_id -> SessionManager`. The only
-sanctioned entry point from `init.lua`.
+The module-level singleton mapping **Session key** -> **SessionManager**. The
+only sanctioned entry point from `init.lua`. `show_session` is the single path
+that makes a **SessionManager** visible. See ADR 0008.
 
 ### Tabpage scope
 
 **Tabpage**:
-The Neovim tab. The isolation unit for this plugin: one **SessionManager**,
-one **ChatWidget**, one active **ACP Session** per tab.
+The Neovim tab. A **placement**, not an owner: at most one **ChatWidget** is
+visible in a Tabpage, and at most one Tabpage shows a given **ChatWidget**.
+Derived live from `ChatWidget:visible_tab()` and never stored.
 _Avoid_: "tab" (ambiguous with terminal tabs and chat-buffer tabs).
+
+**Background session**:
+A **SessionManager** whose **ChatWidget** is visible in no Tabpage —
+`visible_tab()` is nil. It keeps its **ACP Session**, keeps receiving
+`session/update`, and keeps generating.
+_Avoid_: "closed session"; closing a widget destroys nothing.
 
 ### UI surface
 
 **ChatWidget**:
-The per-**Tabpage** UI container. Owns five buffers (see **ChatWidget buffers**),
-panel windows, autocmds, and the **MessageWriter**.
+The UI container for one **SessionManager**. Owns five buffers (see **ChatWidget
+buffers**), panel windows, autocmds, and the **MessageWriter**. Reachable from
+any of its buffer numbers via **WidgetRegistry**.
 
 **ChatWidget buffers**:
 The five buffers held on `ChatWidget.buf_nrs`:
@@ -92,10 +108,17 @@ See ADR 0001.
 
 **BufferGuard**:
 Redirects foreign buffers out of **ChatWidget** windows, into a non-widget
-window in the same **Tabpage**.
+window in the **Tabpage** the owning widget is visible in. One shared augroup
+for every widget; the owner is resolved through **WidgetRegistry**.
+
+**WidgetRegistry**:
+Module-level map from widget buffer number to owning **ChatWidget**. How
+buffer-scoped code reaches its widget without storing a **Tabpage**. Buffer
+numbers are global, so module-level state is correct here.
 
 **WindowDecoration**:
-Winbar text, buffer names, header state stored in `vim.t[tab]`.
+Winbar text and buffer names. Header state lives on the owning **ChatWidget**
+(`ChatWidget.headers`), resolved through **WidgetRegistry**.
 
 **DiffPreview**:
 Inline or split diff rendered in the real file buffer, NOT in the chat buffer.
@@ -157,8 +180,8 @@ A provider-initiated `session/request_permission` event tied to a specific
 **Tool Call** id. May carry a diff.
 
 **PermissionManager**:
-Per-**Tabpage** owner of pending **Permission Requests**, focus state, per-block
-keymaps. Renders buttons inside the focused **Tool Call Block**. See ADR 0003.
+Per-**SessionManager** owner of pending **Permission Requests**, focus state,
+per-block keymaps. Renders buttons inside the focused **Tool Call Block**. See ADR 0003.
 
 ### Message chunks
 
@@ -177,7 +200,7 @@ Echoed user input from the **Provider**. Attributed to the `user` sender.
 **Plan**:
 Provider-emitted todo list, rendered by `TodoList`. No sender header.
 
-### Provider features (per-tab, keymap-driven)
+### Provider features (per session, keymap-driven)
 
 **AgentConfigOptions**:
 Per-**SessionManager** orchestrator for provider-side toggles (mode, model,
@@ -188,10 +211,10 @@ public `init.lua` entry — selectors open from configurable keymaps
 
 **AgentModes** / **AgentModels**:
 Legacy-path holders inside `AgentConfigOptions`. Used when a provider sends
-`modes`/`models` instead of unified `configOptions`. Same per-tab scope.
+`modes`/`models` instead of unified `configOptions`. Same per-session scope.
 
 **SlashCommands**:
-Per-tab input-buffer completion. Command list arrives via
+Per-session input-buffer completion. Command list arrives via
 `session/update` `available_commands_update` and is augmented locally: the
 plugin filters out `clear` and auto-injects `/new` if absent. Only `/new` is
 intercepted on submit (calls `new_session`); every other slash-prefixed line
@@ -201,8 +224,8 @@ is sent verbatim to the **Provider**.
 
 **Hooks**:
 User-registerable callbacks under `Config.hooks` (see
-`config_default.lua`). All fire via `vim.schedule` + `pcall`. Five hooks
-today:
+`config_default.lua`). All fire via `vim.schedule` + `pcall`. Every payload
+carries the **Session key**. Six hooks today:
 
 - `on_create_session_response` — fires after `session/new` returns.
 - `on_prompt_submit` — fires when user submits a prompt.
@@ -211,6 +234,7 @@ today:
 - `on_file_edit` — fires when a file-mutating **Tool Call** completes
   (kinds: `edit`, `create`, `write`, `delete`, `move`). Skipped during
   session restore.
+- `on_request_permission` — fires for each pending **Permission Request**.
 
 ### Reconnect
 
@@ -221,10 +245,13 @@ default.
 
 ## Relationships
 
-- A **SessionRegistry** maps each **Tabpage** to one **SessionManager**.
+- A **SessionRegistry** maps each **Session key** to one **SessionManager**.
 - A **SessionManager** owns one **ChatWidget** and references one **ACP
   Session** id on one **AgentInstance**.
-- One **AgentInstance** per **Provider** name, shared across **Tabpages**.
+- A **ChatWidget** is visible in at most one **Tabpage**, and a **Tabpage**
+  shows at most one **ChatWidget**. Both may be zero.
+- One **AgentInstance** per **Provider** name, shared across every
+  **SessionManager**.
 - A **ChatWidget** owns one **MessageWriter** which owns many **Tool Call
   Blocks** keyed by tool call id.
 - A **Permission Request** belongs to exactly one **Tool Call** (by id) on
@@ -235,11 +262,12 @@ default.
 
 ## Example dialogue
 
-> **Dev:** "When the user opens a second **Tabpage**, do we spawn another
+> **Dev:** "When the user starts a second chat, do we spawn another
 > **Provider**?"
 > **Maintainer:** "No. **AgentInstance** is shared. We create a new **ACP
-> Session** on the existing instance, and a new **SessionManager** owns it for
-> that **Tabpage**."
+> Session** on the existing instance, and a new **SessionManager** owns it
+> under its own **Session key**. Opening a **Tabpage** on its own creates
+> nothing."
 
 > **Dev:** "Where does the diff render — in the chat or in the file?"
 > **Maintainer:** "Both, different things. **ToolCallDiff** renders inside the
@@ -251,6 +279,9 @@ default.
 - "Session" was used to mean **ACP Session**, **SessionManager**, and
   **SessionRegistry** interchangeably. Resolved: three distinct concepts, use
   the qualified term.
+- "Tabpage" was used as the ownership key: one **SessionManager** per tab, dying
+  with it. Resolved: the **Session key** owns, the Tabpage only places. A
+  Tabpage handle identifies nothing.
 - "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
   object, and the LLM behind the provider. Resolved: **Provider** for the
   subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain
