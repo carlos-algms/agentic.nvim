@@ -411,17 +411,17 @@ local function resolve_buffer_name(
     return fallback
 end
 
---- Sets the buffer name based on header text and tab count
+--- Sets the buffer name based on header text and the number of live sessions
 --- @param bufnr integer Buffer number
 --- @param header_text string|nil Resolved header text
---- @param tab_page_id integer Tab page ID for suffix
+--- @param session_key integer|nil Session key for the suffix; nil when no session owns the buffer
 --- @param window_name string Window name for Config.windows[name].buffer_name lookup
 --- @param header_parts agentic.ui.ChatWidget.HeaderParts Header parts for function-type buffer_name
 --- @param session_state agentic.acp.SessionState|nil Live session state passed as 2nd arg to user buffer_name fn
 local function set_buffer_name(
     bufnr,
     header_text,
-    tab_page_id,
+    session_key,
     window_name,
     header_parts,
     session_state
@@ -436,15 +436,15 @@ local function set_buffer_name(
         return
     end
 
-    -- Determine if we should show tab suffix based on total tab count
-    local total_tabs = #vim.api.nvim_list_tabpages()
+    -- Suffixed only while a second session exists: a session outlives its tab, so
+    -- the tab count says nothing about how many names have to stay distinct.
+    local SessionRegistry = require("agentic.session_registry")
+    local total_sessions = vim.tbl_count(SessionRegistry.sessions)
 
     --- @type string
-    local buf_name
-    if total_tabs > 1 then
-        buf_name = string.format("%s (Tab %d)", name, tab_page_id)
-    else
-        buf_name = name
+    local buf_name = name
+    if session_key and total_sessions > 1 then
+        buf_name = string.format("%s (%d)", name, session_key)
     end
 
     WindowDecoration._set_buffer_name(bufnr, buf_name)
@@ -526,8 +526,7 @@ function WindowDecoration.render_header(
         set_buffer_name(
             bufnr,
             concat_header_parts(dynamic_header),
-            -- Task 9 replaces this argument with the session key.
-            vim.api.nvim_win_get_tabpage(winid),
+            owner and owner.session_key or nil,
             window_name,
             dynamic_header,
             callback_session_state

@@ -51,6 +51,9 @@ function SessionRegistry.create()
     SessionRegistry._next_id = SessionRegistry._next_id + 1
     session.session_key = SessionRegistry._next_id
     SessionRegistry.sessions[session.session_key] = session
+    -- Published onto the widget so buffer-scoped code reaches the key through
+    -- `WidgetRegistry.get(bufnr)`, without inverting the dependency direction.
+    session.widget.session_key = session.session_key
 
     return session
 end

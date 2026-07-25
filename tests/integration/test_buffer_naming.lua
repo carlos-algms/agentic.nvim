@@ -12,18 +12,31 @@ describe("Buffer Naming", function()
         child.stop()
     end)
 
-    --- Gets buffer basename for a panel in the current tabpage
+    --- Creates a session through the session-keyed registry and shows it
+    --- @return integer session_key
+    local function open_session()
+        return child.lua_get([[
+(function()
+    local session = require("agentic.session_registry").create()
+    session.widget:show({ focus_prompt = false })
+    return session.session_key
+end)()
+]])
+    end
+
+    --- Gets the buffer basename of a panel owned by the given session
+    --- @param session_key integer
     --- @param panel string Panel name (chat, input, code, files, todos)
     --- @return string basename
-    local function get_panel_basename(panel)
+    local function get_panel_basename(session_key, panel)
         local bufname = child.lua_get(string.format(
             [[
 (function()
-    local tab_id = vim.api.nvim_get_current_tabpage()
-    local session = require("agentic.session_registry").sessions[tab_id]
+    local session = require("agentic.session_registry").sessions[%d]
     return vim.api.nvim_buf_get_name(session.widget.buf_nrs.%s)
 end)()
 ]],
+            session_key,
             panel
         ))
         return child.lua_get(
@@ -31,42 +44,89 @@ end)()
         )
     end
 
+    --- Re-renders one panel's header, which is what rewrites the buffer name
+    --- @param session_key integer
+    --- @param panel string
+    local function render_header(session_key, panel)
+        child.lua(string.format(
+            [[
+local session = require("agentic.session_registry").sessions[%d]
+session.widget:render_header("%s")
+]],
+            session_key,
+            panel
+        ))
+        child.flush()
+    end
+
     it("buffer names mirror header titles", function()
-        child.lua([[ require("agentic").toggle() ]])
+        local key = open_session()
         child.flush()
 
-        local basename = get_panel_basename("chat")
+        local basename = get_panel_basename(key, "chat")
 
         assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
     end)
 
-    it("adds tab suffix for multiple instances", function()
-        child.lua([[ require("agentic").toggle() ]])
+    it("adds a session suffix for multiple sessions", function()
+        local key1 = open_session()
         child.flush()
-
-        local tab1_basename = get_panel_basename("input")
 
         child.cmd("tabnew")
-        child.lua([[ require("agentic").toggle() ]])
+        local key2 = open_session()
         child.flush()
 
-        local tab2_basename = get_panel_basename("input")
+        render_header(key1, "input")
 
-        -- First instance starts with title (no tab suffix)
-        assert.is_true(vim.startswith(tab1_basename, "󰦨 Prompt"))
-        assert.is_nil(tab1_basename:match("%(Tab %d+%)"))
+        local basename1 = get_panel_basename(key1, "input")
+        local basename2 = get_panel_basename(key2, "input")
 
-        -- Second instance has visible "(Tab N)" suffix
-        assert.is_true(vim.startswith(tab2_basename, "󰦨 Prompt"))
-        assert.is_not_nil(tab2_basename:match("%(Tab %d+%)"))
+        assert.is_true(vim.startswith(basename1, "󰦨 Prompt"))
+        assert.is_true(vim.startswith(basename2, "󰦨 Prompt"))
 
-        -- Names are unique
-        assert.is_not.equal(tab1_basename, tab2_basename)
+        -- Each session carries its own key, not a tabpage handle
+        assert.is_not_nil(basename1:match("%(1%)$"))
+        assert.is_not_nil(basename2:match("%(2%)$"))
+    end)
+
+    it("does not demote the first session's buffers", function()
+        local key1 = open_session()
+        child.flush()
+
+        child.cmd("tabnew")
+        open_session()
+        child.flush()
+
+        local basename = get_panel_basename(key1, "chat")
+
+        assert.is_nil(basename:match("%-old%-"))
+    end)
+
+    it("returns to the bare name once the other session is gone", function()
+        local key1 = open_session()
+        child.flush()
+
+        child.cmd("tabnew")
+        local key2 = open_session()
+        child.flush()
+
+        render_header(key1, "chat")
+        assert.is_not_nil(get_panel_basename(key1, "chat"):match("%(1%)$"))
+
+        child.lua(
+            string.format(
+                [[ require("agentic.session_registry").destroy(%d) ]],
+                key2
+            )
+        )
+        render_header(key1, "chat")
+
+        assert.equal("󰻞 Agentic Chat", get_panel_basename(key1, "chat"))
     end)
 
     it("prevents buffer name collision errors", function()
         for _ = 1, 5 do
-            child.lua([[ require("agentic").toggle() ]])
+            open_session()
             child.flush()
             child.cmd("tabnew")
         end
@@ -81,11 +141,11 @@ end)()
     it("uses custom buffer_name from windows config when set", function()
         child.lua([[
             require("agentic").setup({ windows = { chat = { buffer_name = "My Chat" } } })
-            require("agentic").toggle()
         ]])
+        local key = open_session()
         child.flush()
 
-        local basename = get_panel_basename("chat")
+        local basename = get_panel_basename(key, "chat")
         assert.is_true(vim.startswith(basename, "My Chat"))
     end)
 
@@ -100,22 +160,20 @@ end)()
                     },
                 },
             })
-            require("agentic").toggle()
         ]])
+        local key = open_session()
         child.flush()
 
-        local basename = get_panel_basename("chat")
+        local basename = get_panel_basename(key, "chat")
         assert.is_true(vim.startswith(basename, "Custom: 󰻞 Agentic Chat"))
     end)
 
     it("falls back to header title when buffer_name not set", function()
-        child.lua([[
-            require("agentic").setup({})
-            require("agentic").toggle()
-        ]])
+        child.lua([[ require("agentic").setup({}) ]])
+        local key = open_session()
         child.flush()
 
-        local basename = get_panel_basename("chat")
+        local basename = get_panel_basename(key, "chat")
         assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
     end)
 
@@ -130,11 +188,11 @@ end)()
                     },
                 },
             })
-            require("agentic").toggle()
         ]])
+        local key = open_session()
         child.flush()
 
-        local basename = get_panel_basename("chat")
+        local basename = get_panel_basename(key, "chat")
         assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
     end)
 
@@ -151,11 +209,11 @@ end)()
                     },
                 },
             })
-            require("agentic").toggle()
         ]])
+            local key = open_session()
             child.flush()
 
-            local basename = get_panel_basename("chat")
+            local basename = get_panel_basename(key, "chat")
             assert.is_true(vim.startswith(basename, "󰻞 Agentic Chat"))
         end
     )
@@ -170,12 +228,12 @@ end)()
                     input = { buffer_name = "Shared Name" },
                 },
             })
-            require("agentic").toggle()
         ]])
+            local key = open_session()
             child.flush()
 
-            local chat_basename = get_panel_basename("chat")
-            local input_basename = get_panel_basename("input")
+            local chat_basename = get_panel_basename(key, "chat")
+            local input_basename = get_panel_basename(key, "input")
 
             assert.is_true(vim.startswith(chat_basename, "Shared Name"))
             assert.is_true(vim.startswith(input_basename, "Shared Name"))
@@ -183,35 +241,25 @@ end)()
         end
     )
 
-    it("adds tab suffix to custom buffer_name across tabs", function()
+    it("adds the session suffix to a custom buffer_name", function()
         child.lua([[
             require("agentic").setup({ windows = { chat = { buffer_name = "My Chat" } } })
-            require("agentic").toggle()
         ]])
+        local key1 = open_session()
         child.flush()
-
-        local tab1_basename = get_panel_basename("chat")
 
         child.cmd("tabnew")
-        child.lua([[ require("agentic").toggle() ]])
+        local key2 = open_session()
         child.flush()
 
-        local tab2_basename = get_panel_basename("chat")
+        render_header(key1, "chat")
 
-        -- First instance: custom name, no tab suffix
-        assert.is_true(vim.startswith(tab1_basename, "My Chat"))
-        assert.is_nil(tab1_basename:match("%(Tab %d+%)"))
-
-        -- Second instance: custom name plus visible "(Tab N)" suffix
-        assert.is_true(vim.startswith(tab2_basename, "My Chat"))
-        assert.is_not_nil(tab2_basename:match("%(Tab %d+%)"))
-
-        -- Names are unique
-        assert.is_not.equal(tab1_basename, tab2_basename)
+        assert.equal("My Chat (1)", get_panel_basename(key1, "chat"))
+        assert.equal("My Chat (2)", get_panel_basename(key2, "chat"))
     end)
 
     it("each panel has distinct buffer name prefix", function()
-        child.lua([[ require("agentic").toggle() ]])
+        local key = open_session()
         child.flush()
 
         local expected_prefixes = {
@@ -220,7 +268,7 @@ end)()
         }
 
         for panel, expected_prefix in pairs(expected_prefixes) do
-            local basename = get_panel_basename(panel)
+            local basename = get_panel_basename(key, panel)
 
             assert.is_not.equal("", basename)
             assert.is_true(basename:find(expected_prefix, 1, true) ~= nil)
