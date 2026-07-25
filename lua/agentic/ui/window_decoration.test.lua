@@ -508,6 +508,48 @@ describe("WindowDecoration.render_header", function()
         assert.is_true(child.lua_get("_G.recorded_buffer_name_marker == nil"))
     end)
 
+    it("sets the winbar for a buffer shown only in another tab", function()
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+            _G.target_win = vim.api.nvim_get_current_win()
+
+            -- The buffer's only window now lives in a non-current tabpage.
+            vim.cmd("tabnew")
+
+            WindowDecoration.render_header(bufnr, "chat", nil, nil)
+        ]])
+        child.flush()
+
+        local winbar = child.lua_get([[vim.wo[_G.target_win].winbar]])
+        assert.is_true(winbar:find("Agentic Chat", 1, true) ~= nil)
+    end)
+
+    it("skips a non-focusable window when resolving the target", function()
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            -- Mirrors the hidden chat float: hidden and non-focusable.
+            _G.target_win = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 0,
+                col = 0,
+                width = 10,
+                height = 5,
+                hide = true,
+                focusable = false,
+            })
+
+            WindowDecoration.render_header(bufnr, "chat", nil, nil)
+        ]])
+        child.flush()
+
+        assert.equal("", child.lua_get([[vim.wo[_G.target_win].winbar]]))
+    end)
+
     it("legacy single-arg header fn still works", function()
         child.lua([[
             local WindowDecoration = require("agentic.ui.window_decoration")

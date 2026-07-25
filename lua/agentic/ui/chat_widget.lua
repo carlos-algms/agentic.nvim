@@ -46,6 +46,7 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
+--- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Read by `WindowDecoration.get_headers_state`, which mutates it in place
 --- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
@@ -329,6 +330,9 @@ function ChatWidget:move_cursor_to(winid, callback)
 end
 
 function ChatWidget:_initialize()
+    -- Own copy: every widget mutates its own `context` fields.
+    self.headers = WindowDecoration.default_headers()
+
     self.buf_nrs = self:_create_buf_nrs()
 
     self._hidden_chat_winid =
@@ -589,18 +593,7 @@ function ChatWidget:_apply_input_suffix(mode)
         return
     end
 
-    -- Header state still lives in `vim.t`, so a tabpage is required. Fall back
-    -- to the current tab while the widget is hidden — that is where it will be
-    -- shown next, and it matches what the stored tabpage used to be at
-    -- construction time. Task 4 moves this state onto the widget.
-    local tab_page_id = self:visible_tab() or vim.api.nvim_get_current_tabpage()
-
-    -- Get headers from tabpage-local storage (must reassign after modification)
-    local headers = WindowDecoration.get_headers_state(tab_page_id)
-    headers.input.suffix = suffix
-
-    -- Reassign to persist changes
-    WindowDecoration.set_headers_state(tab_page_id, headers)
+    self.headers.input.suffix = suffix
 
     self:render_header("input")
 end

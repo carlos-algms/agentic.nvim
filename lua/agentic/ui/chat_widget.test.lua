@@ -1293,12 +1293,10 @@ describe("agentic.ui.ChatWidget", function()
     end)
 
     describe("input header suffix", function()
-        local tab_page_id
         local widget
 
         before_each(function()
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
             widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
@@ -1312,11 +1310,97 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         it("seeds normal-mode hints at construction time", function()
-            local headers = WindowDecoration.get_headers_state(tab_page_id)
+            local headers =
+                WindowDecoration.get_headers_state(widget.buf_nrs.input)
             assert.equal(
                 "submit: <CR> | change mode: <S-Tab>",
                 headers.input.suffix
             )
+        end)
+
+        it("writes the suffix onto the widget's own header state", function()
+            assert.equal(
+                "submit: <CR> | change mode: <S-Tab>",
+                widget.headers.input.suffix
+            )
+        end)
+    end)
+
+    describe("header state ownership", function()
+        local widget_a
+        local widget_b
+
+        before_each(function()
+            vim.cmd("tabnew")
+            widget_a =
+                ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget_b =
+                ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            for _, widget in ipairs({ widget_a, widget_b }) do
+                pcall(function()
+                    widget:destroy()
+                end)
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("keeps each widget's header context independent", function()
+            local headers_a =
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.chat)
+            headers_a.chat.context = "context A"
+
+            local headers_b =
+                WindowDecoration.get_headers_state(widget_b.buf_nrs.chat)
+
+            assert.equal("context A", widget_a.headers.chat.context)
+            assert.is_nil(headers_b.chat.context)
+        end)
+
+        it(
+            "keeps header context across hide and show in another tab",
+            function()
+                widget_a:show()
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.input).input.context =
+                    "3 files"
+                widget_a:hide()
+
+                vim.cmd("tabnew")
+                widget_a:show()
+
+                assert.equal(
+                    "3 files",
+                    WindowDecoration.get_headers_state(widget_a.buf_nrs.input).input.context
+                )
+
+                widget_a:hide()
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+            end
+        )
+
+        it("returns the default panels for a bufnr no widget owns", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            local headers = WindowDecoration.get_headers_state(bufnr)
+
+            for _, panel in ipairs({
+                "chat",
+                "input",
+                "code",
+                "files",
+                "diagnostics",
+                "todos",
+            }) do
+                assert.is_not_nil(headers[panel])
+            end
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
     end)
 

@@ -26,6 +26,7 @@
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @class agentic.ui.WindowDecoration
 local WindowDecoration = {}
@@ -149,23 +150,41 @@ function WindowDecoration._build_default_header(
     return concat_header_parts(parts)
 end
 
---- Gets or initializes headers for a tabpage
---- @param tab_page_id integer
+--- A fresh copy of the built-in header parts. Callers own the result and
+--- mutate its `context` fields, so the module default must never be shared.
 --- @return agentic.ui.ChatWidget.Headers
-function WindowDecoration.get_headers_state(tab_page_id)
-    if vim.t[tab_page_id].agentic_headers == nil then
-        vim.t[tab_page_id].agentic_headers = WINDOW_HEADERS
-    end
-    return vim.t[tab_page_id].agentic_headers
+function WindowDecoration.default_headers()
+    return vim.deepcopy(WINDOW_HEADERS)
 end
 
---- Sets headers for a tabpage
---- @param tab_page_id integer
---- @param headers agentic.ui.ChatWidget.Headers
-function WindowDecoration.set_headers_state(tab_page_id, headers)
-    if vim.api.nvim_tabpage_is_valid(tab_page_id) then
-        vim.t[tab_page_id].agentic_headers = headers
+--- The first focusable window displaying `bufnr`, in any tabpage.
+--- Replaces the current-tabpage-only `vim.fn` buffer-window lookup, which never
+--- finds a session visible in another tab (`:h bufwinid`). The focusable filter
+--- skips the hidden chat float (`WidgetLayout.open_hidden_chat_window`), which
+--- would otherwise absorb the winbar meant for the real chat window.
+--- Duplicates the shape of `PermissionManager:_find_visible_chat_winid`; hoist
+--- both into a shared helper when a third caller appears.
+--- @param bufnr integer
+--- @return integer|nil winid
+local function find_focusable_win(bufnr)
+    for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+        if vim.api.nvim_win_get_config(winid).focusable then
+            return winid
+        end
     end
+    return nil
+end
+
+--- The header parts owned by the widget holding `bufnr`, or a fresh copy of the
+--- defaults when no widget owns it. Callers mutate the returned table in place.
+--- @param bufnr integer
+--- @return agentic.ui.ChatWidget.Headers
+function WindowDecoration.get_headers_state(bufnr)
+    local widget = WidgetRegistry.get(bufnr)
+    if widget == nil then
+        return WindowDecoration.default_headers()
+    end
+    return widget.headers
 end
 
 --- Calls a user-supplied function expected to return `string|nil`, capturing
@@ -459,15 +478,13 @@ function WindowDecoration.render_header(
     session_state
 )
     vim.schedule(function()
-        local winid = vim.fn.bufwinid(bufnr)
-        if winid == -1 then
-            -- Buffer not displayed in any window, skip rendering
+        local winid = find_focusable_win(bufnr)
+        if winid == nil then
+            -- Buffer not displayed in any focusable window, skip rendering
             return
         end
 
-        local tab_page_id = vim.api.nvim_win_get_tabpage(winid)
-
-        local headers = WindowDecoration.get_headers_state(tab_page_id)
+        local headers = WindowDecoration.get_headers_state(bufnr)
         local dynamic_header = headers[window_name]
 
         if not dynamic_header then
@@ -480,11 +497,10 @@ function WindowDecoration.render_header(
             return
         end
 
-        -- Set context if provided (must reassign to vim.t due to copy semantics)
+        -- `headers` is the owning widget's own table, so mutating in place
+        -- persists it. No write-back step.
         if context ~= nil then
             dynamic_header.context = context
-            headers[window_name] = dynamic_header
-            WindowDecoration.set_headers_state(tab_page_id, headers)
         end
 
         local callback_session_state = nil
@@ -510,7 +526,8 @@ function WindowDecoration.render_header(
         set_buffer_name(
             bufnr,
             concat_header_parts(dynamic_header),
-            tab_page_id,
+            -- Task 9 replaces this argument with the session key.
+            vim.api.nvim_win_get_tabpage(winid),
             window_name,
             dynamic_header,
             callback_session_state
