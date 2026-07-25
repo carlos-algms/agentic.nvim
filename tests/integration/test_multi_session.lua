@@ -67,6 +67,29 @@ end)()
         child.flush()
     end
 
+    --- Restore needs a connected client and an ACP `session/load`; the transport
+    --- mock answers neither, so `when_ready` would never fire. Stubbing both
+    --- leaves exactly the registry bookkeeping this file covers. `vim.ui.select`
+    --- is counted so a resurrected conflict prompt shows up as a call.
+    local function stub_restore()
+        child.lua([[
+            require("agentic.acp.acp_client").when_ready = function(_self, cb)
+                cb()
+            end
+
+            local SessionManager = require("agentic.session_manager")
+            SessionManager.load_acp_session = function(self, session_id, title)
+                self.session_id = session_id
+                self.chat_history.title = title or ""
+            end
+
+            _G.selects = 0
+            vim.ui.select = function()
+                _G.selects = _G.selects + 1
+            end
+        ]])
+    end
+
     before_each(function()
         child.setup()
     end)
@@ -393,6 +416,89 @@ end)()
 
         assert.equal(0, session_count())
     end)
+
+    it("destroys the empty session it was resolved into", function()
+        stub_restore()
+
+        -- `Agentic.restore_session_by_id` resolves through the registry, which
+        -- creates a session just to reach `.agent`. Restoring into a brand new
+        -- one would otherwise strand that empty session forever.
+        child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.equal(2, visible_key())
+        assert.equal(0, child.lua_get([[_G.selects]]))
+    end)
+
+    -- Four inputs, not one: an implementation testing only messages passes a
+    -- messages case while silently destroying staged files, selections, or
+    -- diagnostics — user work that only explicit intent may discard.
+    for _, seed in ipairs({
+        {
+            name = "messages",
+            lua = [[
+                session.chat_history:add_message({
+                    type = "user",
+                    text = "keep me",
+                    timestamp = 0,
+                    provider_name = "test",
+                })
+            ]],
+        },
+        {
+            name = "files",
+            lua = [[
+                session.file_list:add(vim.fn.fnamemodify("README.md", ":p"))
+            ]],
+        },
+        {
+            name = "code selections",
+            lua = [[
+                session.code_selection:add({
+                    lines = { "local x = 1" },
+                    start_line = 1,
+                    end_line = 1,
+                    file_path = "init.lua",
+                    file_type = "lua",
+                })
+            ]],
+        },
+        {
+            name = "diagnostics",
+            lua = [[
+                session.diagnostics_list:add_many({
+                    {
+                        bufnr = vim.api.nvim_get_current_buf(),
+                        lnum = 0,
+                        col = 0,
+                        severity = vim.diagnostic.severity.ERROR,
+                        message = "boom",
+                        file_path = "init.lua",
+                    },
+                })
+            ]],
+        },
+    }) do
+        it("keeps a session holding only " .. seed.name, function()
+            stub_restore()
+            child.lua([[ require("agentic").open() ]])
+            child.flush()
+
+            child.lua(([[
+                local session = require("agentic.session_registry").sessions[1]
+                %s
+            ]]):format(seed.lua))
+            child.flush()
+
+            child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+            child.flush()
+
+            assert.equal(2, session_count())
+            assert.equal(2, visible_key())
+            assert.equal(0, child.lua_get([[_G.selects]]))
+        end)
+    end
 
     it("leaves a single session in place when cycling", function()
         child.lua([[ require("agentic").open() ]])

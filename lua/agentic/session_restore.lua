@@ -1,35 +1,55 @@
 local Logger = require("agentic.utils.logger")
+local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestore
 local SessionRestore = {}
 
---- Checks if the current session has messages or we can safely restore into it if it's empty
---- @param current_session agentic.SessionManager|nil
---- @return boolean has_conflict
-local function check_conflict(current_session)
-    return current_session ~= nil
-        and current_session.session_id ~= nil
-        and current_session.chat_history ~= nil
-        and #current_session.chat_history.messages > 0
+--- Empty means no conversation AND no staged context. Messages alone are not
+--- enough: files, code selections and diagnostics are work the user staged by
+--- hand, and only explicit intent may discard it.
+--- @param session agentic.SessionManager
+--- @return boolean is_empty
+local function is_empty(session)
+    return #session.chat_history.messages == 0
+        and session.file_list:is_empty()
+        and session.code_selection:is_empty()
+        and session.diagnostics_list:is_empty()
 end
 
+--- Restores into a BRAND NEW session, never into the resolved one. The old
+--- "clear current session and restore" prompt only existed because one session
+--- per tab left nowhere else to restore into.
+--- The resolved session is destroyed first when it holds nothing: every public
+--- restore entry point goes through `SessionRegistry.resolve_or_create`, which
+--- creates a session purely to reach `.agent` — `ACPClient:list_sessions` needs a
+--- connected client, not an ACP session — and that session would otherwise be
+--- stranded empty and unused.
+--- `show_session` and not `widget:show()`: `show_picker` shows after an async
+--- `when_ready` -> `list_sessions` -> `vim.ui.select` chain, so a user who opens
+--- another session in this tab meanwhile would end up with two widgets in it.
 --- @param current_session agentic.SessionManager
---- @param on_restore fun()
-local function with_conflict_check(current_session, on_restore)
-    if check_conflict(current_session) then
-        vim.ui.select({
-            "Cancel",
-            "Clear current session and restore",
-        }, {
-            prompt = "Current session has messages. What would you like to do?",
-        }, function(choice)
-            if choice == "Clear current session and restore" then
-                on_restore()
-            end
-        end)
-    else
-        on_restore()
+--- @param session_id string
+--- @param title string|nil
+--- @param timestamp string|nil
+local function restore_into_new_session(
+    current_session,
+    session_id,
+    title,
+    timestamp
+)
+    if current_session.session_key and is_empty(current_session) then
+        SessionRegistry.destroy(current_session.session_key)
     end
+
+    local session = SessionRegistry.create()
+    local session_key = session and session.session_key
+
+    if not session or not session_key then
+        return
+    end
+
+    session:load_acp_session(session_id, title, timestamp)
+    SessionRegistry.show_session(session_key)
 end
 
 --- Show session picker and restore selected session
@@ -78,14 +98,12 @@ function SessionRestore.show_picker(current_session)
                         return
                     end
 
-                    with_conflict_check(current_session, function()
-                        current_session:load_acp_session(
-                            choice.session_id,
-                            choice.title,
-                            choice.updated_at
-                        )
-                        current_session.widget:show()
-                    end)
+                    restore_into_new_session(
+                        current_session,
+                        choice.session_id,
+                        choice.title,
+                        choice.updated_at
+                    )
                 end)
             end)
         end)
@@ -98,10 +116,7 @@ end
 function SessionRestore.restore_by_id(current_session, session_id)
     current_session.agent:when_ready(function()
         vim.schedule(function()
-            with_conflict_check(current_session, function()
-                current_session:load_acp_session(session_id, nil, nil)
-                current_session.widget:show()
-            end)
+            restore_into_new_session(current_session, session_id, nil, nil)
         end)
     end)
 end
