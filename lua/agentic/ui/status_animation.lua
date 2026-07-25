@@ -13,6 +13,7 @@
 --- ```
 ---
 
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Theme = require("agentic.theme")
 
@@ -32,6 +33,7 @@ local TIMING = {
 --- @field _next_frame_handle? uv.uv_timer_t One-shot deferred function handle from vim.defer_fn
 --- @field _spinner_idx number Current spinner frame index
 --- @field _extmark_id? number Current extmark ID
+--- @field _epoch number Bumped by every `start`; a frame whose epoch is stale reschedules nothing
 local StatusAnimation = {}
 StatusAnimation.__index = StatusAnimation
 
@@ -44,6 +46,7 @@ function StatusAnimation:new(bufnr)
         _next_frame_handle = nil,
         _spinner_idx = 1,
         _extmark_id = nil,
+        _epoch = 0,
     }, StatusAnimation)
 
     return instance
@@ -55,9 +58,16 @@ end
 function StatusAnimation:start(state)
     self:stop()
 
+    -- `stop` cancels the pending timer handle, but `vim.defer_fn` cannot un-queue
+    -- a callback that has ALREADY fired. A stop → start cycle straddling a
+    -- fired-but-unrun timer left the old callback free to pass the `_state` check
+    -- and schedule a second chain, overwriting `_next_frame_handle`: the first
+    -- chain kept running unreferenced, at double the frame rate.
+    self._epoch = self._epoch + 1
+
     self._state = state
     self._spinner_idx = 1
-    self:_render_frame()
+    self:_render_frame(self._epoch)
 end
 
 function StatusAnimation:stop()
@@ -85,7 +95,13 @@ function StatusAnimation:stop()
     self._extmark_id = nil
 end
 
-function StatusAnimation:_render_frame()
+--- @param epoch number Epoch this frame was scheduled with
+function StatusAnimation:_render_frame(epoch)
+    if epoch ~= self._epoch then
+        -- Stale chain from a previous `start`; drop it without rescheduling.
+        return
+    end
+
     if not self._state or not vim.api.nvim_buf_is_valid(self._bufnr) then
         -- return early to stop the animation in case state was cleared, or buffer is invalid
         -- this avoids an infinite loop of deferred calls without a state and it actually renders nil in the UI
@@ -107,8 +123,10 @@ function StatusAnimation:_render_frame()
 
     local virt_text = { { display_text, hl_group } }
 
-    local winid = vim.fn.bufwinid(self._bufnr)
-    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
+    -- Cross-tab: a background session animates in its own tab, so centring
+    -- padding has to measure that window, not one in the current tab.
+    local winid = BufHelpers.find_visible_win(self._bufnr)
+    if winid then
         local win_width = vim.api.nvim_win_get_width(winid)
         local text_width = vim.fn.strdisplaywidth(display_text)
         if win_width > text_width then
@@ -133,7 +151,7 @@ function StatusAnimation:_render_frame()
         })
 
     self._next_frame_handle = vim.defer_fn(function()
-        self:_render_frame()
+        self:_render_frame(epoch)
     end, delay)
 end
 

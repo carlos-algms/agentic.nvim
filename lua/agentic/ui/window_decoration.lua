@@ -23,6 +23,7 @@
 --- })
 --- ```
 
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
@@ -155,24 +156,6 @@ end
 --- @return agentic.ui.ChatWidget.Headers
 function WindowDecoration.default_headers()
     return vim.deepcopy(WINDOW_HEADERS)
-end
-
---- The first focusable window displaying `bufnr`, in any tabpage.
---- Replaces the current-tabpage-only `vim.fn` buffer-window lookup, which never
---- finds a session visible in another tab (`:h bufwinid`). The focusable filter
---- skips the hidden chat float (`WidgetLayout.open_hidden_chat_window`), which
---- would otherwise absorb the winbar meant for the real chat window.
---- Duplicates the shape of `PermissionManager:_find_visible_chat_winid`; hoist
---- both into a shared helper when a third caller appears.
---- @param bufnr integer
---- @return integer|nil winid
-local function find_focusable_win(bufnr)
-    for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-        if vim.api.nvim_win_get_config(winid).focusable then
-            return winid
-        end
-    end
-    return nil
 end
 
 --- The header parts owned by the widget holding `bufnr`, or a fresh copy of the
@@ -470,7 +453,7 @@ end
 --- Renders a header for a window, handling user customization, winbar, and buffer naming
 --- Everything is derived from `bufnr`: the header parts come from the owning
 --- widget via `get_headers_state`, and the target window from
---- `find_focusable_win`. `context` is stored on the header parts even when no
+--- `BufHelpers.find_visible_win`. `context` is stored on the header parts even when no
 --- window is showing the buffer; only the winbar and buffer-name writes need one.
 --- @param bufnr integer Buffer number - stable reference to derive window and tab context
 --- @param window_name string Name of the window (for Config.headers lookup and error messages)
@@ -508,7 +491,13 @@ function WindowDecoration.render_header(
             dynamic_header.context = context
         end
 
-        local winid = find_focusable_win(bufnr)
+        -- The owning widget's own panel window wins: with a cross-tab lookup, a
+        -- buffer the user also opened elsewhere could otherwise take the winbar.
+        local owner = WidgetRegistry.get(bufnr)
+        local winid = BufHelpers.find_visible_win(
+            bufnr,
+            owner and owner.win_nrs[window_name] or nil
+        )
         if winid == nil then
             -- Buffer not displayed in any focusable window, nothing to paint
             return

@@ -38,6 +38,64 @@ function BufHelpers.start_insert_on_last_char()
     vim.cmd("startinsert!")
 end
 
+--- Finds a window the user can actually see showing `bufnr`, in ANY tabpage.
+---
+--- Replaces the `vim.fn` single-window lookup, which "Only deals with the current
+--- tabpage" (`$VIMRUNTIME/doc/vimfn.txt`) and therefore reported "no window" for a
+--- session visible in another tab.
+---
+--- Rejects windows that are non-focusable OR hidden. `hide` is the direct
+--- predicate; `focusable` alone agrees with it only because agentic's one hidden
+--- window (`WidgetLayout.open_hidden_chat_window`) happens to be both, and a
+--- focusable hidden float would otherwise win the lookup and absorb a winbar
+--- nobody can see.
+---
+--- `preferred_winid` wins when it still shows the buffer. Widening the search from
+--- one tab to all of them also widened the candidate set: a user who opens a
+--- widget's buffer manually in a lower-numbered tab would otherwise capture every
+--- lookup for it.
+--- @param bufnr integer
+--- @param preferred_winid integer|nil The owner's own window for this buffer, when known
+--- @param tabpage integer|nil Restrict the search to this tabpage; a file open in two tabs then resolves to the session's own
+--- @return integer|nil winid
+function BufHelpers.find_visible_win(bufnr, preferred_winid, tabpage)
+    --- `tabpage` still applies to the preferred window: a caller asking for one
+    --- tab must never be handed a window in another.
+    --- @param winid integer
+    --- @return boolean
+    local function in_tab(winid)
+        if tabpage == nil then
+            return true
+        end
+        local ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+        return ok and win_tab == tabpage
+    end
+
+    if
+        preferred_winid
+        and vim.api.nvim_win_is_valid(preferred_winid)
+        and vim.api.nvim_win_get_buf(preferred_winid) == bufnr
+        and in_tab(preferred_winid)
+    then
+        -- Every filter applies to the preferred window too, so the contract holds
+        -- for all 11 call sites: never return a window the user cannot see.
+        local config = vim.api.nvim_win_get_config(preferred_winid)
+        if config.focusable and not config.hide then
+            return preferred_winid
+        end
+    end
+
+    for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+        local config = vim.api.nvim_win_get_config(winid)
+
+        if config.focusable and not config.hide and in_tab(winid) then
+            return winid
+        end
+    end
+
+    return nil
+end
+
 --- @generic T
 --- @param bufnr integer
 --- @param callback fun(bufnr: integer): T|nil

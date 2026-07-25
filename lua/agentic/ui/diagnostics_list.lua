@@ -3,6 +3,7 @@ local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- Get diagnostic severity icons from config
 --- @return table<number, string> Mapping of severity to icon
@@ -197,8 +198,8 @@ function DiagnosticsList.get_diagnostics_at_cursor(bufnr, opts)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
     opts = opts or {}
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid == -1 then
+    local winid = BufHelpers.find_visible_win(bufnr)
+    if not winid then
         local current_winid = vim.api.nvim_get_current_win()
         if vim.api.nvim_win_get_buf(current_winid) ~= bufnr then
             return {}
@@ -235,8 +236,16 @@ function DiagnosticsList:_render()
     local icons = get_diagnostic_icons()
 
     local buf_width = WidgetLayout.calculate_width(Config.windows.width)
-    local winid = vim.fn.bufwinid(self._bufnr)
-    if winid ~= -1 then
+    -- Falls back to the configured width only when the panel is nowhere visible;
+    -- a resized widget in another tab must still wrap to its real width.
+    -- Prefers the owning widget's own panel window: a user who also opened this
+    -- buffer in a lower-numbered tab would otherwise set the wrap width.
+    local owner = WidgetRegistry.get(self._bufnr)
+    local winid = BufHelpers.find_visible_win(
+        self._bufnr,
+        owner and owner.win_nrs.diagnostics or nil
+    )
+    if winid then
         buf_width = vim.api.nvim_win_get_width(winid)
     end
 

@@ -464,12 +464,7 @@ end
 --- @return integer|nil winid
 --- @protected
 function PermissionManager:_find_visible_chat_winid()
-    for _, winid in ipairs(vim.fn.win_findbuf(self.message_writer.bufnr)) do
-        if vim.api.nvim_win_get_config(winid).focusable then
-            return winid
-        end
-    end
-    return nil
+    return BufHelpers.find_visible_win(self.message_writer.bufnr)
 end
 
 --- True when the cursor sits on the focused block's status row or on any

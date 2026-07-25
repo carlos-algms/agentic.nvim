@@ -2,7 +2,6 @@ local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local BufferGuard = require("agentic.ui.buffer_guard")
 local ChatNavigation = require("agentic.ui.chat_navigation")
-local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
@@ -166,8 +165,13 @@ function ChatWidget:rotate_layout(layouts)
     })
 
     vim.schedule(function()
-        local win = vim.fn.bufwinid(previous_buf)
-        if win ~= -1 then
+        -- Scoped to this widget's own tab, and nil when the buffer is not on
+        -- screen there. The lookup this replaced could only ever see the current
+        -- tab; an unscoped one would yank the cursor into another tabpage, and an
+        -- unguarded one would land it in the hidden chat float.
+        local win =
+            BufHelpers.find_visible_win(previous_buf, nil, self:visible_tab())
+        if win then
             vim.api.nvim_set_current_win(win)
         end
         if previous_mode == "i" then
@@ -451,7 +455,6 @@ function ChatWidget:_bind_keymaps()
         end
     end
 
-    DiffPreview.setup_diff_navigation_keymaps(self.buf_nrs)
     ChatNavigation.setup_keymaps(self.buf_nrs.chat)
 end
 

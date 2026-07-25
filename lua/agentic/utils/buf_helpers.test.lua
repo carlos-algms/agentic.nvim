@@ -298,4 +298,170 @@ describe("BufHelpers", function()
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
     end)
+
+    describe("find_visible_win", function()
+        local bufnr
+        local base_tabs
+
+        before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
+            bufnr = vim.api.nvim_create_buf(false, true)
+        end)
+
+        after_each(function()
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose!")
+                end)
+                if not ok then
+                    break
+                end
+            end
+            pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        end)
+
+        it("returns nil when no window shows the buffer", function()
+            assert.is_nil(BufHelpers.find_visible_win(bufnr))
+        end)
+
+        it("finds a window in another tabpage", function()
+            vim.cmd("tabnew")
+            local other_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(other_win, bufnr)
+            vim.cmd("tabprevious")
+
+            -- The `vim.fn` lookup this replaced returns -1 here: it "Only deals
+            -- with the current tabpage".
+            assert.equal(other_win, BufHelpers.find_visible_win(bufnr))
+        end)
+
+        it("ignores a hidden, non-focusable float", function()
+            local winid = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 1,
+                col = 1,
+                width = 5,
+                height = 2,
+                focusable = false,
+                hide = true,
+            })
+
+            -- Measured: the old lookup returned this float, so a widget's hidden
+            -- chat float could absorb a winbar nobody sees.
+            assert.is_nil(BufHelpers.find_visible_win(bufnr))
+
+            pcall(vim.api.nvim_win_close, winid, true)
+        end)
+
+        it("ignores a focusable float that is hidden", function()
+            -- `focusable` alone is not the predicate; `hide` is.
+            local winid = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 1,
+                col = 1,
+                width = 5,
+                height = 2,
+                focusable = true,
+                hide = true,
+            })
+
+            assert.is_nil(BufHelpers.find_visible_win(bufnr))
+
+            pcall(vim.api.nvim_win_close, winid, true)
+        end)
+
+        it("prefers the caller's own window over another tab's", function()
+            vim.cmd("tabnew")
+            local foreign_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(foreign_win, bufnr)
+
+            vim.cmd("tabnew")
+            local own_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(own_win, bufnr)
+
+            assert.equal(own_win, BufHelpers.find_visible_win(bufnr, own_win))
+        end)
+
+        it(
+            "ignores a preferred window that no longer shows the buffer",
+            function()
+                vim.cmd("tabnew")
+                local real_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(real_win, bufnr)
+
+                local stale_win = vim.api.nvim_open_win(
+                    vim.api.nvim_create_buf(false, true),
+                    false,
+                    { split = "below", win = real_win }
+                )
+
+                assert.equal(
+                    real_win,
+                    BufHelpers.find_visible_win(bufnr, stale_win)
+                )
+            end
+        )
+
+        it(
+            "rejects a preferred window outside the requested tabpage",
+            function()
+                vim.cmd("tabnew")
+                local foreign_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(foreign_win, bufnr)
+
+                vim.cmd("tabnew")
+                local wanted_tab = vim.api.nvim_get_current_tabpage()
+                local wanted_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(wanted_win, bufnr)
+
+                -- The preferred window still shows the buffer, so only the tab filter
+                -- can reject it.
+                assert.equal(
+                    wanted_win,
+                    BufHelpers.find_visible_win(bufnr, foreign_win, wanted_tab)
+                )
+            end
+        )
+
+        it("restricts the search to a given tabpage", function()
+            vim.cmd("tabnew")
+            local first_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(first_win, bufnr)
+
+            vim.cmd("tabnew")
+            local second_tab = vim.api.nvim_get_current_tabpage()
+            local second_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(second_win, bufnr)
+
+            -- Same file open in two tabs must resolve to the session's own.
+            assert.equal(
+                second_win,
+                BufHelpers.find_visible_win(bufnr, nil, second_tab)
+            )
+        end)
+
+        it(
+            "returns nil when the buffer is visible in no other tabpage",
+            function()
+                vim.cmd("tabnew")
+                local win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(win, bufnr)
+                local empty_tab = vim.api.nvim_get_current_tabpage()
+
+                vim.cmd("tabnew")
+
+                assert.is_nil(
+                    BufHelpers.find_visible_win(
+                        bufnr,
+                        nil,
+                        vim.api.nvim_get_current_tabpage()
+                    )
+                )
+                assert.equal(
+                    win,
+                    BufHelpers.find_visible_win(bufnr, nil, empty_tab)
+                )
+            end
+        )
+    end)
 end)

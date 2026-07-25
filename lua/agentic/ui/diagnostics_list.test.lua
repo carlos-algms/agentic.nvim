@@ -466,13 +466,27 @@ describe("agentic.ui.DiagnosticsList", function()
         --- @type integer
         local ns
 
+        local base_tabs
+
         before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
             test_bufnr = vim.api.nvim_create_buf(false, true)
             ns = vim.api.nvim_create_namespace("test_diag_cursor")
             vim.api.nvim_set_current_buf(test_bufnr)
         end)
 
         after_each(function()
+            -- Loop rather than one `tabclose`: a red assertion in the cross-tab
+            -- case would otherwise leak a tabpage into every later test file.
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose!")
+                end)
+                if not ok then
+                    break
+                end
+            end
+
             vim.diagnostic.reset(ns, test_bufnr)
             if vim.api.nvim_buf_is_valid(test_bufnr) then
                 pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
@@ -537,5 +551,48 @@ describe("agentic.ui.DiagnosticsList", function()
 
             assert.equal(0, #diagnostics)
         end)
+
+        it(
+            "returns diagnostics when the buffer's only window is in another tab",
+            function()
+                vim.api.nvim_buf_set_lines(
+                    test_bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "line1", "line2", "line3" }
+                )
+
+                vim.diagnostic.set(ns, test_bufnr, {
+                    {
+                        lnum = 1,
+                        col = 0,
+                        severity = vim.diagnostic.severity.ERROR,
+                        message = "Error on line 2",
+                    },
+                })
+
+                -- Park the buffer's only window in its own tab, then leave.
+                -- `before_each` also put it in the starting window, so that copy
+                -- has to go or the lookup legitimately finds it here.
+                vim.cmd("tabnew")
+                local other_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(other_win, test_bufnr)
+                vim.api.nvim_win_set_cursor(other_win, { 2, 0 })
+                vim.cmd("tabprevious")
+                vim.api.nvim_win_set_buf(
+                    vim.api.nvim_get_current_win(),
+                    vim.api.nvim_create_buf(false, true)
+                )
+
+                -- The current-tab-only lookup found no window here and the
+                -- feature silently yielded nothing.
+                local diagnostics =
+                    DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
+
+                assert.equal(1, #diagnostics)
+                assert.equal("Error on line 2", diagnostics[1].message)
+            end
+        )
     end)
 end)

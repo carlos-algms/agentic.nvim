@@ -1455,3 +1455,48 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end)
 end)
+
+-- Child process: `rotate_layout` restores the cursor inside `vim.schedule`, and
+-- flushing that in-process pumps mini.test's own queue (measured: a later file's
+-- case ran inside this one). `references/async-tests.md` prescribes a child here.
+local Child = require("tests.helpers.child")
+
+describe(
+    "agentic.ui.ChatWidget rotate_layout cursor restore (child)",
+    function()
+        local child = Child.new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        it("never restores the cursor into the hidden chat float", function()
+            -- Rotating from the chat window makes the chat buffer the "previous"
+            -- buffer, and `hide` leaves it attached only to the hidden float
+            -- (ADR 0001). The lookup this replaced returned that float, so the cursor
+            -- landed in a window the user cannot see.
+            child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            vim.api.nvim_set_current_win(_G.widget.win_nrs.chat)
+            _G.widget:rotate_layout({ "right", "bottom" })
+        ]])
+
+            child.flush()
+            vim.uv.sleep(50)
+            child.flush()
+
+            local config = child.lua_get(
+                "vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())"
+            )
+
+            assert.is_true(config.focusable)
+            assert.is_falsy(config.hide)
+        end)
+    end
+)
