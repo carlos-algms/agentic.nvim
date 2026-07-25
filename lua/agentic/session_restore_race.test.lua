@@ -163,6 +163,7 @@ describe("race: stale create_session after load_acp_session", function()
             end,
             _set_mode_to_chat_header = function() end,
             _cancel_session = SessionManager._cancel_session,
+            _bootstrap_session = SessionManager._bootstrap_session,
             new_session = SessionManager.new_session,
             load_acp_session = SessionManager.load_acp_session,
         }
@@ -290,6 +291,29 @@ describe("race: stale create_session after load_acp_session", function()
         -- configOptions path must NOT touch the legacy setters.
         assert.is_nil(session.config_options._legacy_modes_set)
         assert.is_nil(session.config_options._legacy_models_set)
+    end)
+
+    -- The ordering `SessionRestore` produces: the manager is built for the
+    -- restore, so its bootstrap `session/new` is already queued for the next tick
+    -- when `load_acp_session` runs in this one. An unguarded bootstrap reaches
+    -- `_cancel_session`, which clears `_is_restoring_session` and thereby disarms
+    -- the Race A guard, leaving two requests competing for `session_id`.
+    it("load before the bootstrap sends no competing create", function()
+        local create_cb_ref = {}
+        local load_cb_ref = {}
+        local session = make_session(create_cb_ref, load_cb_ref)
+
+        session:load_acp_session("restored-id", "title", nil)
+        session:_bootstrap_session()
+
+        -- Nothing in flight to answer out of order, and the guard is still armed.
+        assert.is_nil(create_cb_ref.cb)
+        assert.is_true(session._is_restoring_session)
+
+        load_cb_ref.cb(nil)
+
+        assert.equal("restored-id", session.session_id)
+        assert.equal(0, #session._cancelled)
     end)
 
     -- Race B with a FAILED stale create: response is nil and err is set.

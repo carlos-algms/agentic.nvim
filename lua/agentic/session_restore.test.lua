@@ -47,6 +47,9 @@ describe("SessionRestore", function()
                     return is_empty
                 end,
             },
+            -- No input buffer: the unsent-draft branch of `is_empty` is covered
+            -- against a real one in test_multi_session.lua
+            widget = { buf_nrs = {} },
             agent = {
                 cancel_session = spy.new(function() end),
                 list_sessions = opts.list_sessions or spy.new(function() end),
@@ -144,6 +147,27 @@ describe("SessionRestore", function()
 
             assert.spy(destroy_stub).was.called(0)
             assert.spy(restored_session.load_acp_session).was.called(1)
+        end)
+
+        -- `create` answers nil when no provider is configured, and when the
+        -- agent instance hands back no client. Destroying the resolved session
+        -- before finding that out leaves the user with no session at all and no
+        -- word of why.
+        it("keeps the resolved session when create fails", function()
+            create_stub:invokes(function()
+                return nil
+            end)
+
+            local session = create_mock_session()
+
+            SessionRestore.restore_by_id(
+                session --[[@as agentic.SessionManager]],
+                "abc-123"
+            )
+
+            assert.spy(destroy_stub).was.called(0)
+            assert.spy(show_session_stub).was.called(0)
+            assert.spy(logger_notify_stub).was.called(1)
         end)
 
         it("never prompts about the resolved session", function()

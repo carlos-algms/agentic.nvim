@@ -431,9 +431,42 @@ end)()
         assert.equal(0, child.lua_get([[_G.selects]]))
     end)
 
-    -- Four inputs, not one: an implementation testing only messages passes a
-    -- messages case while silently destroying staged files, selections, or
-    -- diagnostics — user work that only explicit intent may discard.
+    -- `_inherited_size` reads the donor at `show` time, and `ChatWidget:destroy`
+    -- never captures a size. Destroying the resolved session before the restored
+    -- one is shown therefore drops the only donor in the common single-session
+    -- case, and a user who resized the sidebar gets the configured default back
+    -- after every restore.
+    it("inherits the resized width of the session it restores over", function()
+        stub_restore()
+        child.lua(
+            [[ require("agentic").open({ auto_add_to_context = false }) ]]
+        )
+        child.flush()
+
+        child.lua([[
+            local session = require("agentic.session_registry").sessions[1]
+            vim.api.nvim_win_set_width(session.widget.win_nrs.chat, 50)
+        ]])
+
+        child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.equal(
+            50,
+            child.lua_get([[
+                vim.api.nvim_win_get_width(
+                    require("agentic.session_registry").sessions[2].widget.win_nrs.chat
+                )
+            ]])
+        )
+    end)
+
+    -- Five inputs, not one: an implementation testing only messages passes a
+    -- messages case while silently destroying staged files, selections,
+    -- diagnostics, or a half-typed prompt — user work that only explicit intent
+    -- may discard. A typed paragraph is the one input that cannot be re-added
+    -- with a single keystroke.
     for _, seed in ipairs({
         {
             name = "messages",
@@ -477,6 +510,18 @@ end)()
                         file_path = "init.lua",
                     },
                 })
+            ]],
+        },
+        {
+            name = "unsent input text",
+            lua = [[
+                vim.api.nvim_buf_set_lines(
+                    session.widget.buf_nrs.input,
+                    0,
+                    -1,
+                    false,
+                    { "", "a paragraph the user is still typing", "" }
+                )
             ]],
         },
     }) do

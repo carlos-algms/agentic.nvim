@@ -4,9 +4,24 @@ local SessionRegistry = require("agentic.session_registry")
 --- @class agentic.SessionRestore
 local SessionRestore = {}
 
+--- The prompt the user is halfway through typing counts as staged work too, and
+--- unlike a file or a selection it cannot be re-added with one keystroke. Blank
+--- lines do not count: the input buffer always holds at least one.
+--- @param bufnr integer|nil
+--- @return boolean is_blank
+local function input_is_blank(bufnr)
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return true
+    end
+
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+    return vim.trim(table.concat(lines, "")) == ""
+end
+
 --- Empty means no conversation AND no staged context. Messages alone are not
---- enough: files, code selections and diagnostics are work the user staged by
---- hand, and only explicit intent may discard it.
+--- enough: files, code selections, diagnostics and unsent input are work the user
+--- staged by hand, and only explicit intent may discard it.
 --- @param session agentic.SessionManager
 --- @return boolean is_empty
 local function is_empty(session)
@@ -14,19 +29,29 @@ local function is_empty(session)
         and session.file_list:is_empty()
         and session.code_selection:is_empty()
         and session.diagnostics_list:is_empty()
+        and input_is_blank(session.widget.buf_nrs.input)
 end
 
 --- Restores into a BRAND NEW session, never into the resolved one. The old
 --- "clear current session and restore" prompt only existed because one session
 --- per tab left nowhere else to restore into.
---- The resolved session is destroyed first when it holds nothing: every public
---- restore entry point goes through `SessionRegistry.resolve_or_create`, which
---- creates a session purely to reach `.agent` — `ACPClient:list_sessions` needs a
---- connected client, not an ACP session — and that session would otherwise be
---- stranded empty and unused.
+--- The resolved session is destroyed when it holds nothing: every public restore
+--- entry point goes through `SessionRegistry.resolve_or_create`, which creates a
+--- session purely to reach `.agent` — `ACPClient:list_sessions` needs a connected
+--- client, not an ACP session — and that session would otherwise be stranded empty
+--- and unused.
+--- Destroyed LAST, after the restored session is on screen, not first:
+--- `SessionRegistry.create` can answer nil, and a destroy already done by then
+--- leaves the user with no session at all; and `ChatWidget:_inherited_size` reads
+--- its donor at `show` time from `SessionRegistry.list`, while `ChatWidget:destroy`
+--- captures no size, so destroying earlier hands a resized sidebar back its
+--- configured default on every restore. Measured: 32 columns after a resize to 50.
 --- `show_session` and not `widget:show()`: `show_picker` shows after an async
 --- `when_ready` -> `list_sessions` -> `vim.ui.select` chain, so a user who opens
 --- another session in this tab meanwhile would end up with two widgets in it.
+--- Regressions: session_restore.test.lua::"keeps the resolved session when create
+--- fails" and test_multi_session.lua::"inherits the resized width of the session it
+--- restores over".
 --- @param current_session agentic.SessionManager
 --- @param session_id string
 --- @param title string|nil
@@ -37,19 +62,23 @@ local function restore_into_new_session(
     title,
     timestamp
 )
-    if current_session.session_key and is_empty(current_session) then
-        SessionRegistry.destroy(current_session.session_key)
-    end
-
     local session = SessionRegistry.create()
     local session_key = session and session.session_key
 
     if not session or not session_key then
+        Logger.notify(
+            "Could not create a session to restore into",
+            vim.log.levels.ERROR
+        )
         return
     end
 
     session:load_acp_session(session_id, title, timestamp)
     SessionRegistry.show_session(session_key)
+
+    if current_session.session_key and is_empty(current_session) then
+        SessionRegistry.destroy(current_session.session_key)
+    end
 end
 
 --- Show session picker and restore selected session

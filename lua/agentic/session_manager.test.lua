@@ -2530,6 +2530,31 @@ describe("agentic.SessionManager", function()
             assert.equal(("x"):rep(59) .. "…", title)
         end)
 
+        -- ASCII alone cannot tell `strcharpart` from `sub`: only a multi-byte
+        -- prompt makes a byte cut land mid-sequence and produce a broken title.
+        it("truncates a multi-byte prompt on a character boundary", function()
+            local session = make_session()
+
+            session:_handle_input_submit(("日"):rep(120))
+
+            local title = session.chat_history.title
+            assert.equal(60, vim.fn.strchars(title))
+            assert.equal(("日"):rep(59) .. "…", title)
+        end)
+
+        -- A restored session carries the provider's own title. Deriving one from
+        -- the first prompt anyway would relabel it in the picker the moment the
+        -- user resumed the conversation.
+        it("keeps a restored title on the first submit", function()
+            local session = make_session()
+            session.chat_history.title = "Provider side title"
+            session.history_to_send = {}
+
+            session:_handle_input_submit("now write the tests")
+
+            assert.equal("Provider side title", session.chat_history.title)
+        end)
+
         it("collapses whitespace in the derived title", function()
             local session = make_session()
 

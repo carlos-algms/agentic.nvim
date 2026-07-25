@@ -42,8 +42,11 @@ local Hooks = require("agentic.utils.hooks")
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
---- `Agentic.select_session` appends " (current tab)" to the label, so 60 leaves
---- the whole row inside a default 80-column `vim.ui.select` prompt.
+--- Codepoints, NOT display cells: `Agentic.select_session` appends
+--- " (current tab)" to the label, and 60 keeps a Latin row inside a default
+--- 80-column `vim.ui.select` prompt. A CJK or emoji title still overruns it —
+--- Vim has no truncate-by-`strdisplaywidth` primitive, so honouring cells would
+--- mean a per-character accumulator, which is not worth it for a picker label.
 local TITLE_MAX_CHARS = 60
 
 --- A one-line, bounded label for the session picker. Whitespace is collapsed
@@ -95,7 +98,7 @@ function SessionManager:new()
                 self:_handle_connection_error()
                 return
             end
-            self:new_session()
+            self:_bootstrap_session()
         end)
     end)
 
@@ -738,6 +741,26 @@ function SessionManager:_build_handlers()
     }
 
     return handlers
+end
+
+--- The manager's own first `session/new`, one tick after construction.
+--- Skipped once a restore has already claimed the manager: `SessionRegistry.create`
+--- schedules this bootstrap, and `SessionRestore` calls `load_acp_session` in the
+--- SAME tick, so the load is in flight by the time this runs. Going ahead would
+--- reach `_cancel_session`, which clears `_is_restoring_session` and disarms the
+--- staleness guard in `new_session`'s response; whichever of `session/new` and
+--- `session/load` answered first would then win `session_id` and the other would be
+--- dropped in silence. Guarding HERE and not in `new_session` keeps `/new` usable as
+--- the chat input's escape hatch, which `can_submit_prompt` otherwise blocks while a
+--- restore is in flight.
+--- Regression: session_restore_race.test.lua::"load before the bootstrap sends no
+--- competing create".
+function SessionManager:_bootstrap_session()
+    if self._is_restoring_session or self.session_id ~= nil then
+        return
+    end
+
+    self:new_session()
 end
 
 --- Create a new session, optionally cancelling any existing one
