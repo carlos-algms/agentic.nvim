@@ -40,7 +40,7 @@ function Agentic.open(opts)
         return
     end
 
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
@@ -51,20 +51,18 @@ end
 
 --- Hides the session visible in the current tab page, and nothing else
 --- Safe to call multiple times
---- Never routed through `SessionRegistry.resolve`: it falls back to
---- `_most_recent`, so closing from a tab with no widget would hide the widget the
---- user is looking at in ANOTHER tab, and on an empty registry `resolve` creates a
---- session — spawning an ACP subprocess just to hide it.
+--- Never routed through `SessionRegistry.current` or `resolve_or_create`: both
+--- fall back to `_most_recent`, so closing from a tab with no widget would hide
+--- the widget the user is looking at in ANOTHER tab, and `resolve_or_create`
+--- additionally creates a session on an empty registry — spawning an ACP
+--- subprocess just to hide it.
 --- Regression: test_multi_session.lua::"closes only the session visible in the
 --- current tab" and ::"creates no session when closing with none open".
 function Agentic.close()
-    local current_tab = vim.api.nvim_get_current_tabpage()
+    local session = SessionRegistry.visible_here()
 
-    for _, session in pairs(SessionRegistry.sessions) do
-        if session.widget:visible_tab() == current_tab then
-            session.widget:hide()
-            return
-        end
+    if session then
+        session.widget:hide()
     end
 end
 
@@ -72,7 +70,7 @@ end
 --- Safe to call multiple times
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.toggle(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         -- Visible in THIS tab, not `is_open`: a session visible in another tab is
         -- something the user wants brought here, not closed remotely.
         -- Regression: test_multi_session.lua::"toggles a session into the current
@@ -95,7 +93,7 @@ end
 --- Rotates through predefined window layouts for the chat widget
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
 function Agentic.rotate_layout(layouts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session.widget:rotate_layout(layouts)
     end)
 end
@@ -103,7 +101,7 @@ end
 --- Add the current visual selection to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_selection_to_session()
         show_session(session, opts)
     end)
@@ -112,7 +110,7 @@ end
 --- Add the current file to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_file(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_file_to_session()
         show_session(session, opts)
     end)
@@ -122,7 +120,7 @@ end
 --- You can add 1 or more in a single call
 --- @param opts agentic.ui.ChatWidget.AddFilesToContextOpts
 function Agentic.add_files_to_context(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local files = opts.files
 
         if files and type(files) == "table" then
@@ -143,7 +141,7 @@ end
 --- Add either the current visual selection or the current file to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection_or_file_to_context(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_selection_or_file_to_session()
         show_session(session, opts)
     end)
@@ -155,7 +153,7 @@ end
 --- Add diagnostics at the current cursor line to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_current_line_diagnostics(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local count = session:add_current_line_diagnostics_to_context()
         if count > 0 then
             show_session(session, opts)
@@ -171,7 +169,7 @@ end
 --- Add all diagnostics from the current buffer to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_buffer_diagnostics(opts)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local count = session:add_buffer_diagnostics_to_context()
         if count > 0 then
             show_session(session, opts)
@@ -210,13 +208,13 @@ function Agentic.destroy_session(opts)
         return
     end
 
-    -- `resolve` creates a session when none exists, so an empty registry has to
-    -- short-circuit or this spawns a provider subprocess only to kill it.
-    if next(SessionRegistry.sessions) == nil then
-        return
-    end
-
-    local session = SessionRegistry.resolve()
+    -- `current`, never `resolve_or_create`: a non-empty registry does not prove
+    -- `current()` resolves, so guarding on `next(sessions)` still lets a stale
+    -- `_most_recent` spawn a provider subprocess only to kill the session it just
+    -- made, leaving every session the user owns alive.
+    -- Regression: agentic.test.lua::"destroys nothing, and creates nothing,
+    -- without a start point".
+    local session = SessionRegistry.current()
     local session_key = session and session.session_key
 
     if session_key then
@@ -275,7 +273,7 @@ local function cycle_session(step)
 
     table.sort(keys)
 
-    -- `current`, never `resolve`: cycling must not CREATE the session it cycles
+    -- `current`, never `resolve_or_create`: cycling must not CREATE the session it cycles
     -- away from when `_most_recent` is unregistered and nothing is visible here.
     local current = SessionRegistry.current()
     local current_key = current and current.session_key
@@ -332,7 +330,7 @@ local function apply_provider_switch(provider_name)
     Logger.debug(
         "apply_provider_switch: starting for provider " .. provider_name
     )
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         -- Guard: reject if session is being created or generating
         if not session.session_id then
             Logger.notify(
@@ -506,7 +504,7 @@ end
 --- The session remains active and ready for the next prompt
 --- Safe to call multiple times or when no generation is active
 function Agentic.stop_generation()
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         if session.is_generating and session.session_id then
             session.agent:stop_generation(session.session_id)
         end
@@ -518,7 +516,7 @@ end
 
 --- show a selector to restore a previous session
 function Agentic.restore_session()
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         SessionRestore.show_picker(session)
     end)
 end
@@ -526,7 +524,7 @@ end
 --- Restore a session by its ID.
 --- @param session_id string
 function Agentic.restore_session_by_id(session_id)
-    SessionRegistry.resolve(function(session)
+    SessionRegistry.resolve_or_create(function(session)
         SessionRestore.restore_by_id(session, session_id)
     end)
 end
@@ -587,8 +585,8 @@ function Agentic.setup(opts)
         local WidgetRegistry = require("agentic.ui.widget_registry")
 
         --- Resolved from the buffer under the cursor, never through
-        --- `SessionRegistry.resolve`: this runs on EVERY `vim.paste`, and
-        --- `resolve` creates a session when none is visible — a paste in an
+        --- `SessionRegistry.resolve_or_create`: this runs on EVERY `vim.paste`,
+        --- and it creates a session when none is visible — a paste in an
         --- ordinary buffer would spawn an ACP subprocess.
         --- @return agentic.SessionManager|nil
         local function get_current_session()

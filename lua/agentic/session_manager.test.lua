@@ -1993,6 +1993,25 @@ describe("agentic.SessionManager", function()
             assert.is_true(cancel_spy:called_with(fake_agent, "late-session"))
         end)
 
+        it("skips the welcome block when destroy lands before it", function()
+            local session, fire_create_response = pending_session()
+
+            local ready_spy = spy.new(function() end)
+            session:on_session_ready(ready_spy)
+
+            -- The create callback is guarded, but the welcome / `on_created` /
+            -- ready-callback block is a SECOND `vim.schedule` spawned from inside
+            -- it. A destroy landing in that one-tick window reaches it.
+            fire_create_response({ sessionId = "s1" })
+            session:destroy()
+
+            assert.has_no_errors(function()
+                flush_schedule()
+            end)
+
+            assert.spy(ready_spy).was.called(0)
+        end)
+
         it("ignores session updates that arrive after destroy", function()
             local session, fire_create_response = pending_session()
 

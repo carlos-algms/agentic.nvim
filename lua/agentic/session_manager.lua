@@ -837,6 +837,15 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
+            -- Re-checked: this is a SECOND schedule spawned from inside the
+            -- already-guarded create callback, so a destroy landing in that
+            -- one-tick window reaches it.
+            -- Regression: session_manager.test.lua::"skips the welcome block when
+            -- destroy lands before it".
+            if self._destroyed then
+                return
+            end
+
             local agent_info = self.agent.agent_info
             local welcome_message = self.message_writer:generate_welcome_header(
                 self.agent.provider_config.name,

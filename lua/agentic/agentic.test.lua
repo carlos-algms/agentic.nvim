@@ -89,7 +89,7 @@ describe("agentic: switch_provider", function()
     end)
 
     --- Creates a registered, fully initialized session and makes it the one
-    --- `SessionRegistry.resolve` returns, without opening any window.
+    --- `SessionRegistry.resolve_or_create` returns, without opening any window.
     --- @return agentic.SessionManager
     local function create_session()
         local session = SessionRegistry.create() --[[@as agentic.SessionManager]]
@@ -209,13 +209,13 @@ describe("agentic: switch_provider", function()
         assert.is_not_nil(replacement)
 
         -- The switch must repoint `_most_recent`, closed widget or not: otherwise
-        -- `resolve` finds nothing and `open` spawns a THIRD session, leaving the
-        -- replayed history reachable only through the picker.
+        -- `resolve_or_create` finds nothing and `open` spawns a THIRD session,
+        -- leaving the replayed history reachable only through the picker.
         Agentic.open()
         flush_schedule()
 
         assert.is_nil(SessionRegistry.sessions[3])
-        assert.equal(replacement, SessionRegistry.resolve())
+        assert.equal(replacement, SessionRegistry.resolve_or_create())
     end)
 
     it("blocks switch when session is initializing", function()
@@ -524,6 +524,31 @@ describe("agentic: switch_provider", function()
         assert.is_nil(first.widget:visible_tab())
         assert.is_nil(second.widget:visible_tab())
     end)
+
+    it(
+        "destroys nothing, and creates nothing, without a start point",
+        function()
+            local Agentic = require("agentic")
+
+            local first = create_session()
+            local second = create_session()
+
+            -- Two registered sessions, none visible in this tab, and `_most_recent`
+            -- pointing at a session that is no longer registered. A non-empty
+            -- registry does NOT prove `current()` resolves, so guarding on
+            -- `next(sessions)` still lets `resolve_or_create` spawn a provider
+            -- subprocess only to destroy the session it just made — every session the
+            -- user owns survives and the destroy silently did nothing.
+            SessionRegistry._most_recent = { session_key = 99 }
+
+            Agentic.destroy_session()
+            flush_schedule()
+
+            assert.equal(2, SessionRegistry._next_id)
+            assert.is_not_nil(SessionRegistry.sessions[first.session_key])
+            assert.is_not_nil(SessionRegistry.sessions[second.session_key])
+        end
+    )
 
     it("does not clear prompt buffer when session cannot submit", function()
         -- Create session without flushing — session_id is nil

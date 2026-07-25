@@ -38,8 +38,12 @@ describe("agentic.SessionRegistry", function()
                 visible_tab = function()
                     return visible_tab
                 end,
-                hide = function()
-                    widget_events[#widget_events + 1] = name .. ":hide"
+                -- `keep_insert` is recorded, not discarded: `show_session` passes
+                -- `true` on both hide paths so a show can follow in the same tick
+                -- without `stopinsert` latching past it.
+                hide = function(_self, keep_insert)
+                    widget_events[#widget_events + 1] = name
+                        .. (keep_insert and ":hide(keep)" or ":hide")
                 end,
                 show = function()
                     widget_events[#widget_events + 1] = name .. ":show"
@@ -238,7 +242,7 @@ describe("agentic.SessionRegistry", function()
         end)
     end)
 
-    describe("resolve", function()
+    describe("resolve_or_create", function()
         it(
             "prefers the session visible in the current tab over _most_recent",
             function()
@@ -252,7 +256,7 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry.sessions[2] = visible
                 SessionRegistry._most_recent = hidden
 
-                assert.equal(visible, SessionRegistry.resolve())
+                assert.equal(visible, SessionRegistry.resolve_or_create())
             end
         )
 
@@ -268,12 +272,12 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry.sessions[2] = second
                 SessionRegistry._most_recent = second
 
-                assert.equal(second, SessionRegistry.resolve())
+                assert.equal(second, SessionRegistry.resolve_or_create())
             end
         )
 
         it("creates a session when the registry is empty", function()
-            local session = SessionRegistry.resolve()
+            local session = SessionRegistry.resolve_or_create()
 
             assert.is_not_nil(session)
             assert.equal(1, session.session_key)
@@ -281,8 +285,8 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("reuses the session it created on the next resolve", function()
-            local first = SessionRegistry.resolve()
-            local second = SessionRegistry.resolve()
+            local first = SessionRegistry.resolve_or_create()
+            local second = SessionRegistry.resolve_or_create()
 
             assert.equal(first, second)
             assert.equal(1, #SessionRegistry.list())
@@ -295,7 +299,7 @@ describe("agentic.SessionRegistry", function()
                 stale.session_key = 7
                 SessionRegistry._most_recent = stale
 
-                local session = SessionRegistry.resolve()
+                local session = SessionRegistry.resolve_or_create()
 
                 assert.are_not.equal(stale, session)
                 assert.equal(1, session.session_key)
@@ -313,7 +317,7 @@ describe("agentic.SessionRegistry", function()
                 local new_spy = spy.new(function() end)
                 session_manager_mock.new = new_spy
 
-                assert.equal(visible, SessionRegistry.resolve())
+                assert.equal(visible, SessionRegistry.resolve_or_create())
                 assert.spy(new_spy).was.called(0)
             end
         )
@@ -324,7 +328,7 @@ describe("agentic.SessionRegistry", function()
             SessionRegistry.sessions[1] = visible
 
             local received = nil
-            SessionRegistry.resolve(function(session)
+            SessionRegistry.resolve_or_create(function(session)
                 received = session
             end)
 
@@ -339,7 +343,7 @@ describe("agentic.SessionRegistry", function()
             logger_stub.notify = notify_spy
 
             assert.has_no_errors(function()
-                SessionRegistry.resolve(function()
+                SessionRegistry.resolve_or_create(function()
                     error("callback boom")
                 end)
             end)
@@ -489,7 +493,7 @@ describe("agentic.SessionRegistry", function()
 
             -- The order is the contract: `ChatWidget:hide` captures the outgoing
             -- size, which the incoming widget's first `show` reads back.
-            assert.same({ "outgoing:hide", "target:show" }, widget_events)
+            assert.same({ "outgoing:hide(keep)", "target:show" }, widget_events)
             assert.equal(target, SessionRegistry._most_recent)
         end)
 
@@ -516,7 +520,7 @@ describe("agentic.SessionRegistry", function()
             SessionRegistry.show_session(1)
 
             -- At most one tab per session: the widget moves, it is not cloned.
-            assert.same({ "target:hide", "target:show" }, widget_events)
+            assert.same({ "target:hide(keep)", "target:show" }, widget_events)
         end)
 
         it("is a no-op for an unknown key", function()

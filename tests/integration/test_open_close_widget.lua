@@ -185,7 +185,7 @@ end)()
         local current_bufnr = child.api.nvim_get_current_buf()
         local expected_input_bufnr = child.lua_get([[
 (function()
-    local session = require("agentic.session_registry").resolve()
+    local session = require("agentic.session_registry").current()
     return session.widget.buf_nrs.input
 end)()
 ]])

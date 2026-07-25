@@ -56,16 +56,9 @@ function SessionRegistry.create()
     return session
 end
 
---- The session the user is acting on WITHOUT creating one: the session visible in
---- the current tab, else the most recently visible one while it is still
---- registered. Callers that only navigate between existing sessions must use this
---- instead of `resolve`: `resolve` answers a miss by creating a session, so
---- cycling with a stale `_most_recent` would spawn a provider subprocess just to
---- pick a starting point.
---- Regression: agentic.test.lua::"cycles nowhere, and creates nothing, without a
---- start point".
+--- The session whose widget is visible in the current tab, if any.
 --- @return agentic.SessionManager|nil
-function SessionRegistry.current()
+function SessionRegistry.visible_here()
     local current_tab = vim.api.nvim_get_current_tabpage()
 
     for _, session in pairs(SessionRegistry.sessions) do
@@ -74,14 +67,30 @@ function SessionRegistry.current()
         end
     end
 
-    return registered_most_recent()
+    return nil
+end
+
+--- The session the user is acting on WITHOUT creating one: the session visible in
+--- the current tab, else the most recently visible one while it is still
+--- registered. Callers that only navigate between existing sessions must use this
+--- instead of `resolve_or_create`: that one answers a miss by creating a session,
+--- so cycling with a stale `_most_recent` would spawn a provider subprocess just
+--- to pick a starting point.
+--- Regression: agentic.test.lua::"cycles nowhere, and creates nothing, without a
+--- start point" and ::"destroys nothing, and creates nothing, without a start
+--- point".
+--- @return agentic.SessionManager|nil
+function SessionRegistry.current()
+    return SessionRegistry.visible_here() or registered_most_recent()
 end
 
 --- Resolves the session the user is acting on: the one visible in the current
 --- tab, else the most recently visible one, else a brand new session.
+--- Named for the side effect: a miss CREATES a session, and with it a provider
+--- subprocess. Callers that only navigate must use `current` instead.
 --- @param callback fun(session: agentic.SessionManager)|nil
 --- @return agentic.SessionManager|nil
-function SessionRegistry.resolve(callback)
+function SessionRegistry.resolve_or_create(callback)
     local instance = SessionRegistry.current() or SessionRegistry.create()
 
     -- Resolve-only entry points (`stop_generation`, `restore_session`,
@@ -208,8 +217,9 @@ end
 --- Points `_most_recent` at a registered session WITHOUT showing it.
 --- `show_session` is the choke point for everything visible; this is the one path
 --- that has nothing to show: the provider switch replaces a session whose widget
---- was already closed, and leaving `_most_recent` nil makes the next `resolve`
---- create yet another session instead of returning the replacement.
+--- was already closed, and leaving `_most_recent` nil makes the next
+--- `resolve_or_create` create yet another session instead of returning the
+--- replacement.
 --- Regression: agentic.test.lua::"reuses the switched session on the next open".
 --- @param session_key integer
 function SessionRegistry.set_most_recent(session_key)

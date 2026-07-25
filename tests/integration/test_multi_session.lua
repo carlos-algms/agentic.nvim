@@ -375,6 +375,25 @@ end)()
         ]]))
     end)
 
+    it("destroys the named session, not the visible one", function()
+        create_sessions(2)
+        child.lua([[ require("agentic").open({ session = 2 }) ]])
+        child.flush()
+
+        child.lua([[ require("agentic").destroy_session({ session = 1 }) ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.equal(2, visible_key())
+    end)
+
+    it("creates no session when destroying with none open", function()
+        child.lua([[ require("agentic").destroy_session() ]])
+        child.flush()
+
+        assert.equal(0, session_count())
+    end)
+
     it("leaves a single session in place when cycling", function()
         child.lua([[ require("agentic").open() ]])
         child.flush()
