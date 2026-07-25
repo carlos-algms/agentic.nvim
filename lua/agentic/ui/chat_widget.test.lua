@@ -817,6 +817,7 @@ describe("agentic.ui.ChatWidget", function()
     describe("size memory", function()
         local widget
         local widget2
+        local widget3
         local original_position
         local saved_sessions
 
@@ -833,13 +834,17 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
-            for _, w in ipairs({ widget, widget2 }) do
+            -- `pairs`, not `ipairs`: a case that creates `widget3` but not
+            -- `widget2` leaves a hole, and `ipairs` would stop at it and leak
+            -- the third widget's buffers into every later case.
+            for _, w in pairs({ widget, widget2, widget3 }) do
                 pcall(function()
                     w:destroy()
                 end)
             end
             widget = nil
             widget2 = nil
+            widget3 = nil
 
             pcall(function()
                 vim.cmd("tabclose")
@@ -905,6 +910,71 @@ describe("agentic.ui.ChatWidget", function()
                 initial_width,
                 vim.api.nvim_win_get_width(widget.win_nrs.chat)
             )
+        end)
+
+        it(
+            "skips a stored size that lacks the axis the new layout needs",
+            function()
+                -- Session 1 only ever ran in `bottom`, so it stores a height and
+                -- no width. Stopping at it would hand a `right` widget a size
+                -- with no width and silently fall back to the configured one.
+                widget.current_position = "bottom"
+                widget:show({ focus_prompt = false })
+                vim.api.nvim_win_set_height(widget.win_nrs.chat, 12)
+                widget:hide()
+
+                widget2 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+                widget2:show({ focus_prompt = false })
+                vim.api.nvim_win_set_width(widget2.win_nrs.chat, 50)
+                widget2:hide()
+
+                register_session(1, widget)
+                register_session(2, widget2)
+
+                widget3 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+                widget3:show({ focus_prompt = false })
+
+                assert.equal(
+                    50,
+                    vim.api.nvim_win_get_width(widget3.win_nrs.chat)
+                )
+            end
+        )
+
+        it("copies the inherited size instead of sharing the table", function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            widget:hide()
+            register_session(1, widget)
+
+            -- Only session 1 is registered, so every later widget seeds from
+            -- `widget`. A shared table would let this resize rewrite session 1's
+            -- remembered width, and the third widget would inherit 60.
+            widget2 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget2:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget2.win_nrs.chat, 60)
+            widget2:hide()
+
+            widget3 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget3:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget3.win_nrs.chat))
+        end)
+
+        it("keeps the remembered width when hide runs twice", function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+
+            widget:hide()
+            -- The second `hide` has no chat window to measure; measuring anyway
+            -- would overwrite the stored width with the current window's.
+            widget:hide()
+
+            widget:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
         end)
 
         it("restores the width after rotating away and back", function()
@@ -1607,3 +1677,40 @@ describe(
         end)
     end
 )
+
+-- Child process: the WinClosed handler defers `hide` through `vim.schedule`, and
+-- flushing that in-process pumps mini.test's own queue.
+describe("agentic.ui.ChatWidget WinClosed size memory (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it("keeps a manual width when the user closes the chat window", function()
+        -- `:q` on the chat window reaches `hide` only through `vim.schedule`, by
+        -- which time the window is gone and nothing is left to measure.
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            _G.target_width =
+                vim.api.nvim_win_get_width(_G.widget.win_nrs.chat) + 5
+            vim.api.nvim_win_set_width(_G.widget.win_nrs.chat, _G.target_width)
+            vim.api.nvim_win_close(_G.widget.win_nrs.chat, true)
+        ]])
+
+        child.flush()
+
+        child.lua([[ _G.widget:show({ focus_prompt = false }) ]])
+
+        assert.equal(
+            child.lua_get("_G.target_width"),
+            child.lua_get("vim.api.nvim_win_get_width(_G.widget.win_nrs.chat)")
+        )
+    end)
+end)

@@ -170,8 +170,10 @@ end)()
     end)
 
     it("prevents buffer name collision errors", function()
+        local keys = {}
+
         for _ = 1, 5 do
-            open_session()
+            keys[#keys + 1] = open_session()
             child.flush()
             child.cmd("tabnew")
         end
@@ -181,6 +183,12 @@ end)()
         ]])
 
         assert.equal(5, session_count)
+
+        -- The count alone cannot see a collision: E95 does not fail the open, it
+        -- demotes the losing buffer to `<name>-old-N`.
+        for _, key in ipairs(keys) do
+            assert.is_nil(get_panel_basename(key, "chat"):match("%-old%-"))
+        end
     end)
 
     it("uses custom buffer_name from windows config when set", function()

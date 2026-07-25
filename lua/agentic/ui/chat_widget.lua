@@ -50,7 +50,7 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _size? agentic.ui.ChatWidget.Size Chat window size to reopen at, refreshed on every `hide`
---- @field session_key? integer Registry key, published by SessionRegistry.create so a bufnr can reach it
+--- @field session_key? integer Registry key, published so a bufnr can reach it. Set by `SessionRegistry.create`, and by the legacy `SessionRegistry.get_session_for_tab_page` with a tabpage handle instead — that second publisher dies with the function
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 --- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Returned by `WindowDecoration.get_headers_state`, whose callers mutate it in place
 --- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
@@ -142,13 +142,21 @@ end
 --- sidebar. Copied, so two widgets never share one table.
 --- Read at `show` time, not at construction: the outgoing widget's `hide` — which
 --- refreshes its size — runs between the two.
+--- Only a session carrying THIS layout's axis counts: `_remember_size` stores one
+--- axis per layout, so a `bottom`-only session holds a height and no width, and
+--- stopping at it would drop back to the configured width.
+--- Regression: chat_widget.test.lua::"skips a stored size that lacks the axis the
+--- new layout needs".
 --- @return agentic.ui.ChatWidget.Size|nil
 function ChatWidget:_inherited_size()
     local SessionRegistry = require("agentic.session_registry")
 
+    --- @type "height"|"width"
+    local axis = self.current_position == "bottom" and "height" or "width"
+
     for _, session in ipairs(SessionRegistry.list()) do
         local size = session.widget._size
-        if size then
+        if size and size[axis] then
             return vim.deepcopy(size)
         end
     end
@@ -425,6 +433,14 @@ function ChatWidget:_initialize()
             -- except "todos" which can be closed independently.
             for _, winid in pairs(self.win_nrs) do
                 if winid == closed_winid then
+                    -- Synchronously, before the deferred `hide`: WinClosed fires
+                    -- "just before it is removed from the window layout"
+                    -- (`:h WinClosed`), so the chat window is still measurable
+                    -- here. By the time the scheduled `hide` runs it is gone,
+                    -- `visible_tab` is nil, and the user's resize is dropped.
+                    -- Regression: chat_widget.test.lua::"keeps a manual width
+                    -- when the user closes the chat window".
+                    self:_remember_size()
                     vim.schedule(function()
                         self:hide()
                     end)
