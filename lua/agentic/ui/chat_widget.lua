@@ -6,6 +6,7 @@ local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetLayout = require("agentic.ui.widget_layout")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"|"diagnostics"
 
@@ -69,9 +70,27 @@ function ChatWidget:new(tab_page_id, on_submit_input)
     return self
 end
 
+--- The tabpage the widget is currently visible in, derived from its live chat
+--- window. Nothing stores a tabpage.
+--- The hidden chat float lives outside `win_nrs`, so it never counts as visible.
+--- @return integer|nil tabpage nil when the widget is not visible
+function ChatWidget:visible_tab()
+    local winid = self.win_nrs.chat
+    if not winid or not vim.api.nvim_win_is_valid(winid) then
+        return nil
+    end
+
+    -- 0.11.5 Linux post-tabclose segfault, see WidgetLayout.close.
+    local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+    if not tab_ok then
+        return nil
+    end
+
+    return win_tab
+end
+
 function ChatWidget:is_open()
-    local win_id = self.win_nrs.chat
-    return (win_id and vim.api.nvim_win_is_valid(win_id)) or false
+    return self:visible_tab() ~= nil
 end
 
 --- Check if the cursor is currently in one of the widget's buffers
@@ -217,6 +236,8 @@ end
 --- Deletes all buffers and removes them from memory
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
+    WidgetRegistry.unregister(self)
+
     if self._guard_augroup then
         BufferGuard.detach(self._guard_augroup)
         self._guard_augroup = nil
@@ -366,6 +387,8 @@ function ChatWidget:_initialize()
         end,
         desc = "Agentic: close widget when user closes a core window",
     })
+
+    WidgetRegistry.register(self)
 end
 
 function ChatWidget:_bind_keymaps()

@@ -955,6 +955,95 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end)
 
+    describe("visible_tab", function()
+        local WidgetRegistry = require("agentic.ui.widget_registry")
+        local widget
+        local tab_page_id
+
+        before_each(function()
+            vim.cmd("tabnew")
+            tab_page_id = vim.api.nvim_get_current_tabpage()
+
+            local on_submit_spy = spy.new(function() end)
+            widget =
+                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("returns nil for a widget that has never been shown", function()
+            assert.is_nil(widget:visible_tab())
+        end)
+
+        it("returns the tabpage the widget is shown in", function()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(widget:visible_tab(), tab_page_id)
+        end)
+
+        it("returns the widget's own tab, not the current one", function()
+            widget:show({ focus_prompt = false })
+
+            vim.cmd("tabnew")
+            local other_tab = vim.api.nvim_get_current_tabpage()
+            assert.is_not_nil(widget:visible_tab())
+            assert.equal(widget:visible_tab(), tab_page_id)
+            assert.is_not.equal(widget:visible_tab(), other_tab)
+
+            vim.cmd("tabclose")
+        end)
+
+        it("returns nil after hide, despite the hidden float", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            -- The float holds the chat buffer for ADR 0001 fold anchoring, but
+            -- it lives outside win_nrs and must not count as visible.
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_nil(widget:visible_tab())
+        end)
+
+        it("agrees with is_open across never-shown, shown, hidden", function()
+            assert.equal(widget:is_open(), widget:visible_tab() ~= nil)
+
+            widget:show({ focus_prompt = false })
+            assert.is_true(widget:is_open())
+            assert.equal(widget:is_open(), widget:visible_tab() ~= nil)
+
+            widget:hide()
+            assert.is_false(widget:is_open())
+            assert.equal(widget:is_open(), widget:visible_tab() ~= nil)
+        end)
+
+        it("registers every buffer with the widget registry", function()
+            for _, bufnr in pairs(widget.buf_nrs) do
+                assert.equal(WidgetRegistry.get(bufnr), widget)
+            end
+        end)
+
+        it("unregisters its buffers on destroy", function()
+            local bufnrs = vim.tbl_values(widget.buf_nrs)
+            assert.is_true(#bufnrs > 0)
+
+            widget:destroy()
+            widget = nil
+
+            for _, bufnr in ipairs(bufnrs) do
+                assert.is_nil(WidgetRegistry.get(bufnr))
+            end
+        end)
+    end)
+
     describe("input header suffix", function()
         local tab_page_id
         local widget
