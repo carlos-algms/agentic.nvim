@@ -504,6 +504,65 @@ describe("ACPClient", function()
         end)
     end)
 
+    describe("__with_subscriber", function()
+        --- Queues `vim.schedule` callbacks so a test can drop the subscriber in
+        --- the window between scheduling and running, the way `cancel_session`
+        --- does when a session is destroyed mid-stream.
+        --- @return fun()[] queue, TestStub schedule_stub
+        local function queue_schedules()
+            --- @type fun()[]
+            local queue = {}
+            local schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                queue[#queue + 1] = fn
+            end)
+
+            return queue, schedule_stub
+        end
+
+        it("delivers to a subscriber that is still registered", function()
+            local client = create_ready_client()
+            local queue, schedule_stub = queue_schedules()
+            local received = spy.new(function() end)
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            ---@diagnostic disable-next-line: invisible
+            client:__with_subscriber("s1", function(sub)
+                received(sub)
+            end)
+
+            for _, fn in ipairs(queue) do
+                fn()
+            end
+            schedule_stub:revert()
+
+            assert.spy(received).was.called(1)
+            assert.equal(NOOP_HANDLERS, received.calls[1][1])
+        end)
+
+        it("skips a subscriber dropped before the callback runs", function()
+            local client = create_ready_client()
+            local queue, schedule_stub = queue_schedules()
+            local received = spy.new(function() end)
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            ---@diagnostic disable-next-line: invisible
+            client:__with_subscriber("s1", function(sub)
+                received(sub)
+            end)
+
+            -- `cancel_session` drops the subscriber while the update is queued
+            client.subscribers["s1"] = nil
+
+            for _, fn in ipairs(queue) do
+                fn()
+            end
+            schedule_stub:revert()
+
+            assert.spy(received).was.called(0)
+        end)
+    end)
+
     describe("__build_tool_call_message", function()
         it("handles vim.NIL content and locations (JSON null)", function()
             local client = create_ready_client()

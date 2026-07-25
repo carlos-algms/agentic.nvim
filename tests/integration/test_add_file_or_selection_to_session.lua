@@ -19,14 +19,12 @@ describe("Add file or selection to session", function()
         child.flush()
 
         local files_winid = child.lua([[
-            local session = require("agentic.session_registry")
-                .get_session_for_tab_page()
+            local session = require("agentic.session_registry").resolve()
             return session.widget.win_nrs.files
         ]])
 
         local files_list = child.lua([[
-            local session = require("agentic.session_registry")
-                .get_session_for_tab_page()
+            local session = require("agentic.session_registry").resolve()
             return session.file_list:get_files()
         ]])
 
@@ -46,7 +44,7 @@ describe("Add file or selection to session", function()
 
         -- Get selections from code_selection
         local selections = child.lua([[
-            local session = require("agentic.session_registry").get_session_for_tab_page()
+            local session = require("agentic.session_registry").resolve()
             return session.code_selection:get_selections()
         ]])
 

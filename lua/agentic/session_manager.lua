@@ -38,6 +38,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
+--- @field _destroyed boolean Set by `destroy`; every scheduled callback checks it at RUN time
 --- @field _session_ready_callbacks fun()[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -63,6 +64,7 @@ function SessionManager:new(tab_page_id)
         is_generating = false,
         _is_restoring_session = false,
         _connection_error = false,
+        _destroyed = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
     }, self)
@@ -623,11 +625,21 @@ function SessionManager:_handle_input_submit(input_text)
 end
 
 --- Build the standard ACP client handlers for session subscriptions
+--- Every handler bails out on a destroyed session. The check has to happen HERE,
+--- at run time: `ACPClient:__with_subscriber` schedules the call, so dropping the
+--- subscriber cannot stop a callback that is already queued, and the handlers
+--- would write into buffers `ChatWidget:destroy` deleted.
+--- Regression: session_manager.test.lua::"ignores session updates that arrive
+--- after destroy".
 --- @return agentic.acp.ClientHandlers handlers
 function SessionManager:_build_handlers()
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
+            if self._destroyed then
+                return
+            end
+
             Logger.debug("Agent error: ", err)
 
             self.message_writer:write_message(
@@ -640,18 +652,34 @@ function SessionManager:_build_handlers()
         end,
 
         on_session_update = function(update)
+            if self._destroyed then
+                return
+            end
+
             self:_on_session_update(update)
         end,
 
         on_tool_call = function(tool_call)
+            if self._destroyed then
+                return
+            end
+
             self:_on_tool_call(tool_call)
         end,
 
         on_tool_call_update = function(tool_call_update)
+            if self._destroyed then
+                return
+            end
+
             self:_on_tool_call_update(tool_call_update)
         end,
 
         on_request_permission = function(request, callback)
+            if self._destroyed then
+                return
+            end
+
             Hooks.invoke("on_request_permission", {
                 request = request,
                 session_id = self.session_id,
@@ -698,6 +726,20 @@ function SessionManager:new_session(opts)
     local handlers = self:_build_handlers()
 
     self.agent:create_session(handlers, function(response, err)
+        -- Destroyed while `session/new` was in flight: the provider created the
+        -- session anyway, so cancel it as soon as its id arrives or it is
+        -- orphaned on the provider forever. Adopting it instead would schedule a
+        -- welcome write into buffers `ChatWidget:destroy` already deleted.
+        -- Regression: session_manager.test.lua::"cancels an ACP session that
+        -- arrives after destroy".
+        if self._destroyed then
+            if response and response.sessionId then
+                self.agent:cancel_session(response.sessionId)
+            end
+
+            return
+        end
+
         self.status_animation:stop()
 
         --- @type agentic.UserConfig.CreateSessionResponseData
@@ -920,6 +962,12 @@ function SessionManager:_handle_new_config_options(new_config_options)
 end
 
 function SessionManager:destroy()
+    if self._destroyed then
+        return
+    end
+
+    self._destroyed = true
+
     self:_cancel_session()
     self.widget:destroy()
     if self.message_writer then

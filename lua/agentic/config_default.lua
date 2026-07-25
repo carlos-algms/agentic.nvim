@@ -446,6 +446,9 @@ local ConfigDefault = {
             switch_model = "<localLeader>m",
             change_thought_level = "<localLeader>t",
             open_options = "<localLeader>o",
+            select_session = "<localLeader>l",
+            next_session = "<localLeader>]",
+            prev_session = "<localLeader>[",
         },
 
         --- Keys bindings for the prompt buffer

@@ -59,45 +59,33 @@ session.widget:render_header("%s")
         child.flush()
     end
 
-    --- Opens the widget through the public API, the path a user actually takes
-    --- @return integer tab_page_id
+    --- Creates and shows a session through the public API, the path a user
+    --- actually takes
+    --- @return integer session_key
     local function open_via_public_api()
         return child.lua_get([[
 (function()
-    require("agentic").open({ auto_add_to_context = false })
-    return vim.api.nvim_get_current_tabpage()
+    require("agentic").new_session({ auto_add_to_context = false })
+    -- `list()` is ordered most-recently-shown first
+    return require("agentic.session_registry").list()[1].session_key
 end)()
 ]])
     end
 
-    --- Gets the chat buffer basename of the session owning the given tab page
-    --- @param tab_page_id integer
-    --- @return string basename
-    local function get_chat_basename_for_tab(tab_page_id)
-        return child.lua_get(string.format(
-            [[
-(function()
-    local session = require("agentic.session_registry").sessions[%d]
-    return vim.fn.fnamemodify(
-        vim.api.nvim_buf_get_name(session.widget.buf_nrs.chat),
-        ":t"
-    )
-end)()
-]],
-            tab_page_id
-        ))
-    end
-
     it("keeps names unique when opened through the public API", function()
-        local tab1 = open_via_public_api()
+        local key1 = open_via_public_api()
         child.flush()
 
         child.cmd("tabnew")
-        local tab2 = open_via_public_api()
+        local key2 = open_via_public_api()
         child.flush()
 
-        local basename1 = get_chat_basename_for_tab(tab1)
-        local basename2 = get_chat_basename_for_tab(tab2)
+        -- Nothing re-renders the other sessions' headers on create, so the first
+        -- session picks up its suffix on its own next render
+        render_header(key1, "chat")
+
+        local basename1 = get_panel_basename(key1, "chat")
+        local basename2 = get_panel_basename(key2, "chat")
 
         -- Opening the second session must not demote the first one's buffer
         assert.is_nil(basename1:match("%-old%-"))

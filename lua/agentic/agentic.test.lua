@@ -88,6 +88,17 @@ describe("agentic: switch_provider", function()
         end)
     end)
 
+    --- Creates a registered, fully initialized session and makes it the one
+    --- `SessionRegistry.resolve` returns, without opening any window.
+    --- @return agentic.SessionManager
+    local function create_session()
+        local session = SessionRegistry.create() --[[@as agentic.SessionManager]]
+        flush_schedule()
+        SessionRegistry._most_recent = session
+
+        return session
+    end
+
     after_each(function()
         Config.provider = original_provider
         logger_notify_stub:revert()
@@ -99,14 +110,16 @@ describe("agentic: switch_provider", function()
         end
 
         -- Clean up any sessions created during tests
-        -- Collect IDs first to avoid mutating the table during pairs() iteration
-        local tab_ids = {}
-        for tab_id, _ in pairs(SessionRegistry.sessions) do
-            table.insert(tab_ids, tab_id)
+        -- Collect keys first to avoid mutating the table during pairs() iteration
+        local keys = {}
+        for key in pairs(SessionRegistry.sessions) do
+            table.insert(keys, key)
         end
-        for _, tab_id in ipairs(tab_ids) do
-            SessionRegistry.destroy_session(tab_id)
+        for _, key in ipairs(keys) do
+            SessionRegistry.destroy(key)
         end
+        SessionRegistry._next_id = 0
+        SessionRegistry._most_recent = nil
 
         -- Close any extra tabs created during the test
         vim.api.nvim_set_current_tabpage(initial_tab_id)
@@ -118,26 +131,15 @@ describe("agentic: switch_provider", function()
     end)
 
     it("can create a session with mocked agent", function()
-        local SessionManager = require("agentic.session_manager")
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
+        local session = create_session()
 
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
-        flush_schedule()
         assert.is_not_nil(session)
-        SessionRegistry.sessions[tab_page_id] = session
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
     end)
 
     it("restores chat history messages after switching provider", function()
-        -- Setup: Create initial session with messages manually
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
-        local SessionManager = require("agentic.session_manager")
-
-        -- Create initial session manually
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
-        flush_schedule()
+        local session = create_session()
         assert.is_not_nil(session)
-
-        SessionRegistry.sessions[tab_page_id] = session
 
         -- Manually set session_id and initialize chat_history
         session.session_id = "old-session-id" --[[@as string]]
@@ -171,7 +173,7 @@ describe("agentic: switch_provider", function()
         assert.equal("NewProvider", Config.provider)
 
         -- Get new session
-        local new_session = SessionRegistry.sessions[tab_page_id] --[[@as agentic.SessionManager]]
+        local new_session = SessionRegistry.list()[1] --[[@as agentic.SessionManager]]
         assert.is_not_nil(new_session)
         assert.are_not.equal(session, new_session)
 
@@ -195,14 +197,12 @@ describe("agentic: switch_provider", function()
 
     it("blocks switch when session is initializing", function()
         local Agentic = require("agentic")
-        local SessionManager = require("agentic.session_manager")
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
 
         -- Create session without flushing schedule — keeps it in initializing state
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+        local session = SessionRegistry.create() --[[@as agentic.SessionManager]]
+        SessionRegistry._most_recent = session
         assert.is_not_nil(session)
         assert.is_nil(session.session_id) -- Not initialized yet
-        SessionRegistry.sessions[tab_page_id] = session
 
         -- Try to switch
         Agentic.switch_provider({ provider = "TestProvider" })
@@ -211,20 +211,15 @@ describe("agentic: switch_provider", function()
         assert.spy(logger_notify_stub).was.called()
         local msg = logger_notify_stub.calls[1][1]
         assert.truthy(msg:match("[Ii]nitializ"))
-        assert.equal(session, SessionRegistry.sessions[tab_page_id])
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
     end)
 
     it("blocks switch when generating", function()
         local Agentic = require("agentic")
-        local SessionManager = require("agentic.session_manager")
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
 
-        -- Create initialized session
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
-        flush_schedule()
+        local session = create_session()
         session.session_id = "test-session-id" --[[@as string]]
         session.is_generating = true -- Set generating flag
-        SessionRegistry.sessions[tab_page_id] = session
 
         -- Try to switch
         Agentic.switch_provider({ provider = "TestProvider" })
@@ -233,169 +228,239 @@ describe("agentic: switch_provider", function()
         assert.spy(logger_notify_stub).was.called()
         local msg = logger_notify_stub.calls[1][1]
         assert.truthy(msg:match("[Gg]enerating"))
-        assert.equal(session, SessionRegistry.sessions[tab_page_id])
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
     end)
 
     it(
-        "switch_provider only affects the current tabpage, not other tabs",
+        "switch_provider only affects the resolved session, not the others",
         function()
             local Agentic = require("agentic")
-            local SessionManager = require("agentic.session_manager")
 
-            -- Tab 1: current tabpage
-            local tab1_id = vim.api.nvim_get_current_tabpage()
-            local session1 = SessionManager:new(tab1_id) --[[@as agentic.SessionManager]]
-            flush_schedule()
-            assert.is_not_nil(session1)
+            local first = create_session()
+            first.session_id = "first-old-session" --[[@as string]]
 
-            SessionRegistry.sessions[tab1_id] = session1
-            session1.session_id = "tab1-old-session" --[[@as string]]
-
-            session1.chat_history:add_message({
+            first.chat_history:add_message({
                 type = "user",
-                text = "tab1 user msg",
+                text = "first user msg",
                 timestamp = os.time(),
                 provider_name = "OriginalProvider",
             } --[[@as agentic.ui.ChatHistory.Message]])
-            session1.chat_history:add_message({
+            first.chat_history:add_message({
                 type = "agent",
-                text = "tab1 agent reply",
+                text = "first agent reply",
                 timestamp = os.time(),
                 provider_name = "OriginalProvider",
             } --[[@as agentic.ui.ChatHistory.Message]])
 
-            assert.equal(2, #session1.chat_history.messages)
+            assert.equal(2, #first.chat_history.messages)
 
-            -- Tab 2: create a new tabpage with distinct state
-            vim.cmd("tabnew")
-            local tab2_id = vim.api.nvim_get_current_tabpage()
-            assert.are_not.equal(tab1_id, tab2_id)
+            local second = create_session()
+            second.session_id = "second-session" --[[@as string]]
 
-            local session2 = SessionManager:new(tab2_id) --[[@as agentic.SessionManager]]
-            flush_schedule()
-            assert.is_not_nil(session2)
-
-            SessionRegistry.sessions[tab2_id] = session2
-            session2.session_id = "tab2-session" --[[@as string]]
-
-            session2.chat_history:add_message({
+            second.chat_history:add_message({
                 type = "user",
-                text = "tab2 question",
+                text = "second question",
                 timestamp = os.time(),
-                provider_name = "Tab2Provider",
+                provider_name = "SecondProvider",
             } --[[@as agentic.ui.ChatHistory.Message]])
-            session2.chat_history:add_message({
+            second.chat_history:add_message({
                 type = "agent",
-                text = "tab2 answer",
+                text = "second answer",
                 timestamp = os.time(),
-                provider_name = "Tab2Provider",
+                provider_name = "SecondProvider",
             } --[[@as agentic.ui.ChatHistory.Message]])
-            session2.chat_history:add_message({
+            second.chat_history:add_message({
                 type = "user",
-                text = "tab2 followup",
+                text = "second followup",
                 timestamp = os.time(),
-                provider_name = "Tab2Provider",
+                provider_name = "SecondProvider",
             } --[[@as agentic.ui.ChatHistory.Message]])
 
-            assert.equal(3, #session2.chat_history.messages)
+            assert.equal(3, #second.chat_history.messages)
 
-            -- Snapshot tab2 state before switch
-            local tab2_session_id_before = session2.session_id
-            local tab2_history_to_send_before = session2.history_to_send
-            local tab2_msg_count_before = #session2.chat_history.messages
+            local second_session_id_before = second.session_id
+            local second_history_to_send_before = second.history_to_send
+            local second_msg_count_before = #second.chat_history.messages
 
-            -- Switch back to tab1 (switch_provider operates on current tabpage)
-            vim.api.nvim_set_current_tabpage(tab1_id)
-            assert.equal(tab1_id, vim.api.nvim_get_current_tabpage())
+            -- `switch_provider` acts on the resolved session, which is
+            -- `_most_recent` while no widget is visible.
+            SessionRegistry._most_recent = first
 
-            -- Perform provider switch on tab1 only
             assert.are_not.equal("SwitchedProvider", Config.provider)
             Agentic.switch_provider({ provider = "SwitchedProvider" })
             flush_schedule()
 
-            -- Verify Config.provider was updated by switch_provider
             assert.equal("SwitchedProvider", Config.provider)
 
-            -- === Tab 1: session was updated ===
-            local new_session1 = SessionRegistry.sessions[tab1_id] --[[@as agentic.SessionManager]]
-            assert.is_not_nil(new_session1)
-            assert.are_not.equal("tab1-old-session", new_session1.session_id)
+            -- === The resolved session was replaced ===
+            -- Keys 1 and 2 are `first` and `second`; the replacement gets 3.
+            local replacement = SessionRegistry.sessions[3] --[[@as agentic.SessionManager]]
+            assert.is_not_nil(replacement)
+            assert.is_nil(SessionRegistry.sessions[first.session_key])
+            assert.are_not.equal("first-old-session", replacement.session_id)
             assert.truthy(
-                tostring(new_session1.session_id):match("SwitchedProvider")
+                tostring(replacement.session_id):match("SwitchedProvider")
             )
 
-            -- Chat history restored from tab1's original messages
-            assert.equal(2, #new_session1.chat_history.messages)
+            -- Chat history restored from the replaced session's messages
+            assert.equal(2, #replacement.chat_history.messages)
             assert.equal(
-                "tab1 user msg",
-                new_session1.chat_history.messages[1].text
+                "first user msg",
+                replacement.chat_history.messages[1].text
             )
             assert.equal(
-                "tab1 agent reply",
-                new_session1.chat_history.messages[2].text
+                "first agent reply",
+                replacement.chat_history.messages[2].text
             )
 
-            -- history_to_send set with tab1's saved messages
-            assert.is_not_nil(new_session1.history_to_send)
-            assert.equal(2, #new_session1.history_to_send)
+            assert.is_not_nil(replacement.history_to_send)
+            assert.equal(2, #replacement.history_to_send)
 
-            -- === Tab 2: must be completely unchanged ===
-            local current_session2 = SessionRegistry.sessions[tab2_id] --[[@as agentic.SessionManager]]
-            assert.is_not_nil(current_session2)
+            -- === The other session must be completely unchanged ===
+            local current_second = SessionRegistry.sessions[second.session_key] --[[@as agentic.SessionManager]]
+            assert.is_not_nil(current_second)
 
             -- Same session object (not recreated)
-            assert.equal(session2, current_session2)
+            assert.equal(second, current_second)
 
             -- session_id unchanged
-            assert.equal(tab2_session_id_before, current_session2.session_id)
+            assert.equal(second_session_id_before, current_second.session_id)
 
             -- history_to_send unchanged (was nil)
             assert.equal(
-                tab2_history_to_send_before,
-                current_session2.history_to_send
+                second_history_to_send_before,
+                current_second.history_to_send
             )
 
             -- chat_history messages: same count, text, types, and provider_names
             assert.equal(
-                tab2_msg_count_before,
-                #current_session2.chat_history.messages
+                second_msg_count_before,
+                #current_second.chat_history.messages
             )
             assert.equal(
-                "tab2 question",
-                current_session2.chat_history.messages[1].text
+                "second question",
+                current_second.chat_history.messages[1].text
             )
             assert.equal(
-                "tab2 answer",
-                current_session2.chat_history.messages[2].text
+                "second answer",
+                current_second.chat_history.messages[2].text
             )
             assert.equal(
-                "tab2 followup",
-                current_session2.chat_history.messages[3].text
+                "second followup",
+                current_second.chat_history.messages[3].text
             )
-            assert.equal("user", current_session2.chat_history.messages[1].type)
+            assert.equal("user", current_second.chat_history.messages[1].type)
+            assert.equal("agent", current_second.chat_history.messages[2].type)
+            assert.equal("user", current_second.chat_history.messages[3].type)
             assert.equal(
-                "agent",
-                current_session2.chat_history.messages[2].type
+                "SecondProvider",
+                current_second.chat_history.messages[1].provider_name
             )
-            assert.equal("user", current_session2.chat_history.messages[3].type)
-            assert.equal(
-                "Tab2Provider",
-                current_session2.chat_history.messages[1].provider_name
-            )
+        end
+    )
+
+    it("reuses nothing but the replayed content on switch", function()
+        local Agentic = require("agentic")
+
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+        session.config_options:set_options({
+            {
+                id = "mode-1",
+                category = "mode",
+                currentValue = "plan",
+                description = "Mode",
+                name = "Mode",
+                options = {
+                    { value = "plan", name = "Plan", description = "" },
+                },
+            },
+        })
+        assert.is_not_nil(session.config_options.mode)
+
+        local old_chat_bufnr = session.widget.buf_nrs.chat
+        session.chat_history:add_message({
+            type = "user",
+            text = "carried message",
+            timestamp = os.time(),
+            provider_name = "OriginalProvider",
+        } --[[@as agentic.ui.ChatHistory.Message]])
+
+        session.file_list:add(vim.fn.fnamemodify("tests/init.lua", ":p"))
+        session.code_selection:add({
+            file_path = "tests/init.lua",
+            start_line = 1,
+            end_line = 2,
+            lines = { "line one", "line two" },
+        } --[[@as agentic.Selection]])
+
+        Agentic.switch_provider({ provider = "FreshProvider" })
+        flush_schedule()
+
+        local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+        assert.is_not_nil(replacement)
+
+        -- Nothing carries over except the replayed content: a different provider
+        -- announces a different option set.
+        assert.is_nil(replacement.config_options.mode)
+        assert.is_nil(replacement.config_options.model)
+        assert.equal(0, #replacement.config_options.options)
+
+        -- Fresh widget, fresh buffers
+        assert.are_not.equal(old_chat_bufnr, replacement.widget.buf_nrs.chat)
+        assert.is_false(vim.api.nvim_buf_is_valid(old_chat_bufnr))
+
+        -- Files and code selections carry over
+        assert.equal(1, #replacement.file_list:get_files())
+        assert.equal(1, #replacement.code_selection:get_selections())
+
+        -- The replayed message reached the NEW chat buffer
+        local lines = vim.api.nvim_buf_get_lines(
+            replacement.widget.buf_nrs.chat,
+            0,
+            -1,
+            false
+        )
+        assert.truthy(
+            table.concat(lines, "\n"):find("carried message", 1, true)
+        )
+    end)
+
+    it(
+        "rebuilds the widget in the session's tab without moving the cursor",
+        function()
+            local Agentic = require("agentic")
+
+            local session = create_session()
+            session.session_id = "old-session-id" --[[@as string]]
+
+            vim.cmd("tabnew")
+            local widget_tab = vim.api.nvim_get_current_tabpage()
+            SessionRegistry.show_session(session.session_key)
+            assert.equal(widget_tab, session.widget:visible_tab())
+
+            vim.api.nvim_set_current_tabpage(initial_tab_id)
+            local win_before = vim.api.nvim_get_current_win()
+
+            Agentic.switch_provider({ provider = "TabProvider" })
+            flush_schedule()
+
+            -- The cursor must not follow the rebuilt widget
+            assert.equal(initial_tab_id, vim.api.nvim_get_current_tabpage())
+            assert.equal(win_before, vim.api.nvim_get_current_win())
+
+            local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+            assert.is_not_nil(replacement)
+            assert.equal(widget_tab, replacement.widget:visible_tab())
         end
     )
 
     it("stop_generation resets is_generating and stops animation", function()
         local Agentic = require("agentic")
-        local SessionManager = require("agentic.session_manager")
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
 
-        -- Create an initialized session
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
-        flush_schedule()
+        local session = create_session()
         session.session_id = "test-session-id" --[[@as string]]
         session.is_generating = true
-        SessionRegistry.sessions[tab_page_id] = session
 
         -- Stub agent.stop_generation to avoid real RPC call
         local agent_stop_stub = spy.stub(session.agent, "stop_generation")
@@ -417,13 +482,9 @@ describe("agentic: switch_provider", function()
     end)
 
     it("does not clear prompt buffer when session cannot submit", function()
-        local SessionManager = require("agentic.session_manager")
-        local tab_page_id = vim.api.nvim_get_current_tabpage()
-
         -- Create session without flushing — session_id is nil
-        local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+        local session = SessionRegistry.create() --[[@as agentic.SessionManager]]
         assert.is_nil(session.session_id)
-        SessionRegistry.sessions[tab_page_id] = session
 
         -- Write text to the input buffer
         local input_bufnr = session.widget.buf_nrs.input

@@ -124,15 +124,23 @@ end
 --- @param session_id string
 --- @param callback fun(sub: agentic.acp.ClientHandlers): nil
 function ACPClient:__with_subscriber(session_id, callback)
-    local subscriber = self.subscribers[session_id]
-
-    if not subscriber then
+    if not self.subscribers[session_id] then
         Logger.debug("No subscriber found for session_id: " .. session_id)
         return
     end
 
     vim.schedule(function()
-        callback(subscriber)
+        -- Re-resolved INSIDE the scheduled callback. `cancel_session` drops the
+        -- subscriber, but it cannot un-queue a callback that already captured
+        -- one, so a captured local would deliver the update to a destroyed
+        -- session's handlers and write into deleted buffers.
+        -- Regression: acp_client.test.lua::"skips a subscriber dropped before
+        -- the callback runs".
+        local subscriber = self.subscribers[session_id]
+
+        if subscriber then
+            callback(subscriber)
+        end
     end)
 end
 

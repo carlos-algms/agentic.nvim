@@ -50,7 +50,7 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
 --- @field _size? agentic.ui.ChatWidget.Size Chat window size to reopen at, refreshed on every `hide`
---- @field session_key? integer Registry key, published so a bufnr can reach it. Set by `SessionRegistry.create`, and by the legacy `SessionRegistry.get_session_for_tab_page` with a tabpage handle instead — that second publisher dies with the function
+--- @field session_key? integer Registry key, published by `SessionRegistry.create` so a bufnr can reach it
 --- @field _header_refresh_scheduled boolean Guards coalesced header refresh
 --- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Returned by `WindowDecoration.get_headers_state`, whose callers mutate it in place
 --- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
@@ -128,13 +128,44 @@ function ChatWidget:show(opts)
 
     self._size = self._size or self:_inherited_size()
 
-    WidgetLayout.open({
+    --- @type agentic.ui.WidgetLayout.Params
+    local params = {
         buf_nrs = self.buf_nrs,
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
         size = self._size,
-    })
+    }
+
+    local visible_tab = self:visible_tab()
+    local chat_winid = self.win_nrs.chat
+
+    -- Already on screen in another tab: render THERE. `show_layout` splits from
+    -- the window current at call time, so without this the widget is rebuilt in
+    -- whichever tab the cursor happens to be in and the old tab keeps a second
+    -- copy that `win_nrs` no longer tracks and nothing can ever close. Measured:
+    -- a background session's content callback produced 4 widget windows.
+    -- The prompt is never focused on this path: the focus hop is scheduled, so it
+    -- escapes `nvim_win_call` and would drag the cursor into another tabpage.
+    -- Moving a session BETWEEN tabs goes through `SessionRegistry.show_session`,
+    -- which hides it first, so it never reaches this branch.
+    -- Regression: test_multi_session.lua::"renders in its own tab when shown from
+    -- another one".
+    if
+        chat_winid
+        and visible_tab
+        and visible_tab ~= vim.api.nvim_get_current_tabpage()
+    then
+        params.focus_prompt = false
+
+        vim.api.nvim_win_call(chat_winid, function()
+            WidgetLayout.open(params)
+        end)
+
+        return
+    end
+
+    WidgetLayout.open(params)
 end
 
 --- Size the widget starts from when it has never been shown: the most recently
@@ -221,8 +252,18 @@ function ChatWidget:rotate_layout(layouts)
 end
 
 --- Closes all windows but keeps buffers in memory
-function ChatWidget:hide()
-    vim.cmd("stopinsert")
+--- @param keep_insert boolean|nil True when the caller shows a widget right after
+--- this hide, so insert mode must survive. `stopinsert` is LATCHED until the
+--- current insert command ends, which is after every scheduled callback, so it
+--- would beat `show`'s scheduled `startinsert!` no matter how the two are
+--- ordered — measured: a session moved between tabs landed in the prompt in
+--- normal mode.
+--- Regression: test_open_close_widget.lua::"handles tabclose while in insert mode
+--- without errors".
+function ChatWidget:hide(keep_insert)
+    if not keep_insert then
+        vim.cmd("stopinsert")
+    end
 
     self:_remember_size()
 
@@ -498,6 +539,33 @@ function ChatWidget:_bind_keymaps()
                 require("agentic").switch_provider()
             end,
             { desc = "Agentic: Switch provider" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.select_session,
+            bufnr,
+            function()
+                require("agentic").select_session()
+            end,
+            { desc = "Agentic: Select session" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.next_session,
+            bufnr,
+            function()
+                require("agentic").next_session()
+            end,
+            { desc = "Agentic: Next session" }
+        )
+
+        BufHelpers.multi_keymap_set(
+            Config.keymaps.widget.prev_session,
+            bufnr,
+            function()
+                require("agentic").prev_session()
+            end,
+            { desc = "Agentic: Previous session" }
         )
     end
 

@@ -18,8 +18,6 @@ local SessionRegistry = {
 --- @return agentic.SessionManager|nil
 local function registered_most_recent()
     local session = SessionRegistry._most_recent
-    -- Legacy `get_session_for_tab_page` sessions carry no key, so they are never
-    -- reachable by key and can never be `_most_recent`.
     local session_key = session and session.session_key
 
     if session_key and SessionRegistry.sessions[session_key] == session then
@@ -148,75 +146,42 @@ function SessionRegistry.list()
     return sessions
 end
 
---- @param tab_page_id integer|nil
---- @param callback fun(session: agentic.SessionManager)|nil
---- @return agentic.SessionManager|nil session valid session instance or nil on failure
-function SessionRegistry.get_session_for_tab_page(tab_page_id, callback)
-    tab_page_id = tab_page_id ~= nil and tab_page_id
-        or vim.api.nvim_get_current_tabpage()
-    local instance = SessionRegistry.sessions[tab_page_id]
+--- Shows the session stored under `session_key`, evicting whatever else stands in
+--- the way. The single choke point for every switching path: at most one visible
+--- widget per tab, and at most one tab per session.
+--- Hiding always runs before showing, and every caller inherits that ordering:
+--- `ChatWidget:hide` is where the outgoing widget's size is captured, which is
+--- what the incoming widget's first `show` reads.
+--- @param session_key integer
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
+function SessionRegistry.show_session(session_key, opts)
+    local target = SessionRegistry.sessions[session_key]
 
-    if not instance then
-        if not ACPHealth.check_configured_provider() then
-            Logger.debug("Session creation aborted: No configured ACP provider")
-            return nil
-        end
+    if not target then
+        return
+    end
 
-        local SessionManager = require("agentic.session_manager")
+    local current_tab = vim.api.nvim_get_current_tabpage()
 
-        instance = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager|nil]]
-        if instance ~= nil then
-            SessionRegistry.sessions[tab_page_id] = instance
-            -- Published on the widget only, never on the session: `init.lua`'s
-            -- TabClosed cleanup uses a nil `session.session_key` to tell this
-            -- legacy path apart from a session-keyed one. Without a key here,
-            -- both tabs' buffers ask for the same name and E95 is raised, which
-            -- demotes the first tab's chat buffer to `<name>-old-1`.
-            instance.widget.session_key = tab_page_id
+    for _, session in pairs(SessionRegistry.sessions) do
+        if
+            session ~= target
+            and session.widget:visible_tab() == current_tab
+        then
+            -- `keep_insert`: a show follows in this same tick, and `stopinsert`
+            -- latches past it
+            session.widget:hide(true)
         end
     end
 
-    if instance and callback then
-        local ok, err = pcall(callback, instance)
+    local target_tab = target.widget:visible_tab()
 
-        if not ok then
-            Logger.notify("Session create callback error: " .. vim.inspect(err))
-        end
+    if target_tab and target_tab ~= current_tab then
+        target.widget:hide(true)
     end
 
-    return instance
-end
-
---- Destroys any existing session for the given tab page and creates a new one
---- @param tab_page_id integer|nil
---- @return agentic.SessionManager|nil
-function SessionRegistry.new_session(tab_page_id)
-    tab_page_id = tab_page_id ~= nil and tab_page_id
-        or vim.api.nvim_get_current_tabpage()
-
-    SessionRegistry.destroy_session(tab_page_id)
-
-    local new_session = SessionRegistry.get_session_for_tab_page(tab_page_id)
-    return new_session
-end
-
---- Destroys the session for the given tab page, if it exists and removes it from the registry
---- @param tab_page_id integer|nil
-function SessionRegistry.destroy_session(tab_page_id)
-    tab_page_id = tab_page_id ~= nil and tab_page_id
-        or vim.api.nvim_get_current_tabpage()
-    local session = SessionRegistry.sessions[tab_page_id]
-
-    if session then
-        SessionRegistry.sessions[tab_page_id] = nil
-
-        local ok, err = pcall(function()
-            session:destroy()
-        end)
-        if not ok then
-            Logger.debug("Session destroy error:", err)
-        end
-    end
+    SessionRegistry._most_recent = target
+    target.widget:show(opts)
 end
 
 --- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any

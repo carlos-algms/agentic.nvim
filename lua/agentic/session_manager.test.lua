@@ -300,7 +300,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -393,7 +393,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -495,7 +495,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -587,7 +587,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -784,7 +784,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -1863,7 +1863,7 @@ describe("agentic.SessionManager", function()
                 table.insert(tab_ids, tab_id)
             end
             for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy_session(tab_id)
+                SessionRegistry.destroy(tab_id)
             end
         end)
 
@@ -1881,6 +1881,152 @@ describe("agentic.SessionManager", function()
                 assert.equal(2, call.n)
             end
         )
+    end)
+
+    describe("destroy", function()
+        local Config = require("agentic.config")
+        --- @type TestStub
+        local get_instance_stub
+        --- @type TestStub
+        local notify_stub
+        --- @type TestStub
+        local schedule_stub
+        --- @type TestStub
+        local health_check_stub
+
+        --- @type fun()[]
+        local schedule_queue = {}
+
+        local function flush_schedule()
+            while #schedule_queue > 0 do
+                local fn = table.remove(schedule_queue, 1)
+                fn()
+            end
+        end
+
+        --- @type table
+        local fake_agent
+        --- @type TestSpy
+        local cancel_spy
+        --- @type agentic.acp.ClientHandlers|nil
+        local captured_handlers
+        --- @type fun(response: table|nil, err: table|nil)|nil
+        local captured_create_callback
+
+        before_each(function()
+            local AgentInstance = require("agentic.acp.agent_instance")
+            local ACPHealth = require("agentic.acp.acp_health")
+
+            notify_stub = spy.stub(Logger, "notify")
+            schedule_queue = {}
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(fn)
+                table.insert(schedule_queue, fn)
+            end)
+            health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
+            health_check_stub:returns(true)
+
+            captured_handlers = nil
+            captured_create_callback = nil
+            cancel_spy = spy.new(function() end)
+
+            get_instance_stub = spy.stub(AgentInstance, "get_instance")
+            get_instance_stub:invokes(function(provider_name, callback)
+                --- @type agentic.acp.ACPClient
+                local fake = {}
+                fake.state = "ready"
+                fake.provider_config = {
+                    name = provider_name or "Test",
+                    initial_model = nil,
+                    default_mode = nil,
+                }
+                fake.agent_info = {}
+                -- The response is NOT delivered here: every case in this block
+                -- fires it explicitly, after `destroy`.
+                function fake:create_session(handlers, cb)
+                    captured_handlers = handlers
+                    captured_create_callback = cb
+                end
+                fake.cancel_session = cancel_spy
+                fake_agent = fake
+
+                if callback then
+                    callback(fake)
+                end
+
+                return fake
+            end)
+            Config.provider = "TestProvider"
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+            schedule_stub:revert()
+            health_check_stub:revert()
+            get_instance_stub:revert()
+        end)
+
+        --- @return agentic.SessionManager session with `session/new` in flight
+        --- @return fun(response: table|nil, err: table|nil) fire_create_response
+        local function pending_session()
+            local session = SessionManager:new(1) --[[@as agentic.SessionManager]]
+            flush_schedule()
+
+            assert.is_nil(session.session_id)
+            assert.is_not_nil(captured_create_callback)
+
+            return session, captured_create_callback --[[@as fun(response: table|nil, err: table|nil)]]
+        end
+
+        it("cancels an ACP session that arrives after destroy", function()
+            local session, fire_create_response = pending_session()
+
+            session:destroy()
+
+            assert.has_no_errors(function()
+                fire_create_response({ sessionId = "late-session" })
+                flush_schedule()
+            end)
+
+            -- Never adopted, and never left orphaned on the provider
+            assert.is_nil(session.session_id)
+            assert.is_true(cancel_spy:called_with(fake_agent, "late-session"))
+        end)
+
+        it("ignores session updates that arrive after destroy", function()
+            local session, fire_create_response = pending_session()
+
+            fire_create_response({ sessionId = "s1" })
+            flush_schedule()
+            assert.equal("s1", session.session_id)
+
+            local handlers = captured_handlers --[[@as agentic.acp.ClientHandlers]]
+            session:destroy()
+
+            assert.has_no_errors(function()
+                handlers.on_session_update({
+                    sessionUpdate = "agent_message_chunk",
+                    content = { type = "text", text = "late output" },
+                })
+                flush_schedule()
+            end)
+
+            assert.equal(0, #session.chat_history.messages)
+        end)
+
+        it("is a no-op the second time it is called", function()
+            local session = pending_session()
+            local widget_destroy_spy = spy.on(session.widget, "destroy")
+
+            session:destroy()
+
+            assert.has_no_errors(function()
+                session:destroy()
+            end)
+
+            assert.spy(widget_destroy_spy).was.called(1)
+            widget_destroy_spy:revert()
+        end)
     end)
 
     describe("_build_handlers: on_request_permission", function()
