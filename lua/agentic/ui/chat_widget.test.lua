@@ -1126,6 +1126,32 @@ describe("agentic.ui.ChatWidget", function()
                 vim.api.nvim_buf_delete(orphan, { force = true })
             end
         )
+
+        it(
+            "never returns a window showing a registered widget buffer it did not create",
+            function()
+                widget:show({ focus_prompt = false })
+
+                widget2 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+
+                local fallback = widget:find_first_non_widget_window()
+                assert.is_not_nil(fallback)
+                ---@cast fallback integer
+
+                -- A window no widget created carries no
+                -- `vim.w.agentic_bufnr`, so the registry lookup is the only
+                -- axis that can reject it. Returning it would eject a
+                -- redirected file into another session's panel buffer.
+                vim.api.nvim_win_set_buf(fallback, widget2.buf_nrs.chat)
+                assert.is_nil(vim.w[fallback].agentic_bufnr)
+
+                assert.is_not.equal(
+                    fallback,
+                    widget:find_first_non_widget_window()
+                )
+            end
+        )
     end)
 
     describe("hide across tabs", function()

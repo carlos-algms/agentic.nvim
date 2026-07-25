@@ -181,7 +181,9 @@ function ChatWidget:hide()
     vim.cmd("stopinsert")
 
     -- A non-widget window must survive in the widget's OWN tab, whichever tab
-    -- the cursor sits in: closing a tab's last window fires E444.
+    -- the cursor sits in: closing the last window of a tab destroys that tab.
+    -- For a non-current tab it happens silently, so the user loses a tabpage
+    -- with no error; E444 only fires when it is also the last tabpage.
     -- `open_editor_window` is cross-tab safe, it splits inside
     -- `nvim_win_call(anchor_win, ...)`.
     if self:visible_tab() and not self:find_first_non_widget_window() then
@@ -702,7 +704,10 @@ local EXCLUDED_FILETYPES = {
 ---    the chat window. Regression: chat_widget.test.lua::"never returns a
 ---    window a widget created, even after its buffer was swapped".
 --- 2. Any registered widget buffer, so one session cannot eject a foreign
----    buffer into a window showing another session's panel.
+---    buffer into a window showing another session's panel. A window that no
+---    widget created has no `agentic_bufnr`, so check 1 cannot see it.
+---    Regression: chat_widget.test.lua::"never returns a window showing a
+---    registered widget buffer it did not create".
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
     local tab_page_id = self:visible_tab()

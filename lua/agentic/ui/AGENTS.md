@@ -49,18 +49,14 @@ stateDiagram-v2
     visible --> destroy
     hidden --> destroy
 
-    state tab_check <<choice>>
-    destroy --> tab_check
-    tab_check --> hide_then_delete: tab still in nvim_list_tabpages()
-    tab_check --> delete_only: tab_closing<br/>(TabClosed in progress)
-
-    hide_then_delete --> [*]: buffers deleted
-    delete_only --> [*]: buffers deleted<br/>(skip nvim_win_close, segfaults on 0.11.x)
+    destroy --> [*]: WidgetLayout.close(win_nrs)<br/>then buffers deleted<br/>(close skips handles whose tabpage is gone)
 
     note right of visible
         hide() preconditions:
         - ensure non-widget fallback window
-          (open_editor_window if none) -> E444 otherwise
+          (open_editor_window if none)
+          -> otherwise the close takes the
+             user's tabpage down with it
         - wrap close in _avoid_auto_close_cmd
           (sets _closing) -> recursive close otherwise
     end note
@@ -77,18 +73,25 @@ stateDiagram-v2
   option. There is no "resume" path.
 - Before closing widget windows, `hide` ensures a non-widget fallback window
   exists in the same tabpage. If `find_first_non_widget_window` returns nil, it
-  calls `open_editor_window` to create one. Skipping this fires E444 (cannot
-  close last window). See `ChatWidget:hide`.
+  calls `open_editor_window` to create one. Skipping this destroys the user's
+  tabpage: closing the last window of a non-current tabpage closes that tabpage
+  silently, and E444 (cannot close last window) only fires when it is also the
+  last tabpage. See `ChatWidget:hide`.
 - Programmatic window closes (`hide`, layout rotation) MUST wrap the close call
   in `ChatWidget:_avoid_auto_close_cmd`. The wrapper sets `self._closing = true`
   so the global `WinClosed` autocmd's auto-close-on-user-close branch skips the
   call. Skipping the wrapper triggers recursive close via the autocmd.
-- `destroy` only calls `hide` when the tabpage is still in
-  `nvim_list_tabpages()`. During `TabClosed`, the id is removed from that list
-  but `nvim_tabpage_is_valid` still returns true and Neovim has already torn the
-  windows down — calling `nvim_win_close` then segfaults on 0.11.x. After the
-  conditional `hide`, the buffers are deleted. See `ChatWidget:destroy` for the
-  `tab_closing` check.
+- `destroy` never routes through `hide`. It calls `WidgetLayout.close` on its
+  `win_nrs` and then deletes the buffers: a destroyed widget needs neither a
+  fallback window nor a fresh hidden float. `WidgetLayout.close` skips every
+  handle whose tabpage is already gone, which is what keeps this safe during a
+  tabclose teardown on 0.11.x. See `ChatWidget:destroy`.
+- `destroy` is the one programmatic close exempt from the
+  `_avoid_auto_close_cmd` rule above. It deletes the
+  `AgenticWinClosed_<chat bufnr>` augroup before closing, so the only listener
+  that ever read `self._closing` is gone by then; setting the flag would guard
+  nothing. Any new close path that runs while that augroup still exists MUST
+  wrap.
 - A hidden chat floating window keeps the chat buffer attached while the widget
   is hidden, so manual folds can be applied while closed. See ADR 0001.
   - Opened with `hide = true` + `focusable = false` + `noautocmd = true`. The
@@ -130,7 +133,9 @@ tests.
     user's `zo`-opened folds. See ADR 0001.
 - Querying windows globally for tab-scoped lookups
   - Hits other tabs' chat windows. Use
-    `nvim_tabpage_list_wins(self.tab_page_id)`.
+    `nvim_tabpage_list_wins(self:visible_tab())`, and return early when
+    `visible_tab()` is nil — a hidden widget sits in no tabpage, so there is
+    nothing to scope the lookup to.
 - Calling `nvim_win_close` after tabclose
   - Handle returns valid from `nvim_win_is_valid` but segfaults on 0.11.5. In
     `WidgetLayout.close`, check

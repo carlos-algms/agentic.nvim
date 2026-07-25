@@ -176,6 +176,9 @@ local function get_or_create_window(
     -- where the user is looking.
     local cached_winid = win_nrs[panel_name]
     if cached_winid and vim.api.nvim_win_is_valid(cached_winid) then
+        -- A session outlives its tabpage, so a cached handle can point into a
+        -- closed tab here — the same partially-freed state `WidgetLayout.close`
+        -- guards, where `nvim_win_is_valid` still returns true.
         local tab_ok, win_tab =
             pcall(vim.api.nvim_win_get_tabpage, cached_winid)
         if tab_ok and win_tab == vim.api.nvim_get_current_tabpage() then

@@ -243,11 +243,12 @@ describe("WidgetLayout", function()
                     vim.api.nvim_win_get_tabpage(win_nrs.input)
                 )
 
+                assert.equal(0, notify_stub.call_count)
+
                 WidgetLayout.close(win_nrs)
                 pcall(function()
                     vim.cmd("tabclose")
                 end)
-                pcall(vim.api.nvim_win_close, first_chat, true)
                 pcall(function()
                     vim.cmd("tabclose")
                 end)
