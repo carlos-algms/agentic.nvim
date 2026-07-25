@@ -297,12 +297,12 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -389,12 +389,12 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -489,12 +489,12 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -580,12 +580,12 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -781,12 +781,12 @@ describe("agentic.SessionManager", function()
             config_options_new_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -1877,12 +1877,12 @@ describe("agentic.SessionManager", function()
             set_initial_thought_level_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local tab_ids = {}
-            for tab_id, _ in pairs(SessionRegistry.sessions) do
-                table.insert(tab_ids, tab_id)
+            local session_keys = {}
+            for session_key, _ in pairs(SessionRegistry.sessions) do
+                table.insert(session_keys, session_key)
             end
-            for _, tab_id in ipairs(tab_ids) do
-                SessionRegistry.destroy(tab_id)
+            for _, session_key in ipairs(session_keys) do
+                SessionRegistry.destroy(session_key)
             end
         end)
 
@@ -2334,6 +2334,19 @@ describe("agentic.SessionManager", function()
                 assert.equal(
                     vim.api.nvim_get_current_tabpage(),
                     shown.tab_page_id
+                )
+
+                session.widget:hide()
+                local rehidden = fire_update(session)
+                assert.equal(key, rehidden.session_key)
+                assert.is_nil(rehidden.tab_page_id)
+
+                SessionRegistry.show_session(key)
+                local reshown = fire_update(session)
+                assert.equal(key, reshown.session_key)
+                assert.equal(
+                    vim.api.nvim_get_current_tabpage(),
+                    reshown.tab_page_id
                 )
 
                 vim.cmd("tabnew")

@@ -25,15 +25,13 @@ describe("agentic.SessionRegistry", function()
     --- @type string[]
     local widget_events = {}
 
-    --- @param tab_page_id integer|nil
     --- @param visible_tab integer|nil Tab the mock widget reports as visible
     --- @param label string|nil Prefix for this session's `widget_events` entries
     --- @return table mock_session
-    local function create_mock_session(tab_page_id, visible_tab, label)
+    local function create_mock_session(visible_tab, label)
         local name = label or "session"
 
         return {
-            tab_page_id = tab_page_id,
             widget = {
                 visible_tab = function()
                     return visible_tab
@@ -55,8 +53,8 @@ describe("agentic.SessionRegistry", function()
     end
 
     session_manager_mock = {
-        new = function(_, tab_page_id)
-            return create_mock_session(tab_page_id)
+        new = function()
+            return create_mock_session()
         end,
     }
 
@@ -138,8 +136,8 @@ describe("agentic.SessionRegistry", function()
         }
         default_config_mock.provider = "claude-acp"
 
-        session_manager_mock.new = function(_, tab_page_id)
-            return create_mock_session(tab_page_id)
+        session_manager_mock.new = function()
+            return create_mock_session()
         end
 
         logger_stub.debug = function() end
@@ -220,7 +218,7 @@ describe("agentic.SessionRegistry", function()
         )
 
         it("assigns the key only after SessionManager:new returns", function()
-            local previous = create_mock_session(nil)
+            local previous = create_mock_session()
             SessionRegistry.sessions[99] = previous
             SessionRegistry._most_recent = previous
 
@@ -228,7 +226,7 @@ describe("agentic.SessionRegistry", function()
             local most_recent_during_new = nil
 
             session_manager_mock.new = function()
-                local created = create_mock_session(nil)
+                local created = create_mock_session()
                 key_during_new = created.session_key
                 most_recent_during_new = SessionRegistry._most_recent
                 return created
@@ -247,8 +245,8 @@ describe("agentic.SessionRegistry", function()
             "prefers the session visible in the current tab over _most_recent",
             function()
                 local current_tab = vim.api.nvim_get_current_tabpage()
-                local hidden = create_mock_session(nil)
-                local visible = create_mock_session(nil, current_tab)
+                local hidden = create_mock_session()
+                local visible = create_mock_session(current_tab)
                 hidden.session_key = 1
                 visible.session_key = 2
 
@@ -263,8 +261,8 @@ describe("agentic.SessionRegistry", function()
         it(
             "returns _most_recent when no session is visible in the current tab",
             function()
-                local first = create_mock_session(nil)
-                local second = create_mock_session(nil)
+                local first = create_mock_session()
+                local second = create_mock_session()
                 first.session_key = 1
                 second.session_key = 2
 
@@ -295,7 +293,7 @@ describe("agentic.SessionRegistry", function()
         it(
             "creates a session when _most_recent is no longer registered",
             function()
-                local stale = create_mock_session(nil)
+                local stale = create_mock_session()
                 stale.session_key = 7
                 SessionRegistry._most_recent = stale
 
@@ -310,7 +308,7 @@ describe("agentic.SessionRegistry", function()
             "never creates when a session is visible in the current tab",
             function()
                 local current_tab = vim.api.nvim_get_current_tabpage()
-                local visible = create_mock_session(nil, current_tab)
+                local visible = create_mock_session(current_tab)
                 visible.session_key = 7
                 SessionRegistry.sessions[7] = visible
 
@@ -324,7 +322,7 @@ describe("agentic.SessionRegistry", function()
 
         it("invokes the callback with the resolved session", function()
             local current_tab = vim.api.nvim_get_current_tabpage()
-            local visible = create_mock_session(nil, current_tab)
+            local visible = create_mock_session(current_tab)
             SessionRegistry.sessions[1] = visible
 
             local received = nil
@@ -337,7 +335,7 @@ describe("agentic.SessionRegistry", function()
 
         it("reports callback errors through Logger.notify", function()
             local current_tab = vim.api.nvim_get_current_tabpage()
-            SessionRegistry.sessions[1] = create_mock_session(nil, current_tab)
+            SessionRegistry.sessions[1] = create_mock_session(current_tab)
 
             local notify_spy = spy.new(function() end)
             logger_stub.notify = notify_spy
@@ -354,7 +352,7 @@ describe("agentic.SessionRegistry", function()
 
     describe("destroy", function()
         it("removes the key and destroys the session once", function()
-            local session = create_mock_session(nil)
+            local session = create_mock_session()
             local destroy_spy = spy.new(function() end)
             session.destroy = destroy_spy
             SessionRegistry.sessions[3] = session
@@ -366,8 +364,8 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("repoints _most_recent at the lowest remaining key", function()
-            local gone = create_mock_session(nil)
-            local kept = create_mock_session(nil)
+            local gone = create_mock_session()
+            local kept = create_mock_session()
             gone.session_key = 1
             kept.session_key = 2
             SessionRegistry.sessions[1] = gone
@@ -380,7 +378,7 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("clears _most_recent when the last session is destroyed", function()
-            local only = create_mock_session(nil)
+            local only = create_mock_session()
             only.session_key = 1
             SessionRegistry.sessions[1] = only
             SessionRegistry._most_recent = only
@@ -391,8 +389,8 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("leaves _most_recent alone when another key is destroyed", function()
-            local kept = create_mock_session(nil)
-            local other = create_mock_session(nil)
+            local kept = create_mock_session()
+            local other = create_mock_session()
             kept.session_key = 1
             other.session_key = 2
             SessionRegistry.sessions[1] = kept
@@ -411,7 +409,7 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("removes the key even when session:destroy raises", function()
-            local session = create_mock_session(nil)
+            local session = create_mock_session()
             session.destroy = function()
                 error("destroy failed")
             end
@@ -426,9 +424,9 @@ describe("agentic.SessionRegistry", function()
 
     describe("list", function()
         it("puts _most_recent first, then ascending keys", function()
-            local first = create_mock_session(nil)
-            local second = create_mock_session(nil)
-            local third = create_mock_session(nil)
+            local first = create_mock_session()
+            local second = create_mock_session()
+            local third = create_mock_session()
             first.session_key = 1
             second.session_key = 2
             third.session_key = 3
@@ -446,8 +444,8 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("orders by ascending key when _most_recent is nil", function()
-            local first = create_mock_session(nil)
-            local second = create_mock_session(nil)
+            local first = create_mock_session()
+            local second = create_mock_session()
             SessionRegistry.sessions[2] = second
             SessionRegistry.sessions[1] = first
 
@@ -460,8 +458,8 @@ describe("agentic.SessionRegistry", function()
         it(
             "omits a stale _most_recent alongside registered sessions",
             function()
-                local kept = create_mock_session(nil)
-                local stale = create_mock_session(nil)
+                local kept = create_mock_session()
+                local stale = create_mock_session()
                 kept.session_key = 1
                 stale.session_key = 9
                 SessionRegistry.sessions[1] = kept
@@ -482,8 +480,8 @@ describe("agentic.SessionRegistry", function()
     describe("show_session", function()
         it("hides the outgoing session before showing the target", function()
             local current_tab = vim.api.nvim_get_current_tabpage()
-            local outgoing = create_mock_session(nil, current_tab, "outgoing")
-            local target = create_mock_session(nil, nil, "target")
+            local outgoing = create_mock_session(current_tab, "outgoing")
+            local target = create_mock_session(nil, "target")
             outgoing.session_key = 1
             target.session_key = 2
             SessionRegistry.sessions[1] = outgoing
@@ -501,7 +499,7 @@ describe("agentic.SessionRegistry", function()
             "does not hide a target already visible in the current tab",
             function()
                 local current_tab = vim.api.nvim_get_current_tabpage()
-                local target = create_mock_session(nil, current_tab, "target")
+                local target = create_mock_session(current_tab, "target")
                 target.session_key = 1
                 SessionRegistry.sessions[1] = target
 
@@ -513,7 +511,7 @@ describe("agentic.SessionRegistry", function()
 
         it("hides a target visible in another tab before showing it", function()
             local other_tab = vim.api.nvim_get_current_tabpage() + 1
-            local target = create_mock_session(nil, other_tab, "target")
+            local target = create_mock_session(other_tab, "target")
             target.session_key = 1
             SessionRegistry.sessions[1] = target
 
@@ -525,7 +523,7 @@ describe("agentic.SessionRegistry", function()
 
         it("is a no-op for an unknown key", function()
             local current_tab = vim.api.nvim_get_current_tabpage()
-            local visible = create_mock_session(nil, current_tab, "visible")
+            local visible = create_mock_session(current_tab, "visible")
             visible.session_key = 1
             SessionRegistry.sessions[1] = visible
 
@@ -542,7 +540,7 @@ describe("agentic.SessionRegistry", function()
 
     describe("set_most_recent", function()
         it("points _most_recent at the session without showing it", function()
-            local session = create_mock_session(nil, nil, "session")
+            local session = create_mock_session(nil, "session")
             session.session_key = 1
             SessionRegistry.sessions[1] = session
 
@@ -553,7 +551,7 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("leaves _most_recent alone for an unknown key", function()
-            local session = create_mock_session(nil, nil, "session")
+            local session = create_mock_session(nil, "session")
             session.session_key = 1
             SessionRegistry.sessions[1] = session
             SessionRegistry._most_recent = session

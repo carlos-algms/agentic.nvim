@@ -27,7 +27,7 @@ describe("agentic.ui.ChatWidget", function()
         local padding = position == "bottom" and 2 or 1
 
         describe(string.format("(%s layout)", position), function()
-            local tab_page_id
+            local widget_tab
             local widget
             local original_position
 
@@ -36,7 +36,7 @@ describe("agentic.ui.ChatWidget", function()
                 Config.windows.position = position
 
                 vim.cmd("tabnew")
-                tab_page_id = vim.api.nvim_get_current_tabpage()
+                widget_tab = vim.api.nvim_get_current_tabpage()
 
                 local on_submit_spy = spy.new(function() end)
                 widget = ChatWidget:new(on_submit_spy --[[@as function]])
@@ -139,11 +139,11 @@ describe("agentic.ui.ChatWidget", function()
                 widget:show()
 
                 assert.equal(
-                    tab_page_id,
+                    widget_tab,
                     vim.api.nvim_win_get_tabpage(widget.win_nrs.chat)
                 )
                 assert.equal(
-                    tab_page_id,
+                    widget_tab,
                     vim.api.nvim_win_get_tabpage(widget.win_nrs.input)
                 )
             end)
@@ -190,7 +190,7 @@ describe("agentic.ui.ChatWidget", function()
                                 )
                             )
                             assert.equal(
-                                tab_page_id,
+                                widget_tab,
                                 vim.api.nvim_win_get_tabpage(
                                     widget.win_nrs[tc.name]
                                 )
@@ -224,7 +224,7 @@ describe("agentic.ui.ChatWidget", function()
 
                     -- The temp file is open in some non-widget window on the same tabpage
                     local found_in_non_widget = false
-                    local all_wins = vim.api.nvim_tabpage_list_wins(tab_page_id)
+                    local all_wins = vim.api.nvim_tabpage_list_wins(widget_tab)
                     local widget_win_ids = {}
                     for _, wid in pairs(widget.win_nrs) do
                         if wid then
@@ -299,7 +299,7 @@ describe("agentic.ui.ChatWidget", function()
 
                         -- Close all non-widget windows on the tabpage
                         local all_wins =
-                            vim.api.nvim_tabpage_list_wins(tab_page_id)
+                            vim.api.nvim_tabpage_list_wins(widget_tab)
                         local widget_win_ids = {}
                         for _, wid in pairs(widget.win_nrs) do
                             if wid then
@@ -834,9 +834,6 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
-            -- `pairs`, not `ipairs`: a case that creates `widget3` but not
-            -- `widget2` leaves a hole, and `ipairs` would stop at it and leak
-            -- the third widget's buffers into every later case.
             for _, w in pairs({ widget, widget2, widget3 }) do
                 pcall(function()
                     w:destroy()
@@ -1126,11 +1123,11 @@ describe("agentic.ui.ChatWidget", function()
 
     describe("visible_tab", function()
         local widget
-        local tab_page_id
+        local widget_tab
 
         before_each(function()
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
+            widget_tab = vim.api.nvim_get_current_tabpage()
 
             local on_submit_spy = spy.new(function() end)
             widget = ChatWidget:new(on_submit_spy --[[@as function]])
@@ -1155,7 +1152,7 @@ describe("agentic.ui.ChatWidget", function()
         it("returns the tabpage the widget is shown in", function()
             widget:show({ focus_prompt = false })
 
-            assert.equal(widget:visible_tab(), tab_page_id)
+            assert.equal(widget:visible_tab(), widget_tab)
         end)
 
         it("returns the widget's own tab, not the current one", function()
@@ -1164,7 +1161,7 @@ describe("agentic.ui.ChatWidget", function()
             vim.cmd("tabnew")
             local other_tab = vim.api.nvim_get_current_tabpage()
             assert.is_not_nil(widget:visible_tab())
-            assert.equal(widget:visible_tab(), tab_page_id)
+            assert.equal(widget:visible_tab(), widget_tab)
             assert.is_not.equal(widget:visible_tab(), other_tab)
 
             vim.cmd("tabclose")
