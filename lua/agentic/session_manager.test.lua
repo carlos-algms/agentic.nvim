@@ -297,12 +297,8 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -389,12 +385,8 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -489,12 +481,8 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -580,12 +568,8 @@ describe("agentic.SessionManager", function()
             get_instance_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -595,6 +579,9 @@ describe("agentic.SessionManager", function()
             session.session_id = "test-session" --[[@as string]]
 
             local SessionRegistry = require("agentic.session_registry")
+            -- Registering by hand, so set the key too: the registry invariant is
+            -- `sessions[k].session_key == k`, and the teardown destroys by key.
+            session.session_key = 1
             SessionRegistry.sessions[1] = session
 
             --- @type agentic.ui.ChatHistory.Message[]
@@ -781,12 +768,8 @@ describe("agentic.SessionManager", function()
             config_options_new_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -1877,12 +1860,8 @@ describe("agentic.SessionManager", function()
             set_initial_thought_level_stub:revert()
 
             local SessionRegistry = require("agentic.session_registry")
-            local session_keys = {}
-            for session_key, _ in pairs(SessionRegistry.sessions) do
-                table.insert(session_keys, session_key)
-            end
-            for _, session_key in ipairs(session_keys) do
-                SessionRegistry.destroy(session_key)
+            for _, session in ipairs(SessionRegistry.list()) do
+                SessionRegistry.destroy(session.session_key)
             end
         end)
 
@@ -2336,6 +2315,8 @@ describe("agentic.SessionManager", function()
                     shown.tab_page_id
                 )
 
+                -- Direct widget call: `SessionRegistry` exposes no hide entry
+                -- point, only `show_session`.
                 session.widget:hide()
                 local rehidden = fire_update(session)
                 assert.equal(key, rehidden.session_key)

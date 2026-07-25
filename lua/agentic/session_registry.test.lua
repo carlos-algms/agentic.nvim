@@ -540,7 +540,7 @@ describe("agentic.SessionRegistry", function()
 
     describe("set_most_recent", function()
         it("points _most_recent at the session without showing it", function()
-            local session = create_mock_session(nil, "session")
+            local session = create_mock_session()
             session.session_key = 1
             SessionRegistry.sessions[1] = session
 
@@ -551,7 +551,7 @@ describe("agentic.SessionRegistry", function()
         end)
 
         it("leaves _most_recent alone for an unknown key", function()
-            local session = create_mock_session(nil, "session")
+            local session = create_mock_session()
             session.session_key = 1
             SessionRegistry.sessions[1] = session
             SessionRegistry._most_recent = session

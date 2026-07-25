@@ -834,6 +834,8 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
+            -- `pairs` is hole-safe, so this does not depend on which subset of
+            -- the three widgets the case created.
             for _, w in pairs({ widget, widget2, widget3 }) do
                 pcall(function()
                     w:destroy()
