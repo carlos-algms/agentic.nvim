@@ -4,10 +4,141 @@ local DefaultConfig = require("agentic.config_default")
 local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.SessionRegistry
---- @field sessions table<integer, agentic.SessionManager|nil> Weak map: tab_page_id -> SessionManager instance
+--- @field sessions table<integer, agentic.SessionManager|nil> Map: session_key -> SessionManager instance
+--- @field _next_id integer Last assigned session key
+--- @field _most_recent? agentic.SessionManager Most recently visible session
 local SessionRegistry = {
-    sessions = setmetatable({}, { __mode = "v" }),
+    sessions = {},
+    _next_id = 0,
+    _most_recent = nil,
 }
+
+--- Returns `_most_recent` only while it is still registered. A destroyed session
+--- leaves the field pointing at a session that no longer exists.
+--- @return agentic.SessionManager|nil
+local function registered_most_recent()
+    local session = SessionRegistry._most_recent
+
+    if session and SessionRegistry.sessions[session.session_key] == session then
+        return session
+    end
+
+    return nil
+end
+
+--- Creates a new session and registers it under a fresh session key
+--- @return agentic.SessionManager|nil
+function SessionRegistry.create()
+    if not ACPHealth.check_configured_provider() then
+        Logger.debug("Session creation aborted: No configured ACP provider")
+        return nil
+    end
+
+    local SessionManager = require("agentic.session_manager")
+
+    -- The key is assigned only after `new` returns: the widget's first `show`
+    -- reads the previous session's stored size, so `_most_recent` and the
+    -- registry must still describe the old world while `new` runs.
+    local session = SessionManager:new(vim.api.nvim_get_current_tabpage()) --[[@as agentic.SessionManager|nil]]
+
+    if not session then
+        return nil
+    end
+
+    SessionRegistry._next_id = SessionRegistry._next_id + 1
+    session.session_key = SessionRegistry._next_id
+    SessionRegistry.sessions[session.session_key] = session
+
+    return session
+end
+
+--- Resolves the session the user is acting on: the one visible in the current
+--- tab, else the most recently visible one, else a brand new session.
+--- @param callback fun(session: agentic.SessionManager)|nil
+--- @return agentic.SessionManager|nil
+function SessionRegistry.resolve(callback)
+    local current_tab = vim.api.nvim_get_current_tabpage()
+
+    --- @type agentic.SessionManager|nil
+    local instance
+
+    for _, session in pairs(SessionRegistry.sessions) do
+        if session.widget:visible_tab() == current_tab then
+            instance = session
+            break
+        end
+    end
+
+    if not instance then
+        instance = registered_most_recent() or SessionRegistry.create()
+    end
+
+    if instance and callback then
+        local ok, err = pcall(callback, instance)
+
+        if not ok then
+            Logger.notify("Session create callback error: " .. vim.inspect(err))
+        end
+    end
+
+    return instance
+end
+
+--- Destroys the session stored under the given key, if any
+--- @param session_key integer
+function SessionRegistry.destroy(session_key)
+    local session = SessionRegistry.sessions[session_key]
+
+    if not session then
+        return
+    end
+
+    SessionRegistry.sessions[session_key] = nil
+
+    if SessionRegistry._most_recent == session then
+        -- The key is already gone, so `list` skips the destroyed session and
+        -- orders the rest by ascending key.
+        SessionRegistry._most_recent = SessionRegistry.list()[1]
+    end
+
+    local ok, err = pcall(function()
+        session:destroy()
+    end)
+    if not ok then
+        Logger.debug("Session destroy error:", err)
+    end
+end
+
+--- @return agentic.SessionManager[] sessions ordered most-recently-visible first
+function SessionRegistry.list()
+    --- @type integer[]
+    local keys = {}
+
+    for key in pairs(SessionRegistry.sessions) do
+        keys[#keys + 1] = key
+    end
+
+    table.sort(keys)
+
+    local most_recent = registered_most_recent()
+
+    --- @type agentic.SessionManager[]
+    local sessions = {}
+
+    if most_recent then
+        sessions[1] = most_recent
+    end
+
+    for _, key in ipairs(keys) do
+        local session = SessionRegistry.sessions[key]
+
+        if session and session ~= most_recent then
+            sessions[#sessions + 1] = session
+        end
+    end
+
+    return sessions
+end
 
 --- @param tab_page_id integer|nil
 --- @param callback fun(session: agentic.SessionManager)|nil
@@ -70,20 +201,6 @@ function SessionRegistry.destroy_session(tab_page_id)
         end)
         if not ok then
             Logger.debug("Session destroy error:", err)
-        end
-    end
-end
-
---- Destroys sessions whose tabpage is no longer in nvim_list_tabpages()
-function SessionRegistry.destroy_closed_sessions()
-    local valid = {}
-    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
-        valid[tab] = true
-    end
-
-    for tab_page_id in pairs(SessionRegistry.sessions) do
-        if not valid[tab_page_id] then
-            SessionRegistry.destroy_session(tab_page_id)
         end
     end
 end

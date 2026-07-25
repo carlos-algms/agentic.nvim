@@ -1,4 +1,4 @@
----@diagnostic disable: assign-type-mismatch, need-check-nil, undefined-field, duplicate-set-field
+---@diagnostic disable: assign-type-mismatch, need-check-nil, undefined-field, duplicate-set-field, invisible
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -20,11 +20,17 @@ describe("agentic.SessionRegistry", function()
     --- @type TestStub|nil
     local ui_select_stub
 
-    --- @param tab_page_id integer
+    --- @param tab_page_id integer|nil
+    --- @param visible_tab integer|nil Tab the mock widget reports as visible
     --- @return table mock_session
-    local function create_mock_session(tab_page_id)
+    local function create_mock_session(tab_page_id, visible_tab)
         return {
             tab_page_id = tab_page_id,
+            widget = {
+                visible_tab = function()
+                    return visible_tab
+                end,
+            },
             destroy = function() end,
             is_mock = true,
         }
@@ -116,6 +122,9 @@ describe("agentic.SessionRegistry", function()
         session_manager_mock.new = function(_, tab_page_id)
             return create_mock_session(tab_page_id)
         end
+
+        logger_stub.debug = function() end
+        logger_stub.notify = function() end
     end)
 
     after_each(function()
@@ -123,6 +132,8 @@ describe("agentic.SessionRegistry", function()
             for k in pairs(SessionRegistry.sessions) do
                 SessionRegistry.sessions[k] = nil
             end
+            SessionRegistry._next_id = 0
+            SessionRegistry._most_recent = nil
         end
 
         package.loaded["agentic.session_manager"] =
@@ -400,80 +411,286 @@ describe("agentic.SessionRegistry", function()
         end)
     end)
 
-    describe("destroy_closed_sessions", function()
-        --- @type TestStub|nil
-        local list_tabpages_stub
+    describe("create", function()
+        it("assigns incrementing session keys", function()
+            local first = SessionRegistry.create()
+            local second = SessionRegistry.create()
 
-        after_each(function()
-            if list_tabpages_stub then
-                list_tabpages_stub:revert()
-                list_tabpages_stub = nil
-            end
+            assert.equal(1, first.session_key)
+            assert.equal(2, second.session_key)
+            assert.equal(first, SessionRegistry.sessions[1])
+            assert.equal(second, SessionRegistry.sessions[2])
+        end)
+
+        it("is additive: both sessions remain listed", function()
+            SessionRegistry.create()
+            SessionRegistry.create()
+
+            local sessions = SessionRegistry.list()
+
+            assert.equal(2, #sessions)
+            assert.same({ 1, 2 }, {
+                sessions[1].session_key,
+                sessions[2].session_key,
+            })
         end)
 
         it(
-            "only destroys sessions for tabpages that no longer exist",
+            "returns nil and stores nothing when provider not configured",
             function()
-                local session_10 = create_mock_session(10)
-                local session_20 = create_mock_session(20)
-                local destroy_10 = spy.new(function() end)
-                local destroy_20 = spy.new(function() end)
-                session_10.destroy = destroy_10
-                session_20.destroy = destroy_20
+                acp_health_mock.check_configured_provider = function()
+                    return false
+                end
 
-                SessionRegistry.sessions[10] = session_10
-                SessionRegistry.sessions[20] = session_20
-
-                list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
-                list_tabpages_stub:returns({ 20 })
-
-                SessionRegistry.destroy_closed_sessions()
-
-                assert.is_nil(SessionRegistry.sessions[10])
-                assert.is_not_nil(SessionRegistry.sessions[20])
-                assert.spy(destroy_10).was.called(1)
-                assert.spy(destroy_20).was.called(0)
+                assert.is_nil(SessionRegistry.create())
+                assert.equal(0, #SessionRegistry.list())
             end
         )
 
-        it("preserves all sessions when all tabpages are valid", function()
-            local session_10 = create_mock_session(10)
-            local session_20 = create_mock_session(20)
-            local destroy_10 = spy.new(function() end)
-            local destroy_20 = spy.new(function() end)
-            session_10.destroy = destroy_10
-            session_20.destroy = destroy_20
+        it(
+            "returns nil and stores nothing when SessionManager:new returns nil",
+            function()
+                session_manager_mock.new = function()
+                    return nil
+                end
 
-            SessionRegistry.sessions[10] = session_10
-            SessionRegistry.sessions[20] = session_20
+                assert.is_nil(SessionRegistry.create())
+                assert.equal(0, #SessionRegistry.list())
+            end
+        )
 
-            list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
-            list_tabpages_stub:returns({ 10, 20 })
+        it("assigns the key only after SessionManager:new returns", function()
+            local previous = create_mock_session(nil)
+            SessionRegistry.sessions[99] = previous
+            SessionRegistry._most_recent = previous
 
-            SessionRegistry.destroy_closed_sessions()
+            local key_during_new = "unset"
+            local most_recent_during_new = nil
 
-            assert.is_not_nil(SessionRegistry.sessions[10])
-            assert.is_not_nil(SessionRegistry.sessions[20])
-            assert.spy(destroy_10).was.called(0)
-            assert.spy(destroy_20).was.called(0)
-        end)
+            session_manager_mock.new = function()
+                local created = create_mock_session(nil)
+                key_during_new = created.session_key
+                most_recent_during_new = SessionRegistry._most_recent
+                return created
+            end
 
-        it("handles empty registry gracefully", function()
-            list_tabpages_stub = spy.stub(vim.api, "nvim_list_tabpages")
-            list_tabpages_stub:returns({})
+            local session = SessionRegistry.create()
 
-            assert.has_no_errors(function()
-                SessionRegistry.destroy_closed_sessions()
-            end)
+            assert.is_nil(key_during_new)
+            assert.equal(previous, most_recent_during_new)
+            assert.equal(1, session.session_key)
         end)
     end)
 
-    describe("sessions weak table", function()
-        it("uses weak value metatable", function()
-            local metatable = getmetatable(SessionRegistry.sessions)
+    describe("resolve", function()
+        it(
+            "prefers the session visible in the current tab over _most_recent",
+            function()
+                local current_tab = vim.api.nvim_get_current_tabpage()
+                local hidden = create_mock_session(nil)
+                local visible = create_mock_session(nil, current_tab)
+                hidden.session_key = 1
+                visible.session_key = 2
 
-            assert.is_not_nil(metatable)
-            assert.equal("v", metatable.__mode)
+                SessionRegistry.sessions[1] = hidden
+                SessionRegistry.sessions[2] = visible
+                SessionRegistry._most_recent = hidden
+
+                assert.equal(visible, SessionRegistry.resolve())
+            end
+        )
+
+        it(
+            "returns _most_recent when no session is visible in the current tab",
+            function()
+                local first = create_mock_session(nil)
+                local second = create_mock_session(nil)
+                first.session_key = 1
+                second.session_key = 2
+
+                SessionRegistry.sessions[1] = first
+                SessionRegistry.sessions[2] = second
+                SessionRegistry._most_recent = second
+
+                assert.equal(second, SessionRegistry.resolve())
+            end
+        )
+
+        it("creates a session when the registry is empty", function()
+            local session = SessionRegistry.resolve()
+
+            assert.is_not_nil(session)
+            assert.equal(1, session.session_key)
+            assert.equal(session, SessionRegistry.sessions[1])
+        end)
+
+        it(
+            "creates a session when _most_recent is no longer registered",
+            function()
+                local stale = create_mock_session(nil)
+                stale.session_key = 7
+                SessionRegistry._most_recent = stale
+
+                local session = SessionRegistry.resolve()
+
+                assert.are_not.equal(stale, session)
+                assert.equal(1, session.session_key)
+            end
+        )
+
+        it(
+            "never creates when a session is visible in the current tab",
+            function()
+                local current_tab = vim.api.nvim_get_current_tabpage()
+                local visible = create_mock_session(nil, current_tab)
+                visible.session_key = 7
+                SessionRegistry.sessions[7] = visible
+
+                local new_spy = spy.new(function() end)
+                session_manager_mock.new = new_spy
+
+                assert.equal(visible, SessionRegistry.resolve())
+                assert.spy(new_spy).was.called(0)
+            end
+        )
+
+        it("invokes the callback with the resolved session", function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            local visible = create_mock_session(nil, current_tab)
+            SessionRegistry.sessions[1] = visible
+
+            local received = nil
+            SessionRegistry.resolve(function(session)
+                received = session
+            end)
+
+            assert.equal(visible, received)
+        end)
+
+        it("reports callback errors through Logger.notify", function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            SessionRegistry.sessions[1] = create_mock_session(nil, current_tab)
+
+            local notify_spy = spy.new(function() end)
+            logger_stub.notify = notify_spy
+
+            assert.has_no_errors(function()
+                SessionRegistry.resolve(function()
+                    error("callback boom")
+                end)
+            end)
+
+            assert.spy(notify_spy).was.called(1)
+        end)
+    end)
+
+    describe("destroy", function()
+        it("removes the key and destroys the session once", function()
+            local session = create_mock_session(nil)
+            local destroy_spy = spy.new(function() end)
+            session.destroy = destroy_spy
+            SessionRegistry.sessions[3] = session
+
+            SessionRegistry.destroy(3)
+
+            assert.is_nil(SessionRegistry.sessions[3])
+            assert.spy(destroy_spy).was.called(1)
+        end)
+
+        it("repoints _most_recent at the lowest remaining key", function()
+            local gone = create_mock_session(nil)
+            local kept = create_mock_session(nil)
+            gone.session_key = 1
+            kept.session_key = 2
+            SessionRegistry.sessions[1] = gone
+            SessionRegistry.sessions[2] = kept
+            SessionRegistry._most_recent = gone
+
+            SessionRegistry.destroy(1)
+
+            assert.equal(kept, SessionRegistry._most_recent)
+        end)
+
+        it("clears _most_recent when the last session is destroyed", function()
+            local only = create_mock_session(nil)
+            only.session_key = 1
+            SessionRegistry.sessions[1] = only
+            SessionRegistry._most_recent = only
+
+            SessionRegistry.destroy(1)
+
+            assert.is_nil(SessionRegistry._most_recent)
+        end)
+
+        it("leaves _most_recent alone when another key is destroyed", function()
+            local kept = create_mock_session(nil)
+            local other = create_mock_session(nil)
+            kept.session_key = 1
+            other.session_key = 2
+            SessionRegistry.sessions[1] = kept
+            SessionRegistry.sessions[2] = other
+            SessionRegistry._most_recent = kept
+
+            SessionRegistry.destroy(2)
+
+            assert.equal(kept, SessionRegistry._most_recent)
+        end)
+
+        it("is a no-op for an unknown key and does not raise", function()
+            assert.has_no_errors(function()
+                SessionRegistry.destroy(42)
+            end)
+        end)
+
+        it("removes the key even when session:destroy raises", function()
+            local session = create_mock_session(nil)
+            session.destroy = function()
+                error("destroy failed")
+            end
+            SessionRegistry.sessions[5] = session
+
+            assert.has_no_errors(function()
+                SessionRegistry.destroy(5)
+            end)
+            assert.is_nil(SessionRegistry.sessions[5])
+        end)
+    end)
+
+    describe("list", function()
+        it("puts _most_recent first, then ascending keys", function()
+            local first = create_mock_session(nil)
+            local second = create_mock_session(nil)
+            local third = create_mock_session(nil)
+            first.session_key = 1
+            second.session_key = 2
+            third.session_key = 3
+            SessionRegistry.sessions[1] = first
+            SessionRegistry.sessions[2] = second
+            SessionRegistry.sessions[3] = third
+            SessionRegistry._most_recent = second
+
+            local sessions = SessionRegistry.list()
+
+            assert.equal(3, #sessions)
+            assert.equal(second, sessions[1])
+            assert.equal(first, sessions[2])
+            assert.equal(third, sessions[3])
+        end)
+
+        it("orders by ascending key when _most_recent is nil", function()
+            local first = create_mock_session(nil)
+            local second = create_mock_session(nil)
+            SessionRegistry.sessions[2] = second
+            SessionRegistry.sessions[1] = first
+
+            local sessions = SessionRegistry.list()
+
+            assert.equal(first, sessions[1])
+            assert.equal(second, sessions[2])
+        end)
+
+        it("returns an empty list for an empty registry", function()
+            assert.equal(0, #SessionRegistry.list())
         end)
     end)
 
