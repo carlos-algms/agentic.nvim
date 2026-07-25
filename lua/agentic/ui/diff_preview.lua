@@ -14,32 +14,15 @@ local M = {}
 
 local NS_DIFF = HunkNavigation.NS_DIFF
 
---- Get diff preview buffer from tabpage
---- @param tabpage number Tabpage ID
---- @return number|nil bufnr
-local function get_diff_bufnr(tabpage)
-    return vim.t[tabpage]._agentic_diff_preview_bufnr
-end
-
---- Set diff preview buffer for tabpage
---- @param tabpage number Tabpage ID
---- @param bufnr number|nil Buffer number (nil to clear)
-local function set_diff_bufnr(tabpage, bufnr)
-    vim.t[tabpage]._agentic_diff_preview_bufnr = bufnr
-end
-
---- Get the buffer number with active diff preview for the current or specified tabpage
---- @param tabpage number|nil Tabpage ID (defaults to current tabpage)
+--- Get the buffer number with an active diff preview for one session
+--- @param state agentic.ui.DiffState
 --- @return number|nil bufnr Buffer number with active diff, or nil if none
-function M.get_active_diff_buffer(tabpage)
-    local tab = tabpage or vim.api.nvim_get_current_tabpage()
-
-    local split_state = DiffSplitView.get_split_state(tab)
-    if split_state then
-        return split_state.original_bufnr
+function M.get_active_diff_buffer(state)
+    if state.split_state then
+        return state.split_state.original_bufnr
     end
 
-    return get_diff_bufnr(tab)
+    return state.preview_bufnr
 end
 
 --- Builds a highlight map for all lines parsed as a block
@@ -223,6 +206,8 @@ end
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
 --- @field get_winid fun(bufnr: number): number|nil Called when buffer is not already visible, should return a winid
+--- @field state? agentic.ui.DiffState Owning session's diff state, mutated in place. Absent only in tests that assert rendering alone
+--- @field tabpage? integer Tab the owning widget is visible in; scopes the already-visible window lookup to it
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
@@ -284,14 +269,16 @@ function M.show_diff(opts)
         bufnr = vim.fn.bufadd(opts.file_path)
     end
 
-    -- Check if buffer is already visible, otherwise request a window
-    local winid = vim.fn.bufwinid(bufnr)
-    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
+    -- Check if buffer is already visible in the session's own tab, otherwise
+    -- request a window. Scoped to that tab so a file the user also has open
+    -- elsewhere does not pull the diff into a foreign tab.
+    local winid = BufHelpers.find_visible_win(bufnr, nil, opts.tabpage)
+    local target_winid = winid or opts.get_winid(bufnr)
     if not target_winid then
         return
     end
 
-    M.clear_diff(bufnr)
+    M.clear_diff(bufnr, nil, opts.state)
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines
@@ -363,20 +350,22 @@ function M.show_diff(opts)
 
     -- Scroll target window to first diff block without moving cursor
     if #diff_blocks > 0 then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
-        if not ok then
-            return
+        if opts.state then
+            opts.state.preview_bufnr = bufnr
+            -- Remembered so hunk navigation and the rejection swap act on the
+            -- window this diff was painted in, not on some other tab's view of
+            -- the same file.
+            opts.state.preview_winid = target_winid
         end
-        set_diff_bufnr(tabpage, bufnr)
 
         -- Make buffer read-only to prevent edits while diff is visible
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
         vim.bo[bufnr].modifiable = false
 
-        HunkNavigation.setup_keymaps(bufnr)
+        HunkNavigation.setup_keymaps(bufnr, opts.state)
 
         vim.schedule(function()
-            HunkNavigation.navigate_next(bufnr)
+            HunkNavigation.navigate_next(bufnr, opts.state)
         end)
     end
 end
@@ -384,7 +373,8 @@ end
 --- Clears the diff highlights from the given buffer
 --- @param buf number|string Buffer number or file path
 --- @param is_rejection boolean|nil If true and file doesn't exist, cleanup buffer
-function M.clear_diff(buf, is_rejection)
+--- @param state agentic.ui.DiffState|nil Owning session's diff state; nil only leaves state untouched
+function M.clear_diff(buf, is_rejection, state)
     local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
 
     -- Fallback: check for suggestion buffer by smart path
@@ -400,16 +390,17 @@ function M.clear_diff(buf, is_rejection)
         return
     end
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid ~= -1 then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
-        if ok then
-            if DiffSplitView.get_split_state(tabpage) then
-                DiffSplitView.clear_split_diff(tabpage)
-                return
-            end
-            set_diff_bufnr(tabpage, nil)
+    -- Captured before the state is cleared: the rejection swap below still needs
+    -- to act on the window this diff was painted in.
+    local painted_winid = state and state.preview_winid
+
+    if state then
+        if state.split_state then
+            DiffSplitView.clear_split_diff(state)
+            return
         end
+        state.preview_bufnr = nil
+        state.preview_winid = nil
     end
 
     HunkNavigation.restore_keymaps(bufnr)
@@ -435,8 +426,8 @@ function M.clear_diff(buf, is_rejection)
         local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
 
         if not stat then
-            local buf_winid = vim.fn.bufwinid(bufnr)
-            if buf_winid ~= -1 then
+            local buf_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
+            if buf_winid then
                 -- Get alternate buffer for the target window, not current window
                 local alt = vim.api.nvim_win_call(buf_winid, function()
                     return vim.fn.bufnr("#")
@@ -512,28 +503,29 @@ end
 --- Setup hunk navigation keymaps for widget buffers
 --- Allows navigating hunks in the active diff buffer from widget buffers
 --- @param buf_nrs table<string, number>
-function M.setup_diff_navigation_keymaps(buf_nrs)
+--- @param state agentic.ui.DiffState Owning session's diff state, captured by the closures
+function M.setup_diff_navigation_keymaps(buf_nrs, state)
     local diff_keymaps = Config.keymaps.diff_preview
 
     for _, bufnr in pairs(buf_nrs) do
         BufHelpers.keymap_set(bufnr, "n", diff_keymaps.next_hunk, function()
-            local diff_bufnr = M.get_active_diff_buffer()
+            local diff_bufnr = M.get_active_diff_buffer(state)
             if not diff_bufnr then
                 Logger.notify("No active diff preview", vim.log.levels.INFO)
                 return
             end
-            HunkNavigation.navigate_next(diff_bufnr)
+            HunkNavigation.navigate_next(diff_bufnr, state)
         end, {
             desc = "Go to next hunk - Agentic DiffPreview",
         })
 
         BufHelpers.keymap_set(bufnr, "n", diff_keymaps.prev_hunk, function()
-            local diff_bufnr = M.get_active_diff_buffer()
+            local diff_bufnr = M.get_active_diff_buffer(state)
             if not diff_bufnr then
                 Logger.notify("No active diff preview", vim.log.levels.INFO)
                 return
             end
-            HunkNavigation.navigate_prev(diff_bufnr)
+            HunkNavigation.navigate_prev(diff_bufnr, state)
         end, {
             desc = "Go to previous hunk - Agentic DiffPreview",
         })
@@ -600,12 +592,12 @@ function M.cleanup_suggestion_buffer(file_path)
         return
     end
 
-    local winid = vim.fn.bufwinid(suggestion_bufnr)
+    local winid = BufHelpers.find_visible_win(suggestion_bufnr)
 
     -- Must delete suggestion buffer before bufadd because Neovim path
     -- resolution can match the smart-path name to the absolute path.
     -- A temporary buffer keeps the window alive during the swap.
-    if winid ~= -1 then
+    if winid then
         local tmp_bufnr = vim.api.nvim_create_buf(false, true)
         pcall(vim.api.nvim_win_set_buf, winid, tmp_bufnr)
         pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })

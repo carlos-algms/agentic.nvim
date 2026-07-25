@@ -9,32 +9,44 @@ describe("DiffSplitView", function()
     local test_tabpage
     local read_stub
 
+    --- Split state now lives on the owning session's diff state, not on the
+    --- tabpage, so each case gets a fresh one.
+    --- @type agentic.ui.DiffState
+    local diff_state
+
     --- @param lines string[]|nil
     local function stub_file_content(lines)
         read_stub:returns(lines, nil)
     end
 
+    --- @param opts agentic.ui.DiffPreview.ShowOpts
+    --- @return boolean success
+    local function show_split(opts)
+        opts.state = diff_state
+        return DiffSplitView.show_split_diff(opts)
+    end
+
     before_each(function()
         read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
         stub_file_content({ "local x = 1", "print(x)", "" })
+        diff_state = {}
         vim.cmd("tabnew")
         test_tabpage = vim.api.nvim_get_current_tabpage()
     end)
 
     after_each(function()
         read_stub:revert()
+        pcall(DiffSplitView.clear_split_diff, diff_state)
         if test_tabpage and vim.api.nvim_tabpage_is_valid(test_tabpage) then
-            pcall(DiffSplitView.clear_split_diff, test_tabpage)
             pcall(vim.api.nvim_tabpage_del, test_tabpage)
         end
     end)
 
     --- @return number bufnr
-    --- @return number tabpage
     local function setup_and_show_split()
         local bufnr = vim.fn.bufadd(test_file_path)
 
-        DiffSplitView.show_split_diff({
+        show_split({
             file_path = test_file_path,
             diff = { old = { "local x = 1" }, new = { "local x = 2" } },
             get_winid = function()
@@ -42,7 +54,7 @@ describe("DiffSplitView", function()
             end,
         })
 
-        return bufnr, test_tabpage
+        return bufnr
     end
 
     describe("show_split_diff", function()
@@ -51,7 +63,7 @@ describe("DiffSplitView", function()
             function()
                 stub_file_content(nil)
 
-                local success = DiffSplitView.show_split_diff({
+                local success = show_split({
                     file_path = test_file_path,
                     diff = { old = {}, new = { "local y = 2" } },
                     get_winid = function()
@@ -68,7 +80,7 @@ describe("DiffSplitView", function()
             function()
                 stub_file_content(nil)
 
-                local success = DiffSplitView.show_split_diff({
+                local success = show_split({
                     file_path = test_file_path,
                     diff = { old = {}, new = { "" } },
                     get_winid = function()
@@ -87,7 +99,7 @@ describe("DiffSplitView", function()
                 local bufnr = vim.fn.bufadd(test_file_path)
                 vim.fn.bufload(bufnr)
 
-                local success = DiffSplitView.show_split_diff({
+                local success = show_split({
                     file_path = test_file_path,
                     diff = { old = {}, new = { "local y = 2" } },
                     get_winid = function()
@@ -97,7 +109,7 @@ describe("DiffSplitView", function()
 
                 assert.is_true(success)
 
-                local state = DiffSplitView.get_split_state(test_tabpage)
+                local state = diff_state.split_state
                 assert.is_not_nil(state)
 
                 if state then
@@ -115,8 +127,8 @@ describe("DiffSplitView", function()
         it(
             "should create split view with correct state and buffer options",
             function()
-                local bufnr, tabpage = setup_and_show_split()
-                local state = DiffSplitView.get_split_state(tabpage)
+                local bufnr = setup_and_show_split()
+                local state = diff_state.split_state
 
                 assert.is_not_nil(state)
                 if state then
@@ -136,7 +148,7 @@ describe("DiffSplitView", function()
         it("should reconstruct full file from partial diff", function()
             stub_file_content({ "local x = 1", "local y = 2", "print(x)", "" })
 
-            local success = DiffSplitView.show_split_diff({
+            local success = show_split({
                 file_path = test_file_path,
                 diff = {
                     old = { "local y = 2" },
@@ -149,7 +161,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = DiffSplitView.get_split_state(test_tabpage)
+            local state = diff_state.split_state
             assert.is_not_nil(state)
 
             if state then
@@ -171,7 +183,7 @@ describe("DiffSplitView", function()
                 "",
             })
 
-            local success = DiffSplitView.show_split_diff({
+            local success = show_split({
                 file_path = test_file_path,
                 diff = {
                     old = { "local y = 2", "local z = 3" },
@@ -184,7 +196,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = DiffSplitView.get_split_state(test_tabpage)
+            local state = diff_state.split_state
             assert.is_not_nil(state)
 
             if state then
@@ -206,7 +218,7 @@ describe("DiffSplitView", function()
                 return vim.api.nvim_get_current_win()
             end)
 
-            local success = DiffSplitView.show_split_diff({
+            local success = show_split({
                 file_path = test_file_path,
                 diff = {
                     old = { "nonexistent line content" },
@@ -216,13 +228,13 @@ describe("DiffSplitView", function()
             })
 
             assert.is_false(success)
-            assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+            assert.is_nil(diff_state.split_state)
             assert.spy(get_winid_spy).was.called(0)
             get_winid_spy:revert()
         end)
 
         it("should handle substring fallback for single-line diffs", function()
-            local success = DiffSplitView.show_split_diff({
+            local success = show_split({
                 file_path = test_file_path,
                 diff = {
                     old = { "x = 1" },
@@ -235,7 +247,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = DiffSplitView.get_split_state(test_tabpage)
+            local state = diff_state.split_state
             assert.is_not_nil(state)
 
             if state then
@@ -248,7 +260,7 @@ describe("DiffSplitView", function()
         it("should replace all matches when replace_all is true", function()
             stub_file_content({ "print(a)", "print(b)", "print(a)", "" })
 
-            local success = DiffSplitView.show_split_diff({
+            local success = show_split({
                 file_path = test_file_path,
                 diff = {
                     old = { "print(a)" },
@@ -262,7 +274,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = DiffSplitView.get_split_state(test_tabpage)
+            local state = diff_state.split_state
             assert.is_not_nil(state)
 
             if state then
@@ -277,7 +289,7 @@ describe("DiffSplitView", function()
             function()
                 stub_file_content({ "print(a)", "print(b)", "print(a)", "" })
 
-                local success = DiffSplitView.show_split_diff({
+                local success = show_split({
                     file_path = test_file_path,
                     diff = {
                         old = { "print(a)" },
@@ -290,7 +302,7 @@ describe("DiffSplitView", function()
 
                 assert.is_true(success)
 
-                local state = DiffSplitView.get_split_state(test_tabpage)
+                local state = diff_state.split_state
                 assert.is_not_nil(state)
 
                 if state then
@@ -315,24 +327,24 @@ describe("DiffSplitView", function()
                 return vim.api.nvim_get_current_win()
             end
 
-            local first = DiffSplitView.show_split_diff({
+            local first = show_split({
                 file_path = test_file_path,
                 diff = { old = { "local x = 1" }, new = { "local x = 2" } },
                 get_winid = get_winid,
             })
             assert.is_true(first)
 
-            local state1 = DiffSplitView.get_split_state(test_tabpage)
+            local state1 = diff_state.split_state
             assert.is_not_nil(state1)
 
-            local second = DiffSplitView.show_split_diff({
+            local second = show_split({
                 file_path = test_file_path,
                 diff = { old = { "local x = 1" }, new = { "local x = 3" } },
                 get_winid = get_winid,
             })
             assert.is_true(second)
 
-            local state2 = DiffSplitView.get_split_state(test_tabpage)
+            local state2 = diff_state.split_state
             assert.is_not_nil(state2)
 
             if state2 then
@@ -345,8 +357,8 @@ describe("DiffSplitView", function()
                 assert.same({ "local x = 3", "print(x)", "" }, lines)
             end
 
-            DiffSplitView.clear_split_diff(test_tabpage)
-            assert.is_nil(DiffSplitView.get_split_state(test_tabpage))
+            DiffSplitView.clear_split_diff(diff_state)
+            assert.is_nil(diff_state.split_state)
             assert.equal(orig_modifiable, vim.bo[bufnr].modifiable)
         end)
     end)
@@ -358,7 +370,7 @@ describe("DiffSplitView", function()
             local orig_modifiable = vim.bo[bufnr].modifiable
             local orig_modified = vim.bo[bufnr].modified
 
-            DiffSplitView.show_split_diff({
+            show_split({
                 file_path = test_file_path,
                 diff = { old = { "local x = 1" }, new = { "local x = 2" } },
                 get_winid = function()
@@ -366,19 +378,18 @@ describe("DiffSplitView", function()
                 end,
             })
 
-            local tabpage = vim.api.nvim_get_current_tabpage()
-            DiffSplitView.clear_split_diff(tabpage)
+            DiffSplitView.clear_split_diff(diff_state)
 
             assert.equal(orig_modifiable, vim.bo[bufnr].modifiable)
             assert.equal(orig_modified, vim.bo[bufnr].modified)
-            assert.is_nil(DiffSplitView.get_split_state(tabpage))
+            assert.is_nil(diff_state.split_state)
         end)
 
         it(
             "should handle cleanup when scratch window already closed",
             function()
-                local _, tabpage = setup_and_show_split()
-                local state = DiffSplitView.get_split_state(tabpage)
+                setup_and_show_split()
+                local state = diff_state.split_state
 
                 assert.is_not_nil(state)
                 if state then
@@ -386,9 +397,9 @@ describe("DiffSplitView", function()
                 end
 
                 assert.has_no_errors(function()
-                    DiffSplitView.clear_split_diff(tabpage)
+                    DiffSplitView.clear_split_diff(diff_state)
                 end)
-                assert.is_nil(DiffSplitView.get_split_state(tabpage))
+                assert.is_nil(diff_state.split_state)
             end
         )
     end)

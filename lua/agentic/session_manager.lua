@@ -120,13 +120,8 @@ function SessionManager:new(tab_page_id)
     self.file_picker = FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
-    self.diff_coordinator = DiffCoordinator:new(
-        self.widget,
-        self.message_writer,
-        function()
-            return self.tab_page_id
-        end
-    )
+    self.diff_coordinator =
+        DiffCoordinator:new(self.widget, self.message_writer)
 
     self.config_options = AgentConfigOptions:new(self.widget.buf_nrs, {
         on_set_mode_success = function(mode_id)

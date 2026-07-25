@@ -331,5 +331,33 @@ describe("diff_preview", function()
                 pcall(vim.api.nvim_buf_delete, alt_bufnr, { force = true })
             end
         end)
+
+        it("rejects in the window the diff was painted in", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_name(bufnr, "/tmp/rejected_painted.lua")
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "content" })
+
+            -- Same buffer in two windows; only `preview_winid` distinguishes the
+            -- one the session painted. Clearing the state before reading it made
+            -- the swap land in whichever window `win_findbuf` returned first.
+            local other_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(other_win, bufnr)
+
+            local painted_win = vim.api.nvim_open_win(bufnr, false, {
+                split = "below",
+                win = other_win,
+            })
+
+            --- @type agentic.ui.DiffState
+            local state = { preview_bufnr = bufnr, preview_winid = painted_win }
+
+            DiffPreview.clear_diff(bufnr, true, state)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(painted_win))
+            assert.is_nil(state.preview_winid)
+
+            pcall(vim.api.nvim_win_close, painted_win, true)
+        end)
     end)
 end)

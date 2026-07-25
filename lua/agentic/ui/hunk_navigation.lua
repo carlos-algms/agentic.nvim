@@ -106,15 +106,16 @@ end
 --- Find next/previous hunk position relative to buffer's cursor position
 --- @param bufnr number
 --- @param direction "next"|"prev"
+--- @param preferred_winid integer|nil Window the diff was painted in
 --- @return number|nil target_line 1-indexed line number
-local function find_hunk(bufnr, direction)
+local function find_hunk(bufnr, direction, preferred_winid)
     local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
         return nil
     end
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid == -1 then
+    local winid = BufHelpers.find_visible_win(bufnr, preferred_winid)
+    if not winid then
         return nil
     end
 
@@ -184,21 +185,29 @@ end
 --- Navigate to hunk in specified direction
 --- @param bufnr number
 --- @param direction "next"|"prev"
-local function navigate_hunk(bufnr, direction)
-    local target_winid = vim.fn.bufwinid(bufnr)
-    if target_winid == -1 then
+--- @param diff_state agentic.ui.DiffState|nil Owning session's diff state; nil means no split diff
+local function navigate_hunk(bufnr, direction, diff_state)
+    -- Prefers the window the diff was painted in, so navigating from a widget
+    -- keymap moves the session's own view even when the file is open elsewhere.
+    -- `preview_winid` covers inline mode; split mode records its window on the
+    -- split state instead, and resolving to a window that is NOT in diff mode
+    -- makes `]c` raise E99 and report "no more hunks" while the real diff sits
+    -- untouched in another tab.
+    local preferred_winid = diff_state
+        and (
+            diff_state.preview_winid
+            or (
+                diff_state.split_state and diff_state.split_state.original_winid
+            )
+        )
+    local target_winid = BufHelpers.find_visible_win(bufnr, preferred_winid)
+    if not target_winid then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
     end
 
     if Config.diff_preview.layout == "split" then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
-        if not ok then
-            return
-        end
-
-        local DiffSplitView = require("agentic.ui.diff_split_view")
-        local split_state = DiffSplitView.get_split_state(tabpage)
+        local split_state = diff_state and diff_state.split_state
 
         if split_state then
             local diff_cmd = direction == "next" and "]c" or "[c"
@@ -220,7 +229,7 @@ local function navigate_hunk(bufnr, direction)
         end
     end
 
-    local target_line = find_hunk(bufnr, direction)
+    local target_line = find_hunk(bufnr, direction, target_winid)
     if not target_line then
         Logger.notify("No hunks found", vim.log.levels.INFO)
         return
@@ -256,30 +265,33 @@ end
 
 --- Navigate to next hunk
 --- @param bufnr number
-function M.navigate_next(bufnr)
-    navigate_hunk(bufnr, "next")
+--- @param diff_state agentic.ui.DiffState|nil
+function M.navigate_next(bufnr, diff_state)
+    navigate_hunk(bufnr, "next", diff_state)
 end
 
 --- Navigate to previous hunk
 --- @param bufnr number
-function M.navigate_prev(bufnr)
-    navigate_hunk(bufnr, "prev")
+--- @param diff_state agentic.ui.DiffState|nil
+function M.navigate_prev(bufnr, diff_state)
+    navigate_hunk(bufnr, "prev", diff_state)
 end
 
 --- Setup hunk navigation keymaps for buffer
 --- @param bufnr number
-function M.setup_keymaps(bufnr)
+--- @param diff_state agentic.ui.DiffState|nil Captured by the keymaps so split navigation resolves the owning session's state
+function M.setup_keymaps(bufnr, diff_state)
     local keymaps = Config.keymaps.diff_preview
     local state = get_state(bufnr)
     state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
     state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
-        M.navigate_next(bufnr)
+        M.navigate_next(bufnr, diff_state)
     end, { desc = "Go to next hunk - Agentic DiffPreview" })
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
-        M.navigate_prev(bufnr)
+        M.navigate_prev(bufnr, diff_state)
     end, { desc = "Go to previous hunk - Agentic DiffPreview" })
 end
 

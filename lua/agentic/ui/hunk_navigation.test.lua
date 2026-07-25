@@ -418,3 +418,108 @@ describe("hunk_navigation", function()
         end)
     end)
 end)
+
+describe("hunk_navigation split mode", function()
+    local Config = require("agentic.config")
+
+    local test_bufnr
+    local saved_layout
+    local base_tabs
+
+    before_each(function()
+        base_tabs = #vim.api.nvim_list_tabpages()
+        saved_layout = Config.diff_preview.layout
+        Config.diff_preview.layout = "split"
+
+        test_bufnr = vim.api.nvim_create_buf(false, true)
+        local lines = {}
+        for i = 1, 60 do
+            lines[#lines + 1] = "line " .. i
+        end
+        vim.api.nvim_buf_set_lines(test_bufnr, 0, -1, false, lines)
+    end)
+
+    after_each(function()
+        Config.diff_preview.layout = saved_layout
+        HunkNavigation.clear_state(test_bufnr)
+
+        while #vim.api.nvim_list_tabpages() > base_tabs do
+            local ok = pcall(function()
+                vim.cmd("tabclose!")
+            end)
+            if not ok then
+                break
+            end
+        end
+
+        pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
+    end)
+
+    it("navigates the split's own window, not another tab's", function()
+        -- Same buffer in two tabs. Only `split_state.original_winid` says which
+        -- window carries the diff; without it the lookup takes tabpage order,
+        -- lands on a window that is not in diff mode, and reports "no more
+        -- hunks" while the real diff sits untouched.
+        vim.cmd("tabnew")
+        local foreign_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
+        vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+
+        vim.cmd("tabnew")
+        local split_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(split_win, test_bufnr)
+        vim.api.nvim_win_set_cursor(split_win, { 1, 0 })
+
+        -- Identical except line 30, so `]c` from line 1 has somewhere to go.
+        local scratch = vim.api.nvim_create_buf(false, true)
+        local scratch_lines =
+            vim.api.nvim_buf_get_lines(test_bufnr, 0, -1, false)
+        scratch_lines[30] = "changed line 30"
+        vim.api.nvim_buf_set_lines(scratch, 0, -1, false, scratch_lines)
+        local scratch_win = vim.api.nvim_open_win(scratch, false, {
+            split = "right",
+            win = split_win,
+        })
+
+        vim.api.nvim_win_call(split_win, function()
+            vim.cmd("diffthis")
+        end)
+        vim.api.nvim_win_call(scratch_win, function()
+            vim.cmd("diffthis")
+        end)
+
+        --- @type agentic.ui.DiffState
+        local diff_state = {
+            split_state = {
+                original_winid = split_win,
+                original_bufnr = test_bufnr,
+                new_winid = scratch_win,
+                new_bufnr = scratch,
+                file_path = "/tmp/split_nav.lua",
+            },
+        }
+
+        HunkNavigation.navigate_next(test_bufnr, diff_state)
+
+        -- `]c` moved the split's window off line 1; the foreign tab's window is
+        -- untouched.
+        assert.is_true(vim.api.nvim_win_get_cursor(split_win)[1] > 1)
+        assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+
+        pcall(vim.api.nvim_win_close, scratch_win, true)
+        pcall(vim.api.nvim_buf_delete, scratch, { force = true })
+    end)
+
+    it("falls back to any visible window without split state", function()
+        vim.cmd("tabnew")
+        local only_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(only_win, test_bufnr)
+        vim.api.nvim_win_set_cursor(only_win, { 1, 0 })
+
+        add_hunk(test_bufnr, test_ns, 10)
+
+        HunkNavigation.navigate_next(test_bufnr, nil)
+
+        assert.equal(11, vim.api.nvim_win_get_cursor(only_win)[1])
+    end)
+end)
