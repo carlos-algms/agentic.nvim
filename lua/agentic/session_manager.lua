@@ -809,16 +809,35 @@ function SessionManager:new_session(opts)
 
         self.status_animation:stop()
 
-        --- @type agentic.UserConfig.CreateSessionResponseData
-        local hook_data = {
-            session_id = response and response.sessionId,
-            session_key = self.session_key,
-            tab_page_id = self.widget:visible_tab(),
-            response = response,
-            err = err,
-        }
+        -- A request RESPONSE reaches this callback straight from the libuv
+        -- stdout reader, so this body runs in a fast event context. Building
+        -- the payload here raised "E5560: nvim_win_is_valid must not be called
+        -- in a fast event context" out of `ChatWidget:visible_tab`, aborting
+        -- the rest of the callback. `Hooks.invoke` defers DELIVERY, not the
+        -- payload build, so the build has to move too.
+        -- Regression: session_manager.test.lua::"builds the hook payload
+        -- outside the fast event context".
+        vim.schedule(function()
+            -- The schedule outlives this callback, so liveness is re-checked
+            -- HERE, at run time, like every other deferred block in this file.
+            if self._destroyed then
+                return
+            end
 
-        Hooks.invoke("on_create_session_response", hook_data)
+            --- @type agentic.UserConfig.CreateSessionResponseData
+            local hook_data = {
+                session_id = response and response.sessionId,
+                session_key = self.session_key,
+                -- Resolved HERE, inside the deferred callback: a value captured
+                -- before the schedule reports where the widget sat when the
+                -- response landed, not when the hook fires.
+                tab_page_id = self.widget:visible_tab(),
+                response = response,
+                err = err,
+            }
+
+            Hooks.invoke("on_create_session_response", hook_data)
+        end)
 
         -- A session restore was initiated after this create_session was sent.
         -- Race A: load still in-flight → _is_restoring_session is true.

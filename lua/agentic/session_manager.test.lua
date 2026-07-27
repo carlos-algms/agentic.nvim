@@ -1784,6 +1784,91 @@ describe("agentic.SessionManager", function()
         )
     end)
 
+    describe("new_session: response arrives in a fast event context", function()
+        local Child = require("tests.helpers.child")
+        local child = Child:new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        -- A request RESPONSE is dispatched straight from the libuv stdout
+        -- reader (`acp_transport` -> `ACPClient:_handle_message` -> callback),
+        -- so `create_session`'s callback body runs in a fast event context.
+        -- Building the hook payload there called `ChatWidget:visible_tab`,
+        -- whose `nvim_win_is_valid` raises
+        -- "E5560: nvim_win_is_valid must not be called in a fast event
+        -- context" and aborts the rest of the callback.
+        --
+        -- `tests/mocks/acp_transport_mock.lua` never drives a real libuv
+        -- callback, so a uv timer is the only genuine fast context available
+        -- here, and a child Neovim is the only place its completion can be
+        -- awaited without pumping mini.test's own queue.
+        it("builds the hook payload outside the fast event context", function()
+            child.lua([[
+                local SessionManager = require("agentic.session_manager")
+
+                _G.t = {}
+
+                local session = {
+                    session_key = 3,
+                    session_id = nil,
+                    widget = {
+                        -- Mirrors ChatWidget:visible_tab, whose very first act
+                        -- is an `nvim_win_is_valid` call.
+                        visible_tab = function()
+                            _G.t.fast = vim.in_fast_event()
+                            vim.api.nvim_win_is_valid(1000)
+                            return 99
+                        end,
+                    },
+                    status_animation = {
+                        start = function() end,
+                        stop = function() end,
+                    },
+                    _cancel_session = function() end,
+                    _build_handlers = function()
+                        return {}
+                    end,
+                    new_session = SessionManager.new_session,
+                    agent = {
+                        provider_config = { name = "Test" },
+                        create_session = function(_self, _handlers, callback)
+                            local timer = vim.uv.new_timer()
+                            timer:start(0, 0, function()
+                                timer:close()
+                                _G.t.dispatch_fast = vim.in_fast_event()
+                                _G.t.ok, _G.t.err = pcall(callback, nil, {
+                                    code = -32000,
+                                    message = "boom",
+                                })
+                            end)
+                        end,
+                    },
+                }
+
+                session:new_session()
+
+                vim.wait(2000, function()
+                    return _G.t.ok ~= nil
+                end)
+                vim.wait(2000, function()
+                    return _G.t.fast ~= nil
+                end)
+            ]])
+
+            -- Sanity: the timer really did give us a fast event context.
+            assert.is_true(child.lua_get("_G.t.dispatch_fast"))
+
+            assert.is_false(child.lua_get("_G.t.fast"))
+            assert.is_true(child.lua_get("_G.t.ok"))
+        end)
+    end)
+
     describe("initial thought_level wiring", function()
         local AgentConfigOptions = require("agentic.acp.agent_config_options")
 
