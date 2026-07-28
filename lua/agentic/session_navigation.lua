@@ -28,7 +28,9 @@ local function cycle(step)
             local target_key = target.session_key
 
             if target_key then
-                SessionRegistry.show_session(target_key)
+                SessionRegistry.show_session(target_key, {
+                    focus_prompt = false,
+                })
             end
 
             return
@@ -52,17 +54,18 @@ function SessionNavigation.select()
                 or item.agent.provider_config.name
                 or ("Session " .. tostring(item.session_key))
 
-            if item.widget:get_visible_tab_id() == current_tab then
-                label = label .. " (current tab)"
-            end
-
-            return label
+            local prefix = item.widget:get_visible_tab_id() == current_tab
+                    and "● "
+                or "  "
+            return prefix .. label
         end,
     }, function(selected)
         local session_key = selected and selected.session_key
 
         if session_key then
-            SessionRegistry.show_session(session_key)
+            SessionRegistry.show_session(session_key, {
+                focus_prompt = false,
+            })
         end
     end)
 end

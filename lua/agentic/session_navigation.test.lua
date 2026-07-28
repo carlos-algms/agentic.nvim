@@ -60,14 +60,16 @@ describe("agentic.SessionNavigation", function()
         sessions = { first, second }
         ui_select_stub:invokes(function(items, opts, on_choice)
             assert.equal(sessions, items)
-            assert.equal("First (current tab)", opts.format_item(first))
-            assert.equal("TestProvider", opts.format_item(second))
+            assert.equal("● First", opts.format_item(first))
+            assert.equal("  TestProvider", opts.format_item(second))
             on_choice(second)
         end)
 
         SessionNavigation.select()
 
-        assert.spy(registry_mock.show_session).was.called_with(2)
+        assert
+            .spy(registry_mock.show_session).was
+            .called_with(2, { focus_prompt = false })
     end)
 
     it("does nothing when session selection is cancelled", function()
@@ -88,7 +90,9 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.next()
 
-        assert.spy(registry_mock.show_session).was.called_with(2)
+        assert
+            .spy(registry_mock.show_session).was
+            .called_with(2, { focus_prompt = false })
     end)
 
     it("opens the previous session and wraps at the start", function()
@@ -98,7 +102,9 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.previous()
 
-        assert.spy(registry_mock.show_session).was.called_with(3)
+        assert
+            .spy(registry_mock.show_session).was
+            .called_with(3, { focus_prompt = false })
     end)
 
     it("opens the previous session in descending key order", function()
@@ -108,7 +114,9 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.previous()
 
-        assert.spy(registry_mock.show_session).was.called_with(2)
+        assert
+            .spy(registry_mock.show_session).was
+            .called_with(2, { focus_prompt = false })
     end)
 
     it("wraps next at the highest session key", function()
@@ -118,7 +126,9 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.next()
 
-        assert.spy(registry_mock.show_session).was.called_with(1)
+        assert
+            .spy(registry_mock.show_session).was
+            .called_with(1, { focus_prompt = false })
     end)
 
     it("does nothing with fewer than two sessions", function()

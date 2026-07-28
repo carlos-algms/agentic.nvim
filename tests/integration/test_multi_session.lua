@@ -391,6 +391,26 @@ end)()
         assert.equal(1, visible_key())
     end)
 
+    it("keeps editor focus and normal mode when cycling sessions", function()
+        create_sessions(2)
+
+        child.lua([[
+            local session = require("agentic.session_registry").visible_here()
+            _G.editor_win = session.widget:find_first_non_widget_window()
+            vim.api.nvim_set_current_win(_G.editor_win)
+            vim.cmd("stopinsert")
+        ]])
+
+        child.lua([[ require("agentic").next_session() ]])
+        child.flush()
+
+        assert.equal(
+            child.lua_get([[_G.editor_win]]),
+            child.api.nvim_get_current_win()
+        )
+        assert.are_not.equal("i", child.fn.mode())
+    end)
+
     it("wraps around after cycling through every session", function()
         create_sessions(3)
         child.lua([[ require("agentic.session_registry").show_session(1) ]])
@@ -432,12 +452,11 @@ end)()
 
         assert.equal(2, visible_key())
 
-        -- `list()` puts the session visible in this tab first, and only it
-        -- carries the marker
+        -- `list()` puts the session visible in this tab first, and only it carries the selected marker.
         local labels = child.lua_get([[_G.labels]])
         assert.equal(2, #labels)
-        assert.truthy(labels[1]:match("%(current tab%)$"))
-        assert.is_nil(labels[2]:match("%(current tab%)$"))
+        assert.truthy(labels[1]:match("^● "))
+        assert.truthy(labels[2]:match("^  "))
     end)
 
     it("destroys the resolved session and keeps the others", function()

@@ -443,6 +443,7 @@ function WindowDecoration.render_header(
         local callback_session_state = nil
         if window_name == "chat" or window_name == "input" then
             callback_session_state = session_state
+                or (owner and owner.session_state)
         end
 
         local header_text, err = resolve_header_text(

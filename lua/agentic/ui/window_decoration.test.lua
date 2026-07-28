@@ -481,6 +481,45 @@ describe("WindowDecoration.render_header", function()
         assert.equal("SS_MARKER", child.lua_get("_G.recorded_header_marker"))
     end)
 
+    it("uses the owning widget session_state when none is passed", function()
+        child.lua([[
+            local Config = require("agentic.config")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+
+            Config.headers = Config.headers or {}
+            Config.headers.chat = function(parts, session_state)
+                _G.recorded_header_marker =
+                    session_state and session_state.marker or nil
+                return parts.title
+            end
+            Config.windows.chat.buffer_name = function(parts, session_state)
+                _G.recorded_buffer_name_marker =
+                    session_state and session_state.marker or nil
+                return parts.title
+            end
+
+            WidgetRegistry.register({
+                buf_nrs = { chat = bufnr },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+                session_state = { marker = "OWNER_MARKER" },
+            })
+
+            WindowDecoration.render_header(bufnr, "chat")
+        ]])
+        child.flush()
+
+        assert.equal("OWNER_MARKER", child.lua_get("_G.recorded_header_marker"))
+        assert.equal(
+            "OWNER_MARKER",
+            child.lua_get("_G.recorded_buffer_name_marker")
+        )
+    end)
+
     it(
         "passes session_state as 2nd arg to input buffer_name function",
         function()
