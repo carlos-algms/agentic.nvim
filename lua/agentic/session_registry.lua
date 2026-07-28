@@ -125,11 +125,19 @@ function SessionRegistry.destroy(session_key)
         SessionRegistry._previous_most_recent = nil
     end
 
-    local ok, err = pcall(function()
-        session:destroy()
-    end)
+    local ok, err = pcall(session.destroy, session)
     if not ok then
         Logger.debug("Session destroy error:", err)
+    end
+end
+
+--- Destroys the visible session in this tab, else the most recently visible one.
+function SessionRegistry.destroy_current()
+    local session = SessionRegistry.current()
+    local session_key = session and session.session_key
+
+    if session_key then
+        SessionRegistry.destroy(session_key)
     end
 end
 

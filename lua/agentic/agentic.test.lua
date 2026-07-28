@@ -5,6 +5,7 @@ local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
+local SessionNavigation = require("agentic.session_navigation")
 local AgentInstance = require("agentic.acp.agent_instance")
 local ACPHealth = require("agentic.acp.acp_health")
 
@@ -505,51 +506,56 @@ describe("agentic: switch_provider", function()
         anim_stop_spy:revert()
     end)
 
-    it("cycles nowhere, and creates nothing, without a start point", function()
+    it("delegates explicit session destruction to the registry", function()
         local Agentic = require("agentic")
+        local destroy_stub = spy.stub(SessionRegistry, "destroy")
 
-        local first = create_session()
-        local second = create_session()
+        Agentic.destroy_session({ session = 7 })
 
-        -- Two registered sessions, none visible in this tab, and `_most_recent`
-        -- pointing at a session that is no longer registered: `resolve` answers
-        -- that by CREATING a session, so cycling would spawn a provider
-        -- subprocess just to pick a starting point — and then cycle off the
-        -- wrong key.
-        SessionRegistry._most_recent = { session_key = 99 }
-
-        Agentic.next_session()
-        flush_schedule()
-
-        assert.is_nil(SessionRegistry.sessions[3])
-        assert.is_nil(first.widget:get_visible_tab_id())
-        assert.is_nil(second.widget:get_visible_tab_id())
+        assert.spy(destroy_stub).was.called_with(7)
+        destroy_stub:revert()
     end)
 
-    it(
-        "destroys nothing, and creates nothing, without a start point",
-        function()
-            local Agentic = require("agentic")
+    it("delegates default session destruction to the registry", function()
+        local Agentic = require("agentic")
+        local destroy_current_stub =
+            spy.stub(SessionRegistry, "destroy_current")
 
-            local first = create_session()
-            local second = create_session()
+        Agentic.destroy_session()
 
-            -- Two registered sessions, none visible in this tab, and `_most_recent`
-            -- pointing at a session that is no longer registered. A non-empty
-            -- registry does NOT prove `current()` resolves, so guarding on
-            -- `next(sessions)` still lets `resolve_or_create` spawn a provider
-            -- subprocess only to destroy the session it just made — every session the
-            -- user owns survives and the destroy silently did nothing.
-            SessionRegistry._most_recent = { session_key = 99 }
+        assert.spy(destroy_current_stub).was.called(1)
+        destroy_current_stub:revert()
+    end)
 
-            Agentic.destroy_session()
-            flush_schedule()
+    it("delegates session selection to SessionNavigation", function()
+        local Agentic = require("agentic")
+        local select_stub = spy.stub(SessionNavigation, "select")
 
-            assert.equal(2, SessionRegistry._next_id)
-            assert.is_not_nil(SessionRegistry.sessions[first.session_key])
-            assert.is_not_nil(SessionRegistry.sessions[second.session_key])
-        end
-    )
+        Agentic.select_session()
+
+        assert.spy(select_stub).was.called(1)
+        select_stub:revert()
+    end)
+
+    it("delegates next-session navigation to SessionNavigation", function()
+        local Agentic = require("agentic")
+        local next_stub = spy.stub(SessionNavigation, "next")
+
+        Agentic.next_session()
+
+        assert.spy(next_stub).was.called(1)
+        next_stub:revert()
+    end)
+
+    it("delegates previous-session navigation to SessionNavigation", function()
+        local Agentic = require("agentic")
+        local previous_stub = spy.stub(SessionNavigation, "previous")
+
+        Agentic.prev_session()
+
+        assert.spy(previous_stub).was.called(1)
+        previous_stub:revert()
+    end)
 
     it("does not clear prompt buffer when session cannot submit", function()
         -- Create session without flushing — session_id is nil

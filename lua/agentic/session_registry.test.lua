@@ -458,6 +458,54 @@ describe("agentic.SessionRegistry", function()
             end)
             assert.is_nil(SessionRegistry.sessions[5])
         end)
+
+        it("destroys the session visible in the current tab", function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            local hidden = create_mock_session()
+            local visible = create_mock_session(current_tab)
+            hidden.session_key = 1
+            visible.session_key = 2
+            SessionRegistry.sessions[1] = hidden
+            SessionRegistry.sessions[2] = visible
+            SessionRegistry._most_recent = hidden
+
+            SessionRegistry.destroy_current()
+
+            assert.equal(hidden, SessionRegistry.sessions[1])
+            assert.is_nil(SessionRegistry.sessions[2])
+        end)
+
+        it("destroys the most recent session when none is visible", function()
+            local first = create_mock_session()
+            local second = create_mock_session()
+            first.session_key = 1
+            second.session_key = 2
+            SessionRegistry.sessions[1] = first
+            SessionRegistry.sessions[2] = second
+            SessionRegistry._most_recent = second
+
+            SessionRegistry.destroy_current()
+
+            assert.equal(first, SessionRegistry.sessions[1])
+            assert.is_nil(SessionRegistry.sessions[2])
+        end)
+
+        it("destroys nothing when current cannot resolve", function()
+            local first = create_mock_session()
+            local second = create_mock_session()
+            first.session_key = 1
+            second.session_key = 2
+            SessionRegistry.sessions[1] = first
+            SessionRegistry.sessions[2] = second
+            local stale = create_mock_session()
+            stale.session_key = 99
+            SessionRegistry._most_recent = stale
+
+            SessionRegistry.destroy_current()
+
+            assert.equal(first, SessionRegistry.sessions[1])
+            assert.equal(second, SessionRegistry.sessions[2])
+        end)
     end)
 
     describe("list", function()

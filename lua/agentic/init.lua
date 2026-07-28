@@ -2,6 +2,7 @@ local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
+local SessionNavigation = require("agentic.session_navigation")
 local SessionRestore = require("agentic.session_restore")
 local Object = require("agentic.utils.object")
 local Logger = require("agentic.utils.logger")
@@ -182,87 +183,22 @@ function Agentic.destroy_session(opts)
         return
     end
 
-    local session = SessionRegistry.current()
-    local session_key = session and session.session_key
-
-    if session_key then
-        SessionRegistry.destroy(session_key)
-    end
+    SessionRegistry.destroy_current()
 end
 
 --- Shows a picker over every live session and opens the chosen one
 function Agentic.select_session()
-    local sessions = SessionRegistry.list()
-    local current_tab = vim.api.nvim_get_current_tabpage()
-
-    vim.ui.select(sessions, {
-        prompt = "Select a Chat session:",
-        --- @param item agentic.SessionManager
-        format_item = function(item)
-            local title = item.chat_history.title
-            local label = title ~= "" and title
-                or item.agent.provider_config.name
-                or ("Session " .. tostring(item.session_key))
-
-            if item.widget:get_visible_tab_id() == current_tab then
-                label = label .. " (current tab)"
-            end
-
-            return label
-        end,
-    }, function(selected)
-        local session_key = selected and selected.session_key
-
-        if session_key then
-            SessionRegistry.show_session(session_key)
-        end
-    end)
-end
-
---- Ascending key, never `list()` order, which `show_session` reorders as we cycle.
---- @param step 1|-1
-local function cycle_session(step)
-    --- @type integer[]
-    local keys = {}
-
-    for key in pairs(SessionRegistry.sessions) do
-        keys[#keys + 1] = key
-    end
-
-    if #keys < 2 then
-        return
-    end
-
-    table.sort(keys)
-
-    local current = SessionRegistry.current()
-    local current_key = current and current.session_key
-
-    --- @type integer|nil
-    local index
-
-    for i, key in ipairs(keys) do
-        if key == current_key then
-            index = i
-            break
-        end
-    end
-
-    if not index then
-        return
-    end
-
-    SessionRegistry.show_session(keys[(index - 1 + step) % #keys + 1])
+    SessionNavigation.select()
 end
 
 --- Opens the session with the next higher key, wrapping at the end
 function Agentic.next_session()
-    cycle_session(1)
+    SessionNavigation.next()
 end
 
 --- Opens the session with the next lower key, wrapping at the start
 function Agentic.prev_session()
-    cycle_session(-1)
+    SessionNavigation.previous()
 end
 
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
