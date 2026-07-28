@@ -1,27 +1,6 @@
---- Window decoration module for managing window titles, statuslines, and highlights.
----
---- This module provides utilities to render headers (winbar) and statuslines for windows.
----
---- ## Lualine Compatibility
----
---- If you're using lualine or similar statusline plugins, ensure windows have their
---- statusline set to prevent the plugin from hijacking them:
----
---- ```lua
---- vim.api.nvim_set_option_value("statusline", " ", { win = winid })
---- ```
----
---- Alternatively, configure lualine to ignore specific filetypes:
---- ```lua
---- require('lualine').setup({
----   options = {
----     disabled_filetypes = {
----       statusline = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
----       winbar = { 'AgenticChat', 'AgenticInput', 'AgenticCode', 'AgenticFiles', 'AgenticDiagnostics' },
----     }
----   }
---- })
---- ```
+--- Renders winbar headers and buffer names for widget windows.
+--- Statusline plugins (lualine et al.) must list the `Agentic*` filetypes in
+--- `disabled_filetypes`, or they hijack the winbar — see `set_winbar`.
 
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
@@ -59,16 +38,15 @@ local WINDOW_HEADERS = {
 }
 
 --- @class agentic.ui.WindowDecoration.Config
---- @field align? "left"|"center"|"right" Header text alignment
---- @field hl? string Highlight group for the header text
---- @field reverse_hl? string Highlight group for the separator
+--- @field align? "left"|"center"|"right"
+--- @field hl? string Header text
+--- @field reverse_hl? string Separator
 local default_config = {
     align = "center",
     hl = Theme.HL_GROUPS.WIN_BAR_TITLE,
     reverse_hl = "NormalFloat",
 }
 
---- Concatenates header parts (title, context, suffix) into a single string
 --- @param parts agentic.ui.ChatWidget.HeaderParts
 --- @return string header_text
 local function concat_header_parts(parts)
@@ -83,9 +61,7 @@ local function concat_header_parts(parts)
     return table.concat(pieces, " | ")
 end
 
---- Builds the rich default header for the chat panel from live session state:
---- `title | provider - model - mode (used/size) $cost`. The chat panel carries
---- no key hint; submit/change-mode hints live on the input header.
+--- `title | provider - model - mode (used/size) $cost`
 --- @param parts agentic.ui.ChatWidget.HeaderParts
 --- @param session_state agentic.acp.SessionState
 --- @return string header_text
@@ -126,11 +102,8 @@ local function build_chat_header(parts, session_state)
     return header
 end
 
---- Builds the default header from live session state. The chat panel gets the
---- rich provider/model/mode/usage/cost line. Every other panel (including
---- input, whose `parts.suffix` carries the mode-aware submit/change-mode
---- hints), and any panel with a nil session_state, falls back to the plain
---- title|context|suffix concatenation.
+--- Only the chat panel gets the rich line; everything else, and any panel with
+--- no session_state, falls back to plain concatenation.
 --- @param window_name string
 --- @param parts agentic.ui.ChatWidget.HeaderParts
 --- @param session_state agentic.acp.SessionState|nil
@@ -140,28 +113,21 @@ function WindowDecoration._build_default_header(
     parts,
     session_state
 )
-    if session_state == nil then
+    if session_state == nil or window_name ~= "chat" then
         return concat_header_parts(parts)
     end
 
-    if window_name == "chat" then
-        return build_chat_header(parts, session_state)
-    end
-
-    return concat_header_parts(parts)
+    return build_chat_header(parts, session_state)
 end
 
---- A fresh copy of the built-in header parts. Callers own the result and
---- mutate its `context` fields, so the module default must never be shared.
+--- A copy: callers mutate `context`, so the module default is never handed out.
 --- @return agentic.ui.ChatWidget.Headers
 function WindowDecoration.default_headers()
     return vim.deepcopy(WINDOW_HEADERS)
 end
 
---- The header parts owned by the widget holding `bufnr`, or a fresh copy of the
---- defaults when no widget owns it. Callers mutate the returned table in place.
---- That persists ONLY on the owned path; on the unowned fallback every call
---- returns a new copy, so the mutation is silently discarded.
+--- Mutated in place by callers. That persists only when a widget owns `bufnr`;
+--- the unowned fallback returns a fresh copy each call.
 --- @param bufnr integer
 --- @return agentic.ui.ChatWidget.Headers
 function WindowDecoration.get_headers_state(bufnr)
@@ -172,15 +138,15 @@ function WindowDecoration.get_headers_state(bufnr)
     return widget.headers
 end
 
---- Calls a user-supplied function expected to return `string|nil`, capturing
---- runtime errors and type violations as a formatted message.
---- @param fn fun(...): any User function to call
---- @param arg any First argument passed to the function
---- @param label string Identifier (e.g. "custom header"/"buffer_name") for error text
+--- Calls a user-supplied function, turning errors and non-string returns into a
+--- formatted message rather than raising.
+--- @param fn fun(...): any
+--- @param arg any
+--- @param label string Identifier for error text, e.g. "custom header"
 --- @param name string Window name for error text
---- @param extra_arg any Second argument passed to the function (session_state, nil allowed)
---- @return string|nil result The returned string, or nil on error/nil-return
---- @return string|nil error_message Formatted error, or nil when valid
+--- @param extra_arg any
+--- @return string|nil result nil on error or nil-return
+--- @return string|nil error_message
 local function call_string_fn(fn, arg, label, name, extra_arg)
     local ok, result = pcall(fn, arg, extra_arg)
     if not ok then
@@ -207,17 +173,14 @@ local function call_string_fn(fn, arg, label, name, extra_arg)
     return result, nil
 end
 
---- Resolves the final header text applying user customization
---- Returns the header text and an error message if user function failed
---- @param dynamic_header agentic.ui.ChatWidget.HeaderParts Runtime header parts
---- @param window_name string Window name for Config.headers lookup and error messages
---- @param session_state agentic.acp.SessionState|nil Live session state passed as 2nd arg to user header fn
---- @return string|nil header_text The resolved header text or nil for empty
---- @return string|nil error_message Error message if user function failed
+--- @param dynamic_header agentic.ui.ChatWidget.HeaderParts
+--- @param window_name string
+--- @param session_state agentic.acp.SessionState|nil Passed as 2nd arg to a user header fn
+--- @return string|nil header_text nil for empty
+--- @return string|nil error_message
 local function resolve_header_text(dynamic_header, window_name, session_state)
     local user_header = Config.headers and Config.headers[window_name]
-    -- No user customization: build the default header (rich for chat/input
-    -- when a session is live, plain concat otherwise)
+
     if user_header == nil then
         return WindowDecoration._build_default_header(
             window_name,
@@ -227,7 +190,6 @@ local function resolve_header_text(dynamic_header, window_name, session_state)
             nil
     end
 
-    -- User function: call it and validate return
     if type(user_header) == "function" then
         local result, err = call_string_fn(
             user_header,
@@ -240,18 +202,16 @@ local function resolve_header_text(dynamic_header, window_name, session_state)
             return concat_header_parts(dynamic_header), err
         end
         if result == nil or result == "" then
-            return nil, nil -- User explicitly wants no header
+            return nil, nil
         end
         return result, nil
     end
 
-    -- User table: merge with dynamic header
     if type(user_header) == "table" then
         local merged = vim.tbl_extend("force", dynamic_header, user_header) --[[@as agentic.ui.ChatWidget.HeaderParts]]
         return concat_header_parts(merged), nil
     end
 
-    -- Invalid type: warn and use default
     return concat_header_parts(dynamic_header),
         string.format(
             "Header for '%s' must be function|table|nil, got %s",
@@ -260,7 +220,6 @@ local function resolve_header_text(dynamic_header, window_name, session_state)
         )
 end
 
---- Cache if there's a lualine like plugin managing the winbar
 --- @type boolean|nil
 local has_line_plugin = nil
 
@@ -271,8 +230,7 @@ local function set_winbar(winid, text)
         return
     end
 
-    -- If winbar is already set (not empty), a plugin like lualine is managing it
-    -- Skip setting ours to prevent flickering
+    -- A non-empty winbar means lualine or similar owns it; ours would flicker.
     if has_line_plugin == nil then
         local current_winbar = vim.wo[winid].winbar
         has_line_plugin = current_winbar ~= ""
@@ -282,7 +240,6 @@ local function set_winbar(winid, text)
         return
     end
 
-    -- Handle empty string case - disable winbar completely
     if text == "" then
         vim.wo[winid][0].winbar = ""
         return
@@ -305,18 +262,15 @@ local function set_winbar(winid, text)
     vim.wo[winid][0].winbar = winbar_text
 end
 
---- Returns a normalized path comparable across nvim's stored buffer
---- names and the input given to `nvim_buf_set_name`. nvim resolves
---- symlinks and prefixes the cwd; we mirror both.
+--- Mirrors nvim's own symlink resolution and cwd prefixing, so a name can be
+--- compared against a stored buffer name.
 --- @param name string
 --- @return string
 local function normalize(name)
     return vim.fn.resolve(vim.fn.fnamemodify(name, ":p"))
 end
 
---- Returns the buffer that would collide with `name` on
---- `nvim_buf_set_name`, or nil. Excludes `bufnr` itself so callers
---- can use the result to decide whether to rename a different buffer.
+--- The buffer that would collide with `name` on `nvim_buf_set_name`, or nil.
 --- @param name string
 --- @param exclude_bufnr integer|nil
 --- @return integer|nil
@@ -333,12 +287,9 @@ local function find_buf_by_name(name, exclude_bufnr)
     return nil
 end
 
---- Assigns `buf_name` to `bufnr`, renaming any pre-existing buffer
---- that already holds the name to `<buf_name>-old-N` (lowest free N
---- starting at 1) to keep names unique.
---- Required to survive session restore: `:mksession` (with `blank` in
---- `sessionoptions`) persists agentic buffer names; on reopen
---- `nvim_buf_set_name` would otherwise raise E95.
+--- Renames any pre-existing holder of `buf_name` to `<buf_name>-old-N`.
+--- Required because `:mksession` persists agentic buffer names, so a direct
+--- `nvim_buf_set_name` raises E95 on reopen.
 --- @param bufnr integer
 --- @param buf_name string
 function WindowDecoration._set_buffer_name(bufnr, buf_name)
@@ -361,11 +312,10 @@ function WindowDecoration._set_buffer_name(bufnr, buf_name)
     vim.api.nvim_buf_set_name(bufnr, buf_name)
 end
 
---- Resolves the buffer name from config, supporting string or function values
---- @param window_name string Window name for Config.windows[name].buffer_name lookup
---- @param header_parts agentic.ui.ChatWidget.HeaderParts Header parts passed to function-type buffer_name
---- @param fallback string|nil Fallback name (resolved header text) when buffer_name is not set
---- @param session_state agentic.acp.SessionState|nil Live session state passed as 2nd arg to user buffer_name fn
+--- @param window_name string
+--- @param header_parts agentic.ui.ChatWidget.HeaderParts
+--- @param fallback string|nil Used when `buffer_name` is unset
+--- @param session_state agentic.acp.SessionState|nil Passed as 2nd arg to a user fn
 --- @return string|nil name
 local function resolve_buffer_name(
     window_name,
@@ -411,13 +361,12 @@ local function resolve_buffer_name(
     return fallback
 end
 
---- Sets the buffer name based on header text and the number of live sessions
---- @param bufnr integer Buffer number
---- @param header_text string|nil Resolved header text
---- @param session_key integer|nil Session key for the suffix; nil when no session owns the buffer
---- @param window_name string Window name for Config.windows[name].buffer_name lookup
---- @param header_parts agentic.ui.ChatWidget.HeaderParts Header parts for function-type buffer_name
---- @param session_state agentic.acp.SessionState|nil Live session state passed as 2nd arg to user buffer_name fn
+--- @param bufnr integer
+--- @param header_text string|nil
+--- @param session_key integer|nil nil when no session owns the buffer
+--- @param window_name string
+--- @param header_parts agentic.ui.ChatWidget.HeaderParts
+--- @param session_state agentic.acp.SessionState|nil Passed as 2nd arg to a user fn
 local function set_buffer_name(
     bufnr,
     header_text,
@@ -436,8 +385,7 @@ local function set_buffer_name(
         return
     end
 
-    -- Suffixed only while a second session exists: a session outlives its tab, so
-    -- the tab count says nothing about how many names have to stay distinct.
+    -- Suffixed by session, not by tab: a session outlives its tab.
     local SessionRegistry = require("agentic.session_registry")
     local total_sessions = vim.tbl_count(SessionRegistry.sessions)
 
@@ -450,15 +398,12 @@ local function set_buffer_name(
     WindowDecoration._set_buffer_name(bufnr, buf_name)
 end
 
---- Renders a header for a window, handling user customization, winbar, and buffer naming
---- Everything is derived from `bufnr`: the header parts come from the owning
---- widget via `get_headers_state`, and the target window from
---- `BufHelpers.find_visible_win`. `context` is stored on the header parts even when no
---- window is showing the buffer; only the winbar and buffer-name writes need one.
---- @param bufnr integer Buffer number - stable reference to derive window and tab context
---- @param window_name string Name of the window (for Config.headers lookup and error messages)
---- @param context string|nil Optional context to set in header (e.g., "Mode: chat", "3 files")
---- @param session_state agentic.acp.SessionState|nil Live session state forwarded to chat/input header/buffer_name callbacks as their 2nd arg
+--- Everything, including the owning widget and its window, is derived from
+--- `bufnr` — the only handle stable across hide/show.
+--- @param bufnr integer
+--- @param window_name string
+--- @param context string|nil e.g. "Mode: chat", "3 files"
+--- @param session_state agentic.acp.SessionState|nil Forwarded to chat/input callbacks as their 2nd arg
 function WindowDecoration.render_header(
     bufnr,
     window_name,
@@ -466,6 +411,7 @@ function WindowDecoration.render_header(
     session_state
 )
     vim.schedule(function()
+        local owner = WidgetRegistry.get(bufnr)
         local headers = WindowDecoration.get_headers_state(bufnr)
         local dynamic_header = headers[window_name]
 
@@ -479,27 +425,18 @@ function WindowDecoration.render_header(
             return
         end
 
-        -- `headers` is the owning widget's own table, so mutating in place
-        -- persists it. No write-back step.
-        -- Stored BEFORE the window lookup: `_set_mode_to_chat_header` renders
-        -- `"Mode: X"` from `current_mode_update` and from session restore, and
-        -- neither is followed by a synchronous `show()`. Returning early here
-        -- dropped the context, and nothing re-supplies it — `WidgetLayout.open`
-        -- and `_render_dynamic_headers` both re-render with no context — so a
-        -- background session's chat winbar lost `Mode: X` on open.
+        -- BEFORE the window lookup's early return: nothing re-supplies the
+        -- context, so a background session's chat winbar lost `Mode: X`.
         if context ~= nil then
             dynamic_header.context = context
         end
 
-        -- The owning widget's own panel window wins: with a cross-tab lookup, a
-        -- buffer the user also opened elsewhere could otherwise take the winbar.
-        local owner = WidgetRegistry.get(bufnr)
+        -- The owner's own window, or a copy the user opened elsewhere takes the winbar.
         local winid = BufHelpers.find_visible_win(
             bufnr,
             owner and owner.win_nrs[window_name] or nil
         )
         if winid == nil then
-            -- Buffer not displayed in any focusable window, nothing to paint
             return
         end
 
@@ -521,8 +458,7 @@ function WindowDecoration.render_header(
         local text = (header_text and header_text ~= "") and header_text or ""
 
         set_winbar(winid, text)
-        -- Buffer name mirrors the header title, not the rich winbar text:
-        -- the rich format embeds "/" and "$" which corrupt buffer basenames.
+        -- The plain title, not the rich winbar text, whose "/" and "$" corrupt buffer basenames.
         set_buffer_name(
             bufnr,
             concat_header_parts(dynamic_header),

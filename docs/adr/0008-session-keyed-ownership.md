@@ -7,181 +7,148 @@
 
 ## Context
 
-Ownership used to be keyed by tabpage handle: `SessionRegistry` mapped a handle
-to a `SessionManager`, `ChatWidget` stored the handle it was built in, and
-`vim.t[tab]` held header, diff-preview and diff-split state. A `TabClosed`
-autocmd destroyed the tab's session.
+Ownership was keyed by tabpage handle: `SessionRegistry` mapped a handle to a
+`SessionManager`, `ChatWidget` stored its birth handle, `vim.t[tab]` held header
+and diff state, and a `TabClosed` autocmd destroyed the tab's session. Observed
+failures:
 
-Observed failures of that model:
-
-- Closing a tab killed a generating session, including its provider-side ACP
-  session. Work was lost with no way to get it back.
-- A session could not be moved or reopened elsewhere: the handle it was born
-  with was its only address.
-- Only one conversation could exist per tab, so `new_session` and
-  `restore_session` had to destroy the conversation already there.
-  `SessionRestore` shipped a "cancel or clear and restore" prompt purely because
-  there was nowhere else to restore into.
-- `vim.fn.bufwinid` "Only deals with the current tabpage"
-  (`$VIMRUNTIME/doc/vimfn.txt`), and 12 lookups used it. A session rendering
-  while the user sat elsewhere resolved no window at all — no winbar, no diff,
-  no cursor diagnostics.
-- `vim.t` returns copies, so nested header edits silently did not persist and
-  every caller had to read-mutate-write-back.
+- `:tabclose` killed a generating session and its provider-side ACP session.
+- A session's only address was the handle it was born with, so it could never be
+  moved or reopened elsewhere.
+- One conversation per tab, so `new_session` and `restore_session` had to destroy
+  the current one. `SessionRestore` prompted "cancel or clear and restore" purely
+  for lack of anywhere else to restore into.
+- `vim.fn.bufwinid` "Only deals with the current tabpage", and 12 lookups used
+  it. A session rendering while the user sat elsewhere resolved no window: no
+  winbar, no diff, no cursor diagnostics.
+- `vim.t` returns copies, so nested header mutation silently did not persist.
 
 ## Current decision
 
-Sessions are the unit of ownership. Nothing stores a tabpage.
+Sessions own; tabpages only place. Nothing stores a tabpage handle.
 
 **Identity.** `SessionRegistry.sessions` is a strong table keyed by an
-incrementing integer. `SessionRegistry.create` assigns `session.session_key`
-_after_ `SessionManager:new` returns, so a new widget's first `show` still sees
-the previous session as `_most_recent` and can inherit its size.
+incrementing integer. `create` assigns `session_key` _after_ `SessionManager:new`
+returns, so a new widget's first `show` still sees the previous session as
+`_most_recent` and inherits its size.
 
-**Placement is derived, never stored.** `ChatWidget:visible_tab()` reads the
-chat window and resolves its tabpage; `is_open` is defined as
-`visible_tab() ~= nil`. `WidgetRegistry` maps each widget buffer number to its
-owning widget, so buffer-scoped code (`WindowDecoration`, `BufferGuard`) reaches
-its widget without a stored handle. Buffer numbers are global, so that map is
-legitimately module-level.
+**Placement is derived.** `ChatWidget:visible_tab()` resolves the tabpage from
+the chat window; `is_open` is `visible_tab() ~= nil`. `WidgetRegistry` maps
+widget buffer number to widget, so buffer-scoped code (`WindowDecoration`,
+`BufferGuard`) reaches its widget without a handle. Buffer numbers are global, so
+that map is legitimately module-level.
 
-**Resolution is three named functions, and only one of them creates.**
-`SessionRegistry.visible_here()` scans the current tabpage.
-`SessionRegistry.current()` is that scan, falling back to a registered
-`_most_recent`. `SessionRegistry.resolve_or_create()` is `current()` plus
-creation. The verbose name is load-bearing: four call sites on the branch that
-introduced it reached for the short name `resolve` and each silently spawned a
-provider subprocess as a side effect — a paste in an ordinary buffer, a close, a
-session cycle, and a destroy.
+**Three resolution functions, one of which creates.** `visible_here()` scans the
+current tabpage; `current()` adds a `_most_recent` fallback;
+`resolve_or_create()` adds creation. The verbose name is load-bearing: four call
+sites reached for a short `resolve` and each silently spawned a provider
+subprocess.
 
-**`SessionRegistry.show_session` is the only path that SWITCHES a session
-between tabpages.** In order: hide every _other_ session visible in the current
-tabpage, hide the target if it is visible in a _different_ one, set
-`_most_recent`, then show. Those first two steps are the invariant — **at most
-one visible widget per tabpage, at most one tabpage per session** — and putting
-them in the choke point makes "hide before show" structural, which
-`ChatWidget._size` inheritance depends on. Every public entry point that
-surfaces a session elsewhere routes through it, including `Agentic.open`,
-`new_session`, `select_session`, `next_session`/`prev_session`, the `add_*`
-context paths, `SessionRestore`, and `apply_provider_switch`.
+**`show_session` is the only path that SWITCHES a session between tabpages.** It
+hides every other session in the current tabpage, hides the target if visible in
+a different one, repoints `_most_recent`, then shows. Those first two steps are
+the invariant — **at most one visible widget per tabpage, at most one tabpage per
+session** — and siting them here makes "hide before show" structural, which
+`ChatWidget._size` inheritance depends on. Every entry point that surfaces a
+session elsewhere routes through it.
 
-Three sites call `ChatWidget:show` directly. Each is an IN-PLACE re-render of a
-widget that is already where it belongs, so none of them can violate the
-invariant — and a fourth needs the same proof before it is added:
+Three sites call `ChatWidget:show` directly. Each re-renders in place, so none
+can break the invariant; a fourth needs the same proof.
 
-| Site                            | Why it is safe                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `ChatWidget:show_if_visible`    | Returns early unless `visible_tab()` is non-nil, so it only repaints a tabpage that already holds it.   |
-| `ChatWidget:rotate_layout`      | `hide` + `show` on the same widget, and `Agentic.rotate_layout` resolves through `visible_here()` only. |
-| `init.lua` clipboard `on_paste` | Resolves the session from the buffer under the cursor via `WidgetRegistry`, which is the visible one.   |
+| Site                            | Why it is safe                                                  |
+| ------------------------------- | --------------------------------------------------------------- |
+| `ChatWidget:show_if_visible`    | Returns early unless `visible_tab()` is non-nil.                |
+| `ChatWidget:rotate_layout`      | Same widget, and its caller resolves through `visible_here()`.  |
+| `init.lua` clipboard `on_paste` | Resolves via `WidgetRegistry` from the buffer under the cursor. |
 
-**Sessions outlive tabpages.** There is no `TabClosed` autocmd. A session whose
-tabpage closed reports `visible_tab()` nil, keeps its ACP session and its
-subscriber, and keeps generating. Destruction is explicit only:
-`Agentic.destroy_session`, provider switch, and restore's empty-session
-reclamation. `SessionRegistry.destroy` removes the key before calling
-`session:destroy()` and repoints `_most_recent`.
+**Sessions outlive tabpages.** No `TabClosed` autocmd. A session whose tabpage
+closed reports `visible_tab()` nil and keeps generating. Destruction is explicit
+only: `Agentic.destroy_session`, provider switch, restore's empty-session
+reclamation. `SessionRegistry.destroy` removes the key before `session:destroy()`
+and repoints `_most_recent`.
 
-**Restore is additive.** `SessionRestore` always creates a new session, loads
-into it, shows it, and only then destroys the session it resolved — and only
-when that session is empty. Empty means no messages, no files, no code
-selections, no diagnostics, and no non-blank input draft. The order matters:
-`create()` can fail, and the outgoing session is the size donor for the incoming
-one — `SessionRegistry.list` is ordered by recency, so the donor is the session
-`_most_recent` displaced, not the lowest key. The conflict prompt is gone.
+**Restore is additive.** `SessionRestore` creates a session, loads into it, shows
+it, then destroys the session it resolved — only if that one is empty (no
+messages, files, selections, diagnostics, or non-blank draft). Order matters:
+`create()` can fail, and the outgoing session is the size donor.
 
-**State lives on the instance that owns it, publicly.** `ChatWidget.headers` and
-`DiffCoordinator.diff_state` are public fields that callers mutate in place;
-`ChatWidget._size` remembers the dominant axis across hide/show/switch.
-`.luarc.json` sets `doc.privateName = ["_*"]` with `groupSeverity.strict =
-"Error"`, so a cross-module read of an underscore-prefixed field is a hard
-`make luals` failure — public is a requirement here, not a preference. Because
-these are real tables rather than `vim.t` copies, in-place mutation is the
-correct idiom and the old write-back rule is deleted.
+**State lives public on its owning instance.** `ChatWidget.headers` and
+`DiffCoordinator.diff_state` are mutated in place. `.luarc.json` sets
+`doc.privateName = ["_*"]` with `groupSeverity.strict = "Error"`, so a
+cross-module read of an underscore field fails `make luals` — public is required
+here, not preferred. These are real tables, not `vim.t` copies, so the old
+write-back rule is deleted.
 
 **Window lookups span tabpages.** `BufHelpers.find_visible_win(bufnr,
-preferred_winid, tabpage)` replaced every `bufwinid` call: it filters out
-non-focusable and `hide` windows (the hidden chat float is both), prefers the
-owning widget's own window, and can be restricted to the session's tabpage.
-Rendering never moves focus — `DiffPreview`, `DiffSplitView` and
-`HunkNavigation` write through `nvim_win_call` and no code calls
-`nvim_set_current_win` or `nvim_set_current_tabpage` to render.
+preferred_winid, tabpage)` replaced every `bufwinid` call: it filters
+non-focusable and `hide` windows (the hidden float is both), prefers the owning
+widget's window, and can be restricted to one tabpage. Rendering never moves
+focus — `DiffPreview`, `DiffSplitView` and `HunkNavigation` write through
+`nvim_win_call`.
 
-**Async callbacks must re-check liveness, not capture it.** Background sessions
-mean a callback can outlive the state it closed over. `SessionManager._destroyed`
-is set at the top of `destroy` and checked _inside_ every handler and scheduled
-callback, so the check happens at run time rather than at schedule time;
+**Async callbacks re-check liveness, never capture it.** A callback can outlive
+what it closed over. `SessionManager._destroyed` is set at the top of `destroy`
+and checked _inside_ every handler and scheduled callback;
 `ACPClient:__with_subscriber` re-resolves `subscribers[session_id]` inside its
-scheduled callback rather than using the captured local, which closes the whole
-class at one site; `SessionManager:_bootstrap_session` is guarded on `_destroyed`
-and `_is_restoring_session`, so a create and a destroy in the same tick send no
-`session/new` and a queued `session/new` cannot race a `session/load`; and
-`StatusAnimation._epoch` invalidates a frame callback that already fired before
-`stop`.
+scheduled callback, closing the whole class at one site;
+`SessionManager:_bootstrap_session` is guarded on `_destroyed` and
+`_is_restoring_session`; `StatusAnimation._epoch` invalidates a frame callback
+that fired before `stop`.
 
-`on_request_permission` is the one handler where the guard cannot simply return:
-it owes a JSON-RPC response, and the provider subprocess is shared across every
-session (ADR 0004), so an unanswered request outlives the session that caused it.
-Both liveness gates — the manager's `_destroyed` check and `__with_subscriber`'s
-re-resolve — answer `outcome = "cancelled"` instead of dropping it. A nil option
-id anywhere in that chain means cancelled: `selected` with no `optionId` is not a
-valid `RequestPermissionOutcome`, and `PermissionManager:clear` resolves every
-pending request with nil during teardown.
+`on_request_permission` cannot simply return: it owes a JSON-RPC response, and
+the provider subprocess is shared across sessions (ADR 0004), so an unanswered
+request outlives its session. Both liveness gates answer `outcome = "cancelled"`.
+A nil option id anywhere in that chain means cancelled — `selected` with no
+`optionId` is not a valid `RequestPermissionOutcome`, and
+`PermissionManager:clear` resolves pending requests with nil during teardown.
 
-**Destroying a session must not take a tabpage with it.**
-`ChatWidget:destroy` ensures a fallback window in the widget's _own_ tabpage
-(`_ensure_fallback_window`, shared with `hide`) before closing. It must run
-before `WidgetRegistry.unregister`, or `find_first_non_widget_window` no longer
-recognises the widget's own windows and hands one back as the fallback.
-Regression:
+**Destroying a session must not take a tabpage with it.** `ChatWidget:destroy`
+runs `_ensure_fallback_window` (shared with `hide`) in the widget's _own_ tabpage
+before closing. It must run before `WidgetRegistry.unregister`, or
+`find_first_non_widget_window` stops recognising the widget's own windows and
+hands one back. Regression:
 `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
 
-**Identity is published to users.** Every hook payload carries `session_key`,
-stable for the session's whole life. `tab_page_id` survives as placement only —
-`self.widget:visible_tab()`, nil for a background session — and
+**Identity is published.** Every hook payload carries `session_key`, stable for
+life. `tab_page_id` survives as placement only, nil for a background session, and
 `on_response_complete` resolves it inside its deferred callback so it reports
-where the widget is at completion, not at submit. Buffer names are suffixed with
-the session key when more than one session exists, and `ChatHistory.title` is
-written from the first prompt so `select_session` has something to label rows
-with.
+completion-time placement. Buffer names gain the key suffix once more than one
+session exists; `ChatHistory.title` is written from the first prompt to label
+`select_session` rows.
 
 ## Consequences
 
-- A session can be generating with no window anywhere. Any code that assumes a
-  visible window must nil-check `visible_tab()` and degrade, not error.
+- A session can generate with no window anywhere. Code assuming a visible window
+  must nil-check `visible_tab()` and degrade.
 - Nothing reaps sessions. A user who never calls `destroy_session` accumulates
-  them, each holding an ACP session on the shared provider subprocess (ADR
-  0004).
-- `_most_recent` is a mutable cursor, written by `show_session`,
-  `set_most_recent` and `resolve_or_create`. A path that creates a session
-  without showing it leaves the cursor behind, which is how a closed-widget
-  provider switch stranded a session reachable only through `select_session`.
-- `_previous_most_recent` shadows it, so `list()` is a recency order rather than
-  "the incoming session, then ascending key". It exists because every write
-  repoints `_most_recent` BEFORE the incoming widget's first `show`, which is the
-  only moment `_inherited_size` runs — without the second cursor the size donor
-  is always the lowest-keyed session, never the one the user last used.
-- The hidden chat float is created `relative = "editor"`, which attaches it to
-  the _current_ tabpage. After `:tabclose` the widget's own tabpage is gone, so
-  the recreated float lands in the surviving one. It is `hide = true` and
+  them, each holding an ACP session on the shared subprocess (ADR 0004).
+- `_most_recent` is a mutable cursor written by `show_session`, `set_most_recent`
+  and `resolve_or_create`. Creating without showing strands the cursor, which is
+  how a closed-widget provider switch left a session reachable only through
+  `select_session`.
+- `_previous_most_recent` shadows it, making `list()` a recency order. Every
+  write repoints `_most_recent` BEFORE the incoming widget's first `show`, the
+  only moment `_inherited_size` runs; without the second cursor the size donor is
+  always the lowest-keyed session.
+- The hidden chat float is `relative = "editor"`, so it attaches to the current
+  tabpage and lands in the survivor after `:tabclose`. It is `hide = true` and
   `focusable = false`, so window-counting assertions must filter on both.
-- Registry keys are integers and tabpage handles are integers. They are no
-  longer interchangeable, and code or tests that conflate them will look correct
-  and behave wrongly.
+- Registry keys and tabpage handles are both integers and no longer
+  interchangeable. Code conflating them looks correct and behaves wrongly.
 
 ## Rejected / superseded alternatives
 
-| Option                                                                    | Reason rejected                                                                                                                                                                                                                              |
-| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tabpage-keyed registry with a `TabClosed` destroy (prior decision)        | One conversation per tab, and `:tabclose` destroyed a generating session with its provider-side state. Sessions could never be reopened elsewhere.                                                                                           |
-| Store the tabpage on the session or widget                                | The stored handle and reality diverge the moment a widget is hidden, moved, or its tab closes. Deriving from the chat window via `visible_tab()` cannot go stale.                                                                            |
-| Keep `vim.t` for diff and header state                                    | `vim.t` returns copies, so nested mutation silently did not persist; and tab-scoped storage cannot follow a session that moves between tabpages or runs in none.                                                                             |
-| Weak-valued `sessions` table                                              | Once `ACPClient:cancel_session` drops the subscriber the registry is the only strong reference, so a background session the user still wants would be collected.                                                                             |
-| Reuse the widget, buffers or `config_options` on provider switch          | Providers announce different option sets; inheriting any of it leaks state the new provider never declared. A fresh session with replayed messages is the only honest carry-over.                                                            |
-| Cycle sessions in `list()` order                                          | `list()` is ordered by recency and `show_session` rewrites it, so each press reorders the sequence being traversed and `prev` stops being the inverse of `next`. Ascending key is stable.                                                    |
-| Capture the size donor in `show_session` before repointing `_most_recent` | `resolve_or_create` repoints it too, one call earlier, so the guard would have to be duplicated there and in every future write site. Recording the displaced session in the registry fixes all three inheriting paths at the cursor itself. |
-| Fetch session titles from `session/list`                                  | The ACP schema carries no title on `session/new`, `session/load`, or any `SessionUpdate`. Reconciling would cost a round trip per provider before the picker could render.                                                                   |
-| Guard destroyed-session callbacks at each handler                         | Every new handler has to remember. Re-resolving the subscriber inside `__with_subscriber`'s scheduled callback closes the class once.                                                                                                        |
+| Option                                                           | Reason rejected                                                                                                                                                                  |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tabpage-keyed registry with `TabClosed` destroy (prior decision) | One conversation per tab, `:tabclose` destroyed a generating session with its provider state, and sessions could never be reopened elsewhere.                                    |
+| Store the tabpage on the session or widget                       | A stored handle diverges from reality the moment a widget is hidden, moved, or its tab closes. `visible_tab()` cannot go stale.                                                  |
+| Keep `vim.t` for diff and header state                           | Returns copies, so nested mutation silently did not persist, and tab-scoped storage cannot follow a session that moves or runs in none.                                          |
+| Weak-valued `sessions` table                                     | Once `cancel_session` drops the subscriber the registry is the only strong reference, so a wanted background session would be collected.                                         |
+| Reuse widget, buffers or `config_options` on provider switch     | Providers announce different option sets; inheriting leaks state the new provider never declared. Fresh session with replayed messages is honest.                                |
+| Cycle sessions in `list()` order                                 | `list()` is recency-ordered and `show_session` rewrites it, so each press reorders the sequence being traversed and `prev` stops inverting `next`.                               |
+| Capture the size donor in `show_session` before repointing       | `resolve_or_create` repoints one call earlier, so the guard would duplicate there and at every future write site. Recording the displaced session fixes all paths at the cursor. |
+| Fetch session titles from `session/list`                         | No ACP title on `session/new`, `session/load`, or any `SessionUpdate`. Reconciling costs a round trip per provider before the picker renders.                                    |
+| Guard destroyed-session callbacks at each handler                | Every new handler must remember. Re-resolving inside `__with_subscriber` closes the class once.                                                                                  |
 
 ## Changelog
 

@@ -1,16 +1,11 @@
--- lua/agentic/ui/widget_registry.lua
-
---- Module-level map from widget buffer number to its owning widget.
---- Buffer numbers are global in Neovim, so module-level state is correct here:
---- there is no per-tab data involved.
+--- Not per-session state: buffer numbers are global in Neovim.
 --- @class agentic.ui.WidgetRegistry
 local WidgetRegistry = {}
 
 --- @type table<integer, agentic.ui.ChatWidget>
 local widgets_by_bufnr = {}
 
---- Removes every entry pointing at the widget, so a destroyed widget leaves
---- nothing behind even when its `buf_nrs` was already emptied.
+--- Scans by value, so it still cleans up after `buf_nrs` was emptied.
 --- @param widget agentic.ui.ChatWidget
 function WidgetRegistry.unregister(widget)
     for bufnr, owner in pairs(widgets_by_bufnr) do
@@ -20,8 +15,7 @@ function WidgetRegistry.unregister(widget)
     end
 end
 
---- Maps every buffer the widget currently owns to it. Re-registering prunes
---- first, so a swapped-out panel buffer cannot leave a stale owner behind.
+--- Prunes first, so a swapped-out panel buffer leaves no stale owner.
 --- @param widget agentic.ui.ChatWidget
 function WidgetRegistry.register(widget)
     WidgetRegistry.unregister(widget)

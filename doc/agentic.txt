@@ -801,7 +801,7 @@ Sessions are interchangeable between Neovim and the terminal. Call
 |agentic.restore_session()| to see previous sessions from your
 provider.
 
-Restoring never clobbers a conversation: it always creates an
+Restoring never overwrites a conversation: it always creates an
 additional session and shows it, leaving the session you were on alive
 and reachable through |agentic.select_session()|. The one exception is
 a completely empty session -- no messages, no attached files, no code

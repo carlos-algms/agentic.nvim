@@ -1,8 +1,4 @@
--- The session manager class glues together the Chat widget, the agent instance, and the message writer.
--- It is responsible for managing the session state, routing messages between components, and handling user interactions.
--- When the user creates a new session, the SessionManager should be responsible for cleaning the existing session (if any) and initializing a new one.
--- When the user switches the provider, the SessionManager should handle the transition smoothly,
--- ensuring that the new session is properly set up and all the previous messages are sent to the new agent provider without duplicating them in the chat widget
+-- Glues together the Chat widget, the agent instance, and the message writer.
 
 local ACPPayloads = require("agentic.acp.acp_payloads")
 local ChatHistory = require("agentic.ui.chat_history")
@@ -37,27 +33,21 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
---- @field _destroyed boolean Set by `destroy`; every ACP handler and every `session/new` or `session/load` response callback checks it at RUN time
+--- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
 --- @field _session_ready_callbacks fun()[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
---- Codepoints, NOT display cells: `Agentic.select_session` appends
---- " (current tab)" to the label, and 60 keeps a Latin row inside a default
---- 80-column `vim.ui.select` prompt. A CJK or emoji title still overruns it —
---- Vim has no truncate-by-`strdisplaywidth` primitive, so honouring cells would
---- mean a per-character accumulator, which is not worth it for a picker label.
+--- Codepoints, not display cells
 local TITLE_MAX_CHARS = 60
 
---- A one-line, bounded label for the session picker. Whitespace is collapsed
---- because a multi-line prompt would otherwise render as one unreadable run.
 --- @param prompt string
 --- @return string title
 local function title_from_prompt(prompt)
     local title = vim.trim((prompt:gsub("%s+", " ")))
 
     if vim.fn.strchars(title) > TITLE_MAX_CHARS then
-        -- Character-wise, never `sub`: a byte cut lands mid-UTF-8 sequence
+        -- Character-wise, never `sub`: a byte cut lands mid-UTF-8 sequence.
         title = vim.fn.strcharpart(title, 0, TITLE_MAX_CHARS - 1) .. "…"
     end
 
@@ -90,7 +80,7 @@ function SessionManager:new()
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
-            -- Guard: cached client may be dead
+            -- A cached client may already be dead.
             if
                 self.agent.state == "error"
                 or self.agent.state == "disconnected"
@@ -120,8 +110,8 @@ function SessionManager:new()
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
     self.status_animation:start("busy")
 
-    -- Check for sync failure during ACPClient construction
-    -- Guard with _connection_error to avoid double-fire if async callback already ran
+    -- Sync failure during ACPClient construction; `_connection_error` stops a
+    -- double-fire when the async callback above already ran.
     if
         not self._connection_error
         and (self.agent.state == "error" or self.agent.state == "disconnected")
@@ -135,9 +125,7 @@ function SessionManager:new()
 
     self.permission_manager = PermissionManager:new(self.message_writer)
 
-    -- Keep a strong reference so the instance isn't garbage collected.
-    -- instances_by_buffer holds only weak values, and without auto_trigger
-    -- there's no autocmd closure to otherwise keep it alive.
+    -- Strong reference required: `instances_by_buffer` holds only weak values.
     self.file_picker = FilePicker:new(self.widget.buf_nrs.input)
     SlashCommands.setup_completion(self.widget.buf_nrs.input)
 
@@ -201,7 +189,6 @@ function SessionManager:new()
                 self.widget:close_optional_window("diagnostics")
                 self.widget:move_cursor_to(self.widget.win_nrs.input)
             else
-                -- show() opens layouts but does not update the diagnostics header count
                 self.widget:render_header(
                     "diagnostics",
                     tostring(#diagnostics_list:get_diagnostics())
@@ -222,8 +209,6 @@ function SessionManager:new()
     return self
 end
 
---- Handle provider connection failure.
---- Stops busy animation and writes error to chat buffer.
 function SessionManager:_handle_connection_error()
     self._connection_error = true
     self._session_ready_callbacks = {}
@@ -240,9 +225,7 @@ function SessionManager:_handle_connection_error()
     )
 end
 
---- Register callback for when ACP session is ready.
---- Fires immediately (via vim.schedule) if session
---- already exists.
+--- Fires on the next tick when the session is already ready.
 --- @param callback fun(session: agentic.SessionManager)
 function SessionManager:on_session_ready(callback)
     if self.session_id then
@@ -263,9 +246,7 @@ function SessionManager:on_session_ready(callback)
     end)
 end
 
---- Check if a prompt can be submitted to the session.
---- Returns false if provider connection failed, session not
---- initialized, or session is restoring. Notifies user of the reason.
+--- Notifies the user with the reason when it answers false.
 --- @return boolean can_submit
 function SessionManager:can_submit_prompt()
     if self._connection_error then
@@ -375,14 +356,11 @@ function SessionManager:_on_session_update(update)
         )
     end
 
-    -- Skip the hook during restore replay: the provider re-emits historical
-    -- updates and users expect hooks to reflect live activity.
+    -- Hooks reflect live activity only; a restore replays historical updates.
     if self._is_restoring_session then
         return
     end
 
-    -- This is being done after handling specific updates but one could argue
-    -- there should be pre/post hooks for everything.
     --- @type agentic.UserConfig.SessionUpdateData
     local hook_data = {
         session_id = self.session_id,
@@ -396,14 +374,13 @@ end
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
 function SessionManager:_on_tool_call(tool_call)
     if self.message_writer.tool_call_blocks[tool_call.tool_call_id] then
-        -- fallback for bad ACP implementations which sends multiple `tool_call` with different data (initially added for Mistral)
+        -- Some providers (Mistral) send several `tool_call` for one id.
         self:_on_tool_call_update(tool_call)
         return
     end
 
     self.message_writer:write_tool_call_block(tool_call)
 
-    -- Store merged block from MessageWriter (has normalized/accumulated fields)
     local merged = self.message_writer.tool_call_blocks[tool_call.tool_call_id]
     --- @type agentic.ui.ChatHistory.ToolCall
     local tool_msg = vim.tbl_deep_extend("force", {
@@ -413,7 +390,6 @@ function SessionManager:_on_tool_call(tool_call)
     self.chat_history:add_message(tool_msg)
 end
 
---- Handle tool call update: update UI, history, diff preview, permissions, and reload buffers
 --- @param tool_call_update agentic.ui.MessageWriter.ToolCallBlock
 function SessionManager:_on_tool_call_update(tool_call_update)
     if
@@ -423,7 +399,6 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     else
         self.message_writer:update_tool_call_block(tool_call_update)
 
-        -- Store merged block from MessageWriter (has accumulated body and normalized fields)
         local merged =
             self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
         --- @type agentic.ui.ChatHistory.ToolCall
@@ -437,14 +412,10 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         )
     end
 
-    -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
     local is_rejection = tool_call_update.status == "failed"
     self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
 
-    -- Remove the permission request when the tool call reaches a terminal status.
-    -- `failed` covers user rejection or agent-side error;
-    -- `completed` covers cases where the agent finishes the tool without (or alongside) user resolution.
-    -- Both should clear the inline buttons.
+    -- Terminal status: clear the inline permission buttons.
     if
         tool_call_update.status == "failed"
         or tool_call_update.status == "completed"
@@ -454,7 +425,6 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         )
     end
 
-    -- Reload buffers when file-mutating tool calls complete
     if tool_call_update.status == "completed" then
         local tracker =
             self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
@@ -468,8 +438,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
             DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
 
-            -- Skip the hook during restore replay: the provider replays
-            -- historical tool calls as "completed" but no write happened now.
+            -- Hooks reflect live writes only; a restore replays them as "completed".
             if
                 not self._is_restoring_session
                 and type(tracker.file_path) == "string"
@@ -477,12 +446,10 @@ function SessionManager:_on_tool_call_update(tool_call_update)
             then
                 local abs_path = FileSystem.to_absolute_path(tracker.file_path)
                 local raw_bufnr = vim.fn.bufnr(abs_path)
+                local is_loaded = raw_bufnr ~= -1
+                    and vim.api.nvim_buf_is_loaded(raw_bufnr)
                 --- @type number|nil
-                local bufnr = (
-                    raw_bufnr ~= -1 and vim.api.nvim_buf_is_loaded(raw_bufnr)
-                )
-                        and raw_bufnr
-                    or nil
+                local bufnr = is_loaded and raw_bufnr or nil
                 --- @type agentic.UserConfig.FileEditData
                 local hook_data = {
                     filepath = abs_path,
@@ -520,31 +487,26 @@ end
 function SessionManager:_handle_input_submit(input_text)
     self.todo_list:close_if_all_completed()
 
-    -- Intercept /new command BEFORE the generation guard so users can
-    -- escape a stuck state from the chat input
+    -- BEFORE the submit guard, so `/new` escapes a stuck session.
     if input_text:match("^/new%s") or input_text:match("^/new$") then
         self:new_session()
         return true
     end
 
-    -- Guard: cannot submit if connection failed, session not initialized, or restoring
     if not self:can_submit_prompt() then
         return false
     end
 
-    --- The text to be send to the agent, not on written on the chat
+    --- Sent to the agent, not written to the chat
     --- @type agentic.acp.Content[]
     local prompt = {}
 
-    -- If restored/switched session, prepend history on first submit
     if self.history_to_send then
         ChatHistory.prepend_restored_messages(self.history_to_send, prompt)
         self.history_to_send = nil
     end
 
-    -- First submit only. A restored session already carries the provider's
-    -- title, and rewriting it on every prompt would make the session picker
-    -- relabel itself mid-conversation.
+    -- First submit only, so the picker label stays stable.
     if self.chat_history.title == "" then
         self.chat_history.title = title_from_prompt(input_text)
     end
@@ -554,7 +516,7 @@ function SessionManager:_handle_input_submit(input_text)
         text = input_text,
     })
 
-    -- Add system info on first message only (after user text so resume picker shows the prompt)
+    -- After the user text, so the resume picker shows the prompt.
     if self._is_first_message then
         self._is_first_message = false
 
@@ -564,7 +526,7 @@ function SessionManager:_handle_input_submit(input_text)
         })
     end
 
-    --- The message to be written to the chat widget
+    --- Written to the chat widget
     local message_lines = {}
 
     table.insert(message_lines, input_text)
@@ -620,15 +582,13 @@ function SessionManager:_handle_input_submit(input_text)
     }
     Hooks.invoke("on_prompt_submit", prompt_hook_data)
 
-    -- Captured, and NOT re-read in the callback below: it is the staleness guard
-    -- that drops responses belonging to a cancelled or restored session.
+    -- Captured, NOT re-read below: this is the staleness guard.
     local session_id = self.session_id
 
     self.is_generating = true
 
     self.agent:send_prompt(self.session_id, prompt, function(response, err)
         vim.schedule(function()
-            -- Guard: skip stale response if session changed (cancel/restore/new)
             if self.session_id ~= session_id then
                 return
             end
@@ -641,9 +601,6 @@ function SessionManager:_handle_input_submit(input_text)
             local response_hook_data = {
                 session_id = session_id --[[@as string]],
                 session_key = self.session_key,
-                -- Resolved HERE, inside the deferred callback: a value captured
-                -- before the schedule reports where the widget sat when the
-                -- prompt was submitted, not when the response landed.
                 tab_page_id = self.widget:visible_tab(),
                 success = err == nil,
                 error = err,
@@ -655,13 +612,8 @@ function SessionManager:_handle_input_submit(input_text)
     return true
 end
 
---- Build the standard ACP client handlers for session subscriptions
---- Every handler bails out on a destroyed session. The check has to happen HERE,
---- at run time: `ACPClient:__with_subscriber` schedules the call, so dropping the
---- subscriber cannot stop a callback that is already queued, and the handlers
---- would write into buffers `ChatWidget:destroy` deleted.
---- Regression: session_manager.test.lua::"ignores session updates that arrive
---- after destroy".
+--- Every handler re-checks `_destroyed` at RUN time: `__with_subscriber` schedules
+--- the call, so dropping the subscriber cannot un-queue an already-queued callback.
 --- @return agentic.acp.ClientHandlers handlers
 function SessionManager:_build_handlers()
     --- @type agentic.acp.ClientHandlers
@@ -708,14 +660,8 @@ function SessionManager:_build_handlers()
 
         on_request_permission = function(request, callback)
             if self._destroyed then
-                -- The ONLY handler where returning early is not a no-op: this
-                -- one owes a JSON-RPC response. `PermissionManager:clear`
-                -- answers every request already registered, so the hole is a
-                -- request landing between `destroy` and this run — and the
-                -- provider subprocess is shared across every session (ADR 0004),
-                -- so it outlives the session that caused it.
-                -- Regression: session_manager.test.lua::"answers a request that
-                -- lands after destroy".
+                -- The ONLY handler that owes a JSON-RPC response, so it cannot
+                -- return silently: the provider subprocess outlives this session.
                 callback(nil)
                 return
             end
@@ -752,25 +698,9 @@ function SessionManager:_build_handlers()
     return handlers
 end
 
---- The manager's own first `session/new`, one tick after construction.
---- Skipped once a restore has already claimed the manager: `SessionRegistry.create`
---- schedules this bootstrap, and `SessionRestore` calls `load_acp_session` in the
---- SAME tick, so the load is in flight by the time this runs. Going ahead would
---- reach `_cancel_session`, which clears `_is_restoring_session` and disarms the
---- staleness guard in `new_session`'s response; whichever of `session/new` and
---- `session/load` answered first would then win `session_id` and the other would be
---- dropped in silence. Guarding HERE and not in `new_session` keeps `/new` usable as
---- the chat input's escape hatch, which `can_submit_prompt` otherwise blocks while a
---- restore is in flight.
---- Regression: session_restore_race.test.lua::"load before the bootstrap sends no
---- competing create".
+--- The first `session/new`, one tick after construction. Guarded HERE and not in
+--- `new_session`, which stays usable as the chat input's `/new`.
 function SessionManager:_bootstrap_session()
-    -- Destroyed in the same tick it was created (`new_session()` then
-    -- `destroy_session()`): without this the bootstrap runs `_cancel_session`
-    -- over emptied `buf_nrs`, starts the spinner on a deleted buffer, and puts a
-    -- real `session/new` on the wire for a manager nothing can reach.
-    -- Regression: session_manager.test.lua::"sends no session/new when destroy
-    -- lands before the bootstrap".
     if self._destroyed or self._is_restoring_session then
         return
     end
@@ -778,7 +708,6 @@ function SessionManager:_bootstrap_session()
     self:new_session()
 end
 
---- Create a new session, optionally cancelling any existing one
 --- @param opts {restore_mode?: boolean, on_created?: fun(), timestamp?: string|integer}|nil
 function SessionManager:new_session(opts)
     opts = opts or {}
@@ -793,12 +722,7 @@ function SessionManager:new_session(opts)
     local handlers = self:_build_handlers()
 
     self.agent:create_session(handlers, function(response, err)
-        -- Destroyed while `session/new` was in flight: the provider created the
-        -- session anyway, so cancel it as soon as its id arrives or it is
-        -- orphaned on the provider forever. Adopting it instead would schedule a
-        -- welcome write into buffers `ChatWidget:destroy` already deleted.
-        -- Regression: session_manager.test.lua::"cancels an ACP session that
-        -- arrives after destroy".
+        -- Destroyed in flight: the provider created the session anyway.
         if self._destroyed then
             if response and response.sessionId then
                 self.agent:cancel_session(response.sessionId)
@@ -809,17 +733,8 @@ function SessionManager:new_session(opts)
 
         self.status_animation:stop()
 
-        -- A request RESPONSE reaches this callback straight from the libuv
-        -- stdout reader, so this body runs in a fast event context. Building
-        -- the payload here raised "E5560: nvim_win_is_valid must not be called
-        -- in a fast event context" out of `ChatWidget:visible_tab`, aborting
-        -- the rest of the callback. `Hooks.invoke` defers DELIVERY, not the
-        -- payload build, so the build has to move too.
-        -- Regression: session_manager.test.lua::"builds the hook payload
-        -- outside the fast event context".
+        -- Fast event context here; `Hooks.invoke` defers delivery, NOT the payload build.
         vim.schedule(function()
-            -- The schedule outlives this callback, so liveness is re-checked
-            -- HERE, at run time, like every other deferred block in this file.
             if self._destroyed then
                 return
             end
@@ -828,9 +743,6 @@ function SessionManager:new_session(opts)
             local hook_data = {
                 session_id = response and response.sessionId,
                 session_key = self.session_key,
-                -- Resolved HERE, inside the deferred callback: a value captured
-                -- before the schedule reports where the widget sat when the
-                -- response landed, not when the hook fires.
                 tab_page_id = self.widget:visible_tab(),
                 response = response,
                 err = err,
@@ -839,14 +751,11 @@ function SessionManager:new_session(opts)
             Hooks.invoke("on_create_session_response", hook_data)
         end)
 
-        -- A session restore was initiated after this create_session was sent.
-        -- Race A: load still in-flight → _is_restoring_session is true.
-        -- Race B: load already completed → session_id is already set.
-        -- Check staleness first so a failed stale callback can't wipe restored state.
+        -- A restore claimed this manager: either still in flight, or already done.
+        -- Checked before the error branch so a stale failure cannot wipe restored state.
         if self._is_restoring_session or self.session_id ~= nil then
             if response then
-                -- Adopt agent-instance capabilities before dropping the stale session
-                -- on restore-first this response is their only source.
+                -- On a restore-first path this response is the only source of these.
                 if response.configOptions then
                     self.config_options:set_options(response.configOptions)
                 else
@@ -866,7 +775,7 @@ function SessionManager:new_session(opts)
         end
 
         if err or not response then
-            -- no log here, already logged in create_session
+            -- Already logged in `create_session`.
             self.session_id = nil
             return
         end
@@ -897,11 +806,8 @@ function SessionManager:new_session(opts)
             )
         end
 
-        -- set_initial_model returns true when it actually triggered a model
-        -- change (target valid AND different from current). In that case,
-        -- effort/thought_level options will be rebuilt server-side, so we
-        -- chain `apply_initial_thought_level` to run AFTER the model
-        -- response. Otherwise (model unchanged), apply immediately.
+        -- A model change rebuilds the thought-level options server-side, so it has
+        -- to be applied after that response rather than now.
         local will_change_model = self.config_options:set_initial_model(
             self.agent.provider_config.initial_model,
             apply_initial_thought_level
@@ -915,20 +821,12 @@ function SessionManager:new_session(opts)
             apply_initial_thought_level()
         end
 
-        -- Reset first message flag for new session (skip when restoring)
         if not restore_mode then
             self._is_first_message = true
         end
 
-        -- Add initial welcome message after session is created
-        -- Defer to avoid fast event context issues
-        -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
-            -- Re-checked: this is a SECOND schedule spawned from inside the
-            -- already-guarded create callback, so a destroy landing in that
-            -- one-tick window reaches it.
-            -- Regression: session_manager.test.lua::"skips the welcome block when
-            -- destroy lands before it".
+            -- Re-checked: a destroy can land in this extra one-tick window.
             if self._destroyed then
                 return
             end
@@ -945,12 +843,10 @@ function SessionManager:new_session(opts)
                 ACPPayloads.generate_user_message(welcome_message)
             )
 
-            -- Invoke on_created callback after welcome message is written
             if on_created then
                 on_created()
             end
 
-            -- Fire session ready callbacks after welcome banner
             if #self._session_ready_callbacks > 0 then
                 Logger.debug(
                     "Firing "
@@ -979,8 +875,8 @@ function SessionManager:_cancel_session()
     self.status_animation:stop()
 
     if self.session_id then
-        -- only cancel and clear content if there was an session
-        -- Otherwise, it clears selections and files when opening for the first time
+        -- Guarded: an unconditional clear would wipe the files and selections
+        -- staged before the first session exists.
         self.agent:cancel_session(self.session_id)
         self.widget:clear()
         self.todo_list:clear()
@@ -1028,18 +924,16 @@ function SessionManager:add_file_to_session(buf)
     return self.file_list:add(buf_path)
 end
 
---- Add diagnostics at the current cursor line to context
---- @param bufnr integer|nil Buffer number to get diagnostics from, defaults to current buffer
---- @return integer count Number of diagnostics added
+--- @param bufnr integer|nil Defaults to the current buffer
+--- @return integer count
 function SessionManager:add_current_line_diagnostics_to_context(bufnr)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
     local diagnostics = DiagnosticsList.get_diagnostics_at_cursor(bufnr)
     return self.diagnostics_list:add_many(diagnostics)
 end
 
---- Add all diagnostics from the current buffer to context
---- @param bufnr integer|nil Buffer number, defaults to current buffer
---- @return integer count Number of diagnostics added
+--- @param bufnr integer|nil Defaults to the current buffer
+--- @return integer count
 function SessionManager:add_buffer_diagnostics_to_context(bufnr)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
     local diagnostics = DiagnosticsList.get_buffer_diagnostics(bufnr)
@@ -1071,10 +965,9 @@ function SessionManager:destroy()
     end
 end
 
---- Load an existing ACP session by ID, subscribing to its updates
 --- @param session_id string
 --- @param title string|nil
---- @param timestamp string|integer|nil Timestamp for the banner; defaults to now
+--- @param timestamp string|integer|nil Banner timestamp; defaults to now
 function SessionManager:load_acp_session(session_id, title, timestamp)
     local caps = self.agent.agent_capabilities
     if not caps or not caps.loadSession then
@@ -1085,8 +978,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
         return
     end
 
-    -- Preserve config_options (mode/model) across cancel — session/load doesn't
-    -- re-send them and they belong to the agent instance, not the session.
+    -- `session/load` does not re-send mode/model, so they must survive the cancel.
     local saved_config = self.config_options:snapshot()
 
     self:_cancel_session()
@@ -1096,7 +988,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     self._is_restoring_session = true
     self.status_animation:start("busy")
 
-    -- Write banner before loading so it appears at top of cleared buffer
+    -- Before loading, so it lands at the top of the cleared buffer.
     local agent_info = self.agent.agent_info
     local welcome_message = self.message_writer:generate_welcome_header(
         self.agent.provider_config.name,
@@ -1112,21 +1004,10 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     local cwd = vim.fn.getcwd()
 
     self.agent:load_session(session_id, cwd, {}, handlers, function(err)
-        -- vim.schedule to run AFTER deferred session update notifications
-        -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
+        -- Scheduled to run AFTER the session updates `__with_subscriber` deferred.
         vim.schedule(function()
-            -- Destroyed while `session/load` was in flight, mirroring the
-            -- `session/new` guard above. Cancelling is what drops the subscriber
-            -- `ACPClient:load_session` registered BEFORE the request; without it
-            -- the entry pins this dead manager's handlers for the process
-            -- lifetime, and the provider session is never cancelled because
-            -- `_cancel_session` ran while `session_id` was still nil.
-            -- On error there is no loaded session to cancel, `load_session`
-            -- already dropped the subscriber, and the notify would surface a
-            -- failure for a session the user has already closed.
-            -- Regression: session_manager.test.lua::"cancels an ACP session
-            -- loaded after destroy" and ::"stays silent when a failed load lands
-            -- after destroy".
+            -- Cancelling also drops the subscriber `load_session` registered before
+            -- the request, which would otherwise pin this dead manager's handlers.
             if self._destroyed then
                 if not err then
                     self.agent:cancel_session(session_id)
@@ -1138,8 +1019,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             self._is_restoring_session = false
             self.status_animation:stop()
 
-            -- Guard: if a new session was created while the load was in flight,
-            -- don't stomp the new session's state
+            -- A new session was created while the load was in flight.
             if self.session_id ~= nil then
                 return
             end
@@ -1165,7 +1045,6 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             self.chat_history.timestamp = os.time()
             self._is_first_message = false
 
-            -- Re-render mode in chat header from preserved config_options
             local current_mode = self.config_options:get_mode_id()
             if current_mode then
                 self:_set_mode_to_chat_header(current_mode)

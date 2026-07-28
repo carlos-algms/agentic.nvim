@@ -12,7 +12,6 @@ local Agentic = {}
 --- @class agentic.DestroySessionOpts
 --- @field session? integer Session key to destroy; defaults to the resolved session
 
---- Shows a resolved session through the eviction choke point.
 --- @param session agentic.SessionManager
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 local function show_session(session, opts)
@@ -24,7 +23,6 @@ local function show_session(session, opts)
 end
 
 --- Opens the chat widget in the current tab page
---- Safe to call multiple times
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.open(opts)
     SessionRegistry.resolve_or_create(function(session)
@@ -36,15 +34,7 @@ function Agentic.open(opts)
     end)
 end
 
---- Hides the session visible in the current tab page, and nothing else
---- Safe to call multiple times
---- Never routed through `SessionRegistry.current` or `resolve_or_create`: both
---- fall back to `_most_recent`, so closing from a tab with no widget would hide
---- the widget the user is looking at in ANOTHER tab, and `resolve_or_create`
---- additionally creates a session on an empty registry — spawning an ACP
---- subprocess just to hide it.
---- Regression: test_multi_session.lua::"closes only the session visible in the
---- current tab" and ::"creates no session when closing with none open".
+--- Hides the session visible in the current tab page
 function Agentic.close()
     local session = SessionRegistry.visible_here()
 
@@ -54,14 +44,9 @@ function Agentic.close()
 end
 
 --- Toggles the chat widget in the current tab page
---- Safe to call multiple times
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.toggle(opts)
     SessionRegistry.resolve_or_create(function(session)
-        -- Visible in THIS tab, not `is_open`: a session visible in another tab is
-        -- something the user wants brought here, not closed remotely.
-        -- Regression: test_multi_session.lua::"toggles a session into the current
-        -- tab, not out of another".
         if
             session.widget:visible_tab()
             == vim.api.nvim_get_current_tabpage()
@@ -77,15 +62,7 @@ function Agentic.toggle(opts)
     end)
 end
 
---- Rotates the layout of the session visible in the current tab page, and nothing
---- else
---- Tab-local for the same reason as `Agentic.close`: `rotate_layout` is a
---- `hide` + `show` pair, and `resolve_or_create` falls back to `_most_recent`, so
---- rotating from a tab with no widget silently relocated the widget the user was
---- watching in ANOTHER tab into this one — and created a session on an empty
---- registry to do it.
---- Regression: test_multi_session.lua::"rotates nothing from a tab with no
---- visible session".
+--- Rotates the layout of the session visible in the current tab page
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
 function Agentic.rotate_layout(layouts)
     local session = SessionRegistry.visible_here()
@@ -205,12 +182,6 @@ function Agentic.destroy_session(opts)
         return
     end
 
-    -- `current`, never `resolve_or_create`: a non-empty registry does not prove
-    -- `current()` resolves, so guarding on `next(sessions)` still lets a stale
-    -- `_most_recent` spawn a provider subprocess only to kill the session it just
-    -- made, leaving every session the user owns alive.
-    -- Regression: agentic.test.lua::"destroys nothing, and creates nothing,
-    -- without a start point".
     local session = SessionRegistry.current()
     local session_key = session and session.session_key
 
@@ -229,7 +200,6 @@ function Agentic.select_session()
         --- @param item agentic.SessionManager
         format_item = function(item)
             local title = item.chat_history.title
-            -- `provider_config.name` is optional, so the key is the last resort
             local label = title ~= "" and title
                 or item.agent.provider_config.name
                 or ("Session " .. tostring(item.session_key))
@@ -249,12 +219,7 @@ function Agentic.select_session()
     end)
 end
 
---- Cycles to the neighbouring session by ASCENDING KEY, never by `list()` order:
---- `list()` puts `_most_recent` first and `show_session` rewrites `_most_recent`,
---- so cycling it would reorder the sequence under its own feet and `prev` would
---- stop being the inverse of `next`.
---- Regression: test_multi_session.lua::"returns to the starting session after
---- next then prev".
+--- Ascending key, never `list()` order, which `show_session` reorders as we cycle.
 --- @param step 1|-1
 local function cycle_session(step)
     --- @type integer[]
@@ -270,8 +235,6 @@ local function cycle_session(step)
 
     table.sort(keys)
 
-    -- `current`, never `resolve_or_create`: cycling must not CREATE the session it cycles
-    -- away from when `_most_recent` is unregistered and nothing is visible here.
     local current = SessionRegistry.current()
     local current_key = current and current.session_key
 
@@ -285,14 +248,10 @@ local function cycle_session(step)
         end
     end
 
-    -- No starting point is not "start at the first key": defaulting to 1 would
-    -- silently show `keys[2]`, a session the user never asked for.
     if not index then
         return
     end
 
-    -- Lua's `%` is non-negative for a positive divisor, so `step = -1` wraps to
-    -- the last key without a special case.
     SessionRegistry.show_session(keys[(index - 1 + step) % #keys + 1])
 end
 
@@ -328,7 +287,6 @@ local function apply_provider_switch(provider_name)
         "apply_provider_switch: starting for provider " .. provider_name
     )
     SessionRegistry.resolve_or_create(function(session)
-        -- Guard: reject if session is being created or generating
         if not session.session_id then
             Logger.notify(
                 "Cannot switch provider: session is initializing. Please wait.",
@@ -345,7 +303,6 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        -- Save state before destroying
         Logger.debug(
             "apply_provider_switch: saving "
                 .. tostring(#session.chat_history.messages)
@@ -357,15 +314,11 @@ local function apply_provider_switch(provider_name)
         local widget_was_open = session.widget:is_open()
         local session_key = session.session_key
         -- Captured BEFORE the destroy, while the old widget still has windows.
-        -- `show_layout` splits from the window current at call time
-        -- (`widget_layout.lua`), so this anchor is the only way to put the new
-        -- widget back in a tab the cursor is not in. `nvim_win_call` restores the
-        -- previous current window, so the cursor never follows.
         local anchor_win = widget_was_open
                 and session.widget:find_first_non_widget_window()
             or nil
 
-        -- Validate new provider exists BEFORE destroying old session
+        -- Validated BEFORE destroying the old session.
         local ok, new_agent = pcall(
             AgentInstance.get_instance,
             provider_name,
@@ -379,16 +332,13 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        -- Destroy old session
         Logger.debug("apply_provider_switch: destroying old session")
         if session_key then
             SessionRegistry.destroy(session_key)
         end
 
-        -- Update config for new session
         Config.provider = provider_name
 
-        -- Create new session via registry
         Logger.debug("apply_provider_switch: creating new session")
         local new_session = SessionRegistry.create()
         if not new_session then
@@ -405,7 +355,6 @@ local function apply_provider_switch(provider_name)
             "apply_provider_switch: new_session created, session_id="
                 .. tostring(new_session.session_id)
         )
-        -- Restore files and code selections immediately (don't wait for session ready)
         for _, file_path in ipairs(saved_files) do
             new_session.file_list:add(file_path)
         end
@@ -413,8 +362,7 @@ local function apply_provider_switch(provider_name)
             new_session.code_selection:add(selection)
         end
 
-        -- Register callback for when session is ready
-        -- This waits for: agent ready -> session created -> welcome banner written
+        -- Set here, not earlier: `new_session()` clears `history_to_send`.
         new_session:on_session_ready(function(ready_session)
             Logger.debug(
                 "Replaying "
@@ -422,18 +370,12 @@ local function apply_provider_switch(provider_name)
                     .. " messages after provider switch"
             )
 
-            -- Restore chat history and history_to_send for persistence
-            -- Must be set here (not before) because new_session() clears history_to_send
             ready_session.chat_history.messages = saved_messages
             ready_session.history_to_send = saved_messages
 
-            -- Replay messages visually in the chat buffer (after welcome header is written)
             ready_session.message_writer:replay_history_messages(saved_messages)
         end)
 
-        -- Open widget immediately if it was open before, in the tab the old one
-        -- occupied. `show_session` is the choke point: the new session has a new
-        -- key, and it is what repoints `_most_recent` at it.
         local new_key = new_session.session_key
 
         if not new_key then
@@ -441,48 +383,30 @@ local function apply_provider_switch(provider_name)
         end
 
         if not widget_was_open then
-            -- Nothing to show, but the old key is gone: without this
-            -- `_most_recent` stays nil and the next `Agentic.open` creates a THIRD
-            -- session, leaving the replayed history reachable only via the picker.
-            -- Regression: agentic.test.lua::"reuses the switched session on the
-            -- next open".
             SessionRegistry.set_most_recent(new_key)
             return
         end
 
-        --- @type integer|nil
-        local anchor_tab = nil
+        -- `anchor_win` re-tested for LuaLS, which cannot narrow it through a boolean.
+        local anchor_is_elsewhere = anchor_win ~= nil
+            and vim.api.nvim_win_is_valid(anchor_win)
+            and vim.api.nvim_win_get_tabpage(anchor_win)
+                ~= vim.api.nvim_get_current_tabpage()
 
-        if anchor_win and vim.api.nvim_win_is_valid(anchor_win) then
-            anchor_tab = vim.api.nvim_win_get_tabpage(anchor_win)
-        end
-
-        if
-            anchor_win
-            and anchor_tab
-            and anchor_tab ~= vim.api.nvim_get_current_tabpage()
-        then
-            -- `focus_prompt = false` is required, not cosmetic: the focus hop is
-            -- scheduled inside `show_layout`, so it runs after `nvim_win_call`
-            -- has restored the window and would drag the cursor into another
-            -- tabpage.
-            -- Regression: agentic.test.lua::"rebuilds the widget in the
-            -- session's tab without moving the cursor".
-            vim.api.nvim_win_call(anchor_win, function()
-                SessionRegistry.show_session(new_key, {
-                    focus_prompt = false,
-                })
-            end)
-        else
-            -- Same tab, or no surviving anchor: the current tab is where it goes,
-            -- focused exactly as before.
+        if not anchor_win or not anchor_is_elsewhere then
             SessionRegistry.show_session(new_key)
+            return
         end
+
+        -- `focus_prompt = false`: the focus hop is scheduled inside `show_layout` and
+        -- would drag the cursor into the anchor's tabpage.
+        vim.api.nvim_win_call(anchor_win, function()
+            SessionRegistry.show_session(new_key, { focus_prompt = false })
+        end)
     end)
 end
 
---- Switch to a different provider while preserving chat UI and history.
---- If opts.provider is set, switches directly. Otherwise shows a picker.
+--- Switch provider while preserving chat UI and history. No `opts.provider` shows a picker.
 --- @param opts agentic.ui.SwitchProviderOpts|nil
 function Agentic.switch_provider(opts)
     if opts and opts.provider then
@@ -497,9 +421,7 @@ function Agentic.switch_provider(opts)
     end)
 end
 
---- Stops the agent's current generation or tool execution
---- The session remains active and ready for the next prompt
---- Safe to call multiple times or when no generation is active
+--- Stops the agent's current generation or tool execution, keeping the session alive
 function Agentic.stop_generation()
     SessionRegistry.resolve_or_create(function(session)
         if session.is_generating and session.session_id then
@@ -526,17 +448,16 @@ function Agentic.restore_session_by_id(session_id)
     end)
 end
 
---- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
+--- Guards signal handlers and autocmds against a repeated `setup` call
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
     clear = true,
 })
 
---- Merges the current user configuration with the default configuration
---- This method should be safe to be called multiple times
+--- Merges the user configuration with the defaults. Safe to call multiple times.
 --- @param opts agentic.PartialUserConfig
 function Agentic.setup(opts)
-    -- make sure invalid user config doesn't crash setup and leave things half-initialized
+    -- An invalid user config must not leave setup half-initialized.
     local ok, err = pcall(function()
         Object.merge_config(Config, opts or {})
     end)
@@ -559,9 +480,7 @@ function Agentic.setup(opts)
 
     Theme.setup()
 
-    -- Force-reload buffers when files change on disk (e.g., agent edits files directly).
-    -- Suppresses the "file changed" prompt so modified buffers reload silently,
-    -- matching Cursor/Zed behavior where agent changes always win.
+    -- Agent edits always win: reload silently instead of prompting, as Cursor/Zed do.
     vim.api.nvim_create_autocmd("FileChangedShell", {
         group = cleanup_group,
         pattern = "*",
@@ -581,10 +500,7 @@ function Agentic.setup(opts)
     if Config.image_paste.enabled then
         local WidgetRegistry = require("agentic.ui.widget_registry")
 
-        --- Resolved from the buffer under the cursor, never through
-        --- `SessionRegistry.resolve_or_create`: this runs on EVERY `vim.paste`,
-        --- and it creates a session when none is visible — a paste in an
-        --- ordinary buffer would spawn an ACP subprocess.
+        --- Never `resolve_or_create`: this runs on EVERY `vim.paste`.
         --- @return agentic.SessionManager|nil
         local function get_current_session()
             local widget = WidgetRegistry.get(vim.api.nvim_get_current_buf())
@@ -620,20 +536,15 @@ function Agentic.setup(opts)
         })
     end
 
-    -- Setup signal handlers for graceful shutdown
-    local sigterm_handler = vim.uv.new_signal()
-    if sigterm_handler then
-        vim.uv.signal_start(sigterm_handler, "sigterm", function(_sigName)
-            AgentInstance:cleanup_all()
-        end)
-    end
+    -- sigint may not trigger in raw terminal mode.
+    for _, signal in ipairs({ "sigterm", "sigint" }) do
+        local handler = vim.uv.new_signal()
 
-    -- SIGINT handler (Ctrl-C) - note: may not trigger in raw terminal mode
-    local sigint_handler = vim.uv.new_signal()
-    if sigint_handler then
-        vim.uv.signal_start(sigint_handler, "sigint", function(_sigName)
-            AgentInstance:cleanup_all()
-        end)
+        if handler then
+            vim.uv.signal_start(handler, signal, function(_sigName)
+                AgentInstance:cleanup_all()
+            end)
+        end
     end
 end
 

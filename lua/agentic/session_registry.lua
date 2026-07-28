@@ -4,10 +4,10 @@ local DefaultConfig = require("agentic.config_default")
 local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.SessionRegistry
---- @field sessions table<integer, agentic.SessionManager|nil> Map: session_key -> SessionManager instance
+--- @field sessions table<integer, agentic.SessionManager|nil> Keyed by session key
 --- @field _next_id integer Last assigned session key
---- @field _most_recent? agentic.SessionManager Most recently visible session
---- @field _previous_most_recent? agentic.SessionManager The one it displaced
+--- @field _most_recent? agentic.SessionManager
+--- @field _previous_most_recent? agentic.SessionManager The one `_most_recent` displaced
 local SessionRegistry = {
     sessions = {},
     _next_id = 0,
@@ -15,8 +15,7 @@ local SessionRegistry = {
     _previous_most_recent = nil,
 }
 
---- Returns `session` only while it is still registered. A destroyed session
---- leaves the recency cursors pointing at a session that no longer exists.
+--- The recency cursors can outlive a destroyed session.
 --- @param session agentic.SessionManager|nil
 --- @return agentic.SessionManager|nil
 local function registered(session)
@@ -29,14 +28,6 @@ local function registered(session)
     return nil
 end
 
---- The single writer for both recency cursors. `_previous_most_recent` is what
---- makes `list` a real recency order instead of "the incoming session, then
---- ascending key": every path that shows a session repoints `_most_recent` at it
---- BEFORE its widget's first `show`, so the incoming session is always `list[1]`
---- with no size of its own, and without the second cursor `_inherited_size` falls
---- through to the LOWEST-KEYED donor rather than the one the user last used.
---- Regression: test_multi_session.lua::"inherits the width of the session shown
---- before it".
 --- @param session agentic.SessionManager|nil
 local function remember_most_recent(session)
     if session == SessionRegistry._most_recent then
@@ -47,7 +38,6 @@ local function remember_most_recent(session)
     SessionRegistry._most_recent = session
 end
 
---- Creates a new session and registers it under a fresh session key
 --- @return agentic.SessionManager|nil
 function SessionRegistry.create()
     if not ACPHealth.check_configured_provider() then
@@ -57,9 +47,8 @@ function SessionRegistry.create()
 
     local SessionManager = require("agentic.session_manager")
 
-    -- The key is assigned only after `new` returns: the widget's first `show`
-    -- reads the previous session's stored size, so `_most_recent` and the
-    -- registry must still describe the old world while `new` runs.
+    -- Key assigned only after `new` returns: the widget's first `show` reads the
+    -- previous session's stored size from the registry.
     local session = SessionManager:new() --[[@as agentic.SessionManager|nil]]
 
     if not session then
@@ -69,14 +58,11 @@ function SessionRegistry.create()
     SessionRegistry._next_id = SessionRegistry._next_id + 1
     session.session_key = SessionRegistry._next_id
     SessionRegistry.sessions[session.session_key] = session
-    -- Published onto the widget so buffer-scoped code reaches the key through
-    -- `WidgetRegistry.get(bufnr)`, without inverting the dependency direction.
     session.widget.session_key = session.session_key
 
     return session
 end
 
---- The session whose widget is visible in the current tab, if any.
 --- @return agentic.SessionManager|nil
 function SessionRegistry.visible_here()
     local current_tab = vim.api.nvim_get_current_tabpage()
@@ -90,40 +76,21 @@ function SessionRegistry.visible_here()
     return nil
 end
 
---- The session the user is acting on WITHOUT creating one: the session visible in
---- the current tab, else the most recently visible one while it is still
---- registered. Callers that only navigate between existing sessions must use this
---- instead of `resolve_or_create`: that one answers a miss by creating a session,
---- so cycling with a stale `_most_recent` would spawn a provider subprocess just
---- to pick a starting point.
---- Regression: agentic.test.lua::"cycles nowhere, and creates nothing, without a
---- start point" and ::"destroys nothing, and creates nothing, without a start
---- point".
+--- Visible here, else most recently visible. Never creates.
 --- @return agentic.SessionManager|nil
 function SessionRegistry.current()
     return SessionRegistry.visible_here()
         or registered(SessionRegistry._most_recent)
 end
 
---- Resolves the session the user is acting on: the one visible in the current
---- tab, else the most recently visible one, else a brand new session.
---- Named for the side effect: a miss CREATES a session, and with it a provider
---- subprocess. Callers that only navigate must use `current` instead.
+--- `current`, else a NEW session plus a provider subprocess.
 --- @param callback fun(session: agentic.SessionManager)|nil
 --- @return agentic.SessionManager|nil
 function SessionRegistry.resolve_or_create(callback)
     local instance = SessionRegistry.current() or SessionRegistry.create()
 
-    -- Resolve-only entry points (`stop_generation`, `restore_session`,
-    -- `restore_session_by_id`) never reach `show_session`, so nothing else would
-    -- publish the resolved session. Without this write `_most_recent` stays nil
-    -- and every call creates another session — and another ACP subprocess.
-    -- Measured: three `stop_generation` calls, three sessions.
-    -- Written HERE and not in `create`: `create` must leave `_most_recent`
-    -- pointing at the PREVIOUS session while the new widget is built, which is
-    -- what seeds its size.
-    -- Regression: session_registry.test.lua::"reuses the session it created on
-    -- the next resolve".
+    -- Not done in `create`, which must leave `_most_recent` on the previous
+    -- session while the new widget reads its size.
     if instance then
         remember_most_recent(instance)
     end
@@ -139,7 +106,6 @@ function SessionRegistry.resolve_or_create(callback)
     return instance
 end
 
---- Destroys the session stored under the given key, if any
 --- @param session_key integer
 function SessionRegistry.destroy(session_key)
     local session = SessionRegistry.sessions[session_key]
@@ -151,20 +117,10 @@ function SessionRegistry.destroy(session_key)
     SessionRegistry.sessions[session_key] = nil
 
     if SessionRegistry._most_recent == session then
-        -- The key is already gone, so `list` skips the destroyed session and
-        -- hands back the next most recent one.
         remember_most_recent(SessionRegistry.list()[1])
     end
 
-    -- AFTER the repoint, never before: `remember_most_recent` demotes the
-    -- outgoing `_most_recent` — the session being destroyed — into
-    -- `_previous_most_recent`, so a pre-clear would be overwritten by the branch
-    -- above. `list` only filters the corpse out of the ORDER; the cursor keeps a
-    -- hard reference, pinning the chat history, widget and diff coordinator for
-    -- the rest of the Neovim session.
-    -- Regression: session_registry.test.lua::"clears _previous_most_recent when
-    -- the last session is destroyed" and ::"clears _previous_most_recent when
-    -- that session is destroyed".
+    -- AFTER the repoint above, which can demote `session` into this cursor.
     if SessionRegistry._previous_most_recent == session then
         SessionRegistry._previous_most_recent = nil
     end
@@ -177,9 +133,7 @@ function SessionRegistry.destroy(session_key)
     end
 end
 
---- Lists every registered session in recency order: `_most_recent`, then the
---- session it displaced, then the rest by ascending session key. Unregistered
---- cursors are skipped, and no session appears twice.
+--- Recency order: `_most_recent`, the one it displaced, then ascending key.
 --- @return agentic.SessionManager[] sessions
 function SessionRegistry.list()
     --- @type integer[]
@@ -214,12 +168,9 @@ function SessionRegistry.list()
     return sessions
 end
 
---- Shows the session stored under `session_key`, evicting whatever else stands in
---- the way. The single choke point for every switching path: at most one visible
---- widget per tab, and at most one tab per session.
---- Hiding always runs before showing, and every caller inherits that ordering:
---- `ChatWidget:hide` is where the outgoing widget's size is captured, which is
---- what the incoming widget's first `show` reads.
+--- The only path that switches a session between tabpages (ADR 0008): at most one
+--- visible widget per tab, at most one tab per session.
+--- Hide runs before show: `hide` captures the outgoing size that `show` reads.
 --- @param session_key integer
 --- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
 function SessionRegistry.show_session(session_key, opts)
@@ -236,8 +187,7 @@ function SessionRegistry.show_session(session_key, opts)
             session ~= target
             and session.widget:visible_tab() == current_tab
         then
-            -- `keep_insert`: a show follows in this same tick, and `stopinsert`
-            -- latches past it
+            -- keep_insert: a show follows this tick and `stopinsert` latches past it
             session.widget:hide(true)
         end
     end
@@ -252,13 +202,7 @@ function SessionRegistry.show_session(session_key, opts)
     target.widget:show(opts)
 end
 
---- Points `_most_recent` at a registered session WITHOUT showing it.
---- `show_session` is the choke point for everything visible; this is the one path
---- that has nothing to show: the provider switch replaces a session whose widget
---- was already closed, and leaving `_most_recent` nil makes the next
---- `resolve_or_create` create yet another session instead of returning the
---- replacement.
---- Regression: agentic.test.lua::"reuses the switched session on the next open".
+--- Points `_most_recent` at a session WITHOUT showing it.
 --- @param session_key integer
 function SessionRegistry.set_most_recent(session_key)
     local session = SessionRegistry.sessions[session_key]
@@ -268,7 +212,7 @@ function SessionRegistry.set_most_recent(session_key)
     end
 end
 
---- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) Callback that will be called with the selected provider name, if any
+--- @param on_selected fun(provider_name: agentic.UserConfig.ProviderName|nil) nil when cancelled
 function SessionRegistry.select_provider(on_selected)
     local available_providers = ACPHealth.get_default_provider_names()
 

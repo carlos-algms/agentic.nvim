@@ -3,26 +3,20 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
---- Hunk navigation module for diff preview
---- Manages navigation state, keymaps, and movement between diff hunks
 --- @class agentic.ui.HunkNavigation
 local M = {}
 
---- Namespace for diff preview extmarks
 M.NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 local NS_DIFF = M.NS_DIFF
 
---- Per-buffer state for hunk navigation
---- needed because `vim.b` doesn't support saving callbacks, as it will serialize, to comply with vimscript
+--- Keyed by bufnr rather than stored in `vim.b`, which serializes and so cannot hold callbacks.
 --- @class agentic.ui.HunkNavigation.State
---- @field saved_keymaps { next?: table, prev?: table } Saved keymaps for restoration
---- @field anchors_cache integer[]|nil Cached hunk anchor positions (0-indexed line numbers)
+--- @field saved_keymaps { next?: table, prev?: table }
+--- @field anchors_cache integer[]|nil 0-indexed line numbers
 
---- Module-level state storage (per-buffer)
 --- @type table<number, agentic.ui.HunkNavigation.State>
 local buffer_state = {}
 
---- Get or initialize state for buffer
 --- @param bufnr number
 --- @return agentic.ui.HunkNavigation.State
 local function get_state(bufnr)
@@ -35,9 +29,7 @@ local function get_state(bufnr)
     return buffer_state[bufnr]
 end
 
---- Get all hunk positions (first deleted line per hunk)
---- Falls back to virtual line anchor for pure insertions.
---- Groups consecutive deleted lines (only returns first line of each group).
+--- First deleted line per hunk, falling back to the virtual-line anchor for pure insertions.
 --- @param bufnr number
 --- @return integer[] positions 0-indexed line numbers where hunks begin
 function M._get_hunk_anchors(bufnr)
@@ -103,11 +95,10 @@ function M._get_hunk_anchors(bufnr)
     return positions
 end
 
---- Find next/previous hunk position relative to buffer's cursor position
 --- @param bufnr number
 --- @param direction "next"|"prev"
 --- @param preferred_winid integer|nil Window the diff was painted in
---- @return number|nil target_line 1-indexed line number
+--- @return number|nil target_line 1-indexed
 local function find_hunk(bufnr, direction, preferred_winid)
     local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
@@ -120,7 +111,7 @@ local function find_hunk(bufnr, direction, preferred_winid)
     end
 
     local cursor = vim.api.nvim_win_get_cursor(winid)
-    local current_line = cursor[1] - 1 -- 0-indexed
+    local current_line = cursor[1] - 1
 
     local current_index = -1
     local is_exactly_on_anchor = false
@@ -148,14 +139,13 @@ local function find_hunk(bufnr, direction, preferred_winid)
         end
     end
 
-    return anchors[new_index + 1] + 1 -- 1-indexed
+    return anchors[new_index + 1] + 1
 end
 
---- Calculate scroll command based on hunk size and window height
 --- @param bufnr number
 --- @param winid number
---- @param anchor_line number 0-indexed anchor line
---- @return string scroll_cmd "zt", "zz", or empty string if centering disabled or no extmarks
+--- @param anchor_line number 0-indexed
+--- @return string scroll_cmd "zt", "zz", or "" when centering is disabled
 function M.get_scroll_cmd(bufnr, winid, anchor_line)
     if not Config.diff_preview.center_on_navigate_hunks then
         return ""
@@ -182,51 +172,42 @@ function M.get_scroll_cmd(bufnr, winid, anchor_line)
     return hunk_height > (win_height / 2) and "zt" or "zz"
 end
 
---- Navigate to hunk in specified direction
 --- @param bufnr number
 --- @param direction "next"|"prev"
---- @param diff_state agentic.ui.DiffState|nil Owning session's diff state; nil means no split diff
+--- @param diff_state agentic.ui.DiffState|nil nil means no split diff
 local function navigate_hunk(bufnr, direction, diff_state)
-    -- Prefers the window the diff was painted in, so navigating from a widget
-    -- keymap moves the session's own view even when the file is open elsewhere.
-    -- `preview_winid` covers inline mode; split mode records its window on the
-    -- split state instead, and resolving to a window that is NOT in diff mode
-    -- makes `]c` raise E99 and report "no more hunks" while the real diff sits
-    -- untouched in another tab.
-    local preferred_winid = diff_state
+    local split_state = diff_state and diff_state.split_state
+
+    -- Any other window is not in diff mode, so `]c` raises E99 and reports
+    -- "no more hunks" while the real diff sits in another tab.
+    local painted_winid = diff_state
         and (
             diff_state.preview_winid
-            or (
-                diff_state.split_state and diff_state.split_state.original_winid
-            )
+            or split_state and split_state.original_winid
         )
-    local target_winid = BufHelpers.find_visible_win(bufnr, preferred_winid)
+
+    local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
     if not target_winid then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
     end
 
-    if Config.diff_preview.layout == "split" then
-        local split_state = diff_state and diff_state.split_state
+    if Config.diff_preview.layout == "split" and split_state then
+        local diff_cmd = direction == "next" and "]c" or "[c"
+        local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"
+            or ""
 
-        if split_state then
-            local diff_cmd = direction == "next" and "]c" or "[c"
-            local center_cmd = Config.diff_preview.center_on_navigate_hunks
-                    and "zz"
-                or ""
+        local nav_ok = pcall(vim.api.nvim_win_call, target_winid, function()
+            vim.cmd("normal! " .. diff_cmd .. center_cmd)
+        end)
 
-            local nav_ok = pcall(vim.api.nvim_win_call, target_winid, function()
-                vim.cmd("normal! " .. diff_cmd .. center_cmd)
-            end)
-
-            if not nav_ok then
-                Logger.notify(
-                    "No more hunks in this direction",
-                    vim.log.levels.INFO
-                )
-            end
-            return
+        if not nav_ok then
+            Logger.notify(
+                "No more hunks in this direction",
+                vim.log.levels.INFO
+            )
         end
+        return
     end
 
     local target_line = find_hunk(bufnr, direction, target_winid)
@@ -243,7 +224,7 @@ local function navigate_hunk(bufnr, direction, diff_state)
     end)
 end
 
---- Save existing keymap for restoration
+--- Buffer-local keymaps only; `maparg`'s `buffer` field is a 0/1 flag, not a buffer number.
 --- @param bufnr number
 --- @param key string
 --- @return table|nil map_info
@@ -253,33 +234,27 @@ local function save_keymap(bufnr, key)
         map_info = vim.fn.maparg(key, "n", false, true)
     end)
 
-    if map_info and map_info.lhs then
-        -- vim.fn.maparg() returns buffer=1 as a flag indicating buffer-local mapping
-        -- (not the actual buffer number). We only save buffer-local keymaps.
-        if map_info.buffer == 1 then
-            return map_info
-        end
+    if map_info and map_info.lhs and map_info.buffer == 1 then
+        return map_info
     end
+
     return nil
 end
 
---- Navigate to next hunk
 --- @param bufnr number
 --- @param diff_state agentic.ui.DiffState|nil
 function M.navigate_next(bufnr, diff_state)
     navigate_hunk(bufnr, "next", diff_state)
 end
 
---- Navigate to previous hunk
 --- @param bufnr number
 --- @param diff_state agentic.ui.DiffState|nil
 function M.navigate_prev(bufnr, diff_state)
     navigate_hunk(bufnr, "prev", diff_state)
 end
 
---- Setup hunk navigation keymaps for buffer
 --- @param bufnr number
---- @param diff_state agentic.ui.DiffState|nil Captured by the keymaps so split navigation resolves the owning session's state
+--- @param diff_state agentic.ui.DiffState|nil Captured by the keymaps
 function M.setup_keymaps(bufnr, diff_state)
     local keymaps = Config.keymaps.diff_preview
     local state = get_state(bufnr)
@@ -295,7 +270,8 @@ function M.setup_keymaps(bufnr, diff_state)
     end, { desc = "Go to previous hunk - Agentic DiffPreview" })
 end
 
---- Restore saved keymaps for buffer
+local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }
+
 --- @param bufnr number
 function M.restore_keymaps(bufnr)
     local keymaps = Config.keymaps.diff_preview
@@ -303,32 +279,26 @@ function M.restore_keymaps(bufnr)
     pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.prev_hunk)
 
     local state = buffer_state[bufnr]
-    if state and state.saved_keymaps then
-        for _, saved_map in pairs(state.saved_keymaps) do
-            if saved_map and saved_map.lhs then
-                local opts = { buffer = bufnr }
-                if saved_map.noremap == 1 then
-                    opts.noremap = true
-                end
-                if saved_map.silent == 1 then
-                    opts.silent = true
-                end
-                if saved_map.expr == 1 then
-                    opts.expr = true
-                end
-                if saved_map.nowait == 1 then
-                    opts.nowait = true
-                end
+    local saved_keymaps = state and state.saved_keymaps or {}
 
-                pcall(
-                    BufHelpers.keymap_set,
-                    bufnr,
-                    "n",
-                    saved_map.lhs,
-                    saved_map.callback or saved_map.rhs,
-                    opts
-                )
+    for _, saved_map in pairs(saved_keymaps) do
+        if saved_map.lhs then
+            --- @type vim.keymap.set.Opts
+            local opts = {}
+            for _, flag in ipairs(RESTORED_KEYMAP_FLAGS) do
+                if saved_map[flag] == 1 then
+                    opts[flag] = true
+                end
             end
+
+            pcall(
+                BufHelpers.keymap_set,
+                bufnr,
+                "n",
+                saved_map.lhs,
+                saved_map.callback or saved_map.rhs,
+                opts
+            )
         end
     end
 

@@ -15,21 +15,14 @@
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
---- User config headers - each panel can have either config parts or a custom render function
---- Customize window headers for each panel in the chat widget.
---- Each header can be either:
---- 1. A table with title and suffix fields
---- 2. A function that receives header parts and returns a custom header string
----
---- The context field is managed internally and shows dynamic info like counts.
----
+--- Per-panel window header: either `{ title, suffix }` or a render function.
 --- @alias agentic.UserConfig.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts|agentic.UserConfig.HeaderRenderFn|nil>
 
 --- Data passed to the on_create_session_response hook
 --- @class agentic.UserConfig.CreateSessionResponseData
 --- @field session_id? string Convenience field; equals response.sessionId when response is non-nil, nil if creation failed
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field response? agentic.acp.SessionCreationResponse Raw ACP create-session response, nil on error
 --- @field err? agentic.acp.ACPError Error details if session creation failed
 
@@ -37,38 +30,38 @@
 --- @class agentic.UserConfig.PromptSubmitData
 --- @field prompt string The user's prompt text
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 
 --- Data passed to the on_response_complete hook
 --- @class agentic.UserConfig.ResponseCompleteData
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field success boolean Whether response completed without error
 --- @field error? table Error details if failed
----
+
 --- Data passed to the on_session_update hook
 --- @class agentic.UserConfig.SessionUpdateData
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field update agentic.acp.SessionUpdateMessage ACP session update details.
 
 --- Data passed to the on_file_edit hook
 --- @class agentic.UserConfig.FileEditData
 --- @field filepath string Absolute path to the edited file
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field bufnr? number Buffer number if the file is loaded in a buffer
 
 --- Data passed to the on_request_permission hook
 --- @class agentic.UserConfig.RequestPermissionData
 --- @field request agentic.acp.RequestPermission The permission request object
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable registry key, identical for the session's whole life. Optional only because `SessionManager.session_key` is: the registry assigns it synchronously right after construction, so every session a hook can observe carries one
---- @field tab_page_id? number Where the session is visible right now; nil while it runs in the background. DEPRECATED as an identity: use session_key
+--- @field session_key? integer Stable for the session's whole life
+--- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 
 --- @class agentic.UserConfig.KeymapEntry
 --- @field [1] string The key binding
@@ -93,8 +86,7 @@
 --- @field diff_preview table<string, string>
 --- @field permission agentic.UserConfig.Keymaps.Permission
 
---- Window options passed to nvim_set_option_value
---- Overrides default options (wrap, linebreak, winfixheight)
+--- Window-local options, overriding the defaults (wrap, linebreak, winfixheight)
 --- @alias agentic.UserConfig.WinOpts table<string, any>
 
 --- @alias agentic.UserConfig.BufferNameFn fun(header: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState|nil): string|nil
@@ -183,9 +175,10 @@
 --- @class agentic.UserConfig.FilePicker
 --- @field enabled boolean
 --- @field auto_trigger boolean When false, disables automatic completion triggering on @
---- Slash command completion configuration
+
 --- @class agentic.UserConfig.SlashCommands
 --- @field auto_trigger boolean When false, disables automatic completion triggering on /
+
 --- @class agentic.UserConfig.ImagePaste
 --- @field enabled boolean Enable image drag-and-drop to add images to referenced files
 
@@ -233,7 +226,6 @@
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
 
---- Nested partial types for user config overrides
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
 --- @class (partial) agentic.PartialUserConfig.Windows.Input: agentic.UserConfig.Windows.Input
 --- @class (partial) agentic.PartialUserConfig.Windows.Code: agentic.UserConfig.Windows.Code
@@ -257,7 +249,6 @@
 --- @class (partial) agentic.PartialUserConfig.Settings: agentic.UserConfig.Settings
 --- @class (partial) agentic.PartialUserConfig.ProviderSwitcher: agentic.UserConfig.ProviderSwitcher
 
---- Windows partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Windows: agentic.UserConfig.Windows
 --- @field chat? agentic.PartialUserConfig.Windows.Chat
 --- @field input? agentic.PartialUserConfig.Windows.Input
@@ -266,16 +257,12 @@
 --- @field diagnostics? agentic.PartialUserConfig.Windows.Diagnostics
 --- @field todos? agentic.PartialUserConfig.Windows.Todos
 
---- Folding partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
 --- @field tool_calls? agentic.PartialUserConfig.Folding.ToolCalls
 
---- Tool calls partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.ToolCalls: agentic.UserConfig.ToolCalls
 --- @field title? agentic.PartialUserConfig.ToolCalls.Title
 
---- Top-level partial config -- all UserConfig fields become optional
---- Nested fields override to use partial variants
 --- @class (partial) agentic.PartialUserConfig: agentic.UserConfig
 --- @field windows? agentic.PartialUserConfig.Windows
 --- @field keymaps? agentic.PartialUserConfig.Keymaps

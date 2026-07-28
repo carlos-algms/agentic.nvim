@@ -9,51 +9,45 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"|"diagnostics"
 
---- Runtime header parts with dynamic context
 --- @class agentic.ui.ChatWidget.HeaderParts
---- @field title string Main header text
---- @field context? string Dynamic info (managed internally)
---- @field suffix? string Context help text
+--- @field title string
+--- @field context? string
+--- @field suffix? string
 
 --- @alias agentic.ui.ChatWidget.BufNrs table<agentic.ui.ChatWidget.PanelNames, integer>
 --- @alias agentic.ui.ChatWidget.WinNrs table<agentic.ui.ChatWidget.PanelNames, integer|nil>
 
 --- @alias agentic.ui.ChatWidget.Headers table<agentic.ui.ChatWidget.PanelNames, agentic.ui.ChatWidget.HeaderParts>
 
---- Remembered chat window size. Only the axis the layout controls is stored per
---- `hide`, so both survive a `right -> bottom -> right` rotation.
+--- Only the axis the current layout controls is stored per `hide`, so both
+--- survive a `right -> bottom -> right` rotation.
 --- @class agentic.ui.ChatWidget.Size
 --- @field width? integer
 --- @field height? integer
 
---- Options for controlling widget display behavior
 --- @class agentic.ui.ChatWidget.AddToContextOpts
 --- @field focus_prompt? boolean
 
---- Options for adding file paths or buffers to the current Chat context
 --- @class agentic.ui.ChatWidget.AddFilesToContextOpts : agentic.ui.ChatWidget.AddToContextOpts
 --- @field files (string|integer)[]
 
---- Options for showing the widget
 --- @class agentic.ui.ChatWidget.ShowOpts : agentic.ui.ChatWidget.AddToContextOpts
---- @field auto_add_to_context? boolean Automatically add current selection or file to context when opening
+--- @field auto_add_to_context? boolean
 
---- A sidebar-style chat widget with multiple windows stacked vertically
---- The main chat window is the first, and contains the width, the below ones adapt to its size
 --- @class agentic.ui.ChatWidget
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field current_position agentic.UserConfig.Windows.Position
---- @field on_submit_input fun(prompt: string): boolean external callback to be called when user submits the input
---- @field _winclosed_augroup? integer WinClosed autocmd group ID
+--- @field on_submit_input fun(prompt: string): boolean
+--- @field _winclosed_augroup? integer
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
---- @field _size? agentic.ui.ChatWidget.Size Chat window size to reopen at, refreshed on every `hide`
---- @field session_key? integer Registry key, published by `SessionRegistry.create` so a bufnr can reach it
---- @field _header_refresh_scheduled boolean Guards coalesced header refresh
---- @field headers agentic.ui.ChatWidget.Headers Per-widget header parts, so header context follows the session between tabs. Returned by `WindowDecoration.get_headers_state`, whose callers mutate it in place
---- @field session_state? agentic.acp.SessionState Live session state forwarded to header/buffer_name callbacks; set by SessionManager
+--- @field _size? agentic.ui.ChatWidget.Size Size to reopen at, refreshed on every `hide`
+--- @field session_key? integer Registry key, published by `SessionRegistry.create`
+--- @field _header_refresh_scheduled boolean
+--- @field headers agentic.ui.ChatWidget.Headers Mutated in place by `WindowDecoration.get_headers_state` callers
+--- @field session_state? agentic.acp.SessionState Set by SessionManager
 local ChatWidget = {}
 ChatWidget.__index = ChatWidget
 
@@ -74,9 +68,6 @@ function ChatWidget:new(on_submit_input)
     return self
 end
 
---- The tabpage the widget is currently visible in, derived from its live chat
---- window. Nothing stores a tabpage.
---- The hidden chat float lives outside `win_nrs`, so it never counts as visible.
 --- @return integer|nil tabpage nil when the widget is not visible
 function ChatWidget:visible_tab()
     local winid = self.win_nrs.chat
@@ -97,7 +88,6 @@ function ChatWidget:is_open()
     return self:visible_tab() ~= nil
 end
 
---- Check if the cursor is currently in one of the widget's buffers
 --- @return boolean
 function ChatWidget:is_cursor_in_widget()
     if not self:is_open() then
@@ -140,22 +130,14 @@ function ChatWidget:show(opts)
     local visible_tab = self:visible_tab()
     local chat_winid = self.win_nrs.chat
 
-    -- Already on screen in another tab: render THERE. `show_layout` splits from
-    -- the window current at call time, so without this the widget is rebuilt in
-    -- whichever tab the cursor happens to be in and the old tab keeps a second
-    -- copy that `win_nrs` no longer tracks and nothing can ever close. Measured:
-    -- a background session's content callback produced 4 widget windows.
-    -- The prompt is never focused on this path: the focus hop is scheduled, so it
-    -- escapes `nvim_win_call` and would drag the cursor into another tabpage.
-    -- Moving a session BETWEEN tabs goes through `SessionRegistry.show_session`,
-    -- which hides it first, so it never reaches this branch.
-    -- Regression: test_multi_session.lua::"renders in its own tab when shown from
-    -- another one".
+    -- Render in the tab it already occupies; a bare `show` splits from the
+    -- current window and leaves an untracked second copy.
     if
         chat_winid
         and visible_tab
         and visible_tab ~= vim.api.nvim_get_current_tabpage()
     then
+        -- The focus hop is scheduled, so it escapes `nvim_win_call` and would drag the cursor across tabpages.
         params.focus_prompt = false
 
         vim.api.nvim_win_call(chat_winid, function()
@@ -168,18 +150,8 @@ function ChatWidget:show(opts)
     WidgetLayout.open(params)
 end
 
---- Re-renders the layout ONLY when the widget is already on screen somewhere.
---- Content callbacks (files, code, diagnostics, todos) fire for BACKGROUND
---- sessions too — a `plan` update needs no user action at all — and a bare `show`
---- would build a SECOND widget in the tab the user is looking at, bypassing
---- `SessionRegistry.show_session`. Measured: four widget windows in one tab, and
---- `Agentic.close` then hid whichever `pairs` reached first and stranded the
---- other.
---- Skipping loses nothing: the panel buffer is written before the callback runs,
---- and `show` opens every panel whose buffer is non-empty, so the content appears
---- when the user opens the session. Same gate as `DiffCoordinator:show`.
---- Regression: test_multi_session.lua::"keeps a hidden session hidden when its
---- file list changes".
+--- Content callbacks fire for background sessions too, where a bare `show`
+--- builds a second widget in the tab the user is looking at.
 function ChatWidget:show_if_visible()
     if not self:visible_tab() then
         return
@@ -188,24 +160,8 @@ function ChatWidget:show_if_visible()
     self:show({ focus_prompt = false })
 end
 
---- Size the widget starts from when it has never been shown: the remembered size
---- of the session the user was last on, so switching sessions does not resize the
---- sidebar. Copied, so two widgets never share one table.
---- Read at `show` time, not at construction: the outgoing widget's `hide` — which
---- refreshes its size — runs between the two.
---- The donor comes from `SessionRegistry.list`, and its recency order is what
---- makes this correct. THIS session is already `_most_recent` by the time `show`
---- runs — every path repoints the cursor before showing — so `list[1]` is the
---- sizeless session being seeded and the donor is `list[2]`, the one it displaced.
---- Ordering by ascending key instead handed over the LOWEST-KEYED donor, never the
---- session the user last used.
---- Regression: test_multi_session.lua::"inherits the width of the session shown
---- before it".
---- Only a session carrying THIS layout's axis counts: `_remember_size` stores one
---- axis per layout, so a `bottom`-only session holds a height and no width, and
---- stopping at it would drop back to the configured width.
---- Regression: chat_widget.test.lua::"skips a stored size that lacks the axis the
---- new layout needs".
+--- Size a never-shown widget starts from: the most recent session's, so
+--- switching sessions does not resize the sidebar.
 --- @return agentic.ui.ChatWidget.Size|nil
 function ChatWidget:_inherited_size()
     local SessionRegistry = require("agentic.session_registry")
@@ -254,9 +210,7 @@ function ChatWidget:rotate_layout(layouts)
     local previous_mode = vim.fn.mode()
     local previous_buf = vim.api.nvim_get_current_buf()
 
-    -- `hide` remembers the axis the CURRENT layout controls, so the position
-    -- must still be the old one while it runs. Rotating first stored a bottom
-    -- height taken from a full-height right-layout chat window.
+    -- `hide` remembers the axis the CURRENT layout controls, so the position must still be the old one while it runs.
     self:hide()
     self.current_position = next_layout
     self:show({
@@ -264,10 +218,7 @@ function ChatWidget:rotate_layout(layouts)
     })
 
     vim.schedule(function()
-        -- Scoped to this widget's own tab, and nil when the buffer is not on
-        -- screen there. The lookup this replaced could only ever see the current
-        -- tab; an unscoped one would yank the cursor into another tabpage, and an
-        -- unguarded one would land it in the hidden chat float.
+        -- Tab-scoped: an unscoped lookup would yank the cursor into another tab.
         local win =
             BufHelpers.find_visible_win(previous_buf, nil, self:visible_tab())
         if win then
@@ -280,14 +231,7 @@ function ChatWidget:rotate_layout(layouts)
 end
 
 --- Closes all windows but keeps buffers in memory
---- @param keep_insert boolean|nil True when the caller shows a widget right after
---- this hide, so insert mode must survive. `stopinsert` is LATCHED until the
---- current insert command ends, which is after every scheduled callback, so it
---- would beat `show`'s scheduled `startinsert!` no matter how the two are
---- ordered — measured: a session moved between tabs landed in the prompt in
---- normal mode.
---- Regression: test_open_close_widget.lua::"handles tabclose while in insert mode
---- without errors".
+--- @param keep_insert boolean|nil Set when a `show` follows immediately
 function ChatWidget:hide(keep_insert)
     if not keep_insert then
         vim.cmd("stopinsert")
@@ -301,30 +245,13 @@ function ChatWidget:hide(keep_insert)
         WidgetLayout.close(self.win_nrs)
     end)
 
-    -- Recreate the float unconditionally, including when no fallback window
-    -- could be made: it is the chat buffer's only remaining window, and ADR
-    -- 0001's manual folds die with it.
-    -- Close prior float before reopen to avoid leaking the winid.
+    -- The chat buffer's only remaining window; ADR 0001's manual folds die with it. Close first, or the winid leaks.
     self:_close_hidden_chat_window()
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
 end
 
---- A non-widget window must survive in the widget's OWN tab, whichever tab the
---- cursor sits in: closing the last window of a tab destroys that tab. For a
---- non-current tab it happens silently, so the user loses a tabpage with no
---- error; E444 only fires when it is also the last tabpage.
---- Shared by `hide` and `destroy`: both reach `WidgetLayout.close`, and both are
---- driven from another tab — `SessionRegistry.show_session` evicts a widget it
---- finds elsewhere, and `Agentic.destroy_session` / `SessionRestore` resolve
---- through `SessionRegistry._most_recent`, which is not tab-scoped.
---- `open_editor_window` is cross-tab safe, it splits inside
---- `nvim_win_call(anchor_win, ...)`.
---- No-op once `visible_tab` answers nil, which covers a hidden widget and a
---- tabclose teardown where Neovim already invalidated the windows.
---- Regressions: chat_widget.test.lua::"keeps the tabpage alive when the widget
---- holds its only windows" and ::"creates the fallback window in the widget's tab,
---- not the current one".
+--- Closing a tab's last window destroys that tab, silently when it is not the current one.
 function ChatWidget:_ensure_fallback_window()
     if not self:visible_tab() or self:find_first_non_widget_window() then
         return
@@ -338,11 +265,6 @@ function ChatWidget:_ensure_fallback_window()
     end
 end
 
---- Stores the chat window's size along the axis the current layout controls, so a
---- manual resize survives hide/show and seeds the next session.
---- Only the dominant axis: `left`/`right` give the input panel a fixed
---- `windows.input.height`, so forcing a chat height there shuffles the panels, and
---- in `bottom` the chat spans the editor width, making a stored width meaningless.
 --- Must run BEFORE `WidgetLayout.close`, which nils `win_nrs`.
 function ChatWidget:_remember_size()
     local winid = self.win_nrs.chat
@@ -378,16 +300,9 @@ function ChatWidget:clear()
     end
 end
 
---- Deletes all buffers and removes them from memory
 --- This instance is no longer usable after calling this method
 function ChatWidget:destroy()
-    -- The tab must outlive the widget, so the same fallback `hide` needs applies
-    -- here. Everything else `hide` does is wrong for a destroy: it would capture
-    -- a size no one can read back and reopen a float over deleted buffers.
-    -- BEFORE `unregister`: `find_first_non_widget_window` recognises widget
-    -- windows through `WidgetRegistry.all_bufnrs`, so unregistering first makes
-    -- this widget's own chat window look like the fallback and no window is
-    -- created.
+    -- MUST precede `unregister`, which makes this widget's own chat window look like a valid fallback.
     self:_ensure_fallback_window()
 
     WidgetRegistry.unregister(self)
@@ -397,9 +312,7 @@ function ChatWidget:destroy()
         self._winclosed_augroup = nil
     end
 
-    -- Close the windows directly rather than through `hide`.
-    -- `WidgetLayout.close` skips every handle whose tabpage is already gone,
-    -- which is what keeps this safe during a tabclose teardown on 0.11.x.
+    -- Not through `hide`: it would reopen a float over deleted buffers.
     WidgetLayout.close(self.win_nrs)
 
     self:_close_hidden_chat_window()
@@ -426,36 +339,29 @@ function ChatWidget:_submit_input()
 
     local prompt = table.concat(lines, "\n"):match("^%s*(.-)%s*$")
 
-    -- Check if prompt is empty or contains only whitespace
-    if not prompt or prompt == "" or not prompt:match("%S") then
+    if not prompt or not prompt:match("%S") then
         return
     end
 
-    -- Ask session if it can accept this prompt
     local accepted = self.on_submit_input(prompt)
     if not accepted then
         return
     end
 
-    -- Clear buffers only after successful submission
     vim.api.nvim_buf_set_lines(self.buf_nrs.input, 0, -1, false, {})
 
-    BufHelpers.with_modifiable(self.buf_nrs.code, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-    end)
+    local optional_panels = { "code", "files", "diagnostics" }
 
-    BufHelpers.with_modifiable(self.buf_nrs.files, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-    end)
+    for _, panel in ipairs(optional_panels) do
+        BufHelpers.with_modifiable(self.buf_nrs[panel], function(bufnr)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+        end)
+    end
 
-    BufHelpers.with_modifiable(self.buf_nrs.diagnostics, function(bufnr)
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
-    end)
+    for _, panel in ipairs(optional_panels) do
+        self:close_optional_window(panel)
+    end
 
-    self:close_optional_window("code")
-    self:close_optional_window("files")
-    self:close_optional_window("diagnostics")
-    -- Move cursor to chat buffer after submit for easy access to permission requests
     self:move_cursor_to(self.win_nrs.chat)
 end
 
@@ -468,9 +374,7 @@ function ChatWidget:move_cursor_to(winid, callback)
                 vim.api.nvim_set_current_win(winid)
             end
 
-            -- make sure to scroll to the bottom
-            -- 1. user can see the new message
-            -- 2. auto-scroll will start again
+            -- Scroll to the bottom so auto-scroll re-engages.
             vim.api.nvim_win_call(winid, function()
                 vim.cmd("normal! G0zb")
             end)
@@ -483,7 +387,6 @@ function ChatWidget:move_cursor_to(winid, callback)
 end
 
 function ChatWidget:_initialize()
-    -- Own copy: every widget mutates its own `context` fields.
     self.headers = WindowDecoration.default_headers()
 
     self.buf_nrs = self:_create_buf_nrs()
@@ -493,19 +396,12 @@ function ChatWidget:_initialize()
 
     self:_bind_keymaps()
 
-    -- One shared augroup for every widget; the handler resolves the owning
-    -- widget per event through `WidgetRegistry`.
     BufferGuard.ensure()
 
-    -- Track whether we're programmatically closing windows
-    -- to avoid recursive hide() calls
     self._closing = false
 
-    -- Named after the chat buffer: buffer numbers are globally unique and each
-    -- widget creates its own chat buffer, so two widgets can never share a
-    -- group name. A shared name would silently wipe the other widget's
-    -- WinClosed autocmd, because nvim_create_augroup(name, { clear = true })
-    -- returns the existing id after clearing it.
+    -- Per chat bufnr: a shared name would wipe the other widget's autocmd,
+    -- since `nvim_create_augroup(name, { clear = true })` reuses the id.
     self._winclosed_augroup = vim.api.nvim_create_augroup(
         "AgenticWinClosed_" .. tostring(self.buf_nrs.chat),
         { clear = true }
@@ -521,17 +417,9 @@ function ChatWidget:_initialize()
             if not closed_winid then
                 return
             end
-            -- Any widget window closed by the user closes the whole widget,
-            -- except "todos" which can be closed independently.
             for _, winid in pairs(self.win_nrs) do
                 if winid == closed_winid then
-                    -- Synchronously, before the deferred `hide`: WinClosed fires
-                    -- "just before it is removed from the window layout"
-                    -- (`:h WinClosed`), so the chat window is still measurable
-                    -- here. By the time the scheduled `hide` runs it is gone,
-                    -- `visible_tab` is nil, and the user's resize is dropped.
-                    -- Regression: chat_widget.test.lua::"keeps a manual width
-                    -- when the user closes the chat window".
+                    -- Last point the chat window is measurable; WinClosed fires before removal from the layout.
                     self:_remember_size()
                     vim.schedule(function()
                         self:hide()
@@ -565,7 +453,6 @@ function ChatWidget:_bind_keymaps()
                 local res = Clipboard.paste_image()
 
                 if res ~= nil then
-                    -- call vim.paste directly to avoid coupling to the file list logic
                     vim.paste({ res }, -1)
                 end
             end)
@@ -620,7 +507,7 @@ function ChatWidget:_bind_keymaps()
         )
     end
 
-    -- Add keybindings to chat, todos, code, and files buffers to jump back to input and start insert mode
+    -- Editing keys in a read-only panel jump to the input and start insert.
     for panel_name, bufnr in pairs(self.buf_nrs) do
         if panel_name ~= "input" then
             for _, key in ipairs({
@@ -650,47 +537,27 @@ end
 
 --- @return agentic.ui.ChatWidget.BufNrs
 function ChatWidget:_create_buf_nrs()
-    local chat = self:_create_new_buf({
-        filetype = "AgenticChat",
-    })
-
-    local todos = self:_create_new_buf({
-        filetype = "AgenticTodos",
-    })
-
-    local code = self:_create_new_buf({
-        filetype = "AgenticCode",
-    })
-
-    local files = self:_create_new_buf({
-        filetype = "AgenticFiles",
-    })
-
-    local diagnostics = self:_create_new_buf({
-        filetype = "AgenticDiagnostics",
-    })
-
-    local input = self:_create_new_buf({
-        filetype = "AgenticInput",
-        modifiable = true,
-    })
-
-    -- Don't call it for the chat buffer as its managed somewhere else
-    pcall(vim.treesitter.start, todos, "markdown")
-    pcall(vim.treesitter.start, code, "markdown")
-    pcall(vim.treesitter.start, files, "markdown")
-    pcall(vim.treesitter.start, diagnostics, "markdown")
-    pcall(vim.treesitter.start, input, "markdown")
-
     --- @type agentic.ui.ChatWidget.BufNrs
     local buf_nrs = {
-        chat = chat,
-        todos = todos,
-        code = code,
-        files = files,
-        diagnostics = diagnostics,
-        input = input,
+        chat = self:_create_new_buf({ filetype = "AgenticChat" }),
+        todos = self:_create_new_buf({ filetype = "AgenticTodos" }),
+        code = self:_create_new_buf({ filetype = "AgenticCode" }),
+        files = self:_create_new_buf({ filetype = "AgenticFiles" }),
+        diagnostics = self:_create_new_buf({
+            filetype = "AgenticDiagnostics",
+        }),
+        input = self:_create_new_buf({
+            filetype = "AgenticInput",
+            modifiable = true,
+        }),
     }
+
+    -- The chat buffer's highlighting is managed by MessageWriter.
+    for name, bufnr in pairs(buf_nrs) do
+        if name ~= "chat" then
+            pcall(vim.treesitter.start, bufnr, "markdown")
+        end
+    end
 
     return buf_nrs
 end
@@ -742,11 +609,8 @@ local function find_keymap(keymaps, mode)
     end
 end
 
---- Computes the mode-aware submit/change-mode hint for the input header.
---- Both hints live on the input header only. Returns nil for modes with no
---- relevant binding (e.g. command mode) so callers keep the last shown hint.
 --- @param mode string
---- @return string|nil suffix
+--- @return string|nil suffix nil for modes with no binding; callers keep the last hint
 function ChatWidget._compute_input_suffix(mode)
     local submit_key = find_keymap(Config.keymaps.prompt.submit, mode)
     local change_mode_key = find_keymap(Config.keymaps.widget.change_mode, mode)
@@ -766,7 +630,6 @@ function ChatWidget._compute_input_suffix(mode)
     return table.concat(hints, " | ")
 end
 
---- Persists the input header suffix for the current mode and re-renders it.
 --- @param mode string
 function ChatWidget:_apply_input_suffix(mode)
     local suffix = ChatWidget._compute_input_suffix(mode)
@@ -779,11 +642,8 @@ function ChatWidget:_apply_input_suffix(mode)
     self:render_header("input")
 end
 
---- Binds events to change the suffix header texts based on current mode keymaps
---- For the Chat and Input buffers only
 function ChatWidget:_bind_events_to_change_headers()
-    -- Seed the input header with the normal-mode hints immediately so it does
-    -- not show the hard-coded default keys until the first mode change.
+    -- Seeded, or the header shows the hard-coded default keys until the first mode change.
     self:_apply_input_suffix("n")
 
     for _, bufnr in ipairs({ self.buf_nrs.chat, self.buf_nrs.input }) do
@@ -825,8 +685,7 @@ function ChatWidget:close_optional_window(panel_name)
     end)
 end
 
---- Wraps a window-closing operation with the _closing flag so the
---- WinClosed autocmd ignores programmatic closes.
+--- Flags the close as programmatic so the WinClosed autocmd ignores it.
 --- @param fn fun()
 function ChatWidget:_avoid_auto_close_cmd(fn)
     self._closing = true
@@ -837,7 +696,7 @@ function ChatWidget:_avoid_auto_close_cmd(fn)
     end
 end
 
---- Filetypes that should be excluded when finding fallback windows
+--- Never eligible as a fallback window.
 local EXCLUDED_FILETYPES = {
     -- File explorers
     ["neo-tree"] = true,
@@ -868,16 +727,9 @@ local EXCLUDED_FILETYPES = {
     ["mason"] = true, -- Mason installer
 }
 
---- Finds the first window in the widget's own tabpage that belongs to no widget.
----
---- Excludes any window showing a registered widget buffer, so one session cannot
---- eject a foreign buffer into a window showing another session's panel.
---- `BufferGuard`'s repurpose path re-registers the replacement buffer it swaps
---- in, so every window a widget created shows a registered buffer and this one
---- check sees them all.
---- Regression: chat_widget.test.lua::"never returns a window showing a
---- registered widget buffer it did not create".
---- @return number|nil winid The first non-widget window ID, or nil if none found
+--- Scoped to the widget's own tabpage, and excludes EVERY registered widget
+--- buffer so one session cannot eject a buffer into another's panel window.
+--- @return number|nil winid
 function ChatWidget:find_first_non_widget_window()
     local widget_tab = self:visible_tab()
     if not widget_tab then
@@ -888,7 +740,6 @@ function ChatWidget:find_first_non_widget_window()
     local widget_bufnrs = WidgetRegistry.all_bufnrs()
 
     for _, winid in ipairs(all_windows) do
-        -- Skip floating windows (pickers, popups, etc.)
         local win_config = vim.api.nvim_win_get_config(winid)
         if win_config.relative == "" then
             local bufnr = vim.api.nvim_win_get_buf(winid)
@@ -902,7 +753,6 @@ function ChatWidget:find_first_non_widget_window()
     return nil
 end
 
---- Checks if a buffer belongs to this widget
 --- @param bufnr number
 --- @return boolean
 function ChatWidget:_is_widget_buffer(bufnr)
@@ -914,53 +764,48 @@ function ChatWidget:_is_widget_buffer(bufnr)
     return false
 end
 
---- Opens a new editor window on the opposite side of the widget.
---- Position-aware: respects the current layout position.
---- @param bufnr number|nil The buffer to display in the new window
---- @return number|nil winid The newly created window ID or nil
-function ChatWidget:open_editor_window(bufnr)
-    if bufnr == nil then
-        -- Try first oldfile under current directory
-        local oldfiles = vim.v.oldfiles
-        local cwd = vim.fn.getcwd()
-        if oldfiles and #oldfiles > 0 then
-            for _, filepath in ipairs(oldfiles) do
-                if
-                    vim.startswith(filepath, cwd)
-                    and vim.fn.filereadable(filepath) == 1
-                then
-                    local file_bufnr = vim.fn.bufnr(filepath)
-                    if file_bufnr == -1 then
-                        file_bufnr = vim.fn.bufadd(filepath)
-                    end
-                    bufnr = file_bufnr
-                    break
-                end
+--- First readable oldfile under the cwd, as a bufnr.
+--- @return integer|nil bufnr
+local function first_oldfile_bufnr()
+    local cwd = vim.fn.getcwd()
+
+    for _, filepath in ipairs(vim.v.oldfiles or {}) do
+        if
+            vim.startswith(filepath, cwd)
+            and vim.fn.filereadable(filepath) == 1
+        then
+            local bufnr = vim.fn.bufnr(filepath)
+            if bufnr == -1 then
+                bufnr = vim.fn.bufadd(filepath)
             end
+            return bufnr
         end
     end
 
-    -- Fallback: create new scratch buffer — safer than using
-    -- alternate buffer (#) which could be a widget buffer
-    if bufnr == nil then
-        bufnr = vim.api.nvim_create_buf(false, true)
-    end
+    return nil
+end
 
-    -- Position-aware split using topleft/botright vim commands.
-    -- These always create full-width/full-height splits
-    -- regardless of which window is current.
-    local split_cmd
-    if self.current_position == "left" then
-        split_cmd = "botright vsplit"
-    elseif self.current_position == "bottom" then
-        split_cmd = "topleft split"
-    else
-        -- "right" or any unknown → full-height left
-        split_cmd = "topleft vsplit"
-    end
+--- `topleft`/`botright` splits span the full axis whatever window is current.
+--- @type table<string, string>
+local SPLIT_CMD_BY_POSITION = {
+    left = "botright vsplit",
+    bottom = "topleft split",
+    right = "topleft vsplit",
+}
 
-    -- Use nvim_win_call to run the split in the widget's tabpage context
-    -- without disturbing the user's focus when they're on another tab.
+--- Opens a new editor window on the opposite side of the widget.
+--- @param bufnr number|nil The buffer to display in the new window
+--- @return number|nil winid
+function ChatWidget:open_editor_window(bufnr)
+    -- A scratch buffer, not the alternate buffer (`#`), which could be a widget buffer.
+    bufnr = bufnr
+        or first_oldfile_bufnr()
+        or vim.api.nvim_create_buf(false, true)
+
+    local split_cmd = SPLIT_CMD_BY_POSITION[self.current_position]
+        or SPLIT_CMD_BY_POSITION.right
+
+    -- Splits in the widget's tabpage without moving the user's focus.
     local anchor_win = self.win_nrs.chat or self.win_nrs.input
     if not anchor_win or not vim.api.nvim_win_is_valid(anchor_win) then
         return nil
@@ -984,28 +829,21 @@ function ChatWidget:open_editor_window(bufnr)
     return winid
 end
 
---- Schedule a coalesced re-render of function-based headers.
---- Multiple calls within the same event loop tick collapse into one render.
+--- Coalesces bursts of header updates into one render.
 function ChatWidget:schedule_header_refresh()
-    if self._header_refresh_scheduled then
-        return
-    end
-    if not Config.headers then
+    if self._header_refresh_scheduled or not Config.headers then
         return
     end
 
     self._header_refresh_scheduled = true
-    -- Debounce updates within 150ms of each other to avoid excessive
-    -- re-renders when multiple updates come in quick succession
+
     vim.defer_fn(function()
         self._header_refresh_scheduled = false
         self:_render_dynamic_headers()
     end, 150)
 end
 
---- Re-render every session-driven header. The chat and input panels are
---- always dynamic (their default headers consume session_state), plus any
---- panel the user configured as a header function.
+--- Chat and input always consume session_state, plus any panel the user configured as a header function.
 function ChatWidget:_render_dynamic_headers()
     --- @type table<agentic.ui.ChatWidget.PanelNames, boolean>
     local panels = { chat = true, input = true }

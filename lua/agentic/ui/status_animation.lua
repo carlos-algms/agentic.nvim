@@ -1,18 +1,3 @@
---- StatusAnimation module for displaying animated spinners in windows
----
---- This module provides utilities to render animated state indicators (spinners)
---- in buffers using extmarks and timers.
----
---- ## Usage
---- ```lua
---- local StatusAnimation = require("agentic.ui.status_animation")
---- local animator = StatusAnimation:new(bufnr)
---- animator:start("generating")
---- -- later...
---- animator:stop()
---- ```
----
-
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Theme = require("agentic.theme")
@@ -28,12 +13,12 @@ local TIMING = {
 }
 
 --- @class agentic.ui.StatusAnimation
---- @field _bufnr number Buffer number where animation is rendered
---- @field _state? agentic.Theme.SpinnerState Current animation state
---- @field _next_frame_handle? uv.uv_timer_t One-shot deferred function handle from vim.defer_fn
---- @field _spinner_idx number Current spinner frame index
---- @field _extmark_id? number Current extmark ID
---- @field _epoch number Bumped by every `start`; a frame whose epoch is stale reschedules nothing
+--- @field _bufnr number
+--- @field _state? agentic.Theme.SpinnerState
+--- @field _next_frame_handle? uv.uv_timer_t
+--- @field _spinner_idx number
+--- @field _extmark_id? number
+--- @field _epoch number Bumped by every `start`; a stale frame reschedules nothing
 local StatusAnimation = {}
 StatusAnimation.__index = StatusAnimation
 
@@ -52,17 +37,12 @@ function StatusAnimation:new(bufnr)
     return instance
 end
 
---- Start the animation with the given state
---- Always stops and restarts to avoid overlapping with new content
 --- @param state agentic.Theme.SpinnerState
 function StatusAnimation:start(state)
     self:stop()
 
-    -- `stop` cancels the pending timer handle, but `vim.defer_fn` cannot un-queue
-    -- a callback that has ALREADY fired. A stop → start cycle straddling a
-    -- fired-but-unrun timer left the old callback free to pass the `_state` check
-    -- and schedule a second chain, overwriting `_next_frame_handle`: the first
-    -- chain kept running unreferenced, at double the frame rate.
+    -- `stop` cannot un-queue an already-fired `vim.defer_fn` callback.
+    -- Regression: status_animation.test.lua::"drops a stale frame instead of scheduling a successor"
     self._epoch = self._epoch + 1
 
     self._state = state
@@ -98,13 +78,10 @@ end
 --- @param epoch number Epoch this frame was scheduled with
 function StatusAnimation:_render_frame(epoch)
     if epoch ~= self._epoch then
-        -- Stale chain from a previous `start`; drop it without rescheduling.
         return
     end
 
     if not self._state or not vim.api.nvim_buf_is_valid(self._bufnr) then
-        -- return early to stop the animation in case state was cleared, or buffer is invalid
-        -- this avoids an infinite loop of deferred calls without a state and it actually renders nil in the UI
         return
     end
 
@@ -123,8 +100,7 @@ function StatusAnimation:_render_frame(epoch)
 
     local virt_text = { { display_text, hl_group } }
 
-    -- Cross-tab: a background session animates in its own tab, so centring
-    -- padding has to measure that window, not one in the current tab.
+    -- A background session animates in its own tab, so the centring padding must measure that window.
     local winid = BufHelpers.find_visible_win(self._bufnr)
     if winid then
         local win_width = vim.api.nvim_win_get_width(winid)
@@ -138,14 +114,14 @@ function StatusAnimation:_render_frame(epoch)
     local delay = TIMING[self._state] or TIMING.generating
 
     local virt_lines = {
-        { { "" } }, -- Empty line above
-        virt_text, -- Animation in middle
-        { { "" } }, -- Empty line below
+        { { "" } },
+        virt_text,
+        { { "" } },
     }
 
     self._extmark_id =
         vim.api.nvim_buf_set_extmark(self._bufnr, NS_ANIMATION, line_num, 0, {
-            id = self._extmark_id, -- Reuse existing extmark ID to update in-place
+            id = self._extmark_id,
             virt_lines = virt_lines,
             virt_lines_above = false,
         })
