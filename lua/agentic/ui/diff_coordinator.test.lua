@@ -46,7 +46,7 @@ describe("agentic.ui.DiffCoordinator", function()
             open_editor_window = function()
                 return 1
             end,
-            visible_tab = function()
+            get_visible_tab_id = function()
                 if hidden then
                     return nil
                 end

@@ -69,7 +69,7 @@ function ChatWidget:new(on_submit_input)
 end
 
 --- @return integer|nil tabpage nil when the widget is not visible
-function ChatWidget:visible_tab()
+function ChatWidget:get_visible_tab_id()
     local winid = self.win_nrs.chat
     if not winid or not vim.api.nvim_win_is_valid(winid) then
         return nil
@@ -85,7 +85,7 @@ function ChatWidget:visible_tab()
 end
 
 function ChatWidget:is_open()
-    return self:visible_tab() ~= nil
+    return self:get_visible_tab_id() ~= nil
 end
 
 --- @return boolean
@@ -127,7 +127,7 @@ function ChatWidget:show(opts)
         size = self._size,
     }
 
-    local visible_tab = self:visible_tab()
+    local visible_tab = self:get_visible_tab_id()
     local chat_winid = self.win_nrs.chat
 
     -- Render in the tab it already occupies; a bare `show` splits from the
@@ -152,8 +152,8 @@ end
 
 --- Content callbacks fire for background sessions too, where a bare `show`
 --- builds a second widget in the tab the user is looking at.
-function ChatWidget:show_if_visible()
-    if not self:visible_tab() then
+function ChatWidget:rerender()
+    if not self:get_visible_tab_id() then
         return
     end
 
@@ -219,8 +219,11 @@ function ChatWidget:rotate_layout(layouts)
 
     vim.schedule(function()
         -- Tab-scoped: an unscoped lookup would yank the cursor into another tab.
-        local win =
-            BufHelpers.find_visible_win(previous_buf, nil, self:visible_tab())
+        local win = BufHelpers.find_visible_win(
+            previous_buf,
+            nil,
+            self:get_visible_tab_id()
+        )
         if win then
             vim.api.nvim_set_current_win(win)
         end
@@ -253,7 +256,7 @@ end
 
 --- Closing a tab's last window destroys that tab, silently when it is not the current one.
 function ChatWidget:_ensure_fallback_window()
-    if not self:visible_tab() or self:find_first_non_widget_window() then
+    if not self:get_visible_tab_id() or self:find_first_non_widget_window() then
         return
     end
 
@@ -268,7 +271,7 @@ end
 --- Must run BEFORE `WidgetLayout.close`, which nils `win_nrs`.
 function ChatWidget:_remember_size()
     local winid = self.win_nrs.chat
-    if not winid or not self:visible_tab() then
+    if not winid or not self:get_visible_tab_id() then
         return
     end
 
@@ -731,7 +734,7 @@ local EXCLUDED_FILETYPES = {
 --- buffer so one session cannot eject a buffer into another's panel window.
 --- @return number|nil winid
 function ChatWidget:find_first_non_widget_window()
-    local widget_tab = self:visible_tab()
+    local widget_tab = self:get_visible_tab_id()
     if not widget_tab then
         return nil
     end

@@ -52,7 +52,7 @@ describe("agentic.SessionManager", function()
                     render_header = render_header_spy,
                     schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
-                    visible_tab = function() end,
+                    get_visible_tab_id = function() end,
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
@@ -131,7 +131,7 @@ describe("agentic.SessionManager", function()
                     render_header = render_header_spy,
                     schedule_header_refresh = refresh_spy,
                     buf_nrs = { chat = test_bufnr },
-                    visible_tab = function() end,
+                    get_visible_tab_id = function() end,
                 },
                 _on_session_update = SessionManager._on_session_update,
                 _set_mode_to_chat_header = SessionManager._set_mode_to_chat_header,
@@ -637,7 +637,7 @@ describe("agentic.SessionManager", function()
                 session_id = "session-1",
                 session_key = 3,
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 42
                     end,
                 },
@@ -843,7 +843,7 @@ describe("agentic.SessionManager", function()
                 widget = {
                     schedule_header_refresh = refresh_spy,
                     render_header = render_header_spy,
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 7
                     end,
                 },
@@ -1079,7 +1079,7 @@ describe("agentic.SessionManager", function()
                 },
                 agent = { provider_config = { name = "test-provider" } },
                 chat_history = { add_message = spy.new(function() end) },
-                widget = { visible_tab = function() end },
+                widget = { get_visible_tab_id = function() end },
                 _on_session_update = SessionManager._on_session_update,
             } --[[@as agentic.SessionManager]]
         end)
@@ -1134,7 +1134,7 @@ describe("agentic.SessionManager", function()
                 session_id = "session-1",
                 session_key = 3,
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 42
                     end,
                 },
@@ -1576,7 +1576,7 @@ describe("agentic.SessionManager", function()
                 session_id = "original-session",
                 session_key = 3,
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 1
                     end,
                 },
@@ -1673,7 +1673,7 @@ describe("agentic.SessionManager", function()
             return {
                 session_key = 3,
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 99
                     end,
                 },
@@ -1799,7 +1799,7 @@ describe("agentic.SessionManager", function()
         -- A request RESPONSE is dispatched straight from the libuv stdout
         -- reader (`acp_transport` -> `ACPClient:_handle_message` -> callback),
         -- so `create_session`'s callback body runs in a fast event context.
-        -- Building the hook payload there called `ChatWidget:visible_tab`,
+        -- Building the hook payload there called `ChatWidget:get_visible_tab_id`,
         -- whose `nvim_win_is_valid` raises
         -- "E5560: nvim_win_is_valid must not be called in a fast event
         -- context" and aborts the rest of the callback.
@@ -1818,9 +1818,9 @@ describe("agentic.SessionManager", function()
                     session_key = 3,
                     session_id = nil,
                     widget = {
-                        -- Mirrors ChatWidget:visible_tab, whose very first act
+                        -- Mirrors ChatWidget:get_visible_tab_id, whose very first act
                         -- is an `nvim_win_is_valid` call.
-                        visible_tab = function()
+                        get_visible_tab_id = function()
                             _G.t.fast = vim.in_fast_event()
                             vim.api.nvim_win_is_valid(1000)
                             return 99
@@ -2229,7 +2229,7 @@ describe("agentic.SessionManager", function()
                 session_id = "test-session-123",
                 session_key = 3,
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return 1
                     end,
                 },
@@ -2554,7 +2554,7 @@ describe("agentic.SessionManager", function()
                     stop = function() end,
                 },
                 widget = {
-                    visible_tab = function()
+                    get_visible_tab_id = function()
                         return widget_tab
                     end,
                 },

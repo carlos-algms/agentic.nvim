@@ -56,7 +56,7 @@ end
 --- @param tool_call_id string
 function DiffCoordinator:show(tool_call_id)
     -- Visible SOMEWHERE, not visible here: a background session renders into its own tab.
-    local tabpage = self._widget:visible_tab()
+    local tabpage = self._widget:get_visible_tab_id()
     if not Config.diff_preview.enabled or not tabpage then
         return
     end

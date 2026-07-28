@@ -96,7 +96,7 @@ describe("race: stale create_session after load_acp_session", function()
             widget = {
                 clear = function() end,
                 buf_nrs = { input = 0, chat = 0 },
-                visible_tab = function()
+                get_visible_tab_id = function()
                     return 1
                 end,
             },

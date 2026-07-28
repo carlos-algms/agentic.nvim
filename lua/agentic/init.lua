@@ -48,7 +48,7 @@ end
 function Agentic.toggle(opts)
     SessionRegistry.resolve_or_create(function(session)
         if
-            session.widget:visible_tab()
+            session.widget:get_visible_tab_id()
             == vim.api.nvim_get_current_tabpage()
         then
             session.widget:hide()
@@ -204,7 +204,7 @@ function Agentic.select_session()
                 or item.agent.provider_config.name
                 or ("Session " .. tostring(item.session_key))
 
-            if item.widget:visible_tab() == current_tab then
+            if item.widget:get_visible_tab_id() == current_tab then
                 label = label .. " (current tab)"
             end
 

@@ -166,6 +166,38 @@ function BufHelpers.multi_keymap_del(keymaps, bufnr)
     end)
 end
 
+--- `nvim_win_set_width`/`_set_height` are deprecated for `nvim_win_resize`, which only exists on 0.13+.
+--- @param winid integer
+--- @param width integer -1 leaves the axis unchanged
+--- @param height integer -1 leaves the axis unchanged
+local function resize_win(winid, width, height)
+    if vim.fn.has("nvim-0.13") == 1 then
+        vim.api.nvim_win_resize(winid, width, height, {})
+        return
+    end
+
+    --- @diagnostic disable: deprecated
+    if width >= 0 then
+        vim.api.nvim_win_set_width(winid, width)
+    end
+    if height >= 0 then
+        vim.api.nvim_win_set_height(winid, height)
+    end
+    --- @diagnostic enable: deprecated
+end
+
+--- @param winid integer
+--- @param width integer
+function BufHelpers.win_set_width(winid, width)
+    resize_win(winid, width, -1)
+end
+
+--- @param winid integer
+--- @param height integer
+function BufHelpers.win_set_height(winid, height)
+    resize_win(winid, -1, height)
+end
+
 --- @param bufnr integer
 --- @return boolean
 function BufHelpers.is_buffer_empty(bufnr)

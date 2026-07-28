@@ -105,12 +105,12 @@ stateDiagram-v2
     valid fallback and gets handed back.
 - A **background session** must never be surfaced by a content callback. The
   `FileList`, `CodeSelection`, `DiagnosticsList` and `TodoList` `on_change`
-  handlers call `ChatWidget:show_if_visible`, which no-ops when `visible_tab()`
+  handlers call `ChatWidget:rerender`, which no-ops when `get_visible_tab_id()`
   is nil. Calling `show` directly there put a second widget in the current
-  tabpage — a `plan` update from a hidden session was enough, with no user action
-  at all. The update survives: panel buffers are written before `on_change` fires,
-  and `show_layout` decides each panel window from buffer emptiness at show time.
-  Regression:
+  tabpage — a `plan` update from a hidden session was enough, with no user
+  action at all. The update survives: panel buffers are written before
+  `on_change` fires, and `show_layout` decides each panel window from buffer
+  emptiness at show time. Regression:
   `tests/integration/test_multi_session.lua::"keeps a hidden session hidden when its file list changes"`.
 - `destroy` is the one programmatic close exempt from the
   `_avoid_auto_close_cmd` rule above. It deletes the
@@ -125,9 +125,9 @@ stateDiagram-v2
     `nvim_list_wins()` returns it but interactive navigation does not visit it.
     Only code holding `widget._hidden_chat_winid` can target it (via
     `nvim_set_current_win`/`nvim_win_set_buf`). Treat it as an internal handle,
-    not a window the user might be sitting in. Do NOT add keymaps,
-    buffer-local autocmds expecting user focus, or any UX that assumes the user
-    can act inside it.
+    not a window the user might be sitting in. Do NOT add keymaps, buffer-local
+    autocmds expecting user focus, or any UX that assumes the user can act
+    inside it.
 
 ## MessageWriter and tool-call rendering
 
@@ -142,13 +142,12 @@ tests.
   (`lua/agentic/ui/buffer_guard.lua`) to a non-widget window in the same
   tabpage.
 - Panel + fold window options (`WidgetLayout.PANEL_WINDOW_OPTS`,
-  `Fold.setup_window`) MUST be written via `vim.wo[winid][0]`. See the
-  general `:set`-style ban in root `AGENTS.md` "Common traps". Regression:
+  `Fold.setup_window`) MUST be written via `vim.wo[winid][0]`. See the general
+  `:set`-style ban in root `AGENTS.md` "Common traps". Regression:
   `buffer_guard.test.lua::"does not leak widget window options to the editor window after redirect"`.
-- Module-level state is forbidden for per-session data. Namespace IDs are
-  exempt — IDs are global, isolation comes from per-buffer
-  `nvim_buf_clear_namespace`. So is `WidgetRegistry`'s `bufnr -> widget` map:
-  buffer numbers are global too.
+- Module-level state is forbidden for per-session data. Namespace IDs are exempt
+  — IDs are global, isolation comes from per-buffer `nvim_buf_clear_namespace`.
+  So is `WidgetRegistry`'s `bufnr -> widget` map: buffer numbers are global too.
 
 ## Traps
 
@@ -169,12 +168,12 @@ tests.
 - Module-level mutable state for per-session data
   - Leaks one session's state into another. See root `AGENTS.md`.
 - Restarting the spinner without bumping `StatusAnimation._epoch`
-  - `vim.defer_fn` cannot un-queue a callback that already fired, so a
-    `stop` -> `start` cycle straddling a fired-but-unrun timer leaves the old
-    callback to schedule a second chain. Two live chains, double frame rate,
-    and the first is unreferenced so nothing can cancel it. `start` bumps
-    `_epoch`; `_render_frame` returns without rescheduling when the epoch it
-    was scheduled with no longer matches. Regression:
+  - `vim.defer_fn` cannot un-queue a callback that already fired, so a `stop` ->
+    `start` cycle straddling a fired-but-unrun timer leaves the old callback to
+    schedule a second chain. Two live chains, double frame rate, and the first
+    is unreferenced so nothing can cancel it. `start` bumps `_epoch`;
+    `_render_frame` returns without rescheduling when the epoch it was scheduled
+    with no longer matches. Regression:
     `status_animation.test.lua::"drops a stale frame instead of scheduling a successor"`.
 - Two windows holding the chat buffer concurrently
   - Breaks fold-state preservation. ADR 0001.
@@ -199,11 +198,10 @@ tests.
     `chat_widget.test.lua::"keeps each widget's header context independent"` and
     `::"hands out a fresh default table per call when no widget owns the bufnr"`.
 - Direct `nvim_buf_set_name` for widget buffers
-  - Session restore (e.g. `mksession` with `blank` in `sessionoptions`)
-    persists agentic buffer names; direct calls raise E95 on reopen. Use
-    `WindowDecoration._set_buffer_name`, which renames any pre-existing
-    holder to `<name>-old-N`. Regression:
-    `lua/agentic/ui/window_decoration.test.lua`.
+  - Session restore (e.g. `mksession` with `blank` in `sessionoptions`) persists
+    agentic buffer names; direct calls raise E95 on reopen. Use
+    `WindowDecoration._set_buffer_name`, which renames any pre-existing holder
+    to `<name>-old-N`. Regression: `lua/agentic/ui/window_decoration.test.lua`.
 
 ## Test invariants
 

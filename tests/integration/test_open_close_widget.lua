@@ -120,7 +120,7 @@ describe("Open and Close Chat Widget", function()
             ]])
         )
         assert.is_true(child.lua_get([[
-            require("agentic.session_registry").sessions[2].widget:visible_tab()
+            require("agentic.session_registry").sessions[2].widget:get_visible_tab_id()
                 == nil
         ]]))
     end)

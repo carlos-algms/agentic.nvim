@@ -162,7 +162,7 @@ function SessionManager:new()
             self.widget:move_cursor_to(self.widget.win_nrs.input)
         else
             self.widget:render_header("files", tostring(#file_list:get_files()))
-            self.widget:show_if_visible()
+            self.widget:rerender()
         end
     end)
 
@@ -177,7 +177,7 @@ function SessionManager:new()
                     "code",
                     tostring(#code_selection:get_selections())
                 )
-                self.widget:show_if_visible()
+                self.widget:rerender()
             end
         end
     )
@@ -193,14 +193,14 @@ function SessionManager:new()
                     "diagnostics",
                     tostring(#diagnostics_list:get_diagnostics())
                 )
-                self.widget:show_if_visible()
+                self.widget:rerender()
             end
         end
     )
 
     self.todo_list = TodoList:new(self.widget.buf_nrs.todos, function(todo_list)
         if not todo_list:is_empty() then
-            self.widget:show_if_visible()
+            self.widget:rerender()
         end
     end, function()
         self.widget:close_optional_window("todos")
@@ -365,7 +365,7 @@ function SessionManager:_on_session_update(update)
     local hook_data = {
         session_id = self.session_id,
         session_key = self.session_key,
-        tab_page_id = self.widget:visible_tab(),
+        tab_page_id = self.widget:get_visible_tab_id(),
         update = update,
     }
     Hooks.invoke("on_session_update", hook_data)
@@ -455,7 +455,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
                     filepath = abs_path,
                     session_id = self.session_id,
                     session_key = self.session_key,
-                    tab_page_id = self.widget:visible_tab(),
+                    tab_page_id = self.widget:get_visible_tab_id(),
                     bufnr = bufnr,
                 }
                 Hooks.invoke("on_file_edit", hook_data)
@@ -578,7 +578,7 @@ function SessionManager:_handle_input_submit(input_text)
         prompt = input_text,
         session_id = self.session_id,
         session_key = self.session_key,
-        tab_page_id = self.widget:visible_tab(),
+        tab_page_id = self.widget:get_visible_tab_id(),
     }
     Hooks.invoke("on_prompt_submit", prompt_hook_data)
 
@@ -601,7 +601,7 @@ function SessionManager:_handle_input_submit(input_text)
             local response_hook_data = {
                 session_id = session_id --[[@as string]],
                 session_key = self.session_key,
-                tab_page_id = self.widget:visible_tab(),
+                tab_page_id = self.widget:get_visible_tab_id(),
                 success = err == nil,
                 error = err,
             }
@@ -670,7 +670,7 @@ function SessionManager:_build_handlers()
                 request = request,
                 session_id = self.session_id,
                 session_key = self.session_key,
-                tab_page_id = self.widget:visible_tab(),
+                tab_page_id = self.widget:get_visible_tab_id(),
             })
 
             self.status_animation:stop()
@@ -743,7 +743,7 @@ function SessionManager:new_session(opts)
             local hook_data = {
                 session_id = response and response.sessionId,
                 session_key = self.session_key,
-                tab_page_id = self.widget:visible_tab(),
+                tab_page_id = self.widget:get_visible_tab_id(),
                 response = response,
                 err = err,
             }

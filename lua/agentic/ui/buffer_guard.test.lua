@@ -159,7 +159,8 @@ describe("BufferGuard", function()
             vim.api.nvim_win_close(editor_win, true)
 
             vim.api.nvim_set_current_win(widget.win_nrs.chat)
-            local before = #vim.api.nvim_tabpage_list_wins(widget:visible_tab())
+            local before =
+                #vim.api.nvim_tabpage_list_wins(widget:get_visible_tab_id())
 
             local foreign = vim.api.nvim_create_buf(true, false)
             vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
@@ -169,7 +170,8 @@ describe("BufferGuard", function()
                 vim.api.nvim_win_get_buf(widget.win_nrs.chat)
             )
             assert.is_true(
-                #vim.api.nvim_tabpage_list_wins(widget:visible_tab()) > before
+                #vim.api.nvim_tabpage_list_wins(widget:get_visible_tab_id())
+                    > before
             )
             assert.is_true(#vim.fn.win_findbuf(foreign) > 0)
         end

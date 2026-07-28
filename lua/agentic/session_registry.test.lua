@@ -33,7 +33,7 @@ describe("agentic.SessionRegistry", function()
 
         return {
             widget = {
-                visible_tab = function()
+                get_visible_tab_id = function()
                     return visible_tab
                 end,
                 -- `keep_insert` is recorded, not discarded: `show_session` passes

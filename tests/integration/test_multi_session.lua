@@ -10,7 +10,7 @@ describe("Multiple Chat sessions", function()
         return child.lua_get(([[
 (function()
     local session = require("agentic.session_registry").sessions[%d]
-    return session and session.widget:visible_tab() or -1
+    return session and session.widget:get_visible_tab_id() or -1
 end)()
 ]]):format(key))
     end
@@ -21,7 +21,7 @@ end)()
 (function()
     local current = vim.api.nvim_get_current_tabpage()
     for key, session in pairs(require("agentic.session_registry").sessions) do
-        if session.widget:visible_tab() == current then
+        if session.widget:get_visible_tab_id() == current then
             return key
         end
     end
@@ -292,7 +292,8 @@ end)()
 
         child.lua([[
             local session = require("agentic.session_registry").sessions[1]
-            vim.api.nvim_win_set_width(session.widget.win_nrs.chat, 50)
+            require("agentic.utils.buf_helpers")
+                .win_set_width(session.widget.win_nrs.chat, 50)
         ]])
 
         child.lua([[ require("agentic").new_session() ]])
@@ -322,7 +323,8 @@ end)()
 
         child.lua([[
             local session = require("agentic.session_registry").sessions[2]
-            vim.api.nvim_win_set_width(session.widget.win_nrs.chat, 50)
+            require("agentic.utils.buf_helpers")
+                .win_set_width(session.widget.win_nrs.chat, 50)
         ]])
 
         child.lua([[ require("agentic").new_session() ]])
@@ -502,7 +504,8 @@ end)()
 
         child.lua([[
             local session = require("agentic.session_registry").sessions[1]
-            vim.api.nvim_win_set_width(session.widget.win_nrs.chat, 50)
+            require("agentic.utils.buf_helpers")
+                .win_set_width(session.widget.win_nrs.chat, 50)
         ]])
 
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])

@@ -68,7 +68,7 @@ function SessionRegistry.visible_here()
     local current_tab = vim.api.nvim_get_current_tabpage()
 
     for _, session in pairs(SessionRegistry.sessions) do
-        if session.widget:visible_tab() == current_tab then
+        if session.widget:get_visible_tab_id() == current_tab then
             return session
         end
     end
@@ -185,14 +185,14 @@ function SessionRegistry.show_session(session_key, opts)
     for _, session in pairs(SessionRegistry.sessions) do
         if
             session ~= target
-            and session.widget:visible_tab() == current_tab
+            and session.widget:get_visible_tab_id() == current_tab
         then
             -- keep_insert: a show follows this tick and `stopinsert` latches past it
             session.widget:hide(true)
         end
     end
 
-    local target_tab = target.widget:visible_tab()
+    local target_tab = target.widget:get_visible_tab_id()
 
     if target_tab and target_tab ~= current_tab then
         target.widget:hide(true)

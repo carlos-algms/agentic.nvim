@@ -1,5 +1,6 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
@@ -871,7 +872,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("preserves a manual chat width across hide and show", function()
             widget:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
 
             widget:hide()
             widget:show({ focus_prompt = false })
@@ -881,7 +882,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("inherits the stored width of an existing session", function()
             widget:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
             widget:hide()
             register_session(1, widget)
 
@@ -898,8 +899,8 @@ describe("agentic.ui.ChatWidget", function()
             widget:show({ focus_prompt = false })
             local initial_width =
                 vim.api.nvim_win_get_width(widget.win_nrs.chat)
-            vim.api.nvim_win_set_height(widget.win_nrs.chat, 12)
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 20)
+            BufHelpers.win_set_height(widget.win_nrs.chat, 12)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 20)
 
             widget:hide()
             widget:show({ focus_prompt = false })
@@ -919,13 +920,13 @@ describe("agentic.ui.ChatWidget", function()
                 -- with no width and silently fall back to the configured one.
                 widget.current_position = "bottom"
                 widget:show({ focus_prompt = false })
-                vim.api.nvim_win_set_height(widget.win_nrs.chat, 12)
+                BufHelpers.win_set_height(widget.win_nrs.chat, 12)
                 widget:hide()
 
                 widget2 =
                     ChatWidget:new(spy.new(function() end) --[[@as function]])
                 widget2:show({ focus_prompt = false })
-                vim.api.nvim_win_set_width(widget2.win_nrs.chat, 50)
+                BufHelpers.win_set_width(widget2.win_nrs.chat, 50)
                 widget2:hide()
 
                 register_session(1, widget)
@@ -944,7 +945,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("copies the inherited size instead of sharing the table", function()
             widget:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
             widget:hide()
             register_session(1, widget)
 
@@ -953,7 +954,7 @@ describe("agentic.ui.ChatWidget", function()
             -- remembered width, and the third widget would inherit 60.
             widget2 = ChatWidget:new(spy.new(function() end) --[[@as function]])
             widget2:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget2.win_nrs.chat, 60)
+            BufHelpers.win_set_width(widget2.win_nrs.chat, 60)
             widget2:hide()
 
             widget3 = ChatWidget:new(spy.new(function() end) --[[@as function]])
@@ -964,7 +965,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("keeps the remembered width when hide runs twice", function()
             widget:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
 
             widget:hide()
             -- The second `hide` has no chat window to measure; measuring anyway
@@ -978,7 +979,7 @@ describe("agentic.ui.ChatWidget", function()
 
         it("restores the width after rotating away and back", function()
             widget:show({ focus_prompt = false })
-            vim.api.nvim_win_set_width(widget.win_nrs.chat, 50)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
 
             widget:rotate_layout({ "right", "bottom" })
             assert.equal("bottom", widget.current_position)
@@ -1123,7 +1124,7 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end)
 
-    describe("visible_tab", function()
+    describe("get_visible_tab_id", function()
         local widget
         local widget_tab
 
@@ -1148,13 +1149,13 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         it("returns nil for a widget that has never been shown", function()
-            assert.is_nil(widget:visible_tab())
+            assert.is_nil(widget:get_visible_tab_id())
         end)
 
         it("returns the tabpage the widget is shown in", function()
             widget:show({ focus_prompt = false })
 
-            assert.equal(widget:visible_tab(), widget_tab)
+            assert.equal(widget:get_visible_tab_id(), widget_tab)
         end)
 
         it("returns the widget's own tab, not the current one", function()
@@ -1162,9 +1163,9 @@ describe("agentic.ui.ChatWidget", function()
 
             vim.cmd("tabnew")
             local other_tab = vim.api.nvim_get_current_tabpage()
-            assert.is_not_nil(widget:visible_tab())
-            assert.equal(widget:visible_tab(), widget_tab)
-            assert.is_not.equal(widget:visible_tab(), other_tab)
+            assert.is_not_nil(widget:get_visible_tab_id())
+            assert.equal(widget:get_visible_tab_id(), widget_tab)
+            assert.is_not.equal(widget:get_visible_tab_id(), other_tab)
 
             vim.cmd("tabclose")
         end)
@@ -1176,7 +1177,7 @@ describe("agentic.ui.ChatWidget", function()
             -- The float holds the chat buffer for ADR 0001 fold anchoring, but
             -- it lives outside win_nrs and must not count as visible.
             assert.is_not_nil(widget._hidden_chat_winid)
-            assert.is_nil(widget:visible_tab())
+            assert.is_nil(widget:get_visible_tab_id())
         end)
 
         it("agrees with is_open across never-shown, shown, hidden", function()
@@ -1376,7 +1377,7 @@ describe("agentic.ui.ChatWidget", function()
             "creates the fallback window in the widget's tab, not the current one",
             function()
                 widget:show({ focus_prompt = false })
-                local widget_tab = widget:visible_tab()
+                local widget_tab = widget:get_visible_tab_id()
 
                 -- Leave only widget windows in the widget's tab
                 for _, winid in
@@ -1462,7 +1463,7 @@ describe("agentic.ui.ChatWidget", function()
             "keeps the tabpage alive when the widget holds its only windows",
             function()
                 widget:show({ focus_prompt = false })
-                local widget_tab = widget:visible_tab()
+                local widget_tab = widget:get_visible_tab_id()
 
                 for _, winid in
                     ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
@@ -1727,11 +1728,12 @@ describe("agentic.ui.ChatWidget WinClosed size memory (child)", function()
         -- which time the window is gone and nothing is left to measure.
         child.lua([[
             local ChatWidget = require("agentic.ui.chat_widget")
+            local BufHelpers = require("agentic.utils.buf_helpers")
             _G.widget = ChatWidget:new(function() return true end)
             _G.widget:show({ focus_prompt = false })
             _G.target_width =
                 vim.api.nvim_win_get_width(_G.widget.win_nrs.chat) + 5
-            vim.api.nvim_win_set_width(_G.widget.win_nrs.chat, _G.target_width)
+            BufHelpers.win_set_width(_G.widget.win_nrs.chat, _G.target_width)
             vim.api.nvim_win_close(_G.widget.win_nrs.chat, true)
         ]])
 

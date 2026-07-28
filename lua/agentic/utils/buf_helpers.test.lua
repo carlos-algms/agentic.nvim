@@ -245,6 +245,96 @@ describe("BufHelpers", function()
         end)
     end)
 
+    describe("win_set_width / win_set_height", function()
+        local winid
+
+        before_each(function()
+            vim.cmd("tabnew")
+            vim.cmd("vsplit")
+            winid = vim.api.nvim_get_current_win()
+        end)
+
+        after_each(function()
+            pcall(function()
+                vim.cmd("tabclose!")
+            end)
+        end)
+
+        it("resizes the window width on the running Neovim", function()
+            BufHelpers.win_set_width(winid, 20)
+
+            assert.equal(20, vim.api.nvim_win_get_width(winid))
+        end)
+
+        it("resizes the window height on the running Neovim", function()
+            BufHelpers.win_set_height(winid, 8)
+
+            assert.equal(8, vim.api.nvim_win_get_height(winid))
+        end)
+
+        it("leaves the other axis untouched", function()
+            local original_height = vim.api.nvim_win_get_height(winid)
+
+            BufHelpers.win_set_width(winid, 20)
+
+            assert.equal(original_height, vim.api.nvim_win_get_height(winid))
+        end)
+
+        -- `nvim_win_set_width`/`_set_height` are deprecated on nightly in favour
+        -- of `nvim_win_resize`, which only exists on 0.13+. CI runs a nightly
+        -- matrix job, so both branches must stay reachable on every version.
+        -- `spy.stub` cannot restore a field that was absent, so the 0.13 branch
+        -- is driven through a saved original and cleared by hand.
+        it("calls nvim_win_resize on Neovim >= 0.13", function()
+            local has_stub = spy.stub(vim.fn, "has")
+            has_stub:invokes(function(feature)
+                return feature == "nvim-0.13" and 1 or 0
+            end)
+
+            local original_resize = vim.api.nvim_win_resize
+            local calls = {}
+            --- @diagnostic disable-next-line: inject-field, duplicate-set-field
+            vim.api.nvim_win_resize = function(win, width, height, opts)
+                calls[#calls + 1] = { win, width, height, opts }
+            end
+
+            BufHelpers.win_set_width(winid, 20)
+            BufHelpers.win_set_height(winid, 8)
+
+            --- @diagnostic disable-next-line: inject-field
+            vim.api.nvim_win_resize = original_resize
+            has_stub:revert()
+
+            assert.equal(2, #calls)
+            assert.equal(winid, calls[1][1])
+            assert.equal(20, calls[1][2])
+            assert.equal(-1, calls[1][3])
+            assert.equal(-1, calls[2][2])
+            assert.equal(8, calls[2][3])
+        end)
+
+        it("falls back to the single-axis setters on Neovim < 0.13", function()
+            local has_stub = spy.stub(vim.fn, "has")
+            has_stub:returns(0)
+            --- @diagnostic disable-next-line: deprecated
+            local set_width_stub = spy.stub(vim.api, "nvim_win_set_width")
+            --- @diagnostic disable-next-line: deprecated
+            local set_height_stub = spy.stub(vim.api, "nvim_win_set_height")
+
+            BufHelpers.win_set_width(winid, 20)
+
+            set_width_stub:revert()
+            set_height_stub:revert()
+            has_stub:revert()
+
+            assert.equal(1, set_width_stub.call_count)
+            assert.equal(winid, set_width_stub.calls[1][1])
+            assert.equal(20, set_width_stub.calls[1][2])
+            -- The unset axis passes -1 and must not reach the setter.
+            assert.equal(0, set_height_stub.call_count)
+        end)
+    end)
+
     describe("is_buffer_empty", function()
         it("should return true for buffer with single empty line", function()
             local bufnr = vim.api.nvim_create_buf(false, true)

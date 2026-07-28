@@ -89,17 +89,17 @@ implementations expecting the user to fill gaps.
 
 Ownership is keyed by **session**, never by tabpage. `SessionRegistry` maps an
 integer session key to a `SessionManager`; placement is derived live from
-`ChatWidget:visible_tab()` and nothing stores a tabpage handle. A session can be
-visible in any tabpage, or in none, and it keeps generating while hidden. ADR
-0008 holds the invariants; `SessionRegistry.show_session` is the only path that
-SWITCHES a session between tabpages, and it enforces them. `ChatWidget:show` is
-also called in place by `show_if_visible`, `rotate_layout` and the clipboard
-paste handler — ADR 0008 lists why each cannot move a widget between tabpages.
-Adding a fourth needs the same proof.
+`ChatWidget:get_visible_tab_id()` and nothing stores a tabpage handle. A session
+can be visible in any tabpage, or in none, and it keeps generating while hidden.
+ADR 0008 holds the invariants; `SessionRegistry.show_session` is the only path
+that SWITCHES a session between tabpages, and it enforces them.
+`ChatWidget:show` is also called in place by `rerender`, `rotate_layout` and the
+clipboard paste handler — ADR 0008 lists why each cannot move a widget between
+tabpages. Adding a fourth needs the same proof.
 
 Two consequences bite every runtime change:
 
-- **A session may have no window.** `visible_tab()` returns `nil` for a
+- **A session may have no window.** `get_visible_tab_id()` returns `nil` for a
   background session. Nil-check and degrade; never assume a window exists.
 - **Liveness cannot be captured across an async boundary.** A scheduled callback
   can outlive the session that queued it. Check `SessionManager._destroyed`, and
@@ -184,18 +184,18 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 
 - **FORBIDDEN: `vim.notify`** -> use `Logger.notify` (fast-context errors).
 - **FORBIDDEN: calling any `nvim_*` API from a libuv callback** -> wrap it in
-  `vim.schedule` and resolve live values INSIDE the schedule. Neovim rejects most
-  of its API in a fast event context: `E5560: nvim_win_is_valid must not be
-called in a fast event context`. Reached from every libuv entry point — stdio
-  readers, `vim.uv` timers, `on_exit` handlers. The `vim.notify` trap above is
-  the same failure one layer up.
+  `vim.schedule` and resolve live values INSIDE the schedule. Neovim rejects
+  most of its API in a fast event context:
+  `E5560: nvim_win_is_valid must not be called in a fast event context`. Reached
+  from every libuv entry point — stdio readers, `vim.uv` timers, `on_exit`
+  handlers. The `vim.notify` trap above is the same failure one layer up.
   - **A deferred consumer does not make the producer safe.** `Hooks.invoke`
     dispatches every payload through `vim.schedule`, so it reads as safe — but
     the caller builds the payload TABLE before the defer. Building it in a fast
     context crashes even though delivery would have been fine.
   - Resolve values inside the schedule. One captured early describes the world
-    when the callback fired, not when the consumer runs — the defect corrected at
-    `SessionManager`'s `on_response_complete` payload.
+    when the callback fired, not when the consumer runs — the defect corrected
+    at `SessionManager`'s `on_response_complete` payload.
   - `vim.in_fast_event()` is the predicate when you genuinely need to branch.
   - Regression:
     `lua/agentic/session_manager.test.lua::"builds the hook payload outside the fast event context"`.
@@ -230,17 +230,17 @@ called in a fast event context`. Reached from every libuv entry point — stdio
   Highlight groups are global and live in `lua/agentic/theme.lua`.
 - **FORBIDDEN: global keymaps, and direct `vim.keymap.set`/`vim.keymap.del` with
   `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
-  `BufHelpers.keymap_del`. They pick the right option name per version:
-  `buffer` was renamed to `buf` in `neovim#38360` (shipped in 0.12.0 final,
-  `buffer` removed in 0.15), and the helpers gate on `nvim-0.12.1` so 0.12.0-dev
+  `BufHelpers.keymap_del`. They pick the right option name per version: `buffer`
+  was renamed to `buf` in `neovim#38360` (shipped in 0.12.0 final, `buffer`
+  removed in 0.15), and the helpers gate on `nvim-0.12.1` so 0.12.0-dev
   nightlies built before the rename — which answer `has("nvim-0.12") == 1` but
   reject `buf` — still work.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` to enumerate a widget's windows** ->
   enumerate through the widget's own tabpage,
-  `vim.api.nvim_tabpage_list_wins(self:visible_tab())`, and return early when
-  `visible_tab()` is `nil` — a hidden widget sits in no tabpage. A global
-  enumeration reaches other sessions' windows. This is window placement, not
-  isolation. Regressions:
+  `vim.api.nvim_tabpage_list_wins(self:get_visible_tab_id())`, and return early
+  when `get_visible_tab_id()` is `nil` — a hidden widget sits in no tabpage. A
+  global enumeration reaches other sessions' windows. This is window placement,
+  not isolation. Regressions:
   `lua/agentic/ui/chat_widget.test.lua::"returns nil for a hidden widget"` (the
   nil-tab early return) and
   `::"never returns another widget's window in the same tab"` (the tabpage
@@ -251,6 +251,11 @@ called in a fast event context`. Reached from every libuv entry point — stdio
   elsewhere, and it returns the hidden chat float. The helper filters
   non-focusable and `hide` windows and takes an optional tabpage. Regression:
   `lua/agentic/utils/buf_helpers.test.lua::"restricts the search to a given tabpage"`.
+- **FORBIDDEN: `nvim_win_set_width` / `nvim_win_set_height`** -> use
+  `BufHelpers.win_set_width` / `BufHelpers.win_set_height`. Both are deprecated
+  on nightly for `nvim_win_resize` (0.13+ only), and CI runs a nightly matrix
+  job, so the call needs the helper's version gate. Regression:
+  `lua/agentic/utils/buf_helpers.test.lua::"resizes the window width on the running Neovim"`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
   `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
   `nvim_set_option_value(opt, val, { win = winid })`. `[0]` is the `:setlocal`

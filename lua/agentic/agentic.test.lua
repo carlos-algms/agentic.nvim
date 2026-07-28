@@ -461,7 +461,7 @@ describe("agentic: switch_provider", function()
             vim.cmd("tabnew")
             local widget_tab = vim.api.nvim_get_current_tabpage()
             SessionRegistry.show_session(session.session_key)
-            assert.equal(widget_tab, session.widget:visible_tab())
+            assert.equal(widget_tab, session.widget:get_visible_tab_id())
 
             vim.api.nvim_set_current_tabpage(initial_tab_id)
             local win_before = vim.api.nvim_get_current_win()
@@ -475,7 +475,7 @@ describe("agentic: switch_provider", function()
 
             local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
             assert.is_not_nil(replacement)
-            assert.equal(widget_tab, replacement.widget:visible_tab())
+            assert.equal(widget_tab, replacement.widget:get_visible_tab_id())
         end
     )
 
@@ -522,8 +522,8 @@ describe("agentic: switch_provider", function()
         flush_schedule()
 
         assert.is_nil(SessionRegistry.sessions[3])
-        assert.is_nil(first.widget:visible_tab())
-        assert.is_nil(second.widget:visible_tab())
+        assert.is_nil(first.widget:get_visible_tab_id())
+        assert.is_nil(second.widget:get_visible_tab_id())
     end)
 
     it(
