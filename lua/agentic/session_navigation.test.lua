@@ -67,9 +67,7 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.select()
 
-        assert
-            .spy(registry_mock.show_session).was
-            .called_with(2, { focus_prompt = false })
+        assert.spy(registry_mock.show_session).was.called_with(2)
     end)
 
     it("does nothing when session selection is cancelled", function()
@@ -90,9 +88,7 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.next()
 
-        assert
-            .spy(registry_mock.show_session).was
-            .called_with(2, { focus_prompt = false })
+        assert.spy(registry_mock.show_session).was.called_with(2)
     end)
 
     it("opens the previous session and wraps at the start", function()
@@ -102,9 +98,7 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.previous()
 
-        assert
-            .spy(registry_mock.show_session).was
-            .called_with(3, { focus_prompt = false })
+        assert.spy(registry_mock.show_session).was.called_with(3)
     end)
 
     it("opens the previous session in descending key order", function()
@@ -114,9 +108,7 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.previous()
 
-        assert
-            .spy(registry_mock.show_session).was
-            .called_with(2, { focus_prompt = false })
+        assert.spy(registry_mock.show_session).was.called_with(2)
     end)
 
     it("wraps next at the highest session key", function()
@@ -126,9 +118,7 @@ describe("agentic.SessionNavigation", function()
 
         SessionNavigation.next()
 
-        assert
-            .spy(registry_mock.show_session).was
-            .called_with(1, { focus_prompt = false })
+        assert.spy(registry_mock.show_session).was.called_with(1)
     end)
 
     it("does nothing with fewer than two sessions", function()

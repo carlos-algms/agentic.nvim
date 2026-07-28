@@ -442,6 +442,7 @@ local ConfigDefault = {
             select_session = "<localLeader>l",
             next_session = "<localLeader>]",
             prev_session = "<localLeader>[",
+            destroy_session = "<localLeader>D",
         },
 
         --- Keys bindings for the prompt buffer

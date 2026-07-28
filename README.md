@@ -649,7 +649,7 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 | `:lua require("agentic").add_files_to_context(opts)`         | Add a list of file paths or buffer numbers to context             |
 | `:lua require("agentic").add_current_line_diagnostics()`     | Add diagnostics at cursor line to context                         |
 | `:lua require("agentic").add_buffer_diagnostics()`           | Add all diagnostics from current buffer to context                |
-| `:lua require("agentic").new_session()`                      | Start an additional chat session; existing sessions keep running  |
+| `:lua require("agentic").new_session()`                      | Start a new session; choose what happens to the current one       |
 | `:lua require("agentic").destroy_session(opts)`              | Destroy a session and its widget                                  |
 | `:lua require("agentic").select_session()`                   | Pick any live session from a list and open it here                |
 | `:lua require("agentic").next_session()`                     | Open the next session, wrapping at the end                        |
@@ -730,6 +730,9 @@ assigned when it is created and stable for its whole life.
   from any other tab. At most one session is visible per tab
 - Only `destroy_session()` (and switching provider) ends a session
 
+When a current session exists, `new_session()` asks whether to keep it running
+in the background or destroy it before creating the replacement.
+
 `destroy_session(opts)` accepts a **session** field with the key of the session
 to destroy. Without it, it destroys the session visible in the current tab,
 falling back to the most recently opened one.
@@ -762,6 +765,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<localLeader>l` | n     | List every live session and open the chosen one                 |
 | `<localLeader>]` | n     | Open the next session                                           |
 | `<localLeader>[` | n     | Open the previous session                                       |
+| `<localLeader>D` | n     | Destroy the current session                                     |
 | `q`              | n     | Hide chat widget (session keeps running)                        |
 | `d`              | n     | Remove file, code selection, or diagnostic at cursor            |
 | `d`              | v     | Remove multiple selected files, code selections, or diagnostics |
@@ -799,6 +803,7 @@ your setup:
         select_session = "<localLeader>l",  -- List and open a session
         next_session = "<localLeader>]",    -- Open the next session
         prev_session = "<localLeader>[",    -- Open the previous session
+        destroy_session = "<localLeader>D", -- Destroy the current session
       },
 
       -- Keybindings for the prompt buffer only

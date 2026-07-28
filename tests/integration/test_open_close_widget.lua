@@ -87,7 +87,12 @@ describe("Open and Close Chat Widget", function()
             ]])
         )
 
-        child.lua([[ require("agentic").new_session() ]])
+        child.lua([[
+            vim.ui.select = function(items, _, on_choice)
+                on_choice(items[1])
+            end
+            require("agentic").new_session()
+        ]])
         child.flush()
 
         -- Tab2 shows its own widget, and tab1 keeps showing the first one

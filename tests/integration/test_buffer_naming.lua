@@ -65,6 +65,9 @@ session.widget:render_header("%s")
     local function open_via_public_api()
         return child.lua_get([[
 (function()
+    vim.ui.select = function(items, _, on_choice)
+        on_choice(items[1])
+    end
     require("agentic").new_session({ auto_add_to_context = false })
     -- `list()` is ordered most-recently-shown first
     return require("agentic.session_registry").list()[1].session_key

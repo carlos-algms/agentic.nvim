@@ -538,8 +538,10 @@ agentic.add_buffer_diagnostics({opts})
 
                                                  *agentic.new_session()*
 agentic.new_session({opts})
-  Create an additional session and show it. Existing sessions stay
-  alive and keep running. See |agentic-sessions|.
+  Create and show a new session. When a current session exists, show
+  a picker to keep it running in the background or destroy it before
+  creating the new one. Cancelling creates nothing. See
+  |agentic-sessions|.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -636,6 +638,7 @@ These keybindings are automatically set in Agentic buffers:
   <localLeader>l         n       List sessions and open one
   <localLeader>]         n       Open the next session
   <localLeader>[         n       Open the previous session
+  <localLeader>D         n       Destroy the current session
   q                      n       Hide chat widget (session keeps running)
   d                      n/v     Remove file/selection/diagnostic
   ]]                     n       Next chat heading
@@ -675,6 +678,7 @@ Override default keybindings via the `keymaps` config option:
         select_session = "<localLeader>l",
         next_session = "<localLeader>]",
         prev_session = "<localLeader>[",
+        destroy_session = "<localLeader>D",
       },
       prompt = {
         submit = {

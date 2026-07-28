@@ -351,6 +351,103 @@ describe("agentic.SessionRegistry", function()
         end)
     end)
 
+    describe("create_with_current_session_guard", function()
+        before_each(function()
+            ui_select_stub = spy.stub(vim.ui, "select")
+        end)
+
+        --- @return TestStub stub
+        local function get_select_stub()
+            return ui_select_stub --[[@as TestStub]]
+        end
+
+        it("creates directly when no current session exists", function()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(function() end)
+
+            assert.spy(select_stub).was.called(0)
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        it("offers to keep or destroy the current session", function()
+            local current = SessionRegistry.resolve_or_create()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(function() end)
+
+            assert.spy(select_stub).was.called(1)
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+
+            local items = select_stub.calls[1][1]
+            assert.same({
+                "Keep current session in the background",
+                "Destroy current session",
+            }, items)
+
+            local on_choice = select_stub.calls[1][3]
+            on_choice(nil)
+
+            assert.equal(current, SessionRegistry.current())
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        it("keeps the current session when creating another", function()
+            local current = SessionRegistry.resolve_or_create()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(function() end)
+
+            assert.spy(select_stub).was.called(1)
+            local items = select_stub.calls[1][1]
+            local on_choice = select_stub.calls[1][3]
+            on_choice(items[1])
+
+            assert.equal(current, SessionRegistry.sessions[current.session_key])
+            assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        it("destroys the current session when creating another", function()
+            local current = SessionRegistry.resolve_or_create()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(function() end)
+
+            assert.spy(select_stub).was.called(1)
+            local items = select_stub.calls[1][1]
+            local on_choice = select_stub.calls[1][3]
+            on_choice(items[2])
+
+            assert.is_nil(SessionRegistry.sessions[current.session_key])
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        it(
+            "keeps the current session when replacement creation fails",
+            function()
+                local current = SessionRegistry.resolve_or_create()
+                local create_stub = spy.stub(SessionRegistry, "create")
+                create_stub:returns(nil)
+                local select_stub = get_select_stub()
+
+                SessionRegistry.create_with_current_session_guard(
+                    function() end
+                )
+
+                local items = select_stub.calls[1][1]
+                local on_choice = select_stub.calls[1][3]
+                on_choice(items[2])
+
+                assert.equal(
+                    current,
+                    SessionRegistry.sessions[current.session_key]
+                )
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+                create_stub:revert()
+            end
+        )
+    end)
+
     describe("destroy", function()
         it("removes the key and destroys the session once", function()
             local session = create_mock_session()

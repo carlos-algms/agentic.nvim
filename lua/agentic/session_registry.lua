@@ -3,6 +3,9 @@ local Config = require("agentic.config")
 local DefaultConfig = require("agentic.config_default")
 local ACPHealth = require("agentic.acp.acp_health")
 
+local KEEP_CURRENT_SESSION = "Keep current session in the background"
+local DESTROY_CURRENT_SESSION = "Destroy current session"
+
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Keyed by session key
 --- @field _next_id integer Last assigned session key
@@ -104,6 +107,47 @@ function SessionRegistry.resolve_or_create(callback)
     end
 
     return instance
+end
+
+--- Creates an additional session after resolving the current one's lifecycle.
+--- @param on_created fun(session: agentic.SessionManager)
+function SessionRegistry.create_with_current_session_guard(on_created)
+    local current = SessionRegistry.current()
+
+    --- @param choice string|nil
+    local function create(choice)
+        local session = SessionRegistry.create()
+
+        if not session then
+            return
+        end
+
+        on_created(session)
+
+        local current_key = current and current.session_key
+        if choice == DESTROY_CURRENT_SESSION and current_key then
+            SessionRegistry.destroy(current_key)
+        end
+    end
+
+    if not current then
+        create(nil)
+        return
+    end
+
+    vim.ui.select({
+        KEEP_CURRENT_SESSION,
+        DESTROY_CURRENT_SESSION,
+    }, {
+        prompt = "New session:",
+    }, function(choice)
+        if
+            choice == KEEP_CURRENT_SESSION
+            or choice == DESTROY_CURRENT_SESSION
+        then
+            create(choice)
+        end
+    end)
 end
 
 --- @param session_key integer

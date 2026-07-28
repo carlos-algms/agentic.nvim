@@ -100,6 +100,11 @@ end)()
 
     before_each(function()
         child.setup()
+        child.lua([[
+            vim.ui.select = function(items, _, on_choice)
+                on_choice(items[1])
+            end
+        ]])
     end)
 
     after_each(function()
@@ -391,7 +396,7 @@ end)()
         assert.equal(1, visible_key())
     end)
 
-    it("keeps editor focus and normal mode when cycling sessions", function()
+    it("focuses the target input when cycling sessions", function()
         create_sessions(2)
 
         child.lua([[
@@ -405,10 +410,12 @@ end)()
         child.flush()
 
         assert.equal(
-            child.lua_get([[_G.editor_win]]),
-            child.api.nvim_get_current_win()
+            child.lua_get([[
+                require("agentic.session_registry").sessions[1].widget.buf_nrs.input
+            ]]),
+            child.api.nvim_get_current_buf()
         )
-        assert.are_not.equal("i", child.fn.mode())
+        assert.equal("i", child.fn.mode())
     end)
 
     it("wraps around after cycling through every session", function()

@@ -28,9 +28,7 @@ local function cycle(step)
             local target_key = target.session_key
 
             if target_key then
-                SessionRegistry.show_session(target_key, {
-                    focus_prompt = false,
-                })
+                SessionRegistry.show_session(target_key)
             end
 
             return
@@ -63,9 +61,7 @@ function SessionNavigation.select()
         local session_key = selected and selected.session_key
 
         if session_key then
-            SessionRegistry.show_session(session_key, {
-                focus_prompt = false,
-            })
+            SessionRegistry.show_session(session_key)
         end
     end)
 end
