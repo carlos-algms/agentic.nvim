@@ -59,6 +59,13 @@ The integer **SessionRegistry** key, assigned at creation and stable for the
 published to users on every hook payload.
 _Avoid_: keying anything off a **Tabpage** handle.
 
+**Session title**:
+The human-readable label for a **SessionManager**, held on **ChatHistory**.
+Derived from the first prompt submit, or inherited from the **Provider** on
+restore. Written once, so it stays stable while the conversation grows. Labels
+entries in the session picker.
+_Avoid_: bare "title" — say Session title, or **Tool Call** title.
+
 **SessionRegistry**:
 The module-level singleton mapping **Session key** -> **SessionManager**. The
 only sanctioned entry point from `init.lua`. `show_session` is the single path
@@ -78,6 +85,27 @@ A **SessionManager** whose **ChatWidget** is visible in no Tabpage —
 `visible_tab()` is nil. It keeps its **ACP Session**, keeps receiving
 `session/update`, and keeps generating.
 _Avoid_: "closed session"; closing a widget destroys nothing.
+
+### Lifecycle verbs
+
+Three distinct operations. "Close" named two of them.
+
+**Hide**:
+Close a **ChatWidget**'s windows while the **SessionManager**, its **ACP
+Session** and its generation all stay alive. Produces a **Background session**.
+Reversible.
+_Avoid_: "close", "destroy".
+
+**Destroy**:
+Remove a **SessionManager** from the **SessionRegistry**, cancel its **ACP
+Session**, delete its **ChatWidget buffers**. Irreversible, and only ever the
+result of explicit user intent.
+_Avoid_: "close"; a **Hide** is not a step toward this.
+
+**Evict**:
+**Hide** whichever **ChatWidget** occupies a **Tabpage** so another can take it.
+The displaced **SessionManager** keeps running as a **Background session**.
+_Avoid_: "replace", "swap out" — both imply the outgoing session ends.
 
 ### UI surface
 
@@ -151,7 +179,8 @@ Per-**ChatWidget** holder for code ranges the user attached to the prompt
 **Tool Call**:
 A provider-initiated action (file edit, bash, search, etc.) communicated via
 `session/update` with `sessionUpdate = "tool_call"`. Goes through 3 phases:
-initial, update(s), terminal.
+initial, update(s), terminal. Its `title` is the **Tool Call Block**'s display
+label, required by the ACP schema, unrelated to **Session title**.
 
 **Tool Call Block**:
 The rendered representation of a **Tool Call** in the chat buffer. Header +
@@ -283,6 +312,18 @@ default.
 - "Tabpage" was used as the ownership key: one **SessionManager** per tab, dying
   with it. Resolved: the **Session key** owns, the Tabpage only places. A
   Tabpage handle identifies nothing.
+- "Title" meant four things: `ChatHistory.title` (local, from the first prompt),
+  `SessionInfo.title` (provider-side, via `session/list`), `ToolCall.title` (block
+  label, ACP-required), and an unused `AgentInfo.title`. Resolved: **Session
+  title** covers the first two — the provider's value seeds the local one on
+  restore and nothing flows back. **Tool Call** title covers the third. The unused
+  one gets no term. Live titles are deliberately NOT reconciled against
+  `session/list`: no ACP `SessionUpdate` variant carries a title, so it would cost
+  a round-trip per **Provider** before the picker could render.
+- "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle verbs**.
+  The public `Agentic.close` keeps its name for API compatibility but performs a
+  **Hide**, as does the `q` keymap. Two user-facing docs shipped disagreeing about
+  which one `q` did, which is why the verbs are now pinned.
 - "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
   object, and the LLM behind the provider. Resolved: **Provider** for the
   subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain

@@ -53,13 +53,17 @@ stateDiagram-v2
     destroy --> [*]: WidgetLayout.close(win_nrs)<br/>then buffers deleted<br/>(close skips handles whose tabpage is gone)
 
     note right of visible
-        hide() preconditions:
-        - ensure non-widget fallback window
-          (open_editor_window if none)
-          -> otherwise the close takes the
-             user's tabpage down with it
-        - wrap close in _avoid_auto_close_cmd
-          (sets _closing) -> recursive close otherwise
+        hide() and destroy() both first run
+        _ensure_fallback_window():
+        - non-widget window in the widget's
+          own tabpage (open_editor_window
+          if none)
+        - otherwise the close takes that
+          tabpage down with it
+
+        hide() also wraps the close in
+        _avoid_auto_close_cmd (sets _closing)
+        -> recursive close otherwise
     end note
     note right of hidden
         hidden chat float keeps chat buffer
@@ -82,11 +86,32 @@ stateDiagram-v2
   in `ChatWidget:_avoid_auto_close_cmd`. The wrapper sets `self._closing = true`
   so the global `WinClosed` autocmd's auto-close-on-user-close branch skips the
   call. Skipping the wrapper triggers recursive close via the autocmd.
-- `destroy` never routes through `hide`. It calls `WidgetLayout.close` on its
-  `win_nrs` and then deletes the buffers: a destroyed widget needs neither a
-  fallback window nor a fresh hidden float. `WidgetLayout.close` skips every
-  handle whose tabpage is already gone, which is what keeps this safe during a
-  tabclose teardown on 0.11.x. See `ChatWidget:destroy`.
+- `destroy` never routes through `hide`, but both share
+  `ChatWidget:_ensure_fallback_window`. It calls that, then `WidgetLayout.close`
+  on its `win_nrs`, then deletes the buffers. Relative to `hide` it skips
+  hidden-float recreation, size capture, and `stopinsert` suppression, since a
+  destroyed widget will never be shown again. `WidgetLayout.close` skips every
+  handle whose tabpage is already gone, which keeps this safe during a tabclose
+  teardown on 0.11.x. See `ChatWidget:destroy`.
+  - The fallback is mandatory here. `SessionRegistry.show_session` only hides
+    widgets in the CURRENT tabpage, so destroying a session visible in another
+    tabpage reaches `WidgetLayout.close` there, and without the fallback that
+    tabpage disappears under the user. Reachable from `Agentic.destroy_session`
+    and from session restore. Regression:
+    `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
+  - **Ordering: the fallback MUST run before `WidgetRegistry.unregister`.**
+    `find_first_non_widget_window` excludes windows showing a registered widget
+    buffer, so once the widget is unregistered its own chat window looks like a
+    valid fallback and gets handed back.
+- A **background session** must never be surfaced by a content callback. The
+  `FileList`, `CodeSelection`, `DiagnosticsList` and `TodoList` `on_change`
+  handlers call `ChatWidget:show_if_visible`, which no-ops when `visible_tab()`
+  is nil. Calling `show` directly there put a second widget in the current
+  tabpage — a `plan` update from a hidden session was enough, with no user action
+  at all. The update survives: panel buffers are written before `on_change` fires,
+  and `show_layout` decides each panel window from buffer emptiness at show time.
+  Regression:
+  `tests/integration/test_multi_session.lua::"keeps a hidden session hidden when its file list changes"`.
 - `destroy` is the one programmatic close exempt from the
   `_avoid_auto_close_cmd` rule above. It deletes the
   `AgenticWinClosed_<chat bufnr>` augroup before closing, so the only listener

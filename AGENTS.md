@@ -118,6 +118,27 @@ Three entry points on `SessionRegistry`. Only one creates:
   session. Four call sites shipped the wrong one on the branch that introduced
   the name, each silently spawning a subprocess.
 
+```mermaid
+flowchart TD
+    Q{"May this entry point<br/>CREATE a session?"}
+    Q -->|"yes"| ROC["resolve_or_create()<br/>may spawn provider work"]
+    Q -->|"no"| T{"Must it be in the<br/>CURRENT tabpage?"}
+
+    T -->|"yes — placement matters"| VH["visible_here()"]
+    T -->|"no"| C["current()<br/>DEFAULT CHOICE"]
+
+    VH --> N["nil-check: all three<br/>can return nil"]
+    C --> N
+    ROC --> N
+```
+
+Worked examples, all four originally wrong: `Agentic.close` and
+`Agentic.rotate_layout` are `visible_here` — acting on another tabpage's widget
+surprises the user. `Agentic.destroy_session` and `Agentic.cycle_session` are
+`current`, acting on a session rather than a placement. The clipboard paste
+closure resolves through `WidgetRegistry` from the buffer under the cursor: it
+runs on every `vim.paste` and must not create anything.
+
 All three return `SessionManager|nil`, `resolve_or_create` included:
 `SessionRegistry.create` returns `nil` when
 `ACPHealth.check_configured_provider()` fails, so a user with no configured
@@ -162,6 +183,25 @@ storage.
 Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 
 - **FORBIDDEN: `vim.notify`** -> use `Logger.notify` (fast-context errors).
+- **FORBIDDEN: calling any `nvim_*` API from a libuv callback** -> wrap it in
+  `vim.schedule` and resolve live values INSIDE the schedule. Neovim rejects most
+  of its API in a fast event context: `E5560: nvim_win_is_valid must not be
+called in a fast event context`. Reached from every libuv entry point — stdio
+  readers, `vim.uv` timers, `on_exit` handlers. The `vim.notify` trap above is
+  the same failure one layer up.
+  - **A deferred consumer does not make the producer safe.** `Hooks.invoke`
+    dispatches every payload through `vim.schedule`, so it reads as safe — but
+    the caller builds the payload TABLE before the defer. Building it in a fast
+    context crashes even though delivery would have been fine.
+  - Resolve values inside the schedule. One captured early describes the world
+    when the callback fired, not when the consumer runs — the defect corrected at
+    `SessionManager`'s `on_response_complete` payload.
+  - `vim.in_fast_event()` is the predicate when you genuinely need to branch.
+  - Regression:
+    `lua/agentic/session_manager.test.lua::"builds the hook payload outside the fast event context"`.
+    It drives the callback from a `vim.uv` timer in a child Neovim, because
+    `tests/mocks/acp_transport_mock.lua` delivers by direct call and cannot
+    produce a fast context.
 - **FORBIDDEN: `goto` / `::label::`** -> Selene parser does not parse it. Use
   inverted conditions or `elseif` chains.
 
