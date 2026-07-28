@@ -9,12 +9,6 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.Agentic
 local Agentic = {}
 
---- Passing `session` shows that exact session and IGNORES `auto_add_to_context`:
---- naming a session is a switch, not a context-gathering command, so the selection
---- or file is added only on the resolved path.
---- @class agentic.OpenOpts : agentic.ui.ChatWidget.ShowOpts
---- @field session? integer Session key to open; defaults to the resolved session
-
 --- @class agentic.DestroySessionOpts
 --- @field session? integer Session key to destroy; defaults to the resolved session
 
@@ -31,15 +25,8 @@ end
 
 --- Opens the chat widget in the current tab page
 --- Safe to call multiple times
---- @param opts agentic.OpenOpts|nil
+--- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.open(opts)
-    local target = opts and opts.session
-
-    if target then
-        SessionRegistry.show_session(target, opts)
-        return
-    end
-
     SessionRegistry.resolve_or_create(function(session)
         if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()

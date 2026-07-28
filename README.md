@@ -641,7 +641,7 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 | Function                                                     | Description                                                                       |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `:lua require("agentic").toggle()`                           | Toggle chat sidebar                                                               |
-| `:lua require("agentic").open(opts)`                         | Open chat sidebar (keep open if already visible); `session` opt picks the session |
+| `:lua require("agentic").open(opts)`                         | Open chat sidebar (keep open if already visible)                                   |
 | `:lua require("agentic").close()`                            | Hide chat sidebar (session keeps running; nothing is destroyed)                   |
 | `:lua require("agentic").add_selection()`                    | Add visual selection to context                                                   |
 | `:lua require("agentic").add_file()`                         | Add current file to context                                                       |
@@ -730,14 +730,11 @@ assigned when it is created and stable for its whole life.
   from any other tab. At most one session is visible per tab
 - Only `destroy_session()` (and switching provider) ends a session
 
-`open(opts)` and `destroy_session(opts)` accept a **session** field with the key
-of the session to act on. Without it they use the session visible in the current
-tab, falling back to the most recently opened one.
+`destroy_session(opts)` accepts a **session** field with the key of the session
+to destroy. Without it, it destroys the session visible in the current tab,
+falling back to the most recently opened one.
 
 ```lua
--- Open session 2 here, wherever it was before
-require("agentic").open({ session = 2 })
-
 -- Destroy session 2 without opening it
 require("agentic").destroy_session({ session = 2 })
 ```

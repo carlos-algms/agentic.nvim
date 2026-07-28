@@ -130,7 +130,7 @@ end)()
         child.cmd("tabnew")
         local tab2 = child.api.nvim_get_current_tabpage()
 
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         assert.equal(tab2, session_tab(1))
@@ -250,7 +250,7 @@ end)()
 
         -- Not lost: the panel buffer is written before the callback fires, and
         -- `show` opens every panel whose buffer is non-empty.
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         assert.same(
@@ -377,7 +377,7 @@ end)()
         -- Three sessions is the minimum that detects cycling over a mutable
         -- order: with two, `next` then `prev` lands back by accident.
         create_sessions(3)
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         child.lua([[ require("agentic").next_session() ]])
@@ -391,7 +391,7 @@ end)()
 
     it("wraps around after cycling through every session", function()
         create_sessions(3)
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         --- @type integer[]
@@ -408,7 +408,7 @@ end)()
 
     it("opens the session chosen in the picker", function()
         create_sessions(2)
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         child.lua([[
@@ -440,7 +440,7 @@ end)()
 
     it("destroys the resolved session and keeps the others", function()
         create_sessions(2)
-        child.lua([[ require("agentic").open({ session = 1 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
         child.lua([[ require("agentic").destroy_session() ]])
@@ -457,7 +457,7 @@ end)()
 
     it("destroys the named session, not the visible one", function()
         create_sessions(2)
-        child.lua([[ require("agentic").open({ session = 2 }) ]])
+        child.lua([[ require("agentic.session_registry").show_session(2) ]])
         child.flush()
 
         child.lua([[ require("agentic").destroy_session({ session = 1 }) ]])

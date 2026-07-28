@@ -446,13 +446,10 @@ small integer assigned at creation and stable for its whole life.
   - Only |agentic.destroy_session()| and switching provider end a
     session.
 
-|agentic.open()| and |agentic.destroy_session()| take a `session` field
-naming the key to act on. Without it they use the session visible in
-the current tab, falling back to the most recently opened one.
+|agentic.destroy_session()| takes a `session` field naming the key to
+destroy. Without it, it destroys the session visible in the current
+tab, falling back to the most recently opened one.
 >lua
-  -- Open session 2 here, wherever it was before
-  require("agentic").open({ session = 2 })
-
   -- Destroy session 2 without opening it
   require("agentic").destroy_session({ session = 2 })
 <
@@ -473,10 +470,7 @@ agentic.toggle({opts})
                                                         *agentic.open()*
 agentic.open({opts})
   Open a chat session in the current tab. Keeps it open if already
-  visible. Accepts the same {opts} as |agentic.toggle()|, plus:
-      `session`  (integer)  Session key to open. Defaults to the
-                            session visible in this tab, else the
-                            most recently opened one.
+  visible. Accepts the same {opts} as |agentic.toggle()|.
   See |agentic-sessions|.
 
                                                        *agentic.close()*
