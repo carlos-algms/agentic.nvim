@@ -49,7 +49,7 @@ Do NOT create a new ADR. Update the existing one:
 1. Rewrite the "Current decision" section to the new truth.
 2. Move the previous decision into "Rejected / superseded alternatives" with the
    reason it was dropped.
-3. Add a row to the "Changelog" with date + commit + one-line summary.
+3. Add a row to the "Changelog" with the date and a one-line summary.
 
 Append-only history lives in the changelog and the rejected section. The top of
 the file always reflects what the code does today.
@@ -61,7 +61,6 @@ the file always reflects what the code does today.
 
 - Status: accepted
 - Last updated: YYYY-MM-DD
-- Commits: comma-separated 7-char short SHAs
 - Related: comma-separated refs in `<kind> #N` form. Allowed kinds: `PR`,
   `issue`, `discussion`. Cross-repo: `owner/repo#N` (no kind prefix). Example:
   `Related: PR #215, issue #196, issue #211, neovim/neovim#35341`.
@@ -90,9 +89,9 @@ What this costs us. Things that fail loud if violated.
 
 ## Changelog
 
-| Date       | Commit | Change                         |
-| ---------- | ------ | ------------------------------ |
-| YYYY-MM-DD | <sha>  | Initial decision: <one-liner>. |
+| Date       | Change                         |
+| ---------- | ------------------------------ |
+| YYYY-MM-DD | Initial decision: <one-liner>. |
 
 ## Sources (optional)
 
@@ -122,5 +121,3 @@ Tracked issue/PR refs (own repo or cross-repo, e.g. `neovim/neovim#35341`) go in
   `Current decision` to today's truth, move the prior text into
   `Rejected / superseded alternatives`, and add a changelog row. Do NOT silently
   leave a stale `Current decision` — agents read it as authoritative.
-- SHAs are 7-char short SHAs. Fill them in after the squash-merge SHA is known;
-  do NOT use `(uncommitted)` placeholders in landed commits.

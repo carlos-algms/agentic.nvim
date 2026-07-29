@@ -279,10 +279,10 @@ enabled by default.
   `SessionInfo.title` (provider-side, via `session/list`), `ToolCall.title`
   (block label, ACP-required), and an unused `AgentInfo.title`. Resolved:
   **Session title** covers the first two — the provider's value seeds the local
-  one on restore and nothing flows back. **Tool Call** title covers the third.
-  The unused one gets no term. Live titles are deliberately NOT reconciled
-  against `session/list`: no ACP `SessionUpdate` variant carries a title, so it
-  would cost a round-trip per **Provider** before the picker could render.
+  one on restore. For a new session, the first prompt seeds it. **Tool Call**
+  title covers the third. The unused one gets no term. ACP
+  `session_info_update` may carry a live title, but the current handler treats
+  session metadata as informational and does not update the local title.
 - "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle
   verbs**. The public `Agentic.close` keeps its name for API compatibility but
   performs a **Hide**, as does the `q` keymap. Two user-facing docs shipped

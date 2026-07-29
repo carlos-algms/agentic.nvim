@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-07-25
-- Commits:
 - Related:
 
 ## Context
@@ -126,10 +125,10 @@ label `select_session` rows.
   `set_most_recent` and `resolve_or_create`. Creating without showing strands
   the cursor, which is how a closed-widget provider switch left a session
   reachable only through `select_session`.
-- `_previous_most_recent` shadows it, making `list()` a recency order. Every
-  write repoints `_most_recent` BEFORE the incoming widget's first `show`, the
-  only moment `_inherited_size` runs; without the second cursor the size donor
-  is always the lowest-keyed session.
+- `_previous_most_recent` shadows `_most_recent`. `list()` emits those two
+  sessions first, then the remaining sessions by ascending key; it is not a
+  complete recency history. Repointing before the incoming widget's first
+  `show` preserves the displaced session as the size donor.
 - The hidden chat float is `relative = "editor"`, so it attaches to the current
   tabpage and lands in the survivor after `:tabclose`. It is `hide = true` and
   `focusable = false`, so window-counting assertions must filter on both.
@@ -138,23 +137,23 @@ label `select_session` rows.
 
 ## Rejected / superseded alternatives
 
-| Option                                                           | Reason rejected                                                                                                                                                                  |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tabpage-keyed registry with `TabClosed` destroy (prior decision) | One conversation per tab, `:tabclose` destroyed a generating session with its provider state, and sessions could never be reopened elsewhere.                                    |
-| Store the tabpage on the session or widget                       | A stored handle diverges from reality the moment a widget is hidden, moved, or its tab closes. `get_visible_tab_id()` cannot go stale.                                           |
-| Keep `vim.t` for diff and header state                           | Returns copies, so nested mutation silently did not persist, and tab-scoped storage cannot follow a session that moves or runs in none.                                          |
-| Weak-valued `sessions` table                                     | Once `cancel_session` drops the subscriber the registry is the only strong reference, so a wanted background session would be collected.                                         |
-| Reuse widget, buffers or `config_options` on provider switch     | Providers announce different option sets; inheriting leaks state the new provider never declared. Fresh session with replayed messages is honest.                                |
-| Cycle sessions in `list()` order                                 | `list()` is recency-ordered and `show_session` rewrites it, so each press reorders the sequence being traversed and `prev` stops inverting `next`.                               |
-| Capture the size donor in `show_session` before repointing       | `resolve_or_create` repoints one call earlier, so the guard would duplicate there and at every future write site. Recording the displaced session fixes all paths at the cursor. |
-| Fetch session titles from `session/list`                         | No ACP title on `session/new`, `session/load`, or any `SessionUpdate`. Reconciling costs a round trip per provider before the picker renders.                                    |
-| Guard destroyed-session callbacks at each handler                | Every new handler must remember. Re-resolving inside `__with_subscriber` closes the class once.                                                                                  |
+| Option                                                           | Reason rejected                                                                                                                                                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tabpage-keyed registry with `TabClosed` destroy (prior decision) | One conversation per tab, `:tabclose` destroyed a generating session with its provider state, and sessions could never be reopened elsewhere.                                              |
+| Store the tabpage on the session or widget                       | A stored handle diverges from reality the moment a widget is hidden, moved, or its tab closes. `get_visible_tab_id()` cannot go stale.                                                     |
+| Keep `vim.t` for diff and header state                           | Returns copies, so nested mutation silently did not persist, and tab-scoped storage cannot follow a session that moves or runs in none.                                                    |
+| Weak-valued `sessions` table                                     | Once `cancel_session` drops the subscriber the registry is the only strong reference, so a wanted background session would be collected.                                                   |
+| Reuse widget, buffers or `config_options` on provider switch     | Providers announce different option sets; inheriting leaks state the new provider never declared. Fresh session with replayed messages is honest.                                          |
+| Cycle sessions in `list()` order                                 | `list()` is recency-ordered and `show_session` rewrites it, so each press reorders the sequence being traversed and `prev` stops inverting `next`.                                         |
+| Capture the size donor in `show_session` before repointing       | `resolve_or_create` repoints one call earlier, so the guard would duplicate there and at every future write site. Recording the displaced session fixes all paths at the cursor.           |
+| Fetch session titles from `session/list`                         | No ACP title on `session/new`, `session/load`, or any `SessionUpdate`. Reconciling costs a round trip per provider before the picker renders.                                              |
+| Rely only on per-handler liveness guards                         | Every new handler could forget. `ACPClient:__with_subscriber` provides the central notification gate; handler and scheduled-callback guards remain required at their own async boundaries. |
 
 ## Changelog
 
-| Date       | Commit | Change                                                                           |
-| ---------- | ------ | -------------------------------------------------------------------------------- |
-| 2026-07-25 |        | Initial decision: ownership keyed by session, placement derived from the widget. |
+| Date       | Change                                                                           |
+| ---------- | -------------------------------------------------------------------------------- |
+| 2026-07-25 | Initial decision: ownership keyed by session, placement derived from the widget. |
 
 ## Sources
 

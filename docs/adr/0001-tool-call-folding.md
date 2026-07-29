@@ -1,8 +1,7 @@
 # 0001. Tool-call folding and fold-state preservation
 
 - Status: accepted
-- Last updated: 2026-04-29
-- Commits: dc33d56, 28cb6ff
+- Last updated: 2026-07-29
 - Related: PR #197, PR #210, discussion #212
 
 ## Context
@@ -51,15 +50,16 @@ configured width, not the visible chat window's actual width — and matches its
 (`nvim_win_text_height`) agree across hidden and visible states.
 
 The two widths diverge whenever the visible chat's width is not
-`calculate_width(Config.windows.width)`. Two causes, not one:
+`calculate_width(Config.windows.width)`. Two common causes:
 
 - After a manual resize (`ChatWidget._size`), in any layout.
-- Always in `bottom` layout: the chat opens as a `split = "below", win = -1`
-  full-width split, so it spans `vim.o.columns`, and only its `height` comes
-  from `size`/config (`WidgetLayout.show_layout`).
+- In `bottom` layout, `WidgetLayout.open` creates the chat below the editor,
+  then splits the input to the chat's right. The input takes
+  `Config.windows.stack_width_ratio` of the initial row, so the chat uses the
+  remaining width rather than spanning `vim.o.columns`.
 
-In either case the widget measures wrapped rows against the configured width
-while hidden. `bottom` layout is not exempt.
+When the widths diverge, the widget measures wrapped rows against the configured
+width while hidden. `bottom` layout is not exempt.
 
 `Fold.should_fold` decides folding by **screen rows**, not buffer lines.
 Counts wrapped rows via `nvim_win_text_height` against whichever window holds
@@ -118,13 +118,14 @@ Our case (live transitions on growing blocks) is the harder variant.
 
 ## Changelog
 
-| Date       | Commit  | Change                                         |
-| ---------- | ------- | ---------------------------------------------- |
-| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.      |
-| 2026-04-29 | 28cb6ff | Manual folds + anchor pads + sync scroll.      |
-| 2026-04-29 | 28cb6ff | Hidden chat float preserves fold state.        |
-| 2026-05-03 | -       | Screen-row folding; sync dimensions/wrap.      |
-| 2026-05-15 | -       | Long-title body counts inside body fold range. |
+| Date       | Change                                         |
+| ---------- | ---------------------------------------------- |
+| 2026-04-18 | Initial: foldexpr + threshold + foldtext.      |
+| 2026-04-29 | Manual folds + anchor pads + sync scroll.      |
+| 2026-04-29 | Hidden chat float preserves fold state.        |
+| 2026-05-03 | Screen-row folding; sync dimensions/wrap.      |
+| 2026-05-15 | Long-title body counts inside body fold range. |
+| 2026-07-29 | Document configured-versus-visible widths.     |
 
 ## Sources
 

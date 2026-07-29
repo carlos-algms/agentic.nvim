@@ -5,7 +5,6 @@
 
 - Status: accepted
 - Last updated: 2026-05-27
-- Commits: -
 - Related: -
 
 ## Context
@@ -22,7 +21,7 @@ Inline buttons on row N exhibited two failures and one product gap:
    spilled into a second visual row; one button could end up orphaned on its
    own wrapped line, disconnected from the status word.
 3. **Static label map hides provider intent.** The fixed `Allow` / `Allow
-   Always` / `Reject` / `Reject Always` labels discarded provider-supplied
+Always` / `Reject` / `Reject Always` labels discarded provider-supplied
    text (e.g. Claude Code's `"Yes, and bypass permissions"`) and produced
    identical text regardless of which provider sent the request.
 
@@ -210,12 +209,12 @@ special-case needed. ADR 0001's contract is unchanged.
 
 ## Changelog
 
-| Date       | Commit  | Change                                                                                                                                                                                         |
-| ---------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-05-13 | initial | Initial implementation per `docs/superpowers/inline-permission-buttons.md`. Concurrent map, head-tracking focus, row N text.                                                                   |
-| 2026-05-13 | -       | Two-level focus added: `h` / `l` / `<CR>` for buttons; digits kept; static label map; bg-only highlights, brackets removed.                                                                    |
-| 2026-05-13 | -       | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                                                                                        |
-| 2026-05-13 | -       | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.                                                                                |
-| 2026-05-13 | -       | Digits `1`..`4` ungated (fire from anywhere in the chat buffer); only motion / submit keys (`h`/`l`/`<Left>`/`<Right>`/`<CR>`) remain row-gated.                                               |
-| 2026-05-14 | -       | Auto-scroll suppresses follow mode on `NS_STATUS` permission-button rows; no `PermissionManager` focus-row callback.                                                                           |
-| 2026-05-27 | -       | Stacked one-per-row buttons supersede inline row N rendering. Provider `option.name` used verbatim. Eight cycle keys (h/j/k/l + arrows). Block focus lands on button row 1. NBSP join removed. |
+| Date       | Change                                                                                                                                                                                         |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-05-13 | Initial implementation per `docs/superpowers/inline-permission-buttons.md`. Concurrent map, head-tracking focus, row N text.                                                                   |
+| 2026-05-13 | Two-level focus added: `h` / `l` / `<CR>` for buttons; digits kept; static label map; bg-only highlights, brackets removed.                                                                    |
+| 2026-05-13 | Row-gated `expr=true` keymaps; cursor positions on first button column.                                                                                                                        |
+| 2026-05-13 | `<C-n>` / `<C-p>` replace `]p` / `[p`; `Config.keymaps.permission.cycle_next` / `cycle_prev` made configurable.                                                                                |
+| 2026-05-13 | Digits `1`..`4` ungated (fire from anywhere in the chat buffer); only motion / submit keys (`h`/`l`/`<Left>`/`<Right>`/`<CR>`) remain row-gated.                                               |
+| 2026-05-14 | Auto-scroll suppresses follow mode on `NS_STATUS` permission-button rows; no `PermissionManager` focus-row callback.                                                                           |
+| 2026-05-27 | Stacked one-per-row buttons supersede inline row N rendering. Provider `option.name` used verbatim. Eight cycle keys (h/j/k/l + arrows). Block focus lands on button row 1. NBSP join removed. |

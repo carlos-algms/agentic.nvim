@@ -443,8 +443,7 @@ small integer assigned at creation and stable for its whole life.
   - Opening a session in a tab hides whatever session was there, and
     removes it from any other tab. At most one session is visible per
     tab.
-  - Only |agentic.destroy_session()| and switching provider end a
-    session.
+  - Use |agentic.destroy_session()| to end a session directly.
 
 |agentic.destroy_session()| takes a `session` field naming the key to
 destroy. Without it, it destroys the session visible in the current
@@ -539,9 +538,8 @@ agentic.add_buffer_diagnostics({opts})
                                                  *agentic.new_session()*
 agentic.new_session({opts})
   Create and show a new session. When a current session exists, show
-  a picker to keep it running in the background or destroy it before
-  creating the new one. Cancelling creates nothing. See
-  |agentic-sessions|.
+  a picker to keep it running in the background or destroy it.
+  Cancelling creates nothing. See |agentic-sessions|.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -551,8 +549,7 @@ agentic.new_session({opts})
 
                                              *agentic.destroy_session()*
 agentic.destroy_session({opts})
-  Destroy a session and its widget. This is the only way to end a
-  session; hiding it does not.
+  Destroy a session and its widget. Hiding keeps it running.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -887,10 +884,11 @@ those raise on `nil`.
     },
   }
 <
-Migrating from `tab_page_id`: it used to be a `number` that always
-named a live tabpage. It is now `number|nil` and is a placement hint
-only. Anything using it as an identity or a storage key -- for example
-`vim.t[data.tab_page_id]` or a bare
+Migrating from `tab_page_id`: it used to be a required `number`
+captured from the session's original tabpage. The handle could become
+invalid after that tabpage closed. It is now `number|nil` and is a
+placement hint only. Anything using it as an identity or a storage
+key -- for example `vim.t[data.tab_page_id]` or a bare
 `nvim_tabpage_is_valid(data.tab_page_id)` -- should move to
 `data.session_key`. If you genuinely need the tab, guard it:
 >lua

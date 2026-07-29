@@ -93,11 +93,12 @@ stateDiagram-v2
   destroyed widget will never be shown again. `WidgetLayout.close` skips every
   handle whose tabpage is already gone, which keeps this safe during a tabclose
   teardown on 0.11.x. See `ChatWidget:destroy`.
-  - The fallback is mandatory here. `SessionRegistry.show_session` only hides
-    widgets in the CURRENT tabpage, so destroying a session visible in another
-    tabpage reaches `WidgetLayout.close` there, and without the fallback that
-    tabpage disappears under the user. Reachable from `Agentic.destroy_session`
-    and from session restore. Regression:
+  - The fallback is mandatory here. `SessionRegistry.show_session` hides
+    non-target widgets in the current tabpage and hides the target at its
+    previous placement. An outgoing session in another tabpage stays visible.
+    Destroying that session reaches `WidgetLayout.close` there, and without the
+    fallback that tabpage disappears under the user. Reachable from
+    `Agentic.destroy_session` and from session restore. Regression:
     `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
   - **Ordering: the fallback MUST run before `WidgetRegistry.unregister`.**
     `find_first_non_widget_window` excludes windows showing a registered widget

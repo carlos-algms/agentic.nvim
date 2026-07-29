@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-04-30
-- Commits: 8ff45f2, d3cd47a, 1f3cde6
 - Related: PR #215, issue #196, issue #211, neovim/neovim#35341
 
 ## Context
@@ -51,8 +50,8 @@ lives in `glyph_for_line`, range lookup in `block_range_at_row`
 
 ## Changelog
 
-| Date       | Commit  | Change                                                       |
-| ---------- | ------- | ------------------------------------------------------------ |
-| 2025-11-13 | 8ff45f2 | Initial: per-line virt_text extmarks, `overlay`.             |
-| 2025-11-13 | d3cd47a | Switch to `inline` to drop hardcoded buffer padding.         |
-| 2026-04-30 | 1f3cde6 | Replace per-line extmarks with `'statuscolumn'` + range ext. |
+| Date       | Change                                                       |
+| ---------- | ------------------------------------------------------------ |
+| 2025-11-13 | Initial: per-line virt_text extmarks, `overlay`.             |
+| 2025-11-13 | Switch to `inline` to drop hardcoded buffer padding.         |
+| 2026-04-30 | Replace per-line extmarks with `'statuscolumn'` + range ext. |

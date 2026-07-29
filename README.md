@@ -728,7 +728,7 @@ assigned when it is created and stable for its whole life.
   closing the tab does not stop it or lose it
 - Opening a session in a tab hides whatever session was there, and removes it
   from any other tab. At most one session is visible per tab
-- Only `destroy_session()` (and switching provider) ends a session
+- Use `destroy_session()` to end a session directly
 
 When a current session exists, `new_session()` asks whether to keep it running
 in the background or destroy it before creating the replacement.

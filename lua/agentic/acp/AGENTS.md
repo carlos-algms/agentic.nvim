@@ -61,14 +61,16 @@ acp_providers = {
 
 ## Responses and notifications differ in event context
 
-Notifications are safe to touch the API from; request responses are not.
+Notification subscriber callbacks are safe to touch the API from; notification
+parsing and dispatch are not. Request-response callbacks are also not safe.
 
 ```mermaid
 flowchart TD
     R["ACPTransport stdio reader<br/>libuv callback"] --> OM["ACPClient.on_message"]
     OM --> HM["_handle_message"]
 
-    HM -->|"has method:<br/>notification / request"| WS["__with_subscriber"]
+    HM -->|"has method:<br/>notification / request"| PARSE["parse + dispatch<br/>FAST CONTEXT"]
+    PARSE --> WS["__with_subscriber"]
     HM -->|"has id:<br/>response to OUR request"| CB["requester's callback<br/>invoked synchronously"]
 
     WS --> SCHED["vim.schedule"]
@@ -88,10 +90,10 @@ flowchart TD
   `create_session` / `load_session` response callback may not call `nvim_*`
   without its own `vim.schedule`.
 
-This asymmetry is the live hazard, not a style preference — see the
-fast-event-context trap in the root `AGENTS.md` for the rule and its regression
-test. Adding a `vim.schedule` at the response dispatch point would remove the
-asymmetry for every caller at once; until then each response callback owns it.
+The event-context asymmetry can trigger fast-context API failures; see the root
+`AGENTS.md` trap and regression test. Response dispatch remains synchronous
+because initialization state transitions depend on message ordering. Each
+response callback schedules only its API-touching work.
 
 ## Protocol flow details
 

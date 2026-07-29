@@ -190,12 +190,13 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   from every libuv entry point — stdio readers, `vim.uv` timers, `on_exit`
   handlers. The `vim.notify` trap above is the same failure one layer up.
   - **A deferred consumer does not make the producer safe.** `Hooks.invoke`
-    dispatches every payload through `vim.schedule`, so it reads as safe — but
-    the caller builds the payload TABLE before the defer. Building it in a fast
-    context crashes even though delivery would have been fine.
-  - Resolve values inside the schedule. One captured early describes the world
-    when the callback fired, not when the consumer runs — the defect corrected
-    at `SessionManager`'s `on_response_complete` payload.
+    dispatches every payload through `vim.schedule`, but the caller evaluates
+    payload fields before that defer. Pure Lua table construction is safe in a
+    fast event; resolving editor state there is not. Cross to the main loop
+    first, then resolve live values and construct the payload inside the
+    scheduled callback. A value captured earlier describes the world when the
+    fast callback fired, not when the consumer runs — the defect corrected at
+    `SessionManager`'s `on_response_complete` payload.
   - `vim.in_fast_event()` is the predicate when you genuinely need to branch.
   - Regression:
     `lua/agentic/session_manager.test.lua::"builds the hook payload outside the fast event context"`.
@@ -254,8 +255,8 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 - **FORBIDDEN: `nvim_win_set_width` / `nvim_win_set_height`** -> use
   `BufHelpers.win_set_width` / `BufHelpers.win_set_height`. Both are deprecated
   on nightly for `nvim_win_resize` (0.13+ only), and CI runs a nightly matrix
-  job, so the call needs the helper's version gate. Regression:
-  `lua/agentic/utils/buf_helpers.test.lua::"resizes the window width on the running Neovim"`.
+  job, so the call needs the helper's version gate. Coverage:
+  `lua/agentic/utils/buf_helpers.test.lua`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
   `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
   `nvim_set_option_value(opt, val, { win = winid })`. `[0]` is the `:setlocal`
