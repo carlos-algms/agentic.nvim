@@ -484,25 +484,33 @@ describe("agentic.ui.DiagnosticsList", function()
         --- @type integer
         local ns
 
-        --- @type integer
+        --- Handle set, not a count: the cross-tab cases move the current tab
+        --- around, so a count-based `tabclose!` loop can shut a baseline tab
+        --- while a test-created one survives.
+        --- @type table<integer, true>
         local base_tabs
 
         before_each(function()
-            base_tabs = #vim.api.nvim_list_tabpages()
+            base_tabs = {}
+            for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+                base_tabs[tab] = true
+            end
             test_bufnr = vim.api.nvim_create_buf(false, true)
             ns = vim.api.nvim_create_namespace("test_diag_cursor")
             vim.api.nvim_set_current_buf(test_bufnr)
         end)
 
         after_each(function()
-            -- Loop, not one `tabclose`: a red assertion in the cross-tab case
-            -- would otherwise leak a tabpage into every later test file.
-            while #vim.api.nvim_list_tabpages() > base_tabs do
-                local ok = pcall(function()
-                    vim.cmd("tabclose!")
-                end)
-                if not ok then
-                    break
+            -- Closes only tabpages absent from the baseline, so a red assertion
+            -- in a cross-tab case cannot leak one into every later test file.
+            for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+                if
+                    not base_tabs[tab] and vim.api.nvim_tabpage_is_valid(tab)
+                then
+                    pcall(function()
+                        vim.api.nvim_set_current_tabpage(tab)
+                        vim.cmd("tabclose!")
+                    end)
                 end
             end
 
