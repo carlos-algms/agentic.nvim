@@ -141,7 +141,7 @@ _...and any future ACP-compatible provider._
 - **🛡️ Permission System** - Interactive approval workflow for AI tool calls,
   mimicking Claude-code's approach, with 1, 2, 3, ... one-key press for quick
   responses
-- **🤖 🤖 Multiple sessions** - Run as many independent Chat sessions as you like,
+- **🤖 Multiple sessions** - Run as many independent Chat sessions as you like,
   simultaneously, on different tasks. A session keeps working while hidden —
   closing its window or its tab does not stop it — and any session can be brought
   up in any tab

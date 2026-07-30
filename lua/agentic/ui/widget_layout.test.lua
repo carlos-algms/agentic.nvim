@@ -8,16 +8,30 @@ local ToolBlockBorder = require("agentic.ui.tool_block_border")
 describe("WidgetLayout", function()
     local notify_stub
     local saved_chat_win_opts
+    local base_tabs
 
     before_each(function()
         notify_stub = spy.stub(Logger, "notify")
         saved_chat_win_opts = nil
+        base_tabs = #vim.api.nvim_list_tabpages()
     end)
 
     after_each(function()
         notify_stub:revert()
         if saved_chat_win_opts then
             Config.windows.chat.win_opts = saved_chat_win_opts
+        end
+
+        -- Nearly every case here opens a tabpage. Closing them only at the end
+        -- of each `it` leaks them to the rest of the run whenever an assertion
+        -- goes red, so teardown is the backstop.
+        while #vim.api.nvim_list_tabpages() > base_tabs do
+            local ok = pcall(function()
+                vim.cmd("tabclose!")
+            end)
+            if not ok then
+                break
+            end
         end
     end)
 
@@ -381,7 +395,6 @@ describe("WidgetLayout", function()
             local win_nrs = {}
 
             vim.cmd("tabnew")
-            local first_tab = vim.api.nvim_get_current_tabpage()
 
             WidgetLayout.open({
                 buf_nrs = buf_nrs,
@@ -410,14 +423,6 @@ describe("WidgetLayout", function()
             assert.equal(second_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
 
             WidgetLayout.close(win_nrs)
-            for _, tab in ipairs({ second_tab, first_tab }) do
-                if vim.api.nvim_tabpage_is_valid(tab) then
-                    vim.api.nvim_set_current_tabpage(tab)
-                    pcall(function()
-                        vim.cmd("tabclose!")
-                    end)
-                end
-            end
         end)
 
         it("should fall back to right for invalid position", function()
