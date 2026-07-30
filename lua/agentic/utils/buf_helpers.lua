@@ -92,8 +92,12 @@ function BufHelpers.find_visible_win(bufnr, preferred_winid, tabpage)
         return preferred_winid
     end
 
+    -- Same guard on the fallback: `win_findbuf` can report a stale-valid handle,
+    -- and `is_visible_win` only reads the tabpage it claims, never validating it.
     for _, winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-        if is_visible_win(winid, tabpage) then
+        if
+            BufHelpers.is_win_usable(winid) and is_visible_win(winid, tabpage)
+        then
             return winid
         end
     end
