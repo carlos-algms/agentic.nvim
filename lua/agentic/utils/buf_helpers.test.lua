@@ -115,10 +115,9 @@ describe("BufHelpers", function()
             has_stub:revert()
         end)
 
-        -- Regression: 0.12.0-dev nightlies built before neovim#38360 (the
-        -- `buffer` -> `buf` rename) report `has('nvim-0.12') == 1` but
-        -- reject `buf` with `invalid key: buf`. Gate on 0.12.1, the first
-        -- stable that ships `buf`.
+        -- Regression: 0.12.0-dev nightlies built before neovim#38360 (`buffer`
+        -- -> `buf` rename) report `has('nvim-0.12') == 1` but reject `buf` with
+        -- `invalid key: buf`. Gate on 0.12.1, first stable shipping `buf`.
         it("uses `buffer` opt on Neovim < 0.12.1", function()
             has_stub:invokes(function(feature)
                 return feature == "nvim-0.12.1" and 0 or 1
@@ -166,7 +165,7 @@ describe("BufHelpers", function()
             has_stub:revert()
         end)
 
-        -- See keymap_set tests for the 0.12.0-dev / 0.12.1 rename rationale.
+        -- 0.12.0-dev / 0.12.1 rename rationale: see keymap_set tests.
         it("uses `buffer` opt on Neovim < 0.12.1", function()
             has_stub:invokes(function(feature)
                 return feature == "nvim-0.12.1" and 0 or 1
@@ -193,6 +192,72 @@ describe("BufHelpers", function()
             local opts = keymap_del_stub.calls[1][3]
             assert.equal(bufnr, opts.buf)
             assert.is_nil(opts.buffer)
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+    end)
+
+    describe("multi_keymap_set", function()
+        --- @type TestStub
+        local keymap_set_stub
+        --- @type TestStub
+        local has_stub
+
+        before_each(function()
+            keymap_set_stub = spy.stub(vim.keymap, "set")
+            has_stub = spy.stub(vim.fn, "has")
+            has_stub:returns(1)
+        end)
+
+        after_each(function()
+            keymap_set_stub:revert()
+            has_stub:revert()
+        end)
+
+        it("sets a single string keymap in normal mode", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            local callback = function() end
+
+            BufHelpers.multi_keymap_set("x", bufnr, callback)
+
+            assert.equal(1, keymap_set_stub.call_count)
+            assert.equal("n", keymap_set_stub.calls[1][1])
+            assert.equal("x", keymap_set_stub.calls[1][2])
+            assert.equal(callback, keymap_set_stub.calls[1][3])
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+
+        it("sets array entries with configured modes", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.multi_keymap_set({
+                "x",
+                { "y", mode = { "i", "v" } },
+            }, bufnr, function() end)
+
+            assert.equal(2, keymap_set_stub.call_count)
+            assert.equal("n", keymap_set_stub.calls[1][1])
+            assert.equal("x", keymap_set_stub.calls[1][2])
+            assert.same({ "i", "v" }, keymap_set_stub.calls[2][1])
+            assert.equal("y", keymap_set_stub.calls[2][2])
+
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+        end)
+
+        it("forwards the caller's opts to every binding", function()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+
+            BufHelpers.multi_keymap_set(
+                { "x", "y" },
+                bufnr,
+                function() end,
+                { desc = "shared" }
+            )
+
+            assert.equal(2, keymap_set_stub.call_count)
+            assert.equal("shared", keymap_set_stub.calls[1][4].desc)
+            assert.equal("shared", keymap_set_stub.calls[2][4].desc)
 
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
