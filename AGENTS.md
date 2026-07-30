@@ -135,6 +135,22 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   -> `buf` compatibility rationale.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` for tab-scoped lookups** -> use
   `vim.api.nvim_tabpage_list_wins(self.tab_page_id)`.
+- **FORBIDDEN: `vim.fn.bufwinid`** -> use `BufHelpers.find_visible_win`.
+  `bufwinid` "Only deals with the current tabpage"
+  (`$VIMRUNTIME/doc/vimfn.txt`), so it finds nothing for a session visible
+  elsewhere, and it returns the hidden chat float. The helper filters
+  non-focusable and `hide` windows and takes an optional tabpage. Regression:
+  `lua/agentic/utils/buf_helpers.test.lua::"restricts the search to a given tabpage"`.
+- **FORBIDDEN: `nvim_win_set_width` / `nvim_win_set_height`** -> use
+  `BufHelpers.win_set_width` / `BufHelpers.win_set_height`. Both are deprecated
+  on nightly for `nvim_win_resize` (0.13+ only), and CI runs a nightly matrix job,
+  so the call needs the helper's version gate. Coverage:
+  `lua/agentic/utils/buf_helpers.test.lua`.
+- **FORBIDDEN: bare `nvim_win_is_valid` on a handle held across an event
+  boundary** -> use `BufHelpers.is_win_usable`. On 0.11.x `tabclose` leaves
+  handles that answer valid but segfault in `nvim_win_close`; the helper also
+  requires a live tabpage. Bare validity stays fine for reads. Regression:
+  `lua/agentic/utils/buf_helpers.test.lua::"returns false for a valid window whose tabpage is gone"`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
   `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
   `nvim_set_option_value(opt, val, { win = winid })`. `[0]` is the `:setlocal`
