@@ -324,6 +324,12 @@ Run the narrow doc-specific check instead. For vimdoc changes, run:
 timeout 5 nvim --headless -c "helptags doc/" -c "quit"
 ```
 
+**MANDATORY: every `nvim --headless` call gets a `timeout`.** The `timeout 5`
+prefix above is not decoration. Neovim does not exit when a `-c` command fails
+before reaching `quit`/`qa!` — the process hangs indefinitely and blocks the
+task. Applies to every headless invocation, not just helptags. Use `qa!`, not
+`qa\!` (no shell escape needed).
+
 ```bash
 make validate
 ```
