@@ -334,6 +334,8 @@ function ACPClient:_handle_notification(message_id, method, params)
     if method == "session/update" then
         self:__handle_session_update(params)
     elseif method == "session/request_permission" then
+        -- `params` is declared as a bare `table`, which cannot satisfy the
+        -- structured `RequestPermission` shape. The callee guards the payload.
         --- @diagnostic disable-next-line: param-type-mismatch
         self:__handle_request_permission(message_id, params)
     elseif method == "fs/read_text_file" or method == "fs/write_text_file" then
@@ -537,7 +539,7 @@ end
 
 --- @protected
 --- @param message_id number
---- @param request agentic.acp.RequestPermission
+--- @param request agentic.acp.RequestPermission|nil
 function ACPClient:__handle_request_permission(message_id, request)
     --- @param option_id string|nil nil is a cancellation, not a selection
     local function answer(option_id)
@@ -551,10 +553,17 @@ function ACPClient:__handle_request_permission(message_id, request)
         })
     end
 
-    if not request.sessionId or not request.toolCall then
+    if
+        type(request) ~= "table"
+        or not request.sessionId
+        or not request.toolCall
+    then
         -- The `id` is owed an answer even when the payload is unusable, and
-        -- `error()` here would throw through the transport read loop.
+        -- `error()` here would throw through the transport read loop. A frame
+        -- with no `params` arrives here as a nil request, so the type check
+        -- must come before any indexing.
         -- Regression: acp_client.test.lua::"answers cancelled when the request is invalid"
+        -- Regression: acp_client.test.lua::"answers cancelled when the request payload is missing"
         Logger.notify(
             "Invalid session/request_permission: " .. vim.inspect(request)
         )
