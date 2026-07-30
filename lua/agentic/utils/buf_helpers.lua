@@ -3,13 +3,12 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.utils.BufHelpers
 local BufHelpers = {}
 
---- Executes a callback with the buffer set to modifiable.
---- Returns false when the buffer is invalid or the callback errors.
---- Otherwise returns the callback's own return value.
 --- @generic T
 --- @param bufnr integer
 --- @param callback fun(bufnr: integer): T|nil
---- @return T|false result
+--- @return T|false result the callback's own result, returned unchanged, or `false`
+--- when the buffer is invalid or the callback errors. A callback that itself
+--- returns `false` is therefore indistinguishable from those two failures.
 function BufHelpers.with_modifiable(bufnr, callback)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return false
@@ -52,6 +51,21 @@ function BufHelpers.execute_on_buffer(bufnr, callback)
     end)
 end
 
+--- `buffer` was renamed to `buf` in neovim#38360 (0.12.0 final, `buffer` removed
+--- in 0.15). Gated on 0.12.1 so 0.12.0-dev nightlies built before the rename —
+--- which answer `has("nvim-0.12") == 1` but reject `buf` — still work.
+--- @param opts table
+--- @param bufnr integer
+local function set_buffer_opt(opts, bufnr)
+    --- @diagnostic disable: inject-field
+    if vim.fn.has("nvim-0.12.1") == 1 then
+        opts.buf = bufnr
+    else
+        opts.buffer = bufnr
+    end
+    --- @diagnostic enable: inject-field
+end
+
 --- Sets a keymap for a specific buffer.
 --- @param bufnr integer
 --- @param mode string|string[]
@@ -60,17 +74,7 @@ end
 --- @param opts vim.keymap.set.Opts|nil
 function BufHelpers.keymap_set(bufnr, mode, lhs, rhs, opts)
     opts = opts or {}
-    -- `buffer` was renamed to `buf` in neovim#38360, shipped in 0.12.0 final.
-    -- Gate on 0.12.1 to skip 0.12.0-dev nightlies built before the rename
-    -- (they answer `has('nvim-0.12') == 1` but reject `buf`).
-    -- `buffer` is removed in 0.15.
-    --- @diagnostic disable: inject-field
-    if vim.fn.has("nvim-0.12.1") == 1 then
-        opts.buf = bufnr
-    else
-        opts.buffer = bufnr
-    end
-    --- @diagnostic enable: inject-field
+    set_buffer_opt(opts, bufnr)
     vim.keymap.set(mode, lhs, rhs, opts)
 end
 
@@ -80,86 +84,51 @@ end
 --- @param lhs string
 function BufHelpers.keymap_del(bufnr, mode, lhs)
     --- @type table
-    local opts
-    -- See keymap_set for the buffer/buf rename rationale.
-    if vim.fn.has("nvim-0.12.1") == 1 then
-        opts = { buf = bufnr }
-    else
-        opts = { buffer = bufnr }
-    end
+    local opts = {}
+    set_buffer_opt(opts, bufnr)
     pcall(vim.keymap.del, mode, lhs, opts)
 end
 
---- Sets multiple keymaps from a KeymapValue config entry for a specific buffer.
---- Normalizes the config value (string, string[], or array of string/KeymapEntry)
---- and calls keymap_set for each binding.
+--- Normalizes a KeymapValue (string, string[], or array of string/KeymapEntry)
+--- into `(modes, lhs)` pairs.
+--- @param keymaps agentic.UserConfig.KeymapValue
+--- @param fn fun(modes: string|string[], lhs: string)
+local function each_keymap(keymaps, fn)
+    if type(keymaps) == "string" then
+        keymaps = { keymaps }
+    end
+
+    for _, key in ipairs(keymaps) do
+        if type(key) == "table" and key.mode then
+            fn(key.mode, key[1])
+        else
+            fn("n", key --[[@as string]])
+        end
+    end
+end
+
 --- @param keymaps agentic.UserConfig.KeymapValue
 --- @param bufnr integer
 --- @param callback fun():any
 --- @param opts vim.keymap.set.Opts|nil
 function BufHelpers.multi_keymap_set(keymaps, bufnr, callback, opts)
-    if type(keymaps) == "string" then
-        keymaps = { keymaps }
-    end
-
-    for _, key in ipairs(keymaps) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_set(bufnr, modes, keymap, callback, opts)
-    end
+    each_keymap(keymaps, function(modes, lhs)
+        BufHelpers.keymap_set(bufnr, modes, lhs, callback, opts)
+    end)
 end
 
---- Deletes multiple keymaps from a KeymapValue config entry for a specific buffer.
 --- @param keymaps agentic.UserConfig.KeymapValue
 --- @param bufnr integer
 function BufHelpers.multi_keymap_del(keymaps, bufnr)
-    if type(keymaps) == "string" then
-        keymaps = { keymaps }
-    end
-
-    for _, key in ipairs(keymaps) do
-        --- @type string|string[]
-        local modes = "n"
-        --- @type string
-        local keymap
-
-        if type(key) == "table" and key.mode then
-            modes = key.mode
-            keymap = key[1]
-        else
-            keymap = key --[[@as string]]
-        end
-
-        BufHelpers.keymap_del(bufnr, modes, keymap)
-    end
+    each_keymap(keymaps, function(modes, lhs)
+        BufHelpers.keymap_del(bufnr, modes, lhs)
+    end)
 end
 
 --- @param bufnr integer
 --- @return boolean
 function BufHelpers.is_buffer_empty(bufnr)
-    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
-
-    if #lines == 0 then
-        return true
-    end
-
-    -- Check if buffer contains only whitespace or a single empty line
-    if #lines == 1 and lines[1]:match("^%s*$") then
-        return true
-    end
-
-    -- Check if all lines are whitespace
-    for _, line in ipairs(lines) do
+    for _, line in ipairs(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)) do
         if line:match("%S") then
             return false
         end
