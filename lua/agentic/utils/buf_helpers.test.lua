@@ -202,8 +202,19 @@ describe("BufHelpers", function()
         local keymap_set_stub
         --- @type TestStub
         local has_stub
+        --- @type integer[]
+        local created_bufnrs
+
+        --- Tracked so `after_each` deletes them even when an assertion fails.
+        --- @return integer bufnr
+        local function create_tracked_buf()
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            created_bufnrs[#created_bufnrs + 1] = bufnr
+            return bufnr
+        end
 
         before_each(function()
+            created_bufnrs = {}
             keymap_set_stub = spy.stub(vim.keymap, "set")
             has_stub = spy.stub(vim.fn, "has")
             has_stub:returns(1)
@@ -212,10 +223,16 @@ describe("BufHelpers", function()
         after_each(function()
             keymap_set_stub:revert()
             has_stub:revert()
+
+            for _, bufnr in ipairs(created_bufnrs) do
+                if vim.api.nvim_buf_is_valid(bufnr) then
+                    vim.api.nvim_buf_delete(bufnr, { force = true })
+                end
+            end
         end)
 
         it("sets a single string keymap in normal mode", function()
-            local bufnr = vim.api.nvim_create_buf(false, true)
+            local bufnr = create_tracked_buf()
             local callback = function() end
 
             BufHelpers.multi_keymap_set("x", bufnr, callback)
@@ -224,12 +241,10 @@ describe("BufHelpers", function()
             assert.equal("n", keymap_set_stub.calls[1][1])
             assert.equal("x", keymap_set_stub.calls[1][2])
             assert.equal(callback, keymap_set_stub.calls[1][3])
-
-            vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
 
         it("sets array entries with configured modes", function()
-            local bufnr = vim.api.nvim_create_buf(false, true)
+            local bufnr = create_tracked_buf()
 
             BufHelpers.multi_keymap_set({
                 "x",
@@ -241,12 +256,10 @@ describe("BufHelpers", function()
             assert.equal("x", keymap_set_stub.calls[1][2])
             assert.same({ "i", "v" }, keymap_set_stub.calls[2][1])
             assert.equal("y", keymap_set_stub.calls[2][2])
-
-            vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
 
         it("forwards the caller's opts to every binding", function()
-            local bufnr = vim.api.nvim_create_buf(false, true)
+            local bufnr = create_tracked_buf()
 
             BufHelpers.multi_keymap_set(
                 { "x", "y" },
@@ -258,8 +271,6 @@ describe("BufHelpers", function()
             assert.equal(2, keymap_set_stub.call_count)
             assert.equal("shared", keymap_set_stub.calls[1][4].desc)
             assert.equal("shared", keymap_set_stub.calls[2][4].desc)
-
-            vim.api.nvim_buf_delete(bufnr, { force = true })
         end)
     end)
 

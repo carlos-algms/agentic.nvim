@@ -6,7 +6,9 @@ local BufHelpers = {}
 --- @generic T
 --- @param bufnr integer
 --- @param callback fun(bufnr: integer): T|nil
---- @return T|false result false when the buffer is invalid or the callback errors
+--- @return T|false result the callback's own result, returned unchanged, or `false`
+--- when the buffer is invalid or the callback errors. A callback that itself
+--- returns `false` is therefore indistinguishable from those two failures.
 function BufHelpers.with_modifiable(bufnr, callback)
     if not vim.api.nvim_buf_is_valid(bufnr) then
         return false
