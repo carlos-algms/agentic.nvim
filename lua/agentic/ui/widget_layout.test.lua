@@ -8,12 +8,20 @@ local ToolBlockBorder = require("agentic.ui.tool_block_border")
 describe("WidgetLayout", function()
     local notify_stub
     local saved_chat_win_opts
-    local base_tabs
+    --- Baseline tabpage handles, not just a count: `tabclose!` closes whichever
+    --- tabpage is current, so a case that ends on a baseline tab while an extra
+    --- one is still open would otherwise have the baseline closed instead and
+    --- leak the test tab with the count back at baseline.
+    local base_tab_set
 
     before_each(function()
         notify_stub = spy.stub(Logger, "notify")
         saved_chat_win_opts = nil
-        base_tabs = #vim.api.nvim_list_tabpages()
+
+        base_tab_set = {}
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tab_set[tab] = true
+        end
     end)
 
     after_each(function()
@@ -25,12 +33,12 @@ describe("WidgetLayout", function()
         -- Nearly every case here opens a tabpage. Closing them only at the end
         -- of each `it` leaks them to the rest of the run whenever an assertion
         -- goes red, so teardown is the backstop.
-        while #vim.api.nvim_list_tabpages() > base_tabs do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tab_set[tab] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tab)
+                    vim.cmd("tabclose!")
+                end)
             end
         end
     end)
