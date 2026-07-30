@@ -539,13 +539,6 @@ end
 --- @param message_id number
 --- @param request agentic.acp.RequestPermission
 function ACPClient:__handle_request_permission(message_id, request)
-    if not request.sessionId or not request.toolCall then
-        error("Invalid request_permission")
-        return
-    end
-
-    local session_id = request.sessionId
-
     --- @param option_id string|nil nil is a cancellation, not a selection
     local function answer(option_id)
         --- @type agentic.acp.RequestPermissionOutcome
@@ -557,6 +550,20 @@ function ACPClient:__handle_request_permission(message_id, request)
             outcome = outcome,
         })
     end
+
+    if not request.sessionId or not request.toolCall then
+        -- The `id` is owed an answer even when the payload is unusable, and
+        -- `error()` here would throw through the transport read loop.
+        -- Regression: acp_client.test.lua::"answers cancelled when the request is invalid"
+        Logger.notify(
+            "Invalid session/request_permission: " .. vim.inspect(request)
+        )
+        answer(nil)
+
+        return
+    end
+
+    local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
         local message = self:__build_tool_call_message(request.toolCall)

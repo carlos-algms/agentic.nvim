@@ -715,6 +715,29 @@ describe("ACPClient", function()
             end
         )
 
+        -- A malformed request still carries a JSON-RPC `id`. Throwing left it
+        -- unanswered AND threw through the transport read loop, hanging the
+        -- subprocess every other session shares.
+        it("answers cancelled when the request is invalid", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            -- `pcall` so a throwing handler surfaces as the assertions below
+            -- failing, not as an error escaping the test.
+            pcall(function()
+                --- @diagnostic disable-next-line: invisible, missing-fields
+                client:__handle_request_permission(15, { sessionId = "s1" })
+            end)
+
+            -- Answered synchronously: no subscriber lookup happens at all.
+            assert.equal(0, #queue)
+
+            assert.equal(1, #sent)
+            assert.equal(15, sent[1].id)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
         it("answers selected when the user picks an option", function()
             local client = create_ready_client()
             local sent = capture_sent()
