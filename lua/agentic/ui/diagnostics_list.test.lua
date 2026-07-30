@@ -458,6 +458,24 @@ describe("agentic.ui.DiagnosticsList", function()
 
             assert.equal(vim.diagnostic.severity.ERROR, diagnostics[1].severity)
         end)
+
+        it("stamps file_path on every returned diagnostic", function()
+            vim.api.nvim_buf_set_name(test_bufnr, "/test/stamped.lua")
+
+            vim.diagnostic.set(ns, test_bufnr, {
+                { lnum = 0, col = 0, message = "first" },
+                { lnum = 1, col = 0, message = "second" },
+                { lnum = 2, col = 0, message = "third" },
+            })
+
+            local diagnostics =
+                DiagnosticsList.get_buffer_diagnostics(test_bufnr)
+
+            assert.equal(3, #diagnostics)
+            for _, d in ipairs(diagnostics) do
+                assert.equal("/test/stamped.lua", d.file_path)
+            end
+        end)
     end)
 
     describe("get_diagnostics_at_cursor", function()
@@ -466,13 +484,28 @@ describe("agentic.ui.DiagnosticsList", function()
         --- @type integer
         local ns
 
+        --- @type integer
+        local base_tabs
+
         before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
             test_bufnr = vim.api.nvim_create_buf(false, true)
             ns = vim.api.nvim_create_namespace("test_diag_cursor")
             vim.api.nvim_set_current_buf(test_bufnr)
         end)
 
         after_each(function()
+            -- Loop, not one `tabclose`: a red assertion in the cross-tab case
+            -- would otherwise leak a tabpage into every later test file.
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose!")
+                end)
+                if not ok then
+                    break
+                end
+            end
+
             vim.diagnostic.reset(ns, test_bufnr)
             if vim.api.nvim_buf_is_valid(test_bufnr) then
                 pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
@@ -536,6 +569,217 @@ describe("agentic.ui.DiagnosticsList", function()
                 DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
 
             assert.equal(0, #diagnostics)
+        end)
+
+        it("includes a multi-line range spanning the cursor", function()
+            vim.api.nvim_buf_set_lines(
+                test_bufnr,
+                0,
+                -1,
+                false,
+                { "line1", "line2", "line3", "line4" }
+            )
+
+            vim.diagnostic.set(ns, test_bufnr, {
+                {
+                    lnum = 0,
+                    end_lnum = 2,
+                    col = 0,
+                    severity = vim.diagnostic.severity.ERROR,
+                    message = "Spans lines 1-3",
+                },
+                {
+                    lnum = 3,
+                    col = 0,
+                    severity = vim.diagnostic.severity.WARN,
+                    message = "Only line 4",
+                },
+            })
+
+            vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+            local diagnostics =
+                DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
+
+            assert.equal(1, #diagnostics)
+            assert.equal("Spans lines 1-3", diagnostics[1].message)
+        end)
+
+        it("returns an empty array when the buffer is in no window", function()
+            local hidden_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(hidden_bufnr, 0, -1, false, { "line1" })
+
+            vim.diagnostic.set(ns, hidden_bufnr, {
+                {
+                    lnum = 0,
+                    col = 0,
+                    severity = vim.diagnostic.severity.ERROR,
+                    message = "Error on line 1",
+                },
+            })
+
+            local diagnostics =
+                DiagnosticsList.get_diagnostics_at_cursor(hidden_bufnr)
+
+            assert.equal(0, #diagnostics)
+
+            vim.diagnostic.reset(ns, hidden_bufnr)
+            pcall(vim.api.nvim_buf_delete, hidden_bufnr, { force = true })
+        end)
+
+        it(
+            "returns diagnostics when the buffer's only window is in another tab",
+            function()
+                vim.api.nvim_buf_set_lines(
+                    test_bufnr,
+                    0,
+                    -1,
+                    false,
+                    { "line1", "line2", "line3" }
+                )
+
+                vim.diagnostic.set(ns, test_bufnr, {
+                    {
+                        lnum = 1,
+                        col = 0,
+                        severity = vim.diagnostic.severity.ERROR,
+                        message = "Error on line 2",
+                    },
+                })
+
+                -- Park the buffer's only window in its own tab, then leave.
+                -- `before_each` also put it in the starting window; that copy
+                -- must go or the lookup legitimately finds it here.
+                vim.cmd("tabnew")
+                local other_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(other_win, test_bufnr)
+                vim.api.nvim_win_set_cursor(other_win, { 2, 0 })
+                vim.cmd("tabprevious")
+                vim.api.nvim_win_set_buf(
+                    vim.api.nvim_get_current_win(),
+                    vim.api.nvim_create_buf(false, true)
+                )
+
+                -- Defect: the current-tab-only lookup found no window here and
+                -- silently yielded nothing.
+                local diagnostics =
+                    DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
+
+                assert.equal(1, #diagnostics)
+                assert.equal("Error on line 2", diagnostics[1].message)
+            end
+        )
+
+        it("prefers the current window's cursor over another tab's", function()
+            -- Both tabs hold the buffer at DIFFERENT lines; dropping either copy
+            -- collapses to the single-match path and stops exercising the
+            -- ambiguity. Without a preferred window `win_findbuf` order decides,
+            -- so the other tab's line 3 wins and the user gets a diagnostic they
+            -- are not sitting on.
+            vim.api.nvim_buf_set_lines(
+                test_bufnr,
+                0,
+                -1,
+                false,
+                { "line1", "line2", "line3" }
+            )
+
+            vim.diagnostic.set(ns, test_bufnr, {
+                {
+                    lnum = 1,
+                    col = 0,
+                    severity = vim.diagnostic.severity.ERROR,
+                    message = "Error on line 2",
+                },
+                {
+                    lnum = 2,
+                    col = 0,
+                    severity = vim.diagnostic.severity.WARN,
+                    message = "Warning on line 3",
+                },
+            })
+
+            -- `win_findbuf` returns tabpage order regardless of the current tab,
+            -- so the earlier tab's copy wins an unpreferred lookup. Park the
+            -- decoy FIRST and stay in the later tab.
+            local other_win = vim.api.nvim_get_current_win()
+            assert.equal(test_bufnr, vim.api.nvim_win_get_buf(other_win))
+            vim.api.nvim_win_set_cursor(other_win, { 3, 0 })
+
+            vim.cmd("tabnew")
+            local current_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(current_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(current_win, { 2, 0 })
+
+            local diagnostics =
+                DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
+
+            assert.equal(1, #diagnostics)
+            assert.equal("Error on line 2", diagnostics[1].message)
+        end)
+    end)
+
+    describe("visual-mode delete", function()
+        --- Enters the diagnostics window, selects `from`..`to` linewise and presses `d`.
+        --- `V` and the motion go in ONE `normal` sequence: splitting them across
+        --- `nvim_win_set_cursor` loses the visual anchor, so only one line is
+        --- selected and the multi-line loop is never exercised.
+        --- @param from integer
+        --- @param to integer
+        local function visual_delete(from, to)
+            vim.api.nvim_set_current_win(winid)
+            vim.api.nvim_win_set_cursor(winid, { from, 0 })
+            -- `normal` (not `normal!`) so the buffer-local `v`-mode `d` mapping runs.
+            vim.cmd(string.format("normal V%dGd", to))
+        end
+
+        --- @param count integer
+        local function seed(count)
+            for i = 1, count do
+                diagnostics_list:add(create_diagnostic({
+                    bufnr = bufnr,
+                    lnum = i,
+                    message = "diag " .. i,
+                }))
+            end
+        end
+
+        --- @return string[]
+        local function messages()
+            local result = {}
+            for _, d in ipairs(diagnostics_list:get_diagnostics()) do
+                result[#result + 1] = d.message
+            end
+            return result
+        end
+
+        it("removes exactly the three selected entries", function()
+            seed(5)
+
+            visual_delete(2, 4)
+
+            assert.same({ "diag 1", "diag 5" }, messages())
+        end)
+
+        it("removes the same set for a backward selection", function()
+            seed(5)
+
+            visual_delete(4, 2)
+
+            assert.same({ "diag 1", "diag 5" }, messages())
+        end)
+
+        it("ignores a selection reaching past the end of the list", function()
+            seed(2)
+            -- Blank padding after the rendered diagnostics, so the selection can
+            -- extend past the last entry.
+            vim.bo[bufnr].modifiable = true
+            vim.api.nvim_buf_set_lines(bufnr, 2, -1, false, { "", "", "" })
+            vim.bo[bufnr].modifiable = false
+
+            visual_delete(2, 5)
+
+            assert.same({ "diag 1" }, messages())
         end)
     end)
 end)

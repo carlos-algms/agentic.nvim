@@ -4,8 +4,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
 
---- Get diagnostic severity icons from config
---- @return table<number, string> Mapping of severity to icon
+--- @return table<number, string> icons Keyed by `vim.diagnostic.severity`
 local function get_diagnostic_icons()
     local icons = Config.diagnostic_icons
     return {
@@ -17,17 +16,17 @@ local function get_diagnostic_icons()
 end
 
 --- @class agentic.ui.DiagnosticsList.Diagnostic : vim.Diagnostic
---- @field file_path string Full file path
+--- @field file_path string
 
 --- @class agentic.ui.DiagnosticsList
 --- @field _diagnostics agentic.ui.DiagnosticsList.Diagnostic[]
---- @field _bufnr integer the same buffer number as the ChatWidget's diagnostics buffer
+--- @field _bufnr integer The ChatWidget's diagnostics buffer
 --- @field _on_change fun(diagnosticsList: agentic.ui.DiagnosticsList)
 local DiagnosticsList = {}
 DiagnosticsList.__index = DiagnosticsList
 
 --- @param bufnr integer The diagnostics buffer number from ChatWidget
---- @param on_change fun(diagnosticsList: agentic.ui.DiagnosticsList) Callback to trigger when diagnostics list changes (e.g., update header)
+--- @param on_change fun(diagnosticsList: agentic.ui.DiagnosticsList)
 --- @return agentic.ui.DiagnosticsList
 function DiagnosticsList:new(bufnr, on_change)
     local instance = setmetatable({
@@ -41,29 +40,23 @@ function DiagnosticsList:new(bufnr, on_change)
     return instance
 end
 
---- Add a diagnostic to the list if not already present
 --- @param diagnostic agentic.ui.DiagnosticsList.Diagnostic|nil
---- @return boolean success
+--- @return boolean success false when absent or already present
 function DiagnosticsList:_add_no_render(diagnostic)
     if not diagnostic or not diagnostic.bufnr then
         return false
     end
 
-    local file_path = diagnostic.file_path
-    if type(file_path) ~= "string" then
-        file_path = ""
-    end
+    local file_path = type(diagnostic.file_path) == "string"
+            and diagnostic.file_path
+        or ""
 
     if file_path == "" and vim.api.nvim_buf_is_valid(diagnostic.bufnr) then
         file_path = vim.api.nvim_buf_get_name(diagnostic.bufnr)
     end
 
-    if type(file_path) ~= "string" then
-        file_path = ""
-    end
     diagnostic.file_path = file_path
 
-    -- Check for duplicates
     for _, existing in ipairs(self._diagnostics) do
         if
             existing.bufnr == diagnostic.bufnr
@@ -82,7 +75,6 @@ function DiagnosticsList:_add_no_render(diagnostic)
     return true
 end
 
---- Add a diagnostic to the list if not already present
 --- @param diagnostic agentic.ui.DiagnosticsList.Diagnostic|nil
 --- @return boolean success
 function DiagnosticsList:add(diagnostic)
@@ -94,9 +86,8 @@ function DiagnosticsList:add(diagnostic)
     return true
 end
 
---- Add multiple diagnostics at once
 --- @param diagnostics agentic.ui.DiagnosticsList.Diagnostic[]
---- @return integer count Number of diagnostics added
+--- @return integer count
 function DiagnosticsList:add_many(diagnostics)
     local count = 0
     for _, diagnostic in ipairs(diagnostics) do
@@ -165,68 +156,56 @@ function DiagnosticsList:is_empty()
     return #self._diagnostics == 0
 end
 
---- Get diagnostics for a specific buffer
---- @param bufnr integer|nil If nil, uses current buffer
---- @param opts vim.diagnostic.GetOpts|nil Options passed to vim.diagnostic.get()
---- @return agentic.ui.DiagnosticsList.Diagnostic[] diagnostics Converted diagnostics
-function DiagnosticsList.get_buffer_diagnostics(bufnr, opts)
-    bufnr = bufnr or vim.api.nvim_get_current_buf()
-    opts = opts or {}
-
-    --- @type vim.Diagnostic[]
-    local vim_diagnostics = vim.diagnostic.get(bufnr, opts)
+--- Stamps each diagnostic with the buffer's path.
+--- @param bufnr integer
+--- @param opts vim.diagnostic.GetOpts
+--- @param keep (fun(d: vim.Diagnostic): boolean)|nil Keeps everything when nil
+--- @return agentic.ui.DiagnosticsList.Diagnostic[]
+local function collect_diagnostics(bufnr, opts, keep)
     local file_path = vim.api.nvim_buf_get_name(bufnr)
 
     --- @type agentic.ui.DiagnosticsList.Diagnostic[]
     local diagnostics = {}
 
-    for _, d in ipairs(vim_diagnostics) do
-        --- @type agentic.ui.DiagnosticsList.Diagnostic
-        local diagnostic = vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]
-        diagnostics[#diagnostics + 1] = diagnostic
+    for _, d in ipairs(vim.diagnostic.get(bufnr, opts)) do
+        if keep == nil or keep(d) then
+            diagnostics[#diagnostics + 1] =
+                vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]
+        end
     end
 
     return diagnostics
 end
 
---- Get diagnostics at the cursor line
---- @param bufnr integer|nil If nil, uses current buffer
---- @param opts vim.diagnostic.GetOpts|nil Options passed to vim.diagnostic.get()
---- @return agentic.ui.DiagnosticsList.Diagnostic[] diagnostics Diagnostics at the cursor line
+--- @param bufnr integer|nil Defaults to the current buffer
+--- @param opts vim.diagnostic.GetOpts|nil
+--- @return agentic.ui.DiagnosticsList.Diagnostic[] diagnostics
+function DiagnosticsList.get_buffer_diagnostics(bufnr, opts)
+    bufnr = bufnr or vim.api.nvim_get_current_buf()
+
+    return collect_diagnostics(bufnr, opts or {}, nil)
+end
+
+--- @param bufnr integer|nil Defaults to the current buffer
+--- @param opts vim.diagnostic.GetOpts|nil
+--- @return agentic.ui.DiagnosticsList.Diagnostic[] diagnostics
 function DiagnosticsList.get_diagnostics_at_cursor(bufnr, opts)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
-    opts = opts or {}
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid == -1 then
-        local current_winid = vim.api.nvim_get_current_win()
-        if vim.api.nvim_win_get_buf(current_winid) ~= bufnr then
-            return {}
-        end
-        winid = current_winid
+    -- The invoking window is PREFERRED, not a last resort: `win_findbuf` returns tabpage
+    -- order regardless of the current tab, so an unpreferred lookup reads another tab's
+    -- cursor whenever that tab sorts earlier.
+    local winid =
+        BufHelpers.find_visible_win(bufnr, vim.api.nvim_get_current_win())
+    if not winid then
+        return {}
     end
 
-    local cursor_pos = vim.api.nvim_win_get_cursor(winid)
-    local cursor_line = cursor_pos[1] - 1 -- Convert to 0-indexed
+    local cursor_line = vim.api.nvim_win_get_cursor(winid)[1] - 1
 
-    --- @type vim.Diagnostic[]
-    local vim_diagnostics = vim.diagnostic.get(bufnr, opts)
-    local file_path = vim.api.nvim_buf_get_name(bufnr)
-
-    --- @type agentic.ui.DiagnosticsList.Diagnostic[]
-    local diagnostics = {}
-
-    for _, d in ipairs(vim_diagnostics) do
-        local end_lnum = d.end_lnum or d.lnum
-        if cursor_line >= d.lnum and cursor_line <= end_lnum then
-            --- @type agentic.ui.DiagnosticsList.Diagnostic
-            local diagnostic =
-                vim.tbl_extend("force", d, { file_path = file_path }) --[[@as agentic.ui.DiagnosticsList.Diagnostic]]
-            diagnostics[#diagnostics + 1] = diagnostic
-        end
-    end
-
-    return diagnostics
+    return collect_diagnostics(bufnr, opts or {}, function(d)
+        return cursor_line >= d.lnum and cursor_line <= (d.end_lnum or d.lnum)
+    end)
 end
 
 --- @private
@@ -235,8 +214,8 @@ function DiagnosticsList:_render()
     local icons = get_diagnostic_icons()
 
     local buf_width = WidgetLayout.calculate_width(Config.windows.width)
-    local winid = vim.fn.bufwinid(self._bufnr)
-    if winid ~= -1 then
+    local winid = BufHelpers.find_visible_win(self._bufnr, nil)
+    if winid then
         buf_width = vim.api.nvim_win_get_width(winid)
     end
 
@@ -256,14 +235,12 @@ function DiagnosticsList:_render()
             diagnostic.col + 1
         )
 
-        -- nvim_buf_set_lines rejects embedded newlines in a line item.
-        -- Keep diagnostics single-line by rendering newlines as escaped text.
+        -- `nvim_buf_set_lines` rejects embedded newlines.
         local message = type(diagnostic.message) == "string"
                 and diagnostic.message
             or tostring(diagnostic.message or "")
         message = message:gsub("\r\n", "\n"):gsub("\r", "\n"):gsub("\n", "\\n")
 
-        -- Format: ICON path:line:col - message
         local line = string.format("%s %s - %s", icon, location, message)
         lines[#lines + 1] =
             DiagnosticsContext.truncate_for_display(line, buf_width)
@@ -299,14 +276,13 @@ function DiagnosticsList:_setup_keybindings()
         local start_line = start_pos[2]
         local end_line = end_pos[2]
 
-        -- Ensure start_line is always smaller than end_line (handle backward selection)
         if start_line > end_line then
             start_line, end_line = end_line, start_line
         end
 
-        --- @type table<integer, true>
-        local indices_to_remove = {}
-        for line = start_line, end_line do
+        -- Descending, so each removal leaves the lower indices valid.
+        local removed = 0
+        for line = math.min(end_line, #self._diagnostics), start_line, -1 do
             local line_content = vim.api.nvim_buf_get_lines(
                 self._bufnr,
                 line - 1,
@@ -314,34 +290,16 @@ function DiagnosticsList:_setup_keybindings()
                 false
             )[1]
 
-            if
-                line_content
-                and line_content:match("%S")
-                and line >= 1
-                and line <= #self._diagnostics
-            then
-                indices_to_remove[line] = true
+            if line_content and line_content:match("%S") and line >= 1 then
+                table.remove(self._diagnostics, line)
+                removed = removed + 1
             end
         end
 
-        --- @type integer[]
-        local sorted_indices = {}
-        for index in pairs(indices_to_remove) do
-            sorted_indices[#sorted_indices + 1] = index
-        end
-        table.sort(sorted_indices, function(a, b)
-            return a > b
-        end)
-
-        for _, index in ipairs(sorted_indices) do
-            table.remove(self._diagnostics, index)
-        end
-
-        if #sorted_indices > 0 then
+        if removed > 0 then
             self:_render()
         end
 
-        -- Exit visual mode
         BufHelpers.feed_ESC_key()
     end, { nowait = true })
 end
