@@ -723,12 +723,15 @@ describe("ACPClient", function()
             local sent = capture_sent()
             local queue = queue_schedules()
 
-            -- `pcall` so a throwing handler surfaces as the assertions below
-            -- failing, not as an error escaping the test.
-            pcall(function()
+            -- `pcall` result is asserted: a handler that answers cancelled and
+            -- THEN throws still breaks the caller, so the throw must fail the
+            -- test loudly with its message rather than be swallowed.
+            local ok, err = pcall(function()
                 --- @diagnostic disable-next-line: invisible, missing-fields
                 client:__handle_request_permission(15, { sessionId = "s1" })
             end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
 
             -- Answered synchronously: no subscriber lookup happens at all.
             assert.equal(0, #queue)
@@ -747,12 +750,15 @@ describe("ACPClient", function()
             local sent = capture_sent()
             local queue = queue_schedules()
 
-            -- `pcall` so a throwing handler surfaces as the assertions
-            -- below failing, not as an error escaping the test.
-            pcall(function()
+            -- `pcall` result is asserted: a handler that answers cancelled and
+            -- THEN throws still breaks the caller, so the throw must fail the
+            -- test loudly with its message rather than be swallowed.
+            local ok, err = pcall(function()
                 --- @diagnostic disable-next-line: invisible
                 client:__handle_request_permission(17, nil)
             end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
 
             -- Answered synchronously: no subscriber lookup happens at all.
             assert.equal(0, #queue)
@@ -760,6 +766,54 @@ describe("ACPClient", function()
             assert.equal(1, #sent)
             assert.equal(17, sent[1].id)
             assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
+        -- A truthy non-table `toolCall` passes a `not request.toolCall` guard.
+        -- `__build_tool_call_message` then indexes it inside the scheduled
+        -- subscriber dispatch: a number throws ("attempt to index a number
+        -- value"), leaving the JSON-RPC `id` unanswered. A string would only
+        -- yield a junk-but-harmless message, so the number is the shape that
+        -- genuinely fails.
+        it("answers cancelled when the tool call is malformed", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            local asked = spy.new(function() end)
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(request, callback)
+                    asked(request, callback)
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            --- @type agentic.acp.RequestPermission
+            --- @diagnostic disable-next-line: assign-type-mismatch, missing-fields
+            local malformed = { sessionId = "s1", toolCall = 42 }
+
+            -- `vim.schedule` is stubbed, so a throw from the scheduled body
+            -- escapes into `drain` instead of dying on the (real) event loop.
+            -- Captured here so the payload assertions below report the failure.
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(19, malformed)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 19)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.equal(asked.call_count, 0)
         end)
 
         it("answers selected when the user picks an option", function()

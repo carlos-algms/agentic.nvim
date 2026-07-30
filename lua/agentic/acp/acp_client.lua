@@ -555,15 +555,20 @@ function ACPClient:__handle_request_permission(message_id, request)
 
     if
         type(request) ~= "table"
-        or not request.sessionId
-        or not request.toolCall
+        or type(request.sessionId) ~= "string"
+        or type(request.toolCall) ~= "table"
     then
         -- The `id` is owed an answer even when the payload is unusable, and
         -- `error()` here would throw through the transport read loop. A frame
         -- with no `params` arrives here as a nil request, so the type check
         -- must come before any indexing.
+        -- The nested checks are by TYPE, not truthiness: `sessionId` indexes
+        -- `self.subscribers`, so a non-string silently matches no subscriber,
+        -- and a truthy non-table `toolCall` throws inside the scheduled
+        -- `__build_tool_call_message`, leaving the `id` unanswered.
         -- Regression: acp_client.test.lua::"answers cancelled when the request is invalid"
         -- Regression: acp_client.test.lua::"answers cancelled when the request payload is missing"
+        -- Regression: acp_client.test.lua::"answers cancelled when the tool call is malformed"
         Logger.notify(
             "Invalid session/request_permission: " .. vim.inspect(request)
         )
