@@ -481,6 +481,17 @@ describe("agentic: switch_provider", function()
         anim_stop_spy:revert()
     end)
 
+    -- Creation spawns a provider subprocess. Stopping generation with nothing
+    -- live used to create a session only to immediately reset it: a no-op with
+    -- a real side effect.
+    it("stop_generation creates no session when none is live", function()
+        local Agentic = require("agentic")
+
+        Agentic.stop_generation()
+
+        assert.equal(0, vim.tbl_count(SessionRegistry.sessions))
+    end)
+
     it("delegates explicit session destruction to the registry", function()
         local Agentic = require("agentic")
         local destroy_stub = spy.stub(SessionRegistry, "destroy")

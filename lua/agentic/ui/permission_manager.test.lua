@@ -20,6 +20,11 @@ describe("agentic.ui.PermissionManager", function()
     local schedule_stub
     --- @type TestSpy|nil
     local cmd_spy
+    local base_tabs
+    --- Registered by a single case; unregistered in teardown so a failed
+    --- assertion cannot leave a stale `bufnr -> widget` mapping behind.
+    --- @type table|nil
+    local registered_owner
 
     --- Build a permission request with the given tool_call_id. Defaults to
     --- one allow_once + one reject_once option; pass opts.options to override.
@@ -83,6 +88,9 @@ describe("agentic.ui.PermissionManager", function()
     end
 
     before_each(function()
+        base_tabs = #vim.api.nvim_list_tabpages()
+        registered_owner = nil
+
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(fn)
             fn()
@@ -113,6 +121,20 @@ describe("agentic.ui.PermissionManager", function()
         end
 
         schedule_stub:revert()
+
+        if registered_owner then
+            require("agentic.ui.widget_registry").unregister(registered_owner)
+            registered_owner = nil
+        end
+
+        while #vim.api.nvim_list_tabpages() > base_tabs do
+            local ok = pcall(function()
+                vim.cmd("tabclose!")
+            end)
+            if not ok then
+                break
+            end
+        end
 
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
@@ -593,7 +615,6 @@ describe("agentic.ui.PermissionManager", function()
                 vim.api.nvim_win_set_buf(foreign_win, bufnr)
 
                 vim.cmd("tabnew")
-                local own_tab = vim.api.nvim_get_current_tabpage()
                 local own_win = vim.api.nvim_open_win(bufnr, true, {
                     relative = "editor",
                     width = 80,
@@ -608,6 +629,7 @@ describe("agentic.ui.PermissionManager", function()
                     win_nrs = { chat = own_win },
                 }
                 WidgetRegistry.register(owner)
+                registered_owner = owner
 
                 seed_block("tc-1")
                 pm:add_request(
@@ -628,12 +650,6 @@ describe("agentic.ui.PermissionManager", function()
                     vim.api.nvim_win_get_cursor(own_win)[1]
                 )
                 assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
-
-                WidgetRegistry.unregister(owner)
-                if vim.api.nvim_tabpage_is_valid(own_tab) then
-                    vim.api.nvim_win_close(own_win, true)
-                    vim.cmd("tabclose!")
-                end
             end
         )
 

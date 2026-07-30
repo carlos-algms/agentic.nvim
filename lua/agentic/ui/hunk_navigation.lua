@@ -317,8 +317,8 @@ local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }
 --- @param bufnr number
 function M.restore_keymaps(bufnr)
     local keymaps = Config.keymaps.diff_preview
-    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.next_hunk)
-    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.prev_hunk)
+    BufHelpers.keymap_del(bufnr, "n", keymaps.next_hunk)
+    BufHelpers.keymap_del(bufnr, "n", keymaps.prev_hunk)
 
     local state = buffer_state[bufnr]
     local saved_keymaps = state and state.saved_keymaps or {}

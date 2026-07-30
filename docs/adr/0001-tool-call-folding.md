@@ -46,8 +46,9 @@ on the chat buffer at all times — visible chat window OR hidden float, never
 both, never neither — so the fold-state snapshot pipeline is uninterrupted
 across hide/show. The hidden float is sized from `Config.windows.width` — the
 configured width, not the visible chat window's actual width — and matches its
-`wrap`/`linebreak` and statuscolumn so screen-row measurements
-(`nvim_win_text_height`) agree across hidden and visible states.
+`wrap`/`linebreak` and statuscolumn; screen-row measurements
+(`nvim_win_text_height`) agree across hidden and visible states only when the
+two widths match.
 
 The two widths diverge whenever the visible chat's width is not
 `calculate_width(Config.windows.width)`. Two common causes:

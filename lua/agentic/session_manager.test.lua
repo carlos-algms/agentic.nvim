@@ -390,7 +390,7 @@ describe("agentic.SessionManager", function()
             end
         end)
 
-        it("fires immediately via schedule when session_id exists", function()
+        it("queues the callback via schedule when session_id exists", function()
             local session = SessionManager:new() --[[@as agentic.SessionManager]]
             flush_schedule()
             session.session_id = "ready-session" --[[@as string]]

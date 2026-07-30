@@ -188,6 +188,14 @@ local function get_or_create_window(
         return cached_winid
     end
 
+    -- A stale handle from another tab would otherwise be left untracked once
+    -- `win_nrs` is repointed, showing a second copy of the widget in the tab
+    -- the user left.
+    if BufHelpers.is_win_usable(cached_winid) then
+        ---@cast cached_winid integer
+        pcall(vim.api.nvim_win_close, cached_winid, true)
+    end
+
     local new_winid =
         open_win(bufnr, false, open_opts, panel_name, win_opts or {})
     win_nrs[panel_name] = new_winid
@@ -423,11 +431,8 @@ function WidgetLayout.close_optional_window(win_nrs, window_name, position)
     -- In bottom layout Neovim redistributes the freed height to siblings.
     local chat_winid = win_nrs.chat
     local chat_height = nil
-    if
-        position == "bottom"
-        and chat_winid
-        and vim.api.nvim_win_is_valid(chat_winid)
-    then
+    if position == "bottom" and BufHelpers.is_win_usable(chat_winid) then
+        ---@cast chat_winid integer
         chat_height = vim.api.nvim_win_get_height(chat_winid)
     end
 

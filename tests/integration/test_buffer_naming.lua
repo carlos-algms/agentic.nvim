@@ -27,19 +27,17 @@ end)()
     --- @param panel string Panel name (chat, input, code, files, todos)
     --- @return string basename
     local function get_panel_basename(session_key, panel)
-        local bufname = child.lua_get(string.format(
+        return child.lua_get(string.format(
             [[
 (function()
     local session = require("agentic.session_registry").sessions[%d]
-    return vim.api.nvim_buf_get_name(session.widget.buf_nrs.%s)
+    local name = vim.api.nvim_buf_get_name(session.widget.buf_nrs.%s)
+    return vim.fn.fnamemodify(name, ":t")
 end)()
 ]],
             session_key,
             panel
         ))
-        return child.lua_get(
-            string.format([[vim.fn.fnamemodify("%s", ":t")]], bufname)
-        )
     end
 
     --- Rendering a header is what rewrites the buffer name

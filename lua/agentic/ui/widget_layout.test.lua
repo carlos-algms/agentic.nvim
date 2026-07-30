@@ -365,6 +365,61 @@ describe("WidgetLayout", function()
             end)
         end)
 
+        -- A session moved to another tab reopens its panels there. The handles
+        -- cached from the previous tab are still valid and still hold the same
+        -- buffers, so leaving them open shows a second copy of the widget in the
+        -- tab the user left, untracked by `win_nrs`.
+        it("closes cached panel windows left in another tabpage", function()
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+            local win_nrs = {}
+
+            vim.cmd("tabnew")
+            local first_tab = vim.api.nvim_get_current_tabpage()
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            local old_chat = win_nrs.chat
+            local old_input = win_nrs.input
+            assert.is_true(vim.api.nvim_win_is_valid(old_chat))
+            assert.is_true(vim.api.nvim_win_is_valid(old_input))
+
+            vim.cmd("tabnew")
+            local second_tab = vim.api.nvim_get_current_tabpage()
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            assert.is_false(vim.api.nvim_win_is_valid(old_chat))
+            assert.is_false(vim.api.nvim_win_is_valid(old_input))
+            assert.equal(second_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
+
+            WidgetLayout.close(win_nrs)
+            for _, tab in ipairs({ second_tab, first_tab }) do
+                if vim.api.nvim_tabpage_is_valid(tab) then
+                    vim.api.nvim_set_current_tabpage(tab)
+                    pcall(function()
+                        vim.cmd("tabclose!")
+                    end)
+                end
+            end
+        end)
+
         it("should fall back to right for invalid position", function()
             vim.cmd("tabnew")
 

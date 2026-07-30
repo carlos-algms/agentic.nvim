@@ -356,14 +356,19 @@ end
 
 --- Stops the agent's current generation or tool execution, keeping the session alive
 function Agentic.stop_generation()
-    SessionRegistry.resolve_or_create(function(session)
-        if session.is_generating and session.session_id then
-            session.agent:stop_generation(session.session_id)
-        end
-        session.permission_manager:clear()
-        session.is_generating = false
-        session.status_animation:stop()
-    end)
+    local session = SessionRegistry.current()
+
+    if not session then
+        return
+    end
+
+    if session.is_generating and session.session_id then
+        session.agent:stop_generation(session.session_id)
+    end
+
+    session.permission_manager:clear()
+    session.is_generating = false
+    session.status_animation:stop()
 end
 
 --- show a selector to restore a previous session

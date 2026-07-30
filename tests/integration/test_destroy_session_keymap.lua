@@ -20,6 +20,7 @@ describe("Destroy session keymap", function()
 
         child.lua([[
             local session = require("agentic.session_registry").current()
+            assert(session, "expected a session after new_session()")
             vim.api.nvim_set_current_win(session.widget.win_nrs.chat)
             local keys = vim.api.nvim_replace_termcodes(
                 "<localLeader>D",
