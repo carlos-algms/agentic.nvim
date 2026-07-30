@@ -399,22 +399,29 @@ describe("hunk_navigation", function()
             local after_next = get_keymap_in_buf(test_bufnr, "<leader>hn")
             local after_prev = get_keymap_in_buf(test_bufnr, "<leader>hp")
 
-            if next(after_next) ~= nil then
-                assert.is_true(is_buffer_local(after_next))
-                assert.equal(after_next.rhs, original_rhs)
-            end
+            -- Unconditional: guarding behind `next(after_next) ~= nil` lets a
+            -- silently dropped user mapping pass.
+            assert.is_true(is_buffer_local(after_next))
+            assert.equal(after_next.rhs, original_rhs)
             assert.equal(next(after_prev), nil)
         end)
 
-        it("clears state after restore", function()
+        it("clears the anchors cache after restore", function()
             HunkNavigation.setup_keymaps(test_bufnr)
             add_hunk(test_bufnr, test_ns, 1)
-            get_hunk_anchors(test_bufnr)
+            local cached = get_hunk_anchors(test_bufnr)
+            assert.equal(cached[1], 1)
 
             HunkNavigation.restore_keymaps(test_bufnr)
 
+            -- A retained cache hands back the line-1 anchor above; only a
+            -- cleared one re-reads the extmarks and sees the new line.
+            vim.api.nvim_buf_clear_namespace(test_bufnr, test_ns, 0, -1)
+            add_hunk(test_bufnr, test_ns, 20)
+
             local anchors = get_hunk_anchors(test_bufnr)
             assert.equal(#anchors, 1)
+            assert.equal(anchors[1], 20)
         end)
     end)
 end)
@@ -458,8 +465,8 @@ describe("hunk_navigation split mode", function()
     it("navigates the split's own window, not another tab's", function()
         -- Same buffer in two tabs. Only `split_state.original_winid` says which
         -- window carries the diff; without it the lookup takes tabpage order,
-        -- lands on a window that is not in diff mode, and reports "no more
-        -- hunks" while the real diff sits untouched.
+        -- hits a window not in diff mode, and reports "no more hunks" while the
+        -- real diff sits untouched.
         vim.cmd("tabnew")
         local foreign_win = vim.api.nvim_get_current_win()
         vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
@@ -488,14 +495,19 @@ describe("hunk_navigation split mode", function()
             vim.cmd("diffthis")
         end)
 
+        -- Keyed by absolute path, matching `DiffSplitView.open_split_view`. A
+        -- single unkeyed object made `split_state.original_winid` nil while the
+        -- map stayed truthy: split branch taken, window picked by tabpage order.
         --- @type agentic.ui.DiffState
         local diff_state = {
             split_state = {
-                original_winid = split_win,
-                original_bufnr = test_bufnr,
-                new_winid = scratch_win,
-                new_bufnr = scratch,
-                file_path = "/tmp/split_nav.lua",
+                ["/tmp/split_nav.lua"] = {
+                    original_winid = split_win,
+                    original_bufnr = test_bufnr,
+                    new_winid = scratch_win,
+                    new_bufnr = scratch,
+                    file_path = "/tmp/split_nav.lua",
+                },
             },
         }
 
@@ -510,6 +522,113 @@ describe("hunk_navigation split mode", function()
         pcall(vim.api.nvim_buf_delete, scratch, { force = true })
     end)
 
+    it(
+        "targets the split matching the bufnr, not an arbitrary entry",
+        function()
+            -- Two pending edits to DIFFERENT files, so `split_state` holds two
+            -- entries. `navigate_hunk` gets one bufnr explicitly and must resolve
+            -- that file's split. Preferring the CURRENT buffer drives the other
+            -- file's window; an arbitrary entry is a coin flip on `pairs` order.
+            --- @param label string
+            --- @return number bufnr
+            --- @return number original_winid
+            --- @return number scratch_winid
+            --- @return number scratch_bufnr
+            local function open_split(label)
+                local bufnr = vim.api.nvim_create_buf(false, true)
+                local lines = {}
+                for i = 1, 60 do
+                    lines[#lines + 1] = label .. " line " .. i
+                end
+                vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+
+                vim.cmd("tabnew")
+                local original_winid = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(original_winid, bufnr)
+                vim.api.nvim_win_set_cursor(original_winid, { 1, 0 })
+
+                local scratch = vim.api.nvim_create_buf(false, true)
+                local scratch_lines = vim.deepcopy(lines)
+                scratch_lines[30] = label .. " changed line 30"
+                vim.api.nvim_buf_set_lines(scratch, 0, -1, false, scratch_lines)
+                local scratch_winid = vim.api.nvim_open_win(scratch, false, {
+                    split = "right",
+                    win = original_winid,
+                })
+
+                vim.api.nvim_win_call(original_winid, function()
+                    vim.cmd("diffthis")
+                end)
+                vim.api.nvim_win_call(scratch_winid, function()
+                    vim.cmd("diffthis")
+                end)
+
+                return bufnr, original_winid, scratch_winid, scratch
+            end
+
+            local buf_a, win_a, scratch_win_a, scratch_a = open_split("alpha")
+            local buf_b, win_b, scratch_win_b, scratch_b = open_split("beta")
+
+            --- @type agentic.ui.DiffState
+            local diff_state = {
+                split_state = {
+                    ["/tmp/alpha.lua"] = {
+                        original_winid = win_a,
+                        original_bufnr = buf_a,
+                        new_winid = scratch_win_a,
+                        new_bufnr = scratch_a,
+                        file_path = "/tmp/alpha.lua",
+                    },
+                    ["/tmp/beta.lua"] = {
+                        original_winid = win_b,
+                        original_bufnr = buf_b,
+                        new_winid = scratch_win_b,
+                        new_bufnr = scratch_b,
+                        file_path = "/tmp/beta.lua",
+                    },
+                },
+            }
+
+            -- Cursor on beta while navigating alpha, so a current-buffer
+            -- preference resolves beta's entry, not alpha's.
+            vim.api.nvim_set_current_win(win_b)
+
+            HunkNavigation.navigate_next(buf_a, diff_state)
+
+            assert.is_true(vim.api.nvim_win_get_cursor(win_a)[1] > 1)
+            assert.equal(1, vim.api.nvim_win_get_cursor(win_b)[1])
+
+            -- A THIRD buffer with no entry. Resolving by bufnr yields nil and
+            -- takes the inline path. An arbitrary entry (or the raw map) keeps
+            -- the `layout == "split"` branch live and runs `]c` in a non-diff
+            -- window, so the extmark anchor is never reached.
+            local buf_c = vim.api.nvim_create_buf(false, true)
+            local lines_c = {}
+            for i = 1, 60 do
+                lines_c[#lines_c + 1] = "gamma line " .. i
+            end
+            vim.api.nvim_buf_set_lines(buf_c, 0, -1, false, lines_c)
+
+            vim.cmd("tabnew")
+            local win_c = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(win_c, buf_c)
+            vim.api.nvim_win_set_cursor(win_c, { 1, 0 })
+            add_hunk(buf_c, test_ns, 10)
+
+            HunkNavigation.navigate_next(buf_c, diff_state)
+
+            assert.equal(11, vim.api.nvim_win_get_cursor(win_c)[1])
+
+            for _, winid in ipairs({ scratch_win_a, scratch_win_b }) do
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
+            for _, bufnr in ipairs({ scratch_a, scratch_b, buf_a, buf_b, buf_c }) do
+                HunkNavigation.clear_state(bufnr)
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
+    )
+
     it("falls back to any visible window without split state", function()
         vim.cmd("tabnew")
         local only_win = vim.api.nvim_get_current_win()
@@ -521,5 +640,82 @@ describe("hunk_navigation split mode", function()
         HunkNavigation.navigate_next(test_bufnr, nil)
 
         assert.equal(11, vim.api.nvim_win_get_cursor(only_win)[1])
+    end)
+
+    it("does not fall back into another session's window", function()
+        -- Two sessions diffing the same file. Session one's painted window is
+        -- closed, so the `find_visible_win` fallback fires. Landing on session
+        -- two's window drives `]c` against someone else's diff, or a non-diff
+        -- window that raises E99.
+        vim.cmd("tabnew")
+        local foreign_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
+        vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+
+        vim.cmd("tabnew")
+        local owner_tab = vim.api.nvim_get_current_tabpage()
+        -- Second window in the owner's tab, so closing the painted one leaves
+        -- the tabpage (and the scope) alive.
+        vim.cmd("split")
+        local owner_win = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(owner_win, test_bufnr)
+
+        add_hunk(test_bufnr, test_ns, 10)
+
+        --- @type agentic.ui.DiffState
+        local diff_state = {
+            preview_bufnr = test_bufnr,
+            preview_winid = owner_win,
+        }
+
+        -- Stale owner: the painted window is gone, its tabpage is not.
+        vim.api.nvim_win_close(owner_win, true)
+        assert.is_true(vim.api.nvim_tabpage_is_valid(owner_tab))
+
+        HunkNavigation.navigate_next(test_bufnr, diff_state)
+
+        assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+    end)
+
+    it("restores each session's keymaps independently", function()
+        -- Buffer-local keymaps: a second session on the same buffer replaces the
+        -- first's `]c`/`[c`. Clearing out of order (session one last) must not
+        -- strip the mapping session two still needs.
+        local keymaps = Config.keymaps.diff_preview
+
+        vim.cmd("tabnew")
+        local win_one = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(win_one, test_bufnr)
+
+        vim.cmd("tabnew")
+        local win_two = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(win_two, test_bufnr)
+
+        --- @type agentic.ui.DiffState
+        local state_one =
+            { preview_bufnr = test_bufnr, preview_winid = win_one }
+        --- @type agentic.ui.DiffState
+        local state_two =
+            { preview_bufnr = test_bufnr, preview_winid = win_two }
+
+        HunkNavigation.setup_keymaps(test_bufnr, state_one)
+        HunkNavigation.setup_keymaps(test_bufnr, state_two)
+
+        assert.is_true(
+            is_buffer_local(get_keymap_in_buf(test_bufnr, keymaps.next_hunk))
+        )
+
+        HunkNavigation.restore_keymaps(test_bufnr)
+
+        -- Emptiness, not iteration order: `next` on a non-empty keymap dict
+        -- returns an arbitrary key, so comparing to nil passed by luck.
+        assert.equal(
+            vim.tbl_isempty(get_keymap_in_buf(test_bufnr, keymaps.next_hunk)),
+            true
+        )
+        assert.equal(
+            vim.tbl_isempty(get_keymap_in_buf(test_bufnr, keymaps.prev_hunk)),
+            true
+        )
     end)
 end)

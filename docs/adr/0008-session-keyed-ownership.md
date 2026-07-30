@@ -1,7 +1,7 @@
 # 0008. Session-keyed ownership
 
 - Status: accepted
-- Last updated: 2026-07-25
+- Last updated: 2026-07-30
 - Related:
 
 ## Context
@@ -44,10 +44,10 @@ sites reached for a short `resolve` and each silently spawned a provider
 subprocess.
 
 **`show_session` is the only path that SWITCHES a session between tabpages.** It
-hides every other session in the current tabpage, hides the target if visible in
-a different one, repoints `_most_recent`, then shows. Those first two steps are
-the invariant — **at most one visible widget per tabpage, at most one tabpage
-per session** — and siting them here makes "hide before show" structural, which
+hides every other session in the current tabpage, hides the target if visible in a
+different one, repoints `_most_recent`, then shows. Those first two steps are the
+invariant — **at most one visible widget per tabpage, at most one tabpage per
+session** — and siting them here makes "hide before show" structural, which
 `ChatWidget._size` inheritance depends on. Every entry point that surfaces a
 session elsewhere routes through it.
 
@@ -102,18 +102,20 @@ request outlives its session. Both liveness gates answer
 `PermissionManager:clear` resolves pending requests with nil during teardown.
 
 **Destroying a session must not take a tabpage with it.** `ChatWidget:destroy`
-runs `_ensure_fallback_window` (shared with `hide`) in the widget's _own_
-tabpage before closing. It must run before `WidgetRegistry.unregister`, or
-`find_first_non_widget_window` stops recognising the widget's own windows and
-hands one back. Regression:
+runs `_ensure_fallback_window` (shared with `hide`) in the widget's _own_ tabpage
+before closing, and before `WidgetRegistry.unregister` — otherwise
+`find_first_non_widget_window` stops recognising the widget's own windows and hands
+one back. Regression:
 `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
 
 **Identity is published.** Every hook payload carries `session_key`, stable for
-life. `tab_page_id` survives as placement only, nil for a background session,
-and `on_response_complete` resolves it inside its deferred callback so it
-reports completion-time placement. Buffer names gain the key suffix once more
-than one session exists; `ChatHistory.title` is written from the first prompt to
-label `select_session` rows.
+life. `tab_page_id` survives as placement only, nil for a background session;
+`on_response_complete` resolves it inside its deferred callback, so it reports
+completion-time placement. Buffer names gain the key suffix once more than one
+session exists, but only as each widget's headers re-render through
+`WindowDecoration.render_header` — already-open widgets keep unsuffixed names
+until their next header render. `ChatHistory.title` is written from the first
+prompt to label `select_session` rows.
 
 ## Consequences
 
@@ -151,9 +153,10 @@ label `select_session` rows.
 
 ## Changelog
 
-| Date       | Change                                                                           |
-| ---------- | -------------------------------------------------------------------------------- |
-| 2026-07-25 | Initial decision: ownership keyed by session, placement derived from the widget. |
+| Date       | Change                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| 2026-07-25 | Initial decision: ownership keyed by session, placement derived from the widget.             |
+| 2026-07-30 | Clarified that the buffer-name key suffix is published per header render, not retroactively. |
 
 ## Sources
 

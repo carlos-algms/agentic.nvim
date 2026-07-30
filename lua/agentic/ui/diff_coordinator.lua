@@ -7,7 +7,7 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.ui.DiffState
 --- @field preview_bufnr? integer
 --- @field preview_winid? integer Window the diff was painted in
---- @field split_state? agentic.ui.DiffSplitView.State
+--- @field split_state? table<string, agentic.ui.DiffSplitView.State> Keyed by absolute path: one slot per DiffState let a second pending edit to a DIFFERENT file overwrite the first, orphaning its scratch buffer and window
 
 --- @class agentic.ui.DiffCoordinator
 --- @field _widget agentic.ui.ChatWidget

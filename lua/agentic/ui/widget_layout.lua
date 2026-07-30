@@ -155,6 +155,20 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
     return winid
 end
 
+--- Reusable only in the CURRENT tabpage: a handle from another tab renders nothing
+--- where the user is looking, and splits one widget's topology across two tabs.
+--- @param winid integer|nil
+--- @return boolean
+local function is_in_current_tabpage(winid)
+    if not BufHelpers.is_win_usable(winid) then
+        return false
+    end
+
+    ---@cast winid integer
+    return vim.api.nvim_win_get_tabpage(winid)
+        == vim.api.nvim_get_current_tabpage()
+end
+
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
@@ -168,14 +182,10 @@ local function get_or_create_window(
     open_opts,
     win_opts
 )
-    -- Reusable only in the CURRENT tabpage; a handle from another tab renders nothing where the user is looking.
     local cached_winid = win_nrs[panel_name]
-    if cached_winid and vim.api.nvim_win_is_valid(cached_winid) then
-        local tab_ok, win_tab =
-            pcall(vim.api.nvim_win_get_tabpage, cached_winid)
-        if tab_ok and win_tab == vim.api.nvim_get_current_tabpage() then
-            return cached_winid
-        end
+    if is_in_current_tabpage(cached_winid) then
+        ---@cast cached_winid integer
+        return cached_winid
     end
 
     local new_winid =
@@ -203,14 +213,22 @@ local function open_or_resize_dynamic_window(
     local winid = win_nrs[window_name]
 
     if BufHelpers.is_buffer_empty(bufnr) then
-        if winid and vim.api.nvim_win_is_valid(winid) then
+        if BufHelpers.is_win_usable(winid) then
+            ---@cast winid integer
             pcall(vim.api.nvim_win_close, winid, true)
         end
         win_nrs[window_name] = nil
         return
     end
 
-    if not winid or not vim.api.nvim_win_is_valid(winid) then
+    if not is_in_current_tabpage(winid) then
+        -- A stale handle from another tab would otherwise be left untracked
+        -- once `win_nrs` is repointed at the new window.
+        if BufHelpers.is_win_usable(winid) then
+            ---@cast winid integer
+            pcall(vim.api.nvim_win_close, winid, true)
+        end
+
         -- Opened at min height so wrapped rows can be measured against the real
         -- window width, then resized; a buffer-line count understates wraps.
         open_win_opts.height = 1
@@ -388,13 +406,10 @@ end
 function WidgetLayout.close(win_nrs)
     for name, winid in pairs(win_nrs) do
         win_nrs[name] = nil
-        if vim.api.nvim_win_is_valid(winid) then
-            -- On 0.11.5 Linux, tabclose leaves handles where
-            -- `nvim_win_is_valid` is true but `nvim_win_close` segfaults.
-            local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
-            if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
-                pcall(vim.api.nvim_win_close, winid, true)
-            end
+        -- `is_win_usable`, not bare validity: on 0.11.5 Linux tabclose leaves
+        -- handles that answer valid but segfault in `nvim_win_close`.
+        if BufHelpers.is_win_usable(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
         end
     end
 end
@@ -416,7 +431,7 @@ function WidgetLayout.close_optional_window(win_nrs, window_name, position)
         chat_height = vim.api.nvim_win_get_height(chat_winid)
     end
 
-    if winid and vim.api.nvim_win_is_valid(winid) then
+    if BufHelpers.is_win_usable(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
     end
     win_nrs[window_name] = nil

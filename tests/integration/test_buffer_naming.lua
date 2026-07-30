@@ -12,7 +12,6 @@ describe("Buffer Naming", function()
         child.stop()
     end)
 
-    --- Creates a session through the session-keyed registry and shows it
     --- @return integer session_key
     local function open_session()
         return child.lua_get([[
@@ -24,7 +23,6 @@ end)()
 ]])
     end
 
-    --- Gets the buffer basename of a panel owned by the given session
     --- @param session_key integer
     --- @param panel string Panel name (chat, input, code, files, todos)
     --- @return string basename
@@ -44,7 +42,7 @@ end)()
         )
     end
 
-    --- Re-renders one panel's header, which is what rewrites the buffer name
+    --- Rendering a header is what rewrites the buffer name
     --- @param session_key integer
     --- @param panel string
     local function render_header(session_key, panel)
@@ -59,8 +57,7 @@ session.widget:render_header("%s")
         child.flush()
     end
 
-    --- Creates and shows a session through the public API, the path a user
-    --- actually takes
+    --- The path a user actually takes, unlike `open_session`
     --- @return integer session_key
     local function open_via_public_api()
         return child.lua_get([[
@@ -83,8 +80,8 @@ end)()
         local key2 = open_via_public_api()
         child.flush()
 
-        -- Nothing re-renders the other sessions' headers on create, so the first
-        -- session picks up its suffix on its own next render
+        -- Create re-renders no other session's header, so the first picks up its
+        -- suffix on its own next render
         render_header(key1, "chat")
 
         local basename1 = get_panel_basename(key1, "chat")
@@ -125,6 +122,48 @@ end)()
         assert.is_not_nil(basename2:match("%(2%)$"))
     end)
 
+    it(
+        "keeps the session key in the suffix after a middle session dies",
+        function()
+            -- With one session per tab, keys and tab ordinals coincide, so a
+            -- tab-keyed suffix looks identical to a session-keyed one. Destroying
+            -- the MIDDLE session breaks that: session 3 sits in the second
+            -- remaining tab, so a tab-derived suffix would read `(2)`.
+            local key1 = open_session()
+            child.flush()
+
+            child.cmd("tabnew")
+            local key2 = open_session()
+            child.flush()
+
+            child.cmd("tabnew")
+            local key3 = open_session()
+            child.flush()
+
+            assert.same({ 1, 2, 3 }, { key1, key2, key3 })
+
+            child.lua(
+                string.format(
+                    [[ require("agentic.session_registry").destroy(%d) ]],
+                    key2
+                )
+            )
+            child.flush()
+
+            render_header(key1, "chat")
+            render_header(key3, "chat")
+
+            assert.equal(
+                "󰻞 Agentic Chat (1)",
+                get_panel_basename(key1, "chat")
+            )
+            assert.equal(
+                "󰻞 Agentic Chat (3)",
+                get_panel_basename(key3, "chat")
+            )
+        end
+    )
+
     it("does not demote the first session's buffers", function()
         local key1 = open_session()
         child.flush()
@@ -138,7 +177,7 @@ end)()
         assert.is_nil(basename:match("%-old%-"))
     end)
 
-    it("returns to the bare name once the other session is gone", function()
+    it("keeps the key suffix once the other session is gone", function()
         local key1 = open_session()
         child.flush()
 
@@ -157,7 +196,9 @@ end)()
         )
         render_header(key1, "chat")
 
-        assert.equal("󰻞 Agentic Chat", get_panel_basename(key1, "chat"))
+        -- Sticky: once a second session existed, the survivor KEEPS its key
+        -- suffix rather than reverting to the bare title.
+        assert.equal("󰻞 Agentic Chat (1)", get_panel_basename(key1, "chat"))
     end)
 
     it("prevents buffer name collision errors", function()
@@ -176,7 +217,7 @@ end)()
         assert.equal(5, session_count)
 
         -- The count alone cannot see a collision: E95 does not fail the open, it
-        -- demotes the losing buffer to `<name>-old-N`.
+        -- demotes the loser to `<name>-old-N`.
         for _, key in ipairs(keys) do
             assert.is_nil(get_panel_basename(key, "chat"):match("%-old%-"))
         end

@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible
+--- @diagnostic disable: invisible, missing-fields, param-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local PermissionSection = require("tests.helpers.permission_section")
@@ -577,6 +577,63 @@ describe("agentic.ui.PermissionManager", function()
 
                 local cursor = vim.api.nvim_win_get_cursor(winid)
                 assert.equal((button_row_1 or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "moves the cursor in the owning widget's window, not a copy in another tab",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+
+                -- The user opened the chat buffer in a plain window. It sits in
+                -- the FIRST tabpage, and `win_findbuf` returns tabpage order, so
+                -- an unpreferred lookup picks that copy over the widget's own
+                -- window in a later tab and scrolls a window nobody is watching.
+                local foreign_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(foreign_win, bufnr)
+
+                vim.cmd("tabnew")
+                local own_tab = vim.api.nvim_get_current_tabpage()
+                local own_win = vim.api.nvim_open_win(bufnr, true, {
+                    relative = "editor",
+                    width = 80,
+                    height = 40,
+                    row = 0,
+                    col = 0,
+                })
+
+                -- Only `buf_nrs` and `win_nrs` are read on this path.
+                local owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = { chat = own_win },
+                }
+                WidgetRegistry.register(owner)
+
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local button_row_1 = writer:get_button_row("tc-1", 1)
+                assert.is_not_nil(button_row_1)
+
+                vim.api.nvim_win_set_cursor(own_win, { 1, 0 })
+                vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+
+                pm:_jump_cursor_to("tc-1")
+
+                assert.equal(
+                    (button_row_1 or 0) + 1,
+                    vim.api.nvim_win_get_cursor(own_win)[1]
+                )
+                assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+
+                WidgetRegistry.unregister(owner)
+                if vim.api.nvim_tabpage_is_valid(own_tab) then
+                    vim.api.nvim_win_close(own_win, true)
+                    vim.cmd("tabclose!")
+                end
             end
         )
 

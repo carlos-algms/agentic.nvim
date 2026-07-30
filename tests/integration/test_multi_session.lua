@@ -67,14 +67,13 @@ end)()
         child.flush()
     end
 
-    --- Restore needs a connected client, an announced `loadSession` capability and
-    --- an ACP `session/load`; the transport mock answers none of them, so
-    --- `when_ready` would never fire and `SessionRestore` would bail before
-    --- creating anything. Stubbing all three leaves exactly the registry
-    --- bookkeeping this file covers. `vim.ui.select` is counted so a resurrected
-    --- conflict prompt shows up as a call.
-    --- The capability lands on the class, not an instance: `ACPClient.__index` is
-    --- the class table, so every client created in this child inherits it.
+    --- Restore needs a connected client, a `loadSession` capability and an ACP
+    --- `session/load`; the transport mock answers none, so `when_ready` never
+    --- fires and `SessionRestore` bails before creating anything. Stubbing all
+    --- three leaves just the registry bookkeeping this file covers.
+    --- `vim.ui.select` is counted so a resurrected conflict prompt shows up.
+    --- The capability lands on the class: `ACPClient.__index` is the class table,
+    --- so every client in this child inherits it.
     local function stub_restore()
         child.lua([[
             require("agentic.acp.acp_client").when_ready = function(_self, cb)
@@ -166,8 +165,8 @@ end)()
 
         child.cmd("tabnew")
 
-        -- `close` must not reach `_most_recent`: hiding a widget the user is not
-        -- looking at, in another tab, is never what `close` here means.
+        -- `close` must not reach `_most_recent`: hiding a widget in another tab,
+        -- which the user is not looking at, is never what `close` means.
         child.lua([[ require("agentic").close() ]])
         child.flush()
 
@@ -183,7 +182,9 @@ end)()
     end)
 
     it("renders in its own tab when shown from another one", function()
-        child.lua([[ require("agentic").open() ]])
+        child.lua(
+            [[ require("agentic").open({ auto_add_to_context = false }) ]]
+        )
         child.flush()
 
         local tab1 = child.api.nvim_get_current_tabpage()
@@ -191,17 +192,22 @@ end)()
         child.cmd("tabnew")
         local tab2 = child.api.nvim_get_current_tabpage()
 
-        -- What `SessionManager`'s content callbacks do while the user sits in
-        -- another tab: a background session adding a file must not rebuild its
-        -- widget here and abandon the copy in its own tab.
+        -- The REAL content-callback path, not `widget:show`: `FileList`'s
+        -- `on_change` calls `ChatWidget:rerender`, and `show` here would exercise
+        -- the call `lua/agentic/ui/AGENTS.md` forbids in a content callback. A
+        -- session visible in another tab must re-render there, not rebuild itself
+        -- in the tab the user sits in.
         child.lua([[
-            require("agentic.session_registry").sessions[1].widget:show({
-                focus_prompt = false,
-            })
+            require("agentic.session_registry").sessions[1].file_list:add(
+                vim.fn.fnamemodify("README.md", ":p")
+            )
         ]])
         child.flush()
 
-        assert.same({ "AgenticChat", "AgenticInput" }, widget_filetypes(tab1))
+        assert.same(
+            { "AgenticChat", "AgenticFiles", "AgenticInput" },
+            widget_filetypes(tab1)
+        )
         assert.same({}, widget_filetypes(tab2))
         assert.equal(tab1, session_tab(1))
         assert.equal(tab2, child.api.nvim_get_current_tabpage())
@@ -218,7 +224,7 @@ end)()
 
         -- Every command that opens the widget must go through the eviction choke
         -- point. Showing directly leaves the old tab's windows behind, untracked
-        -- in `win_nrs` and therefore impossible to close.
+        -- in `win_nrs` and impossible to close.
         child.lua([[ require("agentic").add_file() ]])
         child.flush()
 
@@ -240,9 +246,8 @@ end)()
         child.flush()
 
         -- A background session's content callback must never surface its widget:
-        -- `show_session` is the only path allowed to make one visible, and two
-        -- widgets in one tab leave `close` hiding whichever `pairs` reaches first
-        -- and stranding the other.
+        -- `show_session` is the only path allowed to. Two widgets in one tab leave
+        -- `close` hiding whichever `pairs` reaches first, stranding the other.
         child.lua([[
             require("agentic.session_registry").sessions[1].file_list:add(
                 vim.fn.fnamemodify("README.md", ":p")
@@ -254,7 +259,7 @@ end)()
         assert.same({ "AgenticChat", "AgenticInput" }, widget_filetypes(tab))
 
         -- Not lost: the panel buffer is written before the callback fires, and
-        -- `show` opens every panel whose buffer is non-empty.
+        -- `show` opens every panel with a non-empty buffer.
         child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
 
@@ -315,14 +320,14 @@ end)()
     end)
 
     it("inherits the width of the session shown before it", function()
-        -- TWO donors carrying DIFFERENT widths. With one donor, recency order
-        -- and ascending-key order coincide and a donor scan that falls back to
-        -- the lowest key still looks right.
+        -- TWO donors with DIFFERENT widths. With one, recency order and
+        -- ascending-key order coincide, so a donor scan falling back to the
+        -- lowest key still looks right.
         child.lua([[ require("agentic").open() ]])
         child.flush()
 
-        -- Session 1 is hidden at the configured width; session 2 replaces it and
-        -- is the one the user resizes.
+        -- Session 1 stays at the configured width; session 2 replaces it and is
+        -- the one resized.
         child.lua([[ require("agentic").new_session() ]])
         child.flush()
 
@@ -347,7 +352,7 @@ end)()
 
     it("rotates nothing from a tab with no visible session", function()
         -- Same tab-locality rule as `Agentic.close`: a widget the user is not
-        -- looking at must not be torn down and rebuilt in the current tabpage.
+        -- looking at must not be rebuilt in the current tabpage.
         child.lua([[ require("agentic").open() ]])
         child.flush()
 
@@ -381,8 +386,8 @@ end)()
     end)
 
     it("returns to the starting session after next then prev", function()
-        -- Three sessions is the minimum that detects cycling over a mutable
-        -- order: with two, `next` then `prev` lands back by accident.
+        -- Three is the minimum that detects cycling over a mutable order: with
+        -- two, `next` then `prev` lands back by accident.
         create_sessions(3)
         child.lua([[ require("agentic.session_registry").show_session(1) ]])
         child.flush()
@@ -459,7 +464,7 @@ end)()
 
         assert.equal(2, visible_key())
 
-        -- `list()` puts the session visible in this tab first, and only it carries the selected marker.
+        -- `list()` puts this tab's visible session first; only it gets the marker.
         local labels = child.lua_get([[_G.labels]])
         assert.equal(2, #labels)
         assert.truthy(labels[1]:match("^● "))
@@ -506,8 +511,8 @@ end)()
         stub_restore()
 
         -- `Agentic.restore_session_by_id` resolves through the registry, which
-        -- creates a session just to reach `.agent`. Restoring into a brand new
-        -- one would otherwise strand that empty session forever.
+        -- creates a session just to reach `.agent`. Restoring into a fresh one
+        -- would strand that empty session forever.
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
 
@@ -516,11 +521,10 @@ end)()
         assert.equal(0, child.lua_get([[_G.selects]]))
     end)
 
-    -- `_inherited_size` reads the donor at `show` time, and `ChatWidget:destroy`
-    -- never captures a size. Destroying the resolved session before the restored
-    -- one is shown therefore drops the only donor in the common single-session
-    -- case, and a user who resized the sidebar gets the configured default back
-    -- after every restore.
+    -- `_inherited_size` reads the donor at `show` time and `ChatWidget:destroy`
+    -- captures no size. Destroying the resolved session before showing the
+    -- restored one drops the only donor in the single-session case, so a user who
+    -- resized the sidebar gets the default back after every restore.
     it("inherits the resized width of the session it restores over", function()
         stub_restore()
         child.lua(
@@ -548,11 +552,10 @@ end)()
         )
     end)
 
-    -- Five inputs, not one: an implementation testing only messages passes a
-    -- messages case while silently destroying staged files, selections,
-    -- diagnostics, or a half-typed prompt — user work that only explicit intent
-    -- may discard. A typed paragraph is the one input that cannot be re-added
-    -- with a single keystroke.
+    -- Five inputs, not one: an implementation checking only messages passes that
+    -- case while silently destroying staged files, selections, diagnostics, or a
+    -- half-typed prompt — user work only explicit intent may discard. A typed
+    -- paragraph is the one input no single keystroke can re-add.
     for _, seed in ipairs({
         {
             name = "messages",

@@ -20,9 +20,9 @@ This project splits instructions and repetitive workflows into skills.
 **MANDATORY**: Load the related skill before suggesting a solution, writing to
 lua files, or adding, updating, or creating unit tests.
 
-The Skills contain good practices, code standards, architecture flows, etc...,
-that might not align with your training data.  
-It's mandatory to load the skills before assuming your solution is right.
+Skills hold good practices, code standards, and architecture flows that may not
+match your training data.  
+Load them before assuming your solution is right.
 
 ## Domain glossary — lazy read
 
@@ -88,35 +88,34 @@ implementations expecting the user to fill gaps.
 ## Runtime safety
 
 Ownership is keyed by **session**, never by tabpage. `SessionRegistry` maps an
-integer session key to a `SessionManager`; placement is derived live from
-`ChatWidget:get_visible_tab_id()` and nothing stores a tabpage handle. A session
-can be visible in any tabpage, or in none, and it keeps generating while hidden.
-ADR 0008 holds the invariants; `SessionRegistry.show_session` is the only path
-that SWITCHES a session between tabpages, and it enforces them.
-`ChatWidget:show` is also called in place by `rerender`, `rotate_layout` and the
-clipboard paste handler — ADR 0008 lists why each cannot move a widget between
-tabpages. Adding a fourth needs the same proof.
+integer session key to a `SessionManager`; placement derives live from
+`ChatWidget:get_visible_tab_id()`, and nothing stores a tabpage handle. A session
+can be visible in any tabpage, or in none, and keeps generating while hidden.
+
+`SessionRegistry.show_session` is the only path that SWITCHES a session between
+tabpages; it enforces the ADR 0008 invariants. `ChatWidget:show` is also called
+in place by `rerender`, `rotate_layout` and the clipboard paste handler — ADR
+0008 lists why each cannot move a widget. A fourth needs the same proof.
 
 Two consequences bite every runtime change:
 
 - **A session may have no window.** `get_visible_tab_id()` returns `nil` for a
   background session. Nil-check and degrade; never assume a window exists.
 - **Liveness cannot be captured across an async boundary.** A scheduled callback
-  can outlive the session that queued it. Check `SessionManager._destroyed`, and
-  re-resolve subscribers and windows, _inside_ the callback — not at schedule
-  time.
+  can outlive the session that queued it. Check `SessionManager._destroyed` and
+  re-resolve subscribers and windows _inside_ the callback, not at schedule time.
 
 ### Resolving a session
 
 Three entry points on `SessionRegistry`. Only one creates:
 
-- `visible_here()` — the session visible in the current tabpage, else `nil`.
+- `visible_here()` — session visible in the current tabpage, else `nil`.
 - `current()` — `visible_here()`, falling back to the registered most-recent
   session. Never creates. **This is the default choice.**
-- `resolve_or_create()` — `current()` plus creation. Creating a session spawns
-  work on a provider subprocess, so use it only when you actively want a new
-  session. Four call sites shipped the wrong one on the branch that introduced
-  the name, each silently spawning a subprocess.
+- `resolve_or_create()` — `current()` plus creation. Creation spawns work on a
+  provider subprocess; use it only when you actively want a new session. Four
+  call sites shipped the wrong one on the branch that introduced the name, each
+  silently spawning a subprocess.
 
 ```mermaid
 flowchart TD
@@ -132,20 +131,21 @@ flowchart TD
     ROC --> N
 ```
 
-Worked examples, all four originally wrong: `Agentic.close` and
-`Agentic.rotate_layout` are `visible_here` — acting on another tabpage's widget
-surprises the user. `Agentic.destroy_session` and `Agentic.cycle_session` are
-`current`, acting on a session rather than a placement. The clipboard paste
-closure resolves through `WidgetRegistry` from the buffer under the cursor: it
-runs on every `vim.paste` and must not create anything.
+Worked examples, all four originally wrong:
+
+- `Agentic.close`, `Agentic.rotate_layout` — `visible_here`; acting on another
+  tabpage's widget surprises the user.
+- `Agentic.destroy_session`, `Agentic.cycle_session` — `current`; they act on a
+  session, not a placement.
+- Clipboard paste closure — resolves through `WidgetRegistry` from the buffer
+  under the cursor. Runs on every `vim.paste` and must not create anything.
 
 All three return `SessionManager|nil`, `resolve_or_create` included:
 `SessionRegistry.create` returns `nil` when
-`ACPHealth.check_configured_provider()` fails, so a user with no configured
-provider gets `nil` from the creating entry point too. Nil-check every bare
-return.
+`ACPHealth.check_configured_provider()` fails, so an unconfigured user gets `nil`
+from the creating entry point too. Nil-check every bare return.
 
-`resolve_or_create(callback)` also takes an optional callback, invoked with the
+`resolve_or_create(callback)` takes an optional callback, invoked with the
 resolved session. It is `pcall`ed: a callback error is reported through
 `Logger.notify` and NOT re-raised, so the caller sees a normal return. Do not
 rely on an error escaping the callback to abort the caller.
@@ -184,19 +184,19 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
 
 - **FORBIDDEN: `vim.notify`** -> use `Logger.notify` (fast-context errors).
 - **FORBIDDEN: calling any `nvim_*` API from a libuv callback** -> wrap it in
-  `vim.schedule` and resolve live values INSIDE the schedule. Neovim rejects
-  most of its API in a fast event context:
+  `vim.schedule` and resolve live values INSIDE the schedule. Neovim rejects most
+  of its API in a fast event context:
   `E5560: nvim_win_is_valid must not be called in a fast event context`. Reached
   from every libuv entry point — stdio readers, `vim.uv` timers, `on_exit`
   handlers. The `vim.notify` trap above is the same failure one layer up.
   - **A deferred consumer does not make the producer safe.** `Hooks.invoke`
     dispatches every payload through `vim.schedule`, but the caller evaluates
     payload fields before that defer. Pure Lua table construction is safe in a
-    fast event; resolving editor state there is not. Cross to the main loop
-    first, then resolve live values and construct the payload inside the
-    scheduled callback. A value captured earlier describes the world when the
-    fast callback fired, not when the consumer runs — the defect corrected at
-    `SessionManager`'s `on_response_complete` payload.
+    fast event; resolving editor state is not. Cross to the main loop first, then
+    resolve live values and build the payload inside the scheduled callback. A
+    value captured earlier describes the world when the fast callback fired, not
+    when the consumer runs — the defect corrected at `SessionManager`'s
+    `on_response_complete` payload.
   - `vim.in_fast_event()` is the predicate when you genuinely need to branch.
   - Regression:
     `lua/agentic/session_manager.test.lua::"builds the hook payload outside the fast event context"`.
@@ -233,19 +233,20 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   `{ buffer = bufnr }`** -> use `BufHelpers.keymap_set` /
   `BufHelpers.keymap_del`. They pick the right option name per version: `buffer`
   was renamed to `buf` in `neovim#38360` (shipped in 0.12.0 final, `buffer`
-  removed in 0.15), and the helpers gate on `nvim-0.12.1` so 0.12.0-dev
-  nightlies built before the rename — which answer `has("nvim-0.12") == 1` but
-  reject `buf` — still work.
+  removed in 0.15). The helpers gate on `nvim-0.12.1`, so 0.12.0-dev nightlies
+  built before the rename — which answer `has("nvim-0.12") == 1` but reject
+  `buf` — still work.
 - **FORBIDDEN: `vim.api.nvim_list_wins()` to enumerate a widget's windows** ->
   enumerate through the widget's own tabpage,
-  `vim.api.nvim_tabpage_list_wins(self:get_visible_tab_id())`, and return early
+  `vim.api.nvim_tabpage_list_wins(self:get_visible_tab_id())`, returning early
   when `get_visible_tab_id()` is `nil` — a hidden widget sits in no tabpage. A
   global enumeration reaches other sessions' windows. This is window placement,
-  not isolation. Regressions:
-  `lua/agentic/ui/chat_widget.test.lua::"returns nil for a hidden widget"` (the
-  nil-tab early return) and
-  `::"never returns another widget's window in the same tab"` (the tabpage
-  scoping).
+  not isolation. Regressions in `lua/agentic/ui/chat_widget.test.lua`:
+  `::"returns nil for a hidden widget"` (nil-tab early return),
+  `::"never returns another widget's window in the same tab"` (tabpage scoping)
+  and `::"does not fall back to an eligible window in another tab"` (the cross-tab
+  case a global enumeration silently passes: the eligible window exists, just not
+  where the widget is).
 - **FORBIDDEN: `vim.fn.bufwinid`** -> use `BufHelpers.find_visible_win`.
   `bufwinid` "Only deals with the current tabpage"
   (`$VIMRUNTIME/doc/vimfn.txt`), so it finds nothing for a session visible
@@ -254,8 +255,8 @@ Subsystem-specific traps live in nested `AGENTS.md`. These apply everywhere:
   `lua/agentic/utils/buf_helpers.test.lua::"restricts the search to a given tabpage"`.
 - **FORBIDDEN: `nvim_win_set_width` / `nvim_win_set_height`** -> use
   `BufHelpers.win_set_width` / `BufHelpers.win_set_height`. Both are deprecated
-  on nightly for `nvim_win_resize` (0.13+ only), and CI runs a nightly matrix
-  job, so the call needs the helper's version gate. Coverage:
+  on nightly for `nvim_win_resize` (0.13+ only), and CI runs a nightly matrix job,
+  so the call needs the helper's version gate. Coverage:
   `lua/agentic/utils/buf_helpers.test.lua`.
 - **FORBIDDEN: `:set`-style writes for window-local options** -> use
   `vim.wo[winid][0].opt = val`, never `vim.wo[winid].opt = val` or
@@ -325,10 +326,10 @@ timeout 5 nvim --headless -c "helptags doc/" -c "quit"
 ```
 
 **MANDATORY: every `nvim --headless` call gets a `timeout`.** The `timeout 5`
-prefix above is not decoration. Neovim does not exit when a `-c` command fails
-before reaching `quit`/`qa!` — the process hangs indefinitely and blocks the
-task. Applies to every headless invocation, not just helptags. Use `qa!`, not
-`qa\!` (no shell escape needed).
+prefix above is not decoration: when a `-c` command fails before reaching
+`quit`/`qa!`, Neovim never exits and the process hangs indefinitely. Applies to
+every headless invocation, not just helptags. Use `qa!`, not `qa\!` (no shell
+escape needed).
 
 ```bash
 make validate

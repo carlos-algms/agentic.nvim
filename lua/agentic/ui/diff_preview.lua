@@ -17,8 +17,9 @@ local NS_DIFF = HunkNavigation.NS_DIFF
 --- @param state agentic.ui.DiffState
 --- @return number|nil bufnr
 function M.get_active_diff_buffer(state)
-    if state.split_state then
-        return state.split_state.original_bufnr
+    local split_state = DiffSplitView.find_split_state(state)
+    if split_state then
+        return split_state.original_bufnr
     end
 
     return state.preview_bufnr
@@ -358,14 +359,17 @@ function M.clear_diff(buf, is_rejection, state)
         return
     end
 
-    -- Captured before the clear below; the rejection swap still needs it.
-    local painted_winid = state and state.preview_winid
-
     if state then
-        if state.split_state then
-            DiffSplitView.clear_split_diff(state)
+        -- The entry for THIS file: another file's split must survive this clear. A
+        -- split-layout session can still hold an INLINE diff for a different file
+        -- (`show_split_diff` falls back), so only a real hit returns early.
+        local split_path = type(buf) == "string" and buf
+            or vim.api.nvim_buf_get_name(bufnr)
+
+        if DiffSplitView.clear_split_diff(state, split_path) then
             return
         end
+
         state.preview_bufnr = nil
         state.preview_winid = nil
     end
@@ -391,8 +395,11 @@ function M.clear_diff(buf, is_rejection, state)
         local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
 
         if not stat then
-            local buf_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
-            if buf_winid then
+            -- EVERY window, not just the painted one: `nvim_buf_delete(force)` closes
+            -- each window still holding the buffer, so a second window the user opened
+            -- on the same file would vanish. `win_findbuf` is tab-agnostic on purpose —
+            -- that window may be in another tabpage.
+            for _, buf_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
                 -- The TARGET window's alternate buffer, not the current one's.
                 local alt = vim.api.nvim_win_call(buf_winid, function()
                     return vim.fn.bufnr("#")

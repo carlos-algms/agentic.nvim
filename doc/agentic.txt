@@ -438,9 +438,9 @@ Multiple sessions ~
 Sessions are not tied to tabs. Each session gets a session key -- a
 small integer assigned at creation and stable for its whole life.
 
-  - A session keeps running while hidden. Pressing `q`, closing its
-    window, or closing its tab does not stop it or lose it.
-  - Opening a session in a tab hides whatever session was there, and
+  - A session keeps running while hidden. `q`, closing its window, or
+    closing its tab neither stops nor loses it.
+  - Opening a session in a tab hides whatever session was there and
     removes it from any other tab. At most one session is visible per
     tab.
   - Use |agentic.destroy_session()| to end a session directly.
@@ -804,10 +804,10 @@ provider.
 
 Restoring never overwrites a conversation: it always creates an
 additional session and shows it, leaving the session you were on alive
-and reachable through |agentic.select_session()|. The one exception is
-a completely empty session -- no messages, no attached files, no code
-selections, no diagnostics, and nothing typed in the prompt -- which is
-reclaimed instead of being left behind.
+and reachable through |agentic.select_session()|. One exception: a
+completely empty session -- no messages, no attached files, no code
+selections, no diagnostics, nothing typed in the prompt -- is reclaimed
+instead of being left behind.
 
 System information ~
                                              *agentic-system-context*
@@ -819,12 +819,11 @@ Event hooks ~
                                                      *agentic-hooks*
 Identify a session by `data.session_key`, not by `data.tab_page_id`.
 `session_key` is the session's key (see |agentic-sessions|) and never
-changes. `tab_page_id` only says which tab the session is showing in
-right now, and it is `nil` for a session running in the background --
-hidden, or in a tab that was closed. `on_session_update` and
-`on_response_complete` fire for background sessions, so guard
-`tab_page_id` before passing it to any `nvim_tabpage_*` function;
-those raise on `nil`.
+changes. `tab_page_id` only says which tab the session shows in right
+now, and is `nil` for a session running in the background -- hidden, or
+in a closed tab. `on_session_update` and `on_response_complete` fire
+for background sessions, so guard `tab_page_id` before passing it to
+any `nvim_tabpage_*` function; those raise on `nil`.
 >lua
   -- Token usage per session, keyed by session_key. A plain Lua table,
   -- because a session may be running in no tab at all.
@@ -885,10 +884,10 @@ those raise on `nil`.
   }
 <
 Migrating from `tab_page_id`: it used to be a required `number`
-captured from the session's original tabpage. The handle could become
-invalid after that tabpage closed. It is now `number|nil` and is a
-placement hint only. Anything using it as an identity or a storage
-key -- for example `vim.t[data.tab_page_id]` or a bare
+captured from the session's original tabpage, and went invalid once
+that tabpage closed. It is now `number|nil`, a placement hint only.
+Anything using it as an identity or storage key -- for example
+`vim.t[data.tab_page_id]` or a bare
 `nvim_tabpage_is_valid(data.tab_page_id)` -- should move to
 `data.session_key`. If you genuinely need the tab, guard it:
 >lua

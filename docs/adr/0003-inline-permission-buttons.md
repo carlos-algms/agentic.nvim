@@ -20,10 +20,10 @@ Inline buttons on row N exhibited two failures and one product gap:
 2. **Layout overflow on long labels.** Multiple long labels on a single row
    spilled into a second visual row; one button could end up orphaned on its
    own wrapped line, disconnected from the status word.
-3. **Static label map hides provider intent.** The fixed `Allow` / `Allow
-Always` / `Reject` / `Reject Always` labels discarded provider-supplied
-   text (e.g. Claude Code's `"Yes, and bypass permissions"`) and produced
-   identical text regardless of which provider sent the request.
+3. **Static label map hides provider intent.** The fixed
+   `Allow` / `Allow Always` / `Reject` / `Reject Always` labels discarded
+   provider-supplied text (e.g. Claude Code's `"Yes, and bypass permissions"`)
+   and produced identical text regardless of which provider sent the request.
 
 ## Current decision
 

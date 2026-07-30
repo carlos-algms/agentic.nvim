@@ -14,12 +14,13 @@ describe("agentic.SessionNavigation", function()
     --- @param key integer
     --- @param title string|nil
     --- @param visible_tab integer|nil
+    --- @param agent table|nil Defaults to a `TestProvider` agent
     --- @return table session
-    local function create_session(key, title, visible_tab)
+    local function create_session(key, title, visible_tab, agent)
         return {
             session_key = key,
             chat_history = { title = title or "" },
-            agent = { provider_config = { name = "TestProvider" } },
+            agent = agent or { provider_config = { name = "TestProvider" } },
             widget = {
                 get_visible_tab_id = function()
                     return visible_tab
@@ -60,14 +61,112 @@ describe("agentic.SessionNavigation", function()
         sessions = { first, second }
         ui_select_stub:invokes(function(items, opts, on_choice)
             assert.equal(sessions, items)
-            assert.equal("● First", opts.format_item(first))
-            assert.equal("  TestProvider", opts.format_item(second))
+            assert.equal(
+                "● First [TestProvider] (1)",
+                opts.format_item(first)
+            )
+            assert.equal(
+                "  Untitled [TestProvider] (2)",
+                opts.format_item(second)
+            )
             on_choice(second)
         end)
 
         SessionNavigation.select()
 
         assert.spy(registry_mock.show_session).was.called_with(2)
+    end)
+
+    it("distinguishes untitled sessions on the same provider", function()
+        local first = create_session(1, "", nil)
+        local second = create_session(2, "", nil)
+        sessions = { first, second }
+
+        --- @type string|nil, string|nil
+        local first_label, second_label
+        ui_select_stub:invokes(function(_, opts, on_choice)
+            first_label = opts.format_item(first)
+            second_label = opts.format_item(second)
+            on_choice(nil)
+        end)
+
+        SessionNavigation.select()
+
+        assert.is_not.equal(first_label, second_label)
+        assert.truthy(first_label and first_label:find("TestProvider", 1, true))
+        assert.truthy(first_label and first_label:find("1", 1, true))
+        assert.truthy(second_label and second_label:find("2", 1, true))
+    end)
+
+    it("appends the session key to a titled session too", function()
+        local titled = create_session(7, "My Chat", nil)
+        sessions = { titled, create_session(8, "", nil) }
+
+        --- @type string|nil
+        local label
+        ui_select_stub:invokes(function(_, opts, on_choice)
+            label = opts.format_item(titled)
+            on_choice(nil)
+        end)
+
+        SessionNavigation.select()
+
+        assert.equal("  My Chat [TestProvider] (7)", label)
+    end)
+
+    it("shows the provider next to the title of a titled session", function()
+        local current_tab = vim.api.nvim_get_current_tabpage()
+        local titled = create_session(1, "My Chat", current_tab, {
+            provider_config = { name = "claude-acp" },
+        })
+        sessions = { titled }
+
+        --- @type string|nil
+        local label
+        ui_select_stub:invokes(function(_, opts, on_choice)
+            label = opts.format_item(titled)
+            on_choice(nil)
+        end)
+
+        SessionNavigation.select()
+
+        assert.equal("● My Chat [claude-acp] (1)", label)
+    end)
+
+    it("shows the provider of an untitled session", function()
+        local untitled = create_session(2, "", nil, {
+            provider_config = { name = "gemini-acp" },
+        })
+        sessions = { untitled }
+
+        --- @type string|nil
+        local label
+        ui_select_stub:invokes(function(_, opts, on_choice)
+            label = opts.format_item(untitled)
+            on_choice(nil)
+        end)
+
+        SessionNavigation.select()
+
+        assert.equal("  Untitled [gemini-acp] (2)", label)
+    end)
+
+    it("labels a session whose agent has no provider config", function()
+        local orphan = create_session(4, "", nil, {})
+        sessions = { orphan }
+
+        --- @type string|nil
+        local label
+        ui_select_stub:invokes(function(_, opts, on_choice)
+            label = opts.format_item(orphan)
+            on_choice(nil)
+        end)
+
+        assert.has_no_errors(function()
+            SessionNavigation.select()
+        end)
+
+        assert.equal("  Untitled (4)", label)
     end)
 
     it("does nothing when session selection is cancelled", function()

@@ -136,7 +136,10 @@ local function open_split_view(
     end)
 
     if state then
-        state.split_state = {
+        -- Keyed by path: a second pending edit to a DIFFERENT file must not
+        -- overwrite this one's window and scratch buffer handles.
+        state.split_state = state.split_state or {}
+        state.split_state[abs_path] = {
             original_winid = target_winid,
             original_bufnr = bufnr,
             new_winid = new_winid,
@@ -254,21 +257,44 @@ function M.show_split_diff(opts)
     )
 end
 
+--- Any one previewed split, preferring the buffer the cursor already sits in so
+--- a widget keymap drives the split the user is looking at.
 --- @param diff_state agentic.ui.DiffState
-function M.clear_split_diff(diff_state)
-    local state = diff_state.split_state
-
-    if not state then
-        return
+--- @return agentic.ui.DiffSplitView.State|nil state
+function M.find_split_state(diff_state)
+    local split_states = diff_state.split_state
+    if not split_states then
+        return nil
     end
 
-    if vim.api.nvim_win_is_valid(state.original_winid) then
+    local current_bufnr = vim.api.nvim_get_current_buf()
+
+    --- @type agentic.ui.DiffSplitView.State|nil
+    local fallback
+    for _, state in pairs(split_states) do
+        if
+            state.original_bufnr == current_bufnr
+            or state.new_bufnr == current_bufnr
+        then
+            return state
+        end
+        fallback = fallback or state
+    end
+
+    return fallback
+end
+
+--- @param state agentic.ui.DiffSplitView.State
+local function teardown_split(state)
+    -- `is_win_usable`, not bare validity: teardown can run after the user closed the
+    -- tab, and on 0.11.x such a handle answers valid while `nvim_win_call` segfaults.
+    if BufHelpers.is_win_usable(state.original_winid) then
         vim.api.nvim_win_call(state.original_winid, function()
             vim.cmd("diffoff")
         end)
     end
 
-    if vim.api.nvim_win_is_valid(state.new_winid) then
+    if BufHelpers.is_win_usable(state.new_winid) then
         vim.api.nvim_win_call(state.new_winid, function()
             vim.cmd("diffoff")
         end)
@@ -294,8 +320,42 @@ function M.clear_split_diff(diff_state)
             vim.b[state.original_bufnr]._agentic_prev_modified = nil
         end
     end
+end
 
-    diff_state.split_state = nil
+--- @param diff_state agentic.ui.DiffState
+--- @param file_path string|nil Path to clear; nil tears down every previewed file
+--- @return boolean cleared Whether any split was torn down
+function M.clear_split_diff(diff_state, file_path)
+    local split_states = diff_state.split_state
+    if not split_states then
+        return false
+    end
+
+    local cleared = false
+
+    if file_path then
+        local abs_path = FileSystem.to_absolute_path(file_path)
+        local state = split_states[abs_path]
+        if state then
+            teardown_split(state)
+            split_states[abs_path] = nil
+            cleared = true
+        end
+    else
+        for path, state in pairs(split_states) do
+            teardown_split(state)
+            split_states[path] = nil
+            cleared = true
+        end
+    end
+
+    -- Nil rather than an empty table, so `if state.split_state` stays a
+    -- meaningful "any split showing?" predicate.
+    if next(split_states) == nil then
+        diff_state.split_state = nil
+    end
+
+    return cleared
 end
 
 return M

@@ -54,6 +54,24 @@ local function is_visible_win(winid, tabpage)
     return ok and win_tab == tabpage
 end
 
+--- Safe to act on: valid AND sitting in a live tabpage.
+---
+--- `nvim_win_is_valid` alone is not enough: on 0.11.x `tabclose` leaves handles that
+--- answer valid but segfault in `nvim_win_close`, and post-tabclose background updates
+--- reach exactly those. Use before any write on a handle held across an event boundary
+--- (`nvim_win_close`, `nvim_win_call`, `nvim_win_set_config`); bare validity is fine for
+--- reads and for deciding whether to open a new window.
+--- @param winid integer|nil
+--- @return boolean
+function BufHelpers.is_win_usable(winid)
+    if not winid or not vim.api.nvim_win_is_valid(winid) then
+        return false
+    end
+
+    local ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
+    return ok and vim.api.nvim_tabpage_is_valid(win_tab)
+end
+
 --- Use instead of `vim.fn.bufwinid`, which only deals with the current tabpage and returns the hidden chat float.
 --- @param bufnr integer
 --- @param preferred_winid integer|nil The owner's own window, preferred over any other match

@@ -7,7 +7,7 @@ describe("agentic.ui.WidgetRegistry", function()
     --- @type agentic.ui.ChatWidget[]
     local created
 
-    --- Fake widget: the registry only ever reads `buf_nrs`.
+    --- Registry only reads `buf_nrs`.
     --- @param buf_nrs table<string, integer>
     --- @return agentic.ui.ChatWidget
     local function fake_widget(buf_nrs)
@@ -21,7 +21,7 @@ describe("agentic.ui.WidgetRegistry", function()
     end)
 
     after_each(function()
-        -- Registry state is module-level; leave nothing for the next case.
+        -- Registry state is module-level.
         for _, widget in ipairs(created) do
             WidgetRegistry.unregister(widget)
         end
@@ -65,7 +65,8 @@ describe("agentic.ui.WidgetRegistry", function()
         local widget = fake_widget({ chat = 41, input = 42 })
         WidgetRegistry.register(widget)
 
-        -- `ChatWidget:destroy` nils each `buf_nrs` entry before cleanup runs.
+        -- `ChatWidget:destroy` unregisters before nil-ing `buf_nrs` entries;
+        -- covers callers that empty `buf_nrs` first.
         widget.buf_nrs.chat = nil
         widget.buf_nrs.input = nil
 
@@ -91,7 +92,7 @@ describe("agentic.ui.WidgetRegistry", function()
         local widget = fake_widget({ chat = 61 })
         WidgetRegistry.register(widget)
 
-        -- A repurposed panel buffer is replaced, then the widget re-registers.
+        -- Repurposed panel buffer, then re-register.
         widget.buf_nrs.chat = 62
         WidgetRegistry.register(widget)
 

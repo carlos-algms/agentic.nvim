@@ -172,11 +172,33 @@ function M.get_scroll_cmd(bufnr, winid, anchor_line)
     return hunk_height > (win_height / 2) and "zt" or "zz"
 end
 
+--- `split_state` is keyed by absolute path, so resolve by the bufnr handed in.
+--- `DiffSplitView.find_split_state` keys off the CURRENT buffer and returns another
+--- file's split whenever the cursor sits outside `bufnr` — reachable, since these
+--- keymaps fire on whichever window has focus.
+--- @param bufnr number
+--- @param diff_state agentic.ui.DiffState|nil
+--- @return agentic.ui.DiffSplitView.State|nil state
+local function find_split_state_for_buf(bufnr, diff_state)
+    local split_states = diff_state and diff_state.split_state
+    if not split_states then
+        return nil
+    end
+
+    for _, state in pairs(split_states) do
+        if state.original_bufnr == bufnr or state.new_bufnr == bufnr then
+            return state
+        end
+    end
+
+    return nil
+end
+
 --- @param bufnr number
 --- @param direction "next"|"prev"
 --- @param diff_state agentic.ui.DiffState|nil nil means no split diff
 local function navigate_hunk(bufnr, direction, diff_state)
-    local split_state = diff_state and diff_state.split_state
+    local split_state = find_split_state_for_buf(bufnr, diff_state)
 
     -- Any other window is not in diff mode, so `]c` raises E99 and reports
     -- "no more hunks" while the real diff sits in another tab.
@@ -187,6 +209,15 @@ local function navigate_hunk(bufnr, direction, diff_state)
         )
 
     local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
+
+    -- `find_visible_win` falls back to a GLOBAL `win_findbuf` when the preferred
+    -- window is gone: with two sessions diffing one file that drives `]c` through the
+    -- other's diff. A session that lost its painted window has nowhere to navigate.
+    if painted_winid and target_winid ~= painted_winid then
+        Logger.notify("Diff window is no longer available", vim.log.levels.WARN)
+        return
+    end
+
     if not target_winid then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
@@ -224,7 +255,13 @@ local function navigate_hunk(bufnr, direction, diff_state)
     end)
 end
 
+local KEYMAP_DESC_SUFFIX = "Agentic DiffPreview"
+
 --- Buffer-local keymaps only; `maparg`'s `buffer` field is a 0/1 flag, not a buffer number.
+---
+--- Agentic's own mapping is never saved: two sessions diffing one file both run
+--- `setup_keymaps` on it, so the second call would capture the first's `]c` as the
+--- "user's" and reinstall it on teardown, dangling on a torn-down session.
 --- @param bufnr number
 --- @param key string
 --- @return table|nil map_info
@@ -234,11 +271,16 @@ local function save_keymap(bufnr, key)
         map_info = vim.fn.maparg(key, "n", false, true)
     end)
 
-    if map_info and map_info.lhs and map_info.buffer == 1 then
-        return map_info
+    if not map_info or not map_info.lhs or map_info.buffer ~= 1 then
+        return nil
     end
 
-    return nil
+    local desc = map_info.desc
+    if type(desc) == "string" and desc:find(KEYMAP_DESC_SUFFIX, 1, true) then
+        return nil
+    end
+
+    return map_info
 end
 
 --- @param bufnr number
@@ -263,11 +305,11 @@ function M.setup_keymaps(bufnr, diff_state)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
         M.navigate_next(bufnr, diff_state)
-    end, { desc = "Go to next hunk - Agentic DiffPreview" })
+    end, { desc = "Go to next hunk - " .. KEYMAP_DESC_SUFFIX })
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
         M.navigate_prev(bufnr, diff_state)
-    end, { desc = "Go to previous hunk - Agentic DiffPreview" })
+    end, { desc = "Go to previous hunk - " .. KEYMAP_DESC_SUFFIX })
 end
 
 local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }

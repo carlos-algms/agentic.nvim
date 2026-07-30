@@ -115,10 +115,9 @@ describe("BufHelpers", function()
             has_stub:revert()
         end)
 
-        -- Regression: 0.12.0-dev nightlies built before neovim#38360 (the
-        -- `buffer` -> `buf` rename) report `has('nvim-0.12') == 1` but
-        -- reject `buf` with `invalid key: buf`. Gate on 0.12.1, the first
-        -- stable that ships `buf`.
+        -- Regression: 0.12.0-dev nightlies built before neovim#38360 (`buffer`
+        -- -> `buf` rename) report `has('nvim-0.12') == 1` but reject `buf` with
+        -- `invalid key: buf`. Gate on 0.12.1, first stable shipping `buf`.
         it("uses `buffer` opt on Neovim < 0.12.1", function()
             has_stub:invokes(function(feature)
                 return feature == "nvim-0.12.1" and 0 or 1
@@ -166,7 +165,7 @@ describe("BufHelpers", function()
             has_stub:revert()
         end)
 
-        -- See keymap_set tests for the 0.12.0-dev / 0.12.1 rename rationale.
+        -- 0.12.0-dev / 0.12.1 rename rationale: see keymap_set tests.
         it("uses `buffer` opt on Neovim < 0.12.1", function()
             has_stub:invokes(function(feature)
                 return feature == "nvim-0.12.1" and 0 or 1
@@ -280,11 +279,11 @@ describe("BufHelpers", function()
             assert.equal(original_height, vim.api.nvim_win_get_height(winid))
         end)
 
-        -- `nvim_win_set_width`/`_set_height` are deprecated on nightly in favour
-        -- of `nvim_win_resize`, which only exists on 0.13+. CI runs a nightly
-        -- matrix job, so both branches must stay reachable on every version.
-        -- `spy.stub` cannot restore a field that was absent, so the 0.13 branch
-        -- is driven through a saved original and cleared by hand.
+        -- `nvim_win_set_width`/`_set_height` are deprecated on nightly for
+        -- `nvim_win_resize`, which only exists on 0.13+. CI runs a nightly
+        -- matrix job, so both branches stay reachable on every version.
+        -- `spy.stub` cannot restore an absent field, so the 0.13 branch uses a
+        -- saved original cleared by hand.
         it("calls nvim_win_resize on Neovim >= 0.13", function()
             local has_stub = spy.stub(vim.fn, "has")
             has_stub:invokes(function(feature)
@@ -330,7 +329,7 @@ describe("BufHelpers", function()
             assert.equal(1, set_width_stub.call_count)
             assert.equal(winid, set_width_stub.calls[1][1])
             assert.equal(20, set_width_stub.calls[1][2])
-            -- The unset axis passes -1 and must not reach the setter.
+            -- Unset axis passes -1 and must not reach the setter.
             assert.equal(0, set_height_stub.call_count)
         end)
     end)
@@ -420,8 +419,8 @@ describe("BufHelpers", function()
             vim.api.nvim_win_set_buf(other_win, bufnr)
             vim.cmd("tabprevious")
 
-            -- The `vim.fn` lookup this replaced returns -1 here: it "Only deals
-            -- with the current tabpage".
+            -- `vim.fn.bufwinid`, which this replaced, returns -1 here: it "Only
+            -- deals with the current tabpage".
             assert.equal(other_win, BufHelpers.find_visible_win(bufnr))
         end)
 
@@ -437,7 +436,7 @@ describe("BufHelpers", function()
             })
 
             -- Measured: the old lookup returned this float, so a widget's hidden
-            -- chat float could absorb a winbar nobody sees.
+            -- chat float absorbed a winbar nobody sees.
             assert.is_nil(BufHelpers.find_visible_win(bufnr))
 
             pcall(vim.api.nvim_win_close, winid, true)
@@ -504,8 +503,8 @@ describe("BufHelpers", function()
                 local wanted_win = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_buf(wanted_win, bufnr)
 
-                -- The preferred window still shows the buffer, so only the tab filter
-                -- can reject it.
+                -- Preferred window still shows the buffer, so only the tab
+                -- filter can reject it.
                 assert.equal(
                     wanted_win,
                     BufHelpers.find_visible_win(bufnr, foreign_win, wanted_tab)
@@ -531,6 +530,26 @@ describe("BufHelpers", function()
         end)
 
         it(
+            "falls back across tabpages when the preferred window is stale",
+            function()
+                vim.cmd("tabnew")
+                local foreign_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(foreign_win, bufnr)
+
+                vim.cmd("tabnew")
+                local stale_win = vim.api.nvim_get_current_win()
+
+                -- Preferred window no longer shows the buffer and its own tab
+                -- has no other holder: only a cross-tab fallback resolves the
+                -- foreign session's window. An unscoped call must not be nil.
+                assert.equal(
+                    foreign_win,
+                    BufHelpers.find_visible_win(bufnr, stale_win)
+                )
+            end
+        )
+
+        it(
             "returns nil when the buffer is visible in no other tabpage",
             function()
                 vim.cmd("tabnew")
@@ -553,5 +572,67 @@ describe("BufHelpers", function()
                 )
             end
         )
+    end)
+
+    describe("is_win_usable", function()
+        local base_tabs
+
+        before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
+        end)
+
+        after_each(function()
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose!")
+                end)
+                if not ok then
+                    break
+                end
+            end
+        end)
+
+        it("returns true for a window in a live tabpage", function()
+            vim.cmd("tabnew")
+
+            assert.is_true(
+                BufHelpers.is_win_usable(vim.api.nvim_get_current_win())
+            )
+        end)
+
+        it("returns false for an unknown handle", function()
+            assert.is_false(BufHelpers.is_win_usable(99999))
+        end)
+
+        it("returns false for a closed window", function()
+            vim.cmd("tabnew")
+            local winid = vim.api.nvim_get_current_win()
+            vim.cmd("tabnew")
+            pcall(vim.api.nvim_win_close, winid, true)
+
+            assert.is_false(BufHelpers.is_win_usable(winid))
+        end)
+
+        -- On 0.11.x `tabclose` leaves handles still valid per
+        -- `nvim_win_is_valid`; `nvim_win_close` on one segfaults. The tabpage is
+        -- the only axis rejecting it. Stubbed: stale-valid is platform-specific.
+        it("returns false for a valid window whose tabpage is gone", function()
+            vim.cmd("tabnew")
+            local winid = vim.api.nvim_get_current_win()
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+
+            local valid_stub = spy.stub(vim.api, "nvim_win_is_valid")
+            valid_stub:returns(true)
+            local tabpage_stub = spy.stub(vim.api, "nvim_win_get_tabpage")
+            tabpage_stub:returns(dead_tab)
+
+            local usable = BufHelpers.is_win_usable(winid)
+
+            valid_stub:revert()
+            tabpage_stub:revert()
+
+            assert.is_false(usable)
+        end)
     end)
 end)

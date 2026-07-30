@@ -36,14 +36,10 @@ describe("Open and Close Chat Widget", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Should have: empty filetype (original window), AgenticChat, AgenticInput
         local filetypes = get_tabpage_filetypes(0)
         assert.same({ "", "AgenticChat", "AgenticInput" }, filetypes)
 
-        -- 80 - default neovim headless width
-        -- 40% of 80 = 32 (chat window)
-        -- 1 separator
-        -- Check that original window width is reduced (80 - 32 - 1 separator = 47)
+        -- Headless width 80; chat takes 40% = 32, plus 1 separator, leaving 47
         local original_width = child.api.nvim_win_get_width(initial_winid)
         assert.equal(47, original_width)
     end)
@@ -52,14 +48,12 @@ describe("Open and Close Chat Widget", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Should have: empty filetype (original window), AgenticChat, AgenticInput
         local filetypes = get_tabpage_filetypes(0)
         assert.same({ "", "AgenticChat", "AgenticInput" }, filetypes)
 
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- After hide, should only have original window
         filetypes = get_tabpage_filetypes(0)
         assert.same({ "" }, filetypes)
     end)
@@ -68,7 +62,6 @@ describe("Open and Close Chat Widget", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Tab1 should have: empty filetype, AgenticChat, AgenticInput
         local tab1_filetypes = get_tabpage_filetypes(0)
         assert.same({ "", "AgenticChat", "AgenticInput" }, tab1_filetypes)
 
@@ -95,7 +88,7 @@ describe("Open and Close Chat Widget", function()
         ]])
         child.flush()
 
-        -- Tab2 shows its own widget, and tab1 keeps showing the first one
+        -- Tab2 shows its own widget; tab1 keeps the first
         assert.same(
             { "", "AgenticChat", "AgenticInput" },
             get_tabpage_filetypes(0)
@@ -131,15 +124,14 @@ describe("Open and Close Chat Widget", function()
     end)
 
     it("handles tabclose while in insert mode without errors", function()
-        -- Open widget
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Enter insert mode in input buffer (triggers ModeChanged)
+        -- Triggers ModeChanged
         child.cmd("startinsert")
 
-        -- Create second tab: toggling there MOVES the widget, hiding it in tab 1
-        -- and showing it here, and insert mode must survive that round trip
+        -- Toggling in a second tab MOVES the widget, hiding it in tab 1; insert
+        -- mode must survive that round trip
         child.cmd("tabnew")
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
@@ -147,20 +139,26 @@ describe("Open and Close Chat Widget", function()
         local mode = child.fn.mode()
         assert.equal(mode, "i")
 
-        -- Close the second tab while in insert mode
-        -- This should not error when ModeChanged fires during cleanup
-        assert.has_no_errors(function()
-            child.cmd("tabclose!")
-            vim.uv.sleep(200)
-        end)
+        -- Closing in insert mode runs the deferred `hide` and `ModeChanged`
+        -- handler during cleanup; neither may error.
+        --
+        -- Neither host-side `vim.uv.sleep` nor `assert.has_no_errors` sees that:
+        -- the sleep blocks THIS process while the callbacks run in the child, and
+        -- an error inside the child's `vim.schedule` never propagates out of an
+        -- RPC call. It lands in the child's message history, so that is asserted.
+        child.cmd("messages clear")
+        child.cmd("tabclose!")
+        child.flush()
+
+        assert.equal("", child.cmd_capture("messages"))
     end)
 
     it("tabclose on widget tab leaves first tab clean", function()
-        --- Counts only user-visible windows. The session now survives its tab, so
-        --- the deferred `hide` recreates the chat buffer's hidden float — ADR
-        --- 0001's fold anchor — and `relative = "editor"` puts it in whichever tab
-        --- is current, here the surviving one. `nvim_tabpage_list_wins` counts it
-        --- even though it is `hide = true` and `focusable = false`.
+        --- Counts only user-visible windows. The session survives its tab, so the
+        --- deferred `hide` recreates the chat buffer's hidden float — ADR 0001's
+        --- fold anchor — and `relative = "editor"` puts it in the current tab,
+        --- here the survivor. `nvim_tabpage_list_wins` counts it despite
+        --- `hide = true` and `focusable = false`.
         --- @param tabpage integer
         --- @return integer count
         local function count_visible_windows(tabpage)
@@ -178,15 +176,12 @@ end)()
 ]]):format(tabpage))
         end
 
-        -- Start with clean first tab (no widget)
         local initial_windows = count_visible_windows(0)
 
-        -- Create second tab and open widget there
         child.cmd("tabnew")
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Ensure cursor is in input buffer
         local current_bufnr = child.api.nvim_get_current_buf()
         local expected_input_bufnr = child.lua_get([[
 (function()
@@ -196,22 +191,17 @@ end)()
 ]])
         assert.equal(expected_input_bufnr, current_bufnr)
 
-        -- Close the second tab
         assert.has_no_errors(function()
             child.cmd("tabclose")
             child.flush()
         end)
 
-        -- Verify we're back on the first tab
         local current_tab = child.api.nvim_get_current_tabpage()
         assert.equal(1, current_tab)
 
-        -- First tab should be clean (same number of windows as initially)
         local final_windows = count_visible_windows(0)
 
         assert.equal(initial_windows, final_windows)
-
-        -- Should only have 1 window visible
         assert.equal(1, final_windows)
     end)
 end)

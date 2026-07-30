@@ -52,9 +52,9 @@ anything off a **Tabpage** handle.
 
 **Session title**: The human-readable label for a **SessionManager**, held on
 **ChatHistory**. Derived from the first prompt submit, or inherited from the
-**Provider** on restore. Written once, so it stays stable while the conversation
-grows. Labels entries in the session picker. _Avoid_: bare "title" — say Session
-title, or **Tool Call** title.
+**Provider** on restore. Written once, so it stays stable as the conversation
+grows. Labels session-picker entries. _Avoid_: bare "title" — say Session title,
+or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
 **SessionManager**. The only sanctioned entry point from `init.lua`.
@@ -283,10 +283,10 @@ enabled by default.
   title covers the third. The unused one gets no term. ACP
   `session_info_update` may carry a live title, but the current handler treats
   session metadata as informational and does not update the local title.
-- "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle
-  verbs**. The public `Agentic.close` keeps its name for API compatibility but
-  performs a **Hide**, as does the `q` keymap. Two user-facing docs shipped
-  disagreeing about which one `q` did, which is why the verbs are now pinned.
+- "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle verbs**.
+  The public `Agentic.close` keeps its name for API compatibility but performs a
+  **Hide**, as does the `q` keymap. Two user-facing docs shipped disagreeing about
+  which one `q` did — hence the pinned verbs.
 - "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
   object, and the LLM behind the provider. Resolved: **Provider** for the
   subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain

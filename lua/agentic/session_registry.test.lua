@@ -20,10 +20,16 @@ describe("agentic.SessionRegistry", function()
     --- @type TestStub|nil
     local ui_select_stub
 
-    --- Every `hide`/`show` appends to this, so ordering assertions read one list
+    --- Every `hide`/`show` appends here: ordering assertions read one list
     --- instead of comparing per-spy call counts.
     --- @type string[]
     local widget_events = {}
+
+    --- Every `opts` `show` received, in call order. `show_session` is the only
+    --- sanctioned cross-tab move (ADR 0008), so its payload is contract:
+    --- `focus_prompt` and the add-to-context flags reach the widget verbatim.
+    --- @type table[]
+    local show_opts = {}
 
     --- @param visible_tab integer|nil Tab the mock widget reports as visible
     --- @param label string|nil Prefix for this session's `widget_events` entries
@@ -36,15 +42,16 @@ describe("agentic.SessionRegistry", function()
                 get_visible_tab_id = function()
                     return visible_tab
                 end,
-                -- `keep_insert` is recorded, not discarded: `show_session` passes
+                -- `keep_insert` recorded, not discarded: `show_session` passes
                 -- `true` on both hide paths so a show can follow in the same tick
                 -- without `stopinsert` latching past it.
                 hide = function(_self, keep_insert)
                     widget_events[#widget_events + 1] = name
                         .. (keep_insert and ":hide(keep)" or ":hide")
                 end,
-                show = function()
+                show = function(_self, opts)
                     widget_events[#widget_events + 1] = name .. ":show"
+                    show_opts[#show_opts + 1] = { name = name, opts = opts }
                 end,
             },
             destroy = function() end,
@@ -114,6 +121,7 @@ describe("agentic.SessionRegistry", function()
 
     before_each(function()
         widget_events = {}
+        show_opts = {}
         package.loaded["agentic.session_manager"] = session_manager_mock
 
         acp_health_mock.check_configured_provider = function()
@@ -218,6 +226,49 @@ describe("agentic.SessionRegistry", function()
             end
         )
 
+        -- Restore is provider-local: `SessionManager:new` resolves its agent from
+        -- `Config.provider` synchronously, so `create` borrows the global and hands
+        -- it straight back. Without the borrow, restoring provider A's session
+        -- while B is global sends A's ID through B.
+        it("resolves the requested provider without keeping it", function()
+            local provider_during_new
+
+            session_manager_mock.new = function()
+                provider_during_new = config_mock.provider
+                return create_mock_session()
+            end
+
+            SessionRegistry.create("gemini-acp")
+
+            assert.equal("gemini-acp", provider_during_new)
+            assert.equal("claude-acp", config_mock.provider)
+        end)
+
+        it("leaves the global provider alone with no argument", function()
+            local provider_during_new
+
+            session_manager_mock.new = function()
+                provider_during_new = config_mock.provider
+                return create_mock_session()
+            end
+
+            SessionRegistry.create()
+
+            assert.equal("claude-acp", provider_during_new)
+            assert.equal("claude-acp", config_mock.provider)
+        end)
+
+        -- `AgentInstance.get_instance` raises for an unconfigured provider; an
+        -- unprotected borrow would abandon the global on the requested provider.
+        it("restores the global provider when new raises", function()
+            session_manager_mock.new = function()
+                error("no provider configuration")
+            end
+
+            assert.is_nil(SessionRegistry.create("gemini-acp"))
+            assert.equal("claude-acp", config_mock.provider)
+        end)
+
         it("assigns the key only after SessionManager:new returns", function()
             local previous = create_mock_session()
             SessionRegistry.sessions[99] = previous
@@ -256,6 +307,12 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry._most_recent = hidden
 
                 assert.equal(visible, SessionRegistry.resolve_or_create())
+
+                -- The cursor moves too, not just the return value. `current()`
+                -- reads it when no session is visible here, so a cursor left on
+                -- `hidden` would answer the next prompt after a tab switch.
+                assert.equal(visible, SessionRegistry._most_recent)
+                assert.equal(hidden, SessionRegistry._previous_most_recent)
             end
         )
 
@@ -351,6 +408,44 @@ describe("agentic.SessionRegistry", function()
         end)
     end)
 
+    -- Restoring an already-live ACP session ID must show that session, not build
+    -- a second manager: `ACPClient.subscribers` is keyed by ACP session ID, so
+    -- the second manager steals the first one's updates.
+    describe("find_by_acp_session_id", function()
+        it("finds the live session holding the ACP id", function()
+            local other = create_mock_session()
+            local match = create_mock_session()
+            other.session_key = 1
+            other.session_id = "acp-other"
+            match.session_key = 2
+            match.session_id = "acp-match"
+            SessionRegistry.sessions[1] = other
+            SessionRegistry.sessions[2] = match
+
+            assert.equal(
+                match,
+                SessionRegistry.find_by_acp_session_id("acp-match")
+            )
+        end)
+
+        it("returns nil for an id no live session holds", function()
+            local session = create_mock_session()
+            session.session_key = 1
+            session.session_id = "acp-1"
+            SessionRegistry.sessions[1] = session
+
+            assert.is_nil(SessionRegistry.find_by_acp_session_id("acp-2"))
+        end)
+
+        it("ignores sessions with no ACP id yet", function()
+            local session = create_mock_session()
+            session.session_key = 1
+            SessionRegistry.sessions[1] = session
+
+            assert.is_nil(SessionRegistry.find_by_acp_session_id("acp-1"))
+        end)
+    end)
+
     describe("create_with_current_session_guard", function()
         before_each(function()
             ui_select_stub = spy.stub(vim.ui, "select")
@@ -422,6 +517,80 @@ describe("agentic.SessionRegistry", function()
             assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
         end)
 
+        -- Committing before the prompt left the provider switched with no session
+        -- created, so the NEXT `new_session` silently used the wrong one.
+        it(
+            "does not commit the provider when the prompt is cancelled",
+            function()
+                SessionRegistry.resolve_or_create()
+                local select_stub = get_select_stub()
+
+                SessionRegistry.create_with_current_session_guard(
+                    function() end,
+                    "gemini-acp"
+                )
+
+                local on_choice = select_stub.calls[1][3]
+                on_choice(nil)
+
+                assert.equal("claude-acp", config_mock.provider)
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            end
+        )
+
+        it("commits the provider once creation proceeds", function()
+            SessionRegistry.resolve_or_create()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(
+                function() end,
+                "gemini-acp"
+            )
+
+            assert.equal("claude-acp", config_mock.provider)
+
+            local items = select_stub.calls[1][1]
+            local on_choice = select_stub.calls[1][3]
+            on_choice(items[1])
+
+            assert.equal("gemini-acp", config_mock.provider)
+            assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        it("commits the provider when there is nothing to guard", function()
+            SessionRegistry.create_with_current_session_guard(
+                function() end,
+                "gemini-acp"
+            )
+
+            assert.equal("gemini-acp", config_mock.provider)
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        end)
+
+        -- `current` is captured BEFORE the async `vim.ui.select`, so switching
+        -- sessions while the prompt is open leaves the closure holding a key the
+        -- user is no longer looking at. "Destroy current" destroys THAT one.
+        it("destroys the key captured before the prompt opened", function()
+            local captured = SessionRegistry.resolve_or_create()
+            local select_stub = get_select_stub()
+
+            SessionRegistry.create_with_current_session_guard(function() end)
+
+            local switched_to = SessionRegistry.create()
+            SessionRegistry.set_most_recent(switched_to.session_key)
+            assert.equal(switched_to, SessionRegistry.current())
+
+            local items = select_stub.calls[1][1]
+            local on_choice = select_stub.calls[1][3]
+            on_choice(items[2])
+
+            assert.is_nil(SessionRegistry.sessions[captured.session_key])
+            assert.equal(
+                switched_to,
+                SessionRegistry.sessions[switched_to.session_key]
+            )
+        end)
+
         it(
             "keeps the current session when replacement creation fails",
             function()
@@ -475,6 +644,33 @@ describe("agentic.SessionRegistry", function()
             assert.equal(kept, SessionRegistry._most_recent)
         end)
 
+        -- `_previous_most_recent` is PREFERRED over the ascending-key fallback:
+        -- `list()` pushes it second, and the destroyed `_most_recent` no longer
+        -- answers `registered`, so the displaced session becomes `list()[1]`.
+        -- The test above cannot reach this branch — it assigns `_most_recent`
+        -- directly, leaving `_previous_most_recent` nil.
+        it("prefers _previous_most_recent over the lowest key", function()
+            local lowest = create_mock_session()
+            local displaced = create_mock_session()
+            local gone = create_mock_session()
+            lowest.session_key = 1
+            displaced.session_key = 2
+            gone.session_key = 3
+            SessionRegistry.sessions[1] = lowest
+            SessionRegistry.sessions[2] = displaced
+            SessionRegistry.sessions[3] = gone
+
+            -- `gone` pushes `displaced` out of `_most_recent`
+            SessionRegistry.set_most_recent(2)
+            SessionRegistry.set_most_recent(3)
+            assert.equal(displaced, SessionRegistry._previous_most_recent)
+
+            SessionRegistry.destroy(3)
+
+            assert.equal(displaced, SessionRegistry._most_recent)
+            assert.equal(lowest, SessionRegistry.sessions[1])
+        end)
+
         it("clears _most_recent when the last session is destroyed", function()
             local only = create_mock_session()
             only.session_key = 1
@@ -496,9 +692,9 @@ describe("agentic.SessionRegistry", function()
 
                 SessionRegistry.destroy(1)
 
-                -- The repoint itself is what plants the corpse: it writes the
-                -- outgoing `_most_recent` — the session just destroyed — into
-                -- `_previous_most_recent`, pinning its whole object graph.
+                -- The repoint plants the corpse: it writes the outgoing
+                -- `_most_recent` — just destroyed — into `_previous_most_recent`,
+                -- pinning its whole object graph.
                 assert.is_nil(SessionRegistry._most_recent)
                 assert.is_nil(SessionRegistry._previous_most_recent)
             end
@@ -541,6 +737,42 @@ describe("agentic.SessionRegistry", function()
             assert.has_no_errors(function()
                 SessionRegistry.destroy(42)
             end)
+        end)
+
+        -- `WindowDecoration.refresh_buffer_names` re-derives surviving widgets'
+        -- buffer names from the LIVE session count. Destroy is the only funnel
+        -- every route reaches (`destroy_current`, `Agentic.destroy_session`, the
+        -- new-session guard, session restore), so the call belongs here, not in
+        -- `ChatWidget:destroy`.
+        it("refreshes buffer names after the session is removed", function()
+            --- @type integer|nil
+            local observed_session_count = nil
+
+            local window_decoration_stub = {
+                refresh_buffer_names = function()
+                    -- Read INSIDE the callback: that is what makes the ordering
+                    -- load-bearing. A call before the `sessions` removal would
+                    -- observe 2 here, not 1.
+                    observed_session_count =
+                        vim.tbl_count(SessionRegistry.sessions)
+                end,
+            }
+            local previous = package.loaded["agentic.ui.window_decoration"]
+            package.loaded["agentic.ui.window_decoration"] =
+                window_decoration_stub
+
+            local gone = create_mock_session()
+            local kept = create_mock_session()
+            gone.session_key = 1
+            kept.session_key = 2
+            SessionRegistry.sessions[1] = gone
+            SessionRegistry.sessions[2] = kept
+
+            SessionRegistry.destroy(1)
+
+            package.loaded["agentic.ui.window_decoration"] = previous
+
+            assert.equal(1, observed_session_count)
         end)
 
         it("removes the key even when session:destroy raises", function()
@@ -628,7 +860,7 @@ describe("agentic.SessionRegistry", function()
 
         it("puts the session _most_recent displaced second", function()
             -- Recency, not ascending key. Every path that shows a session
-            -- repoints `_most_recent` at it BEFORE its widget's first `show`, so
+            -- repoints `_most_recent` BEFORE its widget's first `show`, so
             -- `ChatWidget:_inherited_size` finds itself at `list[1]` with no size
             -- and takes the donor from `list[2]`.
             local first = create_mock_session()
@@ -697,8 +929,8 @@ describe("agentic.SessionRegistry", function()
 
             SessionRegistry.show_session(2)
 
-            -- The order is the contract: `ChatWidget:hide` captures the outgoing
-            -- size, which the incoming widget's first `show` reads back.
+            -- Order is the contract: `ChatWidget:hide` captures the outgoing size,
+            -- which the incoming widget's first `show` reads back.
             assert.same({ "outgoing:hide(keep)", "target:show" }, widget_events)
             assert.equal(target, SessionRegistry._most_recent)
         end)
@@ -729,6 +961,33 @@ describe("agentic.SessionRegistry", function()
             assert.same({ "target:hide(keep)", "target:show" }, widget_events)
         end)
 
+        it("forwards opts to the target widget verbatim", function()
+            local target = create_mock_session(nil, "target")
+            target.session_key = 1
+            SessionRegistry.sessions[1] = target
+
+            -- `apply_provider_switch` relies on `focus_prompt = false` surviving
+            -- the hop: the focus hop inside `show_layout` would otherwise drag
+            -- the cursor into the anchor window's tabpage.
+            local opts = { focus_prompt = false, auto_add_to_context = false }
+            SessionRegistry.show_session(1, opts)
+
+            assert.equal(1, #show_opts)
+            assert.equal("target", show_opts[1].name)
+            assert.equal(opts, show_opts[1].opts)
+        end)
+
+        it("passes nil opts through when the caller gave none", function()
+            local target = create_mock_session(nil, "target")
+            target.session_key = 1
+            SessionRegistry.sessions[1] = target
+
+            SessionRegistry.show_session(1)
+
+            assert.equal(1, #show_opts)
+            assert.is_nil(show_opts[1].opts)
+        end)
+
         it("is a no-op for an unknown key", function()
             local current_tab = vim.api.nvim_get_current_tabpage()
             local visible = create_mock_session(current_tab, "visible")
@@ -739,8 +998,8 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry.show_session(42)
             end)
 
-            -- The early return happens BEFORE the eviction sweep, so a bad key
-            -- cannot hide the session the user is looking at.
+            -- The early return precedes the eviction sweep, so a bad key cannot
+            -- hide the session the user is looking at.
             assert.same({}, widget_events)
             assert.is_nil(SessionRegistry._most_recent)
         end)

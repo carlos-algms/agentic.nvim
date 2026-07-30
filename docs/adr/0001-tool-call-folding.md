@@ -52,14 +52,14 @@ configured width, not the visible chat window's actual width — and matches its
 The two widths diverge whenever the visible chat's width is not
 `calculate_width(Config.windows.width)`. Two common causes:
 
-- After a manual resize (`ChatWidget._size`), in any layout.
-- In `bottom` layout, `WidgetLayout.open` creates the chat below the editor,
-  then splits the input to the chat's right. The input takes
-  `Config.windows.stack_width_ratio` of the initial row, so the chat uses the
+- A manual resize (`ChatWidget._size`), in any layout.
+- `bottom` layout: `WidgetLayout.open` creates the chat below the editor, then
+  splits the input to its right. The input takes
+  `Config.windows.stack_width_ratio` of the initial row, so the chat gets the
   remaining width rather than spanning `vim.o.columns`.
 
-When the widths diverge, the widget measures wrapped rows against the configured
-width while hidden. `bottom` layout is not exempt.
+While hidden, the widget then measures wrapped rows against the configured width.
+`bottom` layout is not exempt.
 
 `Fold.should_fold` decides folding by **screen rows**, not buffer lines.
 Counts wrapped rows via `nvim_win_text_height` against whichever window holds

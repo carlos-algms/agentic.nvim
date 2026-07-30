@@ -41,8 +41,9 @@ local function remember_most_recent(session)
     SessionRegistry._most_recent = session
 end
 
+--- @param provider_name agentic.UserConfig.ProviderName|nil Defaults to `Config.provider`
 --- @return agentic.SessionManager|nil
-function SessionRegistry.create()
+function SessionRegistry.create(provider_name)
     if not ACPHealth.check_configured_provider() then
         Logger.debug("Session creation aborted: No configured ACP provider")
         return nil
@@ -50,14 +51,32 @@ function SessionRegistry.create()
 
     local SessionManager = require("agentic.session_manager")
 
-    -- Key assigned only after `new` returns: the widget's first `show` reads the
-    -- previous session's stored size from the registry.
-    local session = SessionManager:new() --[[@as agentic.SessionManager|nil]]
+    -- `SessionManager:new` resolves its agent from `Config.provider` synchronously, so a
+    -- caller needing a specific provider borrows the global for that call only. The wrong
+    -- provider sends a restored ACP session ID to an agent that never issued it.
+    local previous_provider = Config.provider
+
+    if provider_name then
+        Config.provider = provider_name
+    end
+
+    local ok, session = pcall(function()
+        return SessionManager:new() --[[@as agentic.SessionManager|nil]]
+    end)
+
+    Config.provider = previous_provider
+
+    if not ok then
+        Logger.debug("Session creation failed:", session)
+        return nil
+    end
 
     if not session then
         return nil
     end
 
+    -- Key assigned only after `new` returns: the widget's first `show` reads the
+    -- previous session's stored size from the registry.
     SessionRegistry._next_id = SessionRegistry._next_id + 1
     session.session_key = SessionRegistry._next_id
     SessionRegistry.sessions[session.session_key] = session
@@ -72,6 +91,21 @@ function SessionRegistry.visible_here()
 
     for _, session in pairs(SessionRegistry.sessions) do
         if session.widget:get_visible_tab_id() == current_tab then
+            return session
+        end
+    end
+
+    return nil
+end
+
+--- The live session already holding an ACP session ID, if any. An already-loaded ID
+--- must be shown, not given a second manager: the client keys subscribers by session
+--- ID, so the second manager steals the first's updates and permission prompts.
+--- @param acp_session_id string
+--- @return agentic.SessionManager|nil
+function SessionRegistry.find_by_acp_session_id(acp_session_id)
+    for _, session in pairs(SessionRegistry.sessions) do
+        if session.session_id == acp_session_id then
             return session
         end
     end
@@ -111,11 +145,22 @@ end
 
 --- Creates an additional session after resolving the current one's lifecycle.
 --- @param on_created fun(session: agentic.SessionManager)
-function SessionRegistry.create_with_current_session_guard(on_created)
+--- @param provider_name agentic.UserConfig.ProviderName|nil Becomes the global provider only if creation proceeds
+function SessionRegistry.create_with_current_session_guard(
+    on_created,
+    provider_name
+)
     local current = SessionRegistry.current()
 
     --- @param choice string|nil
     local function create(choice)
+        -- Committed HERE, not before the `vim.ui.select` below: cancelling the prompt
+        -- used to leave the global provider switched with no session to show for it, so
+        -- the NEXT `new_session` silently used the wrong provider.
+        if provider_name then
+            Config.provider = provider_name
+        end
+
         local session = SessionRegistry.create()
 
         if not session then
@@ -173,6 +218,12 @@ function SessionRegistry.destroy(session_key)
     if not ok then
         Logger.debug("Session destroy error:", err)
     end
+
+    -- AFTER the registry removal above and `session.destroy` (which unregisters the
+    -- widget): the refresh reads the LIVE session count and widget registry, so running
+    -- it earlier sees the dying session.
+    -- Required lazily: `ui.window_decoration` requires this module back.
+    require("agentic.ui.window_decoration").refresh_buffer_names()
 end
 
 --- Destroys the visible session in this tab, else the most recently visible one.

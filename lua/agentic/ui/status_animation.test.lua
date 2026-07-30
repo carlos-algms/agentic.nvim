@@ -43,7 +43,7 @@ describe("agentic.ui.StatusAnimation", function()
         )
     end
 
-    --- The animation row of the rendered extmark, or nil when nothing is drawn.
+    --- Animation row of the rendered extmark, nil when nothing is drawn.
     --- @return table|nil chunks
     local function animation_chunks()
         local marks = extmarks()
@@ -78,9 +78,9 @@ describe("agentic.ui.StatusAnimation", function()
 
             local stale_frame = scheduled[1]
 
-            -- `stop` inside `start` cannot un-queue a timer that already fired,
-            -- so this callback still runs. Without the epoch it passes the
-            -- `_state` check and starts a second chain at double the frame rate.
+            -- `stop` inside `start` cannot un-queue an already-fired timer, so
+            -- this callback still runs. Without the epoch it passes the `_state`
+            -- check and starts a second chain at double the frame rate.
             animation:start("generating")
             assert.equal(2, #scheduled)
 
@@ -137,8 +137,8 @@ describe("agentic.ui.StatusAnimation", function()
                 local chunks = animation_chunks()
                 assert.is_not_nil(chunks)
                 ---@cast chunks table
-                -- Padding chunk plus the spinner text: the window was measured even
-                -- though it lives in another tabpage.
+                -- Padding + spinner text: window measured despite living in
+                -- another tabpage.
                 assert.equal(2, #chunks)
             end
         )

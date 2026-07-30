@@ -35,20 +35,17 @@ describe("Add file or selection to session", function()
     end)
 
     it("Adds selected lines to code window", function()
-        -- Select lines 28-29 using visual mode
         child.cmd("normal! 28GVj")
 
-        -- Toggle widget while selection is active - should auto-add selection
+        -- Toggling with a live selection auto-adds it
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
-        -- Get selections from code_selection
         local selections = child.lua([[
             local session = require("agentic.session_registry").resolve_or_create()
             return session.code_selection:get_selections()
         ]])
 
-        -- Read actual lines 28-29 from the test file
         local expected_lines = vim.fn.readfile("tests/init.lua", "", 29)
         expected_lines = { expected_lines[28], expected_lines[29] }
 

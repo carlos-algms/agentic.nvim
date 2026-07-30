@@ -160,16 +160,14 @@ end
 --- Creates an additional Chat session after resolving the current one's lifecycle.
 --- @param opts agentic.ui.NewSessionOpts|nil
 function Agentic.new_session(opts)
-    if opts and opts.provider then
-        Config.provider = opts.provider
-    end
+    local provider = opts and opts.provider
 
     SessionRegistry.create_with_current_session_guard(function(session)
         if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
         show_session(session, opts)
-    end)
+    end, provider)
 end
 
 --- Destroys a Chat session and its widget

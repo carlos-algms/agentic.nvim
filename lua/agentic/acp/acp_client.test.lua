@@ -380,8 +380,8 @@ describe("ACPClient", function()
         local original_schedule = vim.schedule
 
         before_each(function()
-            -- Drain uses vim.schedule to avoid fast-event errors;
-            -- run synchronously in tests so assertions work
+            -- Drain uses vim.schedule against fast-event errors; run it
+            -- synchronously so assertions see the result
             --- @diagnostic disable-next-line: duplicate-set-field
             vim.schedule = function(fn)
                 fn()
@@ -395,7 +395,7 @@ describe("ACPClient", function()
         it("calls pending callbacks with error when disconnected", function()
             local client = create_ready_client()
 
-            -- Register a pending callback via send_prompt (transport stub is a noop)
+            -- Transport stub is a noop, so the callback stays pending
             --- @type table|nil
             local received_result
             --- @type agentic.acp.ACPError|nil
@@ -408,15 +408,12 @@ describe("ACPClient", function()
                 received_err = err
             end)
 
-            -- Callback should NOT have been called yet (transport is a noop stub)
             assert.is_false(callback_called)
 
-            -- Simulate disconnect via the on_state_change callback
             assert.is_not_nil(captured_on_state_change)
             --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
             captured_on_state_change("disconnected")
 
-            -- Callback should now have been called with error
             assert.is_true(callback_called)
             assert.is_nil(received_result)
             assert.is_not_nil(received_err)
@@ -467,7 +464,6 @@ describe("ACPClient", function()
 
             assert.is_false(callback_called)
 
-            -- Transition to "ready" should NOT drain callbacks
             assert.is_not_nil(captured_on_state_change)
             --- @cast captured_on_state_change fun(state: agentic.acp.ClientConnectionState)
             captured_on_state_change("ready")
@@ -499,15 +495,14 @@ describe("ACPClient", function()
             assert.is_true(calls[2])
             assert.is_true(calls[3])
 
-            -- callbacks table should be empty after drain
             assert.equal(0, vim.tbl_count(client.callbacks))
         end)
     end)
 
     describe("__with_subscriber", function()
-        --- Queues `vim.schedule` callbacks so a test can drop the subscriber in
-        --- the window between scheduling and running, the way `cancel_session`
-        --- does when a session is destroyed mid-stream.
+        --- Queues `vim.schedule` callbacks so a test can drop the subscriber
+        --- between scheduling and running, as `cancel_session` does when a
+        --- session is destroyed mid-stream.
         --- @return fun()[] queue, TestStub schedule_stub
         local function queue_schedules()
             --- @type fun()[]
@@ -561,6 +556,86 @@ describe("ACPClient", function()
 
             assert.spy(received).was.called(0)
         end)
+
+        -- `_subscribe` overwrite defect: a second manager claiming the same ACP
+        -- session ID replaces the first's handlers, so an update queued for the
+        -- original widget lands on the replacement. `SessionRestore` dedups on
+        -- the way in; this pins the routing that makes the duplicate harmful.
+        it("delivers to the handler that replaced the original", function()
+            local client = create_ready_client()
+            local queue, schedule_stub = queue_schedules()
+            local received = spy.new(function() end)
+
+            -- Each reports its own name through `on_session_update`, the only
+            -- difference between the two sets.
+            --- @param owner string
+            --- @return agentic.acp.ClientHandlers handlers
+            local function handlers_owned_by(owner)
+                return {
+                    on_session_update = function()
+                        return owner
+                    end,
+                    on_request_permission = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                }
+            end
+
+            local original = handlers_owned_by("first")
+            local replacement = handlers_owned_by("second")
+
+            client.subscribers["s1"] = original
+            ---@diagnostic disable-next-line: invisible
+            client:__with_subscriber("s1", function(sub)
+                received(sub)
+            end)
+
+            ---@diagnostic disable-next-line: invisible
+            client:_subscribe("s1", replacement)
+
+            for _, fn in ipairs(queue) do
+                fn()
+            end
+            schedule_stub:revert()
+
+            assert.spy(received).was.called(1)
+            assert.equal("second", received.calls[1][1].on_session_update())
+        end)
+
+        it("logs when a subscriber replaces an existing one", function()
+            local client = create_ready_client()
+
+            --- @type agentic.acp.ClientHandlers
+            local replacement = {
+                on_session_update = function() end,
+                on_request_permission = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+            }
+
+            logger_debug_stub:reset()
+
+            ---@diagnostic disable-next-line: invisible
+            client:_subscribe("s1", NOOP_HANDLERS)
+            assert.spy(logger_debug_stub).was.called(0)
+
+            ---@diagnostic disable-next-line: invisible
+            client:_subscribe("s1", replacement)
+
+            assert.spy(logger_debug_stub).was.called(1)
+            assert.truthy(
+                logger_debug_stub.calls[1][1]:match(
+                    "Replacing existing subscriber"
+                )
+            )
+
+            -- Re-subscribing the SAME handlers is a no-op, not a collision
+            ---@diagnostic disable-next-line: invisible
+            client:_subscribe("s1", replacement)
+            assert.spy(logger_debug_stub).was.called(1)
+        end)
     end)
 
     describe("__handle_request_permission", function()
@@ -599,6 +674,35 @@ describe("ACPClient", function()
             },
         }
 
+        -- `on_missing` EARLY return, distinct from the deferred drop below: no
+        -- subscriber when the request arrives, so `__with_subscriber` never
+        -- schedules. Unanswered, the JSON-RPC request hangs the subprocess every
+        -- other session shares (ADR 0004).
+        it(
+            "answers cancelled when no subscriber was ever registered",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue, schedule_stub = queue_schedules()
+
+                assert.is_nil(client.subscribers["s1"])
+
+                ---@diagnostic disable-next-line: invisible
+                client:__handle_request_permission(13, REQUEST)
+
+                -- Answered synchronously: nothing was queued to drain.
+                assert.equal(0, #queue)
+                schedule_stub:revert()
+
+                assert.equal(1, #sent)
+                assert.equal(13, sent[1].id)
+                assert.same(
+                    { outcome = { outcome = "cancelled" } },
+                    sent[1].result
+                )
+            end
+        )
+
         it("answers cancelled when the subscriber is gone", function()
             local client = create_ready_client()
             local sent = capture_sent()
@@ -609,8 +713,8 @@ describe("ACPClient", function()
             client:__handle_request_permission(7, REQUEST)
 
             -- `cancel_session` drops the subscriber while the request is queued.
-            -- The JSON-RPC request still owes a response: the subprocess is
-            -- shared across every session (ADR 0004).
+            -- A response is still owed: the subprocess is shared across every
+            -- session (ADR 0004).
             client.subscribers["s1"] = nil
 
             for _, fn in ipairs(queue) do
@@ -636,8 +740,8 @@ describe("ACPClient", function()
                     on_error = function() end,
                     on_tool_call = function() end,
                     on_tool_call_update = function() end,
-                    -- `PermissionManager:clear` resolves every pending request
-                    -- with a nil option when the session is torn down.
+                    -- `PermissionManager:clear` resolves pending requests with a
+                    -- nil option on teardown.
                     on_request_permission = function(_request, callback)
                         callback(nil)
                     end,

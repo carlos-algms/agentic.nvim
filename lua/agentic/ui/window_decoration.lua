@@ -361,8 +361,40 @@ local function resolve_buffer_name(
     return fallback
 end
 
+--- STICKY: `owner.name_suffixed` latches once a second session coexisted with this
+--- widget, never cleared. Without the latch, destroying one of two sessions drops
+--- the survivor back to the bare title, relabelling a buffer the user identifies by key.
+---
+--- Latch lives on the widget, not this module: module-level mutable per-session state
+--- is forbidden (root `AGENTS.md`). An ownerless widget re-derives from the live count.
+--- @param owner agentic.ui.ChatWidget|nil
+--- @param session_key integer|nil nil when no session owns the buffer
+--- @return boolean suffixed
+local function should_suffix(owner, session_key)
+    if session_key == nil then
+        return false
+    end
+
+    if owner ~= nil and owner.name_suffixed then
+        return true
+    end
+
+    -- Suffixed by session, not by tab: a session outlives its tab.
+    local SessionRegistry = require("agentic.session_registry")
+    if vim.tbl_count(SessionRegistry.sessions) <= 1 then
+        return false
+    end
+
+    if owner ~= nil then
+        owner.name_suffixed = true
+    end
+
+    return true
+end
+
 --- @param bufnr integer
 --- @param header_text string|nil
+--- @param owner agentic.ui.ChatWidget|nil
 --- @param session_key integer|nil nil when no session owns the buffer
 --- @param window_name string
 --- @param header_parts agentic.ui.ChatWidget.HeaderParts
@@ -370,6 +402,7 @@ end
 local function set_buffer_name(
     bufnr,
     header_text,
+    owner,
     session_key,
     window_name,
     header_parts,
@@ -385,13 +418,9 @@ local function set_buffer_name(
         return
     end
 
-    -- Suffixed by session, not by tab: a session outlives its tab.
-    local SessionRegistry = require("agentic.session_registry")
-    local total_sessions = vim.tbl_count(SessionRegistry.sessions)
-
     --- @type string
     local buf_name = name
-    if session_key and total_sessions > 1 then
+    if should_suffix(owner, session_key) then
         buf_name = string.format("%s (%d)", name, session_key)
     end
 
@@ -463,11 +492,57 @@ function WindowDecoration.render_header(
         set_buffer_name(
             bufnr,
             concat_header_parts(dynamic_header),
+            owner,
             owner and owner.session_key or nil,
             window_name,
             dynamic_header,
             callback_session_state
         )
+    end)
+end
+
+--- Re-derives every registered widget's buffer name, relabelling the survivors of a
+--- destroyed session. Propagates a newly-armed `should_suffix` latch; never strips one.
+---
+--- Bypasses `render_header`, whose no-visible-window early return would skip a hidden
+--- survivor — the case that needs this most, since nothing else re-renders it.
+---
+--- MUST run AFTER the destroyed session left `SessionRegistry.sessions` and its widget
+--- was unregistered, or the count still includes it.
+---
+--- Renames are `pcall`ed and validity-gated: a destroy runs concurrently with panel
+--- teardown, so `buf_nrs` can list an already-deleted buffer. `nvim_buf_set_name` then
+--- raises E95 inside `vim.schedule`, uncaught, aborting every later widget's rename.
+function WindowDecoration.refresh_buffer_names()
+    vim.schedule(function()
+        for bufnr in pairs(WidgetRegistry.all_bufnrs()) do
+            local owner = WidgetRegistry.get(bufnr)
+            local headers = WindowDecoration.get_headers_state(bufnr)
+
+            for window_name, panel_bufnr in pairs(owner and owner.buf_nrs or {}) do
+                local parts = headers[window_name]
+
+                if
+                    panel_bufnr == bufnr
+                    and parts
+                    and vim.api.nvim_buf_is_valid(bufnr)
+                then
+                    local ok, err = pcall(
+                        set_buffer_name,
+                        bufnr,
+                        concat_header_parts(parts),
+                        owner,
+                        owner and owner.session_key or nil,
+                        window_name,
+                        parts,
+                        owner and owner.session_state or nil
+                    )
+                    if not ok then
+                        Logger.debug("Buffer name refresh failed:", err)
+                    end
+                end
+            end
+        end
     end)
 end
 

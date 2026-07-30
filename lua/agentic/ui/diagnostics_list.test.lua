@@ -476,8 +476,8 @@ describe("agentic.ui.DiagnosticsList", function()
         end)
 
         after_each(function()
-            -- Loop rather than one `tabclose`: a red assertion in the cross-tab
-            -- case would otherwise leak a tabpage into every later test file.
+            -- Loop, not one `tabclose`: a red assertion in the cross-tab case
+            -- would otherwise leak a tabpage into every later test file.
             while #vim.api.nvim_list_tabpages() > base_tabs do
                 local ok = pcall(function()
                     vim.cmd("tabclose!")
@@ -573,8 +573,8 @@ describe("agentic.ui.DiagnosticsList", function()
                 })
 
                 -- Park the buffer's only window in its own tab, then leave.
-                -- `before_each` also put it in the starting window, so that copy
-                -- has to go or the lookup legitimately finds it here.
+                -- `before_each` also put it in the starting window; that copy
+                -- must go or the lookup legitimately finds it here.
                 vim.cmd("tabnew")
                 local other_win = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_buf(other_win, test_bufnr)
@@ -585,8 +585,8 @@ describe("agentic.ui.DiagnosticsList", function()
                     vim.api.nvim_create_buf(false, true)
                 )
 
-                -- The current-tab-only lookup found no window here and the
-                -- feature silently yielded nothing.
+                -- Defect: the current-tab-only lookup found no window here and
+                -- silently yielded nothing.
                 local diagnostics =
                     DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
 
@@ -594,5 +594,53 @@ describe("agentic.ui.DiagnosticsList", function()
                 assert.equal("Error on line 2", diagnostics[1].message)
             end
         )
+
+        it("prefers the current window's cursor over another tab's", function()
+            -- Both tabs hold the buffer at DIFFERENT lines; dropping either copy
+            -- collapses to the single-match path and stops exercising the
+            -- ambiguity. Without a preferred window `win_findbuf` order decides,
+            -- so the other tab's line 3 wins and the user gets a diagnostic they
+            -- are not sitting on.
+            vim.api.nvim_buf_set_lines(
+                test_bufnr,
+                0,
+                -1,
+                false,
+                { "line1", "line2", "line3" }
+            )
+
+            vim.diagnostic.set(ns, test_bufnr, {
+                {
+                    lnum = 1,
+                    col = 0,
+                    severity = vim.diagnostic.severity.ERROR,
+                    message = "Error on line 2",
+                },
+                {
+                    lnum = 2,
+                    col = 0,
+                    severity = vim.diagnostic.severity.WARN,
+                    message = "Warning on line 3",
+                },
+            })
+
+            -- `win_findbuf` returns tabpage order regardless of the current tab,
+            -- so the earlier tab's copy wins an unpreferred lookup. Park the
+            -- decoy FIRST and stay in the later tab.
+            local other_win = vim.api.nvim_get_current_win()
+            assert.equal(test_bufnr, vim.api.nvim_win_get_buf(other_win))
+            vim.api.nvim_win_set_cursor(other_win, { 3, 0 })
+
+            vim.cmd("tabnew")
+            local current_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(current_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(current_win, { 2, 0 })
+
+            local diagnostics =
+                DiagnosticsList.get_diagnostics_at_cursor(test_bufnr)
+
+            assert.equal(1, #diagnostics)
+            assert.equal("Error on line 2", diagnostics[1].message)
+        end)
     end)
 end)

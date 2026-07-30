@@ -50,7 +50,7 @@ describe("SessionRestore", function()
                     return is_empty
                 end,
             },
-            -- No input buffer: the unsent-draft branch of `is_empty` is covered
+            -- No input buffer: `is_empty`'s unsent-draft branch is covered
             -- against a real one in test_multi_session.lua
             widget = { buf_nrs = {} },
             agent = {
@@ -140,7 +140,7 @@ describe("SessionRestore", function()
         end)
 
         -- Files, code selections and diagnostics are user work; only explicit
-        -- intent may discard them, so a non-empty session survives the restore.
+        -- intent may discard them.
         it("keeps a session that still holds context", function()
             local session = create_mock_session({ empty = false })
 
@@ -153,10 +153,9 @@ describe("SessionRestore", function()
             assert.spy(restored_session.load_acp_session).was.called(1)
         end)
 
-        -- `create` answers nil when no provider is configured, and when the
-        -- agent instance hands back no client. Destroying the resolved session
-        -- before finding that out leaves the user with no session at all and no
-        -- word of why.
+        -- `create` answers nil with no configured provider, and when the agent
+        -- instance hands back no client. Destroying the resolved session before
+        -- finding that out leaves the user no session at all and no word of why.
         it("keeps the resolved session when create fails", function()
             create_stub:invokes(function()
                 return nil
@@ -175,8 +174,8 @@ describe("SessionRestore", function()
         end)
 
         -- Checked before `create`, not inside `load_acp_session`: a late check
-        -- leaves the user a churned session key and a widget swap for an
-        -- operation the provider never supported.
+        -- churns a session key and swaps the widget for an operation the
+        -- provider never supported.
         it("creates nothing when the agent cannot load sessions", function()
             local session = create_mock_session({
                 load_session_capable = false,
@@ -307,7 +306,7 @@ describe("SessionRestore", function()
 
         -- `show_picker` shows after an async `when_ready` -> `list_sessions` ->
         -- `vim.ui.select` chain, so it must route through the eviction choke
-        -- point rather than showing the widget directly.
+        -- point, not show the widget directly.
         it("keeps a session with messages and adds a new one", function()
             local session = create_acp_session({
                 chat_history = { messages = { { type = "user" } } },

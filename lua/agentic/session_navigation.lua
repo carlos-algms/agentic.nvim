@@ -48,9 +48,19 @@ function SessionNavigation.select()
         --- @param item agentic.SessionManager
         format_item = function(item)
             local title = item.chat_history.title
-            local label = title ~= "" and title
-                or item.agent.provider_config.name
-                or ("Session " .. tostring(item.session_key))
+            local provider = item.agent
+                and item.agent.provider_config
+                and item.agent.provider_config.name
+            local label = title ~= "" and title or "Untitled"
+
+            if provider then
+                label = string.format("%s [%s]", label, provider)
+            end
+
+            -- APPENDED, not a fallback: `or` short-circuits on the truthy provider name,
+            -- so a key used as last fallback is unreachable and untitled sessions on one
+            -- provider all render the same row.
+            label = string.format("%s (%d)", label, item.session_key)
 
             local prefix = item.widget:get_visible_tab_id() == current_tab
                     and "● "

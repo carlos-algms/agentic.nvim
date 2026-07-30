@@ -142,9 +142,9 @@ _...and any future ACP-compatible provider._
   mimicking Claude-code's approach, with 1, 2, 3, ... one-key press for quick
   responses
 - **🤖 🤖 Multiple agents** - Run as many independent Chat sessions as you like,
-  simultaneously and on different tasks. A session keeps working while it is
-  hidden, closing its window or its tab does not stop it, and you can bring any
-  session up in any tab
+  simultaneously, on different tasks. A session keeps working while hidden —
+  closing its window or its tab does not stop it — and any session can be brought
+  up in any tab
 - **🎯 Clean UI** - Sidebar interface with markdown rendering and syntax
   highlighting
 - **⌨️ Slash Commands** - Native Neovim completion for ACP slash commands with
@@ -404,8 +404,8 @@ Configure the widget layout position and sizing:
 ### Rotating Layouts dynamically at runtime
 
 You can rotate between layouts, dynamically, without closing Neovim with
-`rotate_layout()`. It acts on the session visible in the current tab page, and
-does nothing when there is none:
+`rotate_layout()`. It acts on the session visible in the current tab page, and is
+a no-op when there is none:
 
 ```lua
 -- Rotates through all three layouts: right → bottom → left → right ...
@@ -722,29 +722,29 @@ require("agentic").restore_session_by_id("58e5cf8a-1277-4e43-bc29-10c1246a2c66")
 ### Working with Multiple Sessions
 
 Sessions are not tied to tabs. Each one gets a **session key** — a small integer
-assigned when it is created and stable for its whole life.
+assigned at creation and stable for its whole life.
 
-- A session keeps running while hidden. Pressing `q`, closing the window, or
-  closing the tab does not stop it or lose it
-- Opening a session in a tab hides whatever session was there, and removes it
-  from any other tab. At most one session is visible per tab
+- A session keeps running while hidden. `q`, closing the window, or closing the
+  tab neither stops nor loses it
+- Opening a session in a tab hides whatever session was there and removes it from
+  any other tab. At most one session is visible per tab
 - Use `destroy_session()` to end a session directly
 
-When a current session exists, `new_session()` asks whether to keep it running
-in the background or destroy it before creating the replacement.
+With a current session present, `new_session()` asks whether to keep it running in
+the background or destroy it before creating the replacement.
 
-`destroy_session(opts)` accepts a **session** field with the key of the session
-to destroy. Without it, it destroys the session visible in the current tab,
-falling back to the most recently opened one.
+`destroy_session(opts)` takes a **session** field naming the key to destroy.
+Without it, it destroys the session visible in the current tab, falling back to
+the most recently opened one.
 
 ```lua
 -- Destroy session 2 without opening it
 require("agentic").destroy_session({ session = 2 })
 ```
 
-Session keys show up in the chat buffer names once more than one session exists,
-and `select_session()` lists every live session by title, marking the one
-visible in the current tab.
+Session keys appear in chat buffer names once more than one session exists.
+`select_session()` lists every live session by title, marking the one visible in
+the current tab.
 
 ### Built-in Keybindings
 
@@ -979,13 +979,12 @@ that don't support session listing.
 
 **Restoring never overwrites a conversation.**
 
-A restore always creates an additional session and shows it. The session you
-were on is left alive and reachable through
-`require("agentic").select_session()`.
+A restore always creates an additional session and shows it, leaving the session
+you were on alive and reachable through `require("agentic").select_session()`.
 
-The one exception: if the session you were on is completely empty — no
-messages, no attached files, no code selections, no diagnostics, and no text
-typed in the prompt — it is reclaimed rather than left behind as an empty shell.
+One exception: a completely empty session — no messages, no attached files, no
+code selections, no diagnostics, nothing typed in the prompt — is reclaimed rather
+than left behind as an empty shell.
 
 ### System Information
 
@@ -1013,16 +1012,16 @@ integrating with other plugins.
 
 > [!IMPORTANT]
 > **Identify a session by `data.session_key`, not by `data.tab_page_id`.**
-> `session_key` is the session's registry key and never changes.
-> `tab_page_id` only says which tab the session is showing in **right now**, and
-> it is **`nil` for a session running in the background** — hidden, or in a tab
-> that was closed. Hooks like `on_session_update` and `on_response_complete`
-> fire for background sessions, so any code that passes `tab_page_id` to a
-> `nvim_tabpage_*` call must guard it first; those functions raise on `nil`.
+> `session_key` is the session's registry key and never changes. `tab_page_id`
+> only says which tab the session shows in **right now**, and is **`nil` for a
+> session running in the background** — hidden, or in a closed tab. Hooks like
+> `on_session_update` and `on_response_complete` fire for background sessions, so
+> guard `tab_page_id` before passing it to any `nvim_tabpage_*` call; those raise
+> on `nil`.
 
 ```lua
--- Token usage per session, keyed by session_key. A plain Lua table, because a
--- session is not tied to a tab and may be running in no tab at all.
+-- Token usage per session, keyed by session_key. A plain Lua table: a session is
+-- not tied to a tab and may be running in no tab at all.
 local agentic_usage = {}
 
 return {
@@ -1126,11 +1125,11 @@ return {
 }
 ```
 
-**Migrating from `tab_page_id`:** it used to be a `number` that always named a
-live tabpage. It is now `number|nil` and is a placement hint only. Anything
-using it as an identity or as a storage key — `vim.t[data.tab_page_id]`,
-`nvim_tabpage_is_valid(data.tab_page_id)` — should move to `data.session_key`.
-If you genuinely need the tab (to render into it, for instance), guard it:
+**Migrating from `tab_page_id`:** it used to be a `number` always naming a live
+tabpage. It is now `number|nil`, a placement hint only. Anything using it as an
+identity or storage key — `vim.t[data.tab_page_id]`,
+`nvim_tabpage_is_valid(data.tab_page_id)` — should move to `data.session_key`. If
+you genuinely need the tab (to render into it, say), guard it:
 
 ```lua
 if data.tab_page_id and vim.api.nvim_tabpage_is_valid(data.tab_page_id) then

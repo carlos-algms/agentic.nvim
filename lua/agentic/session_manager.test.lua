@@ -402,7 +402,7 @@ describe("agentic.SessionManager", function()
                 received_session = s
             end)
 
-            -- Not called yet (queued via vim.schedule)
+            -- Queued via vim.schedule, so not called yet
             assert.is_false(callback_called)
 
             flush_schedule()
@@ -413,14 +413,13 @@ describe("agentic.SessionManager", function()
 
         it("queues callback when session_id is nil", function()
             local session = SessionManager:new() --[[@as agentic.SessionManager]]
-            -- Don't flush — session_id stays nil
+            -- Never flushed: session_id stays nil, so the callback must queue
 
             local callback_called = false
             session:on_session_ready(function()
                 callback_called = true
             end)
 
-            -- Don't flush — callback should be queued, not fired
             assert.is_false(callback_called)
             assert.equal(1, #session._session_ready_callbacks)
         end)
@@ -488,7 +487,7 @@ describe("agentic.SessionManager", function()
 
         it("clears session_ready_callbacks", function()
             local session = SessionManager:new() --[[@as agentic.SessionManager]]
-            -- Session stays uninitialized (schedule is no-op), queue a callback
+            -- Stays uninitialized: schedule is a no-op here
             session:on_session_ready(function() end)
             assert.equal(1, #session._session_ready_callbacks)
 
@@ -579,8 +578,8 @@ describe("agentic.SessionManager", function()
             session.session_id = "test-session" --[[@as string]]
 
             local SessionRegistry = require("agentic.session_registry")
-            -- Registering by hand, so set the key too: the registry invariant is
-            -- `sessions[k].session_key == k`, and the teardown destroys by key.
+            -- Registering by hand, so set the key too: invariant is
+            -- `sessions[k].session_key == k`, and teardown destroys by key.
             session.session_key = 1
             SessionRegistry.sessions[1] = session
 
@@ -595,19 +594,16 @@ describe("agentic.SessionManager", function()
             }
             session.history_to_send = history
 
-            -- Stub agent's send_prompt to capture the prompt
             local submitted_prompt = nil
             session.agent.send_prompt = function(_self, _sid, prompt)
                 submitted_prompt = prompt
             end
 
-            -- Submit via the internal method
             session:_handle_input_submit("new question")
 
-            -- history_to_send should be consumed (nil)
             assert.is_nil(session.history_to_send)
 
-            -- Prompt should contain the restored history
+            -- Restored history plus the new question
             assert.is_not_nil(submitted_prompt)
             assert.truthy(#submitted_prompt >= 2)
         end)
@@ -1324,6 +1320,7 @@ describe("agentic.SessionManager", function()
                 local data = hook_spy.calls[1][1]
                 assert.equal(abs_path, data.filepath)
                 assert.equal("session-1", data.session_id)
+                assert.equal(3, data.session_key)
                 assert.equal(42, data.tab_page_id)
                 assert.equal(test_bufnr, data.bufnr)
 
@@ -1622,30 +1619,25 @@ describe("agentic.SessionManager", function()
                 _handle_input_submit = SessionManager._handle_input_submit,
             } --[[@as agentic.SessionManager]]
 
-            -- Trigger submit — captures send_prompt callback, writes user message once
             session:_handle_input_submit("hello")
 
-            -- Verify send_prompt callback was captured
             assert.is_not_nil(captured_callback)
 
-            -- Reset write_message tracking so we only count finish-message writes
+            -- Drop the user-message write, so only finish writes are counted
             write_message_spy:reset()
 
-            -- Simulate session change (cancel/restore/new session)
+            -- Cancel/restore/new session lands while the prompt is in flight
             session.session_id = "new-session"
 
-            -- Fire the stale callback (simulates provider responding after session change)
             if captured_callback then
                 captured_callback(nil, nil)
             end
 
-            -- Flush vim.schedule queue — runs the callback body
             while #schedule_queue > 0 do
                 local fn = table.remove(schedule_queue, 1)
                 fn()
             end
 
-            -- Finish message must NOT be written for stale session
             assert.spy(write_message_spy).was.called(0)
         end)
     end)
@@ -1662,12 +1654,10 @@ describe("agentic.SessionManager", function()
             end)
         end)
 
-        --- Build a session mock with just enough surface for the error path.
-        --- new_session calls self:_cancel_session and self:_build_handlers
-        --- before agent:create_session. Both are stubbed to no-ops so the
-        --- test focuses on the hook invocation. The error path returns
-        --- immediately after the hook, so success-path collaborators are
-        --- not needed.
+        --- Surface for both branches. `_cancel_session` and `_build_handlers`,
+        --- which `new_session` calls before `agent:create_session`, are no-ops so
+        --- only the hook is under test. config_options, chat_history and
+        --- message_writer are reached on the success path only.
         --- @return agentic.SessionManager
         local function make_session()
             return {
@@ -1682,6 +1672,26 @@ describe("agentic.SessionManager", function()
                     start = function() end,
                     stop = function() end,
                 },
+                config_options = {
+                    set_options = function() end,
+                    set_legacy_modes = function() end,
+                    set_legacy_models = function() end,
+                    set_initial_mode = function() end,
+                    set_initial_thought_level = function() end,
+                    -- `false` = no model change pending, so thought level applies
+                    -- inline rather than from a later response.
+                    set_initial_model = function()
+                        return false
+                    end,
+                },
+                chat_history = {},
+                message_writer = {
+                    generate_welcome_header = function()
+                        return ""
+                    end,
+                    write_structural_message = function() end,
+                },
+                _session_ready_callbacks = {},
                 _cancel_session = function() end,
                 _build_handlers = function()
                     return {}
@@ -1693,8 +1703,7 @@ describe("agentic.SessionManager", function()
             } --[[@as agentic.SessionManager]]
         end
 
-        --- Stub agent:create_session to fire its callback synchronously
-        --- with the given response/err pair.
+        --- Fires `create_session`'s callback synchronously with response/err.
         --- @param session agentic.SessionManager
         --- @param response agentic.acp.SessionCreationResponse|nil
         --- @param err agentic.acp.ACPError|nil
@@ -1708,6 +1717,30 @@ describe("agentic.SessionManager", function()
             schedule_stub:revert()
             Config.hooks = Config.hooks or {}
             Config.hooks.on_create_session_response = nil
+        end)
+
+        it("fires on success with the response and the session key", function()
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_create_session_response = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            --- @type agentic.acp.SessionCreationResponse
+            local response = { sessionId = "sid-created" }
+            fake_create_session(session, response, nil)
+
+            SessionManager.new_session(session)
+
+            assert.spy(hook_spy).was.called(1)
+            local data = hook_spy.calls[1][1]
+            assert.equal("sid-created", data.session_id)
+            assert.equal(3, data.session_key)
+            assert.equal(99, data.tab_page_id)
+            assert.equal(response, data.response)
+            assert.is_nil(data.err)
+            assert.equal("sid-created", session.session_id)
         end)
 
         it("fires on error with err set and response nil", function()
@@ -1730,6 +1763,7 @@ describe("agentic.SessionManager", function()
             assert.spy(hook_spy).was.called(1)
             local data = hook_spy.calls[1][1]
             assert.is_nil(data.session_id)
+            assert.equal(3, data.session_key)
             assert.equal(99, data.tab_page_id)
             assert.is_nil(data.response)
             assert.equal(err, data.err)
@@ -1754,8 +1788,7 @@ describe("agentic.SessionManager", function()
         it(
             "fires on error but preserves an already-owned session_id",
             function()
-                -- Contract: the hook still fires on the error path, but if a
-                -- session_id is already set when this create callback fires, a
+                -- A session_id already set when this create callback fires means a
                 -- restore/takeover owns the session. The staleness guard runs
                 -- before the error branch, so even a FAILED stale create must not
                 -- null out the owned session_id.
@@ -1796,18 +1829,16 @@ describe("agentic.SessionManager", function()
             child.stop()
         end)
 
-        -- A request RESPONSE is dispatched straight from the libuv stdout
-        -- reader (`acp_transport` -> `ACPClient:_handle_message` -> callback),
-        -- so `create_session`'s callback body runs in a fast event context.
-        -- Building the hook payload there called `ChatWidget:get_visible_tab_id`,
-        -- whose `nvim_win_is_valid` raises
-        -- "E5560: nvim_win_is_valid must not be called in a fast event
-        -- context" and aborts the rest of the callback.
+        -- A response is dispatched straight from the libuv stdout reader
+        -- (`acp_transport` -> `ACPClient:_handle_message` -> callback), so
+        -- `create_session`'s callback body runs in a fast event context. Building
+        -- the hook payload there called `ChatWidget:get_visible_tab_id`, whose
+        -- `nvim_win_is_valid` raises "E5560: nvim_win_is_valid must not be called
+        -- in a fast event context" and aborts the rest of the callback.
         --
-        -- `tests/mocks/acp_transport_mock.lua` never drives a real libuv
-        -- callback, so a uv timer is the only genuine fast context available
-        -- here, and a child Neovim is the only place its completion can be
-        -- awaited without pumping mini.test's own queue.
+        -- `tests/mocks/acp_transport_mock.lua` never drives a real libuv callback,
+        -- so a uv timer is the only genuine fast context here, and a child Neovim
+        -- the only place to await it without pumping mini.test's own queue.
         it("builds the hook payload outside the fast event context", function()
             child.lua([[
                 local SessionManager = require("agentic.session_manager")
@@ -1818,8 +1849,8 @@ describe("agentic.SessionManager", function()
                     session_key = 3,
                     session_id = nil,
                     widget = {
-                        -- Mirrors ChatWidget:get_visible_tab_id, whose very first act
-                        -- is an `nvim_win_is_valid` call.
+                        -- Mirrors ChatWidget:get_visible_tab_id, whose first act is
+                        -- an `nvim_win_is_valid` call.
                         get_visible_tab_id = function()
                             _G.t.fast = vim.in_fast_event()
                             vim.api.nvim_win_is_valid(1000)
@@ -1861,7 +1892,7 @@ describe("agentic.SessionManager", function()
                 end)
             ]])
 
-            -- Sanity: the timer really did give us a fast event context.
+            -- Sanity: the timer really did produce a fast event context.
             assert.is_true(child.lua_get("_G.t.dispatch_fast"))
 
             assert.is_false(child.lua_get("_G.t.fast"))
@@ -1958,7 +1989,7 @@ describe("agentic.SessionManager", function()
 
                 assert.equal(1, set_initial_thought_level_stub.call_count)
                 local call = set_initial_thought_level_stub.calls[1]
-                -- call[1] is self, call[2] is target_value (no handler arg)
+                -- call[1] self, call[2] target_value; no handler arg
                 assert.equal("max", call[2])
                 assert.equal(2, call.n)
             end
@@ -2023,8 +2054,8 @@ describe("agentic.SessionManager", function()
                     default_mode = nil,
                 }
                 fake.agent_info = {}
-                -- The response is NOT delivered here: every case in this block
-                -- fires it explicitly, after `destroy`.
+                -- Response NOT delivered here: every case fires it explicitly,
+                -- after `destroy`.
                 function fake:create_session(handlers, cb)
                     captured_handlers = handlers
                     captured_create_callback = cb
@@ -2063,7 +2094,7 @@ describe("agentic.SessionManager", function()
         it(
             "sends no session/new when destroy lands before the bootstrap",
             function()
-                -- `SessionRegistry.create` schedules the bootstrap, so a create and a
+                -- `SessionRegistry.create` schedules the bootstrap, so create and
                 -- destroy in the SAME tick leave it queued against a dead manager:
                 -- `_cancel_session` over emptied `buf_nrs`, a spinner on a deleted
                 -- buffer, and a real `session/new` on the wire.
@@ -2089,7 +2120,7 @@ describe("agentic.SessionManager", function()
                 flush_schedule()
             end)
 
-            -- Never adopted, and never left orphaned on the provider
+            -- Never adopted, never left orphaned on the provider
             assert.is_nil(session.session_id)
             assert.is_true(cancel_spy:called_with(fake_agent, "late-session"))
         end)
@@ -2101,8 +2132,8 @@ describe("agentic.SessionManager", function()
             session:on_session_ready(ready_spy)
 
             -- The create callback is guarded, but the welcome / `on_created` /
-            -- ready-callback block is a SECOND `vim.schedule` spawned from inside
-            -- it. A destroy landing in that one-tick window reaches it.
+            -- ready-callback block is a SECOND `vim.schedule` spawned inside it.
+            -- A destroy landing in that one-tick window reaches it.
             fire_create_response({ sessionId = "s1" })
             session:destroy()
 
@@ -2164,9 +2195,8 @@ describe("agentic.SessionManager", function()
                 flush_schedule()
             end)
 
-            -- Never adopted, and never left orphaned on the provider. The cancel
-            -- is also what drops the subscriber `load_session` registered before
-            -- the request.
+            -- Never adopted, never left orphaned on the provider. The cancel also
+            -- drops the subscriber `load_session` registered before the request.
             assert.is_nil(session.session_id)
             assert.is_true(
                 cancel_spy:called_with(fake_agent, "restored-session")
@@ -2186,7 +2216,7 @@ describe("agentic.SessionManager", function()
                 flush_schedule()
             end)
 
-            -- Nothing loaded, so nothing to cancel, and the failure belongs to a
+            -- Nothing loaded, so nothing to cancel; the failure belongs to a
             -- session the user already closed
             assert.spy(notify_stub).was.called(0)
             assert.spy(cancel_spy).was.called(0)
@@ -2284,15 +2314,15 @@ describe("agentic.SessionManager", function()
             assert.spy(hook_spy).was.called(1)
             local data = hook_spy.calls[1][1]
             assert.equal("test-session-123", data.session_id)
+            assert.equal(3, data.session_key)
             assert.equal(1, data.tab_page_id)
             assert.equal(mock_request, data.request)
         end)
 
         it("answers a request that lands after destroy", function()
             -- The only handler where "return early" is not a no-op: it owes a
-            -- JSON-RPC response, and the provider subprocess is shared across
-            -- every session (ADR 0004), so an unanswered request outlives the
-            -- session that caused it.
+            -- JSON-RPC response, and the provider subprocess is shared across every
+            -- session (ADR 0004), so an unanswered request outlives its session.
             ---@diagnostic disable-next-line: invisible
             session._destroyed = true
 
@@ -2320,7 +2350,7 @@ describe("agentic.SessionManager", function()
             }
             local mock_callback = function() end
 
-            -- Should not throw an error
+            -- No assertion: a raise here fails the case
             handlers.on_request_permission(mock_request, mock_callback)
         end)
     end)
@@ -2345,8 +2375,8 @@ describe("agentic.SessionManager", function()
 
             notify_stub = spy.stub(Logger, "notify")
             -- Inline, not queued: `Hooks.invoke` defers every payload through
-            -- `vim.schedule`. Animation frames go through `vim.defer_fn`, so
-            -- nothing here re-enters.
+            -- `vim.schedule`. Animation frames use `vim.defer_fn`, so nothing
+            -- here re-enters.
             schedule_stub = spy.stub(vim, "schedule")
             schedule_stub:invokes(function(fn)
                 fn()
@@ -2354,8 +2384,8 @@ describe("agentic.SessionManager", function()
             health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
             health_check_stub:returns(true)
 
-            -- No ready callback: `SessionManager:new` would otherwise drive a
-            -- real `session/new`, and this block only needs the widget.
+            -- No ready callback: `SessionManager:new` would otherwise drive a real
+            -- `session/new`, and this block only needs the widget.
             get_instance_stub = spy.stub(AgentInstance, "get_instance")
             get_instance_stub:invokes(function(provider_name)
                 --- @type agentic.acp.ACPClient
@@ -2440,8 +2470,8 @@ describe("agentic.SessionManager", function()
                     shown.tab_page_id
                 )
 
-                -- Direct widget call: `SessionRegistry` exposes no hide entry
-                -- point, only `show_session`.
+                -- Direct widget call: `SessionRegistry` exposes only
+                -- `show_session`, no hide entry point.
                 session.widget:hide()
                 local rehidden = fire_update(session)
                 assert.equal(key, rehidden.session_key)
@@ -2604,9 +2634,9 @@ describe("agentic.SessionManager", function()
             assert.equal(11, hook_spy.calls[1][1].tab_page_id)
         end)
 
-        -- The completion payload is built inside a `vim.schedule`, so reading a
-        -- tabpage captured at submit time reports a window the user may have
-        -- hidden minutes ago.
+        -- The completion payload is built inside a `vim.schedule`, so a tabpage
+        -- captured at submit time reports a window the user may have hidden
+        -- minutes ago.
         it("reports a nil tab when the widget was hidden meanwhile", function()
             local session = make_session()
             session:_handle_input_submit("hello")
@@ -2649,8 +2679,8 @@ describe("agentic.SessionManager", function()
             assert.equal(("x"):rep(59) .. "…", title)
         end)
 
-        -- ASCII alone cannot tell `strcharpart` from `sub`: only a multi-byte
-        -- prompt makes a byte cut land mid-sequence and produce a broken title.
+        -- ASCII alone cannot tell `strcharpart` from `sub`: only multi-byte makes
+        -- a byte cut land mid-sequence and produce a broken title.
         it("truncates a multi-byte prompt on a character boundary", function()
             local session = make_session()
 
@@ -2661,9 +2691,8 @@ describe("agentic.SessionManager", function()
             assert.equal(("日"):rep(59) .. "…", title)
         end)
 
-        -- A restored session carries the provider's own title. Deriving one from
-        -- the first prompt anyway would relabel it in the picker the moment the
-        -- user resumed the conversation.
+        -- A restored session carries the provider's own title; deriving one from
+        -- the first prompt would relabel it in the picker on resume.
         it("keeps a restored title on the first submit", function()
             local session = make_session()
             session.chat_history.title = "Provider side title"

@@ -1,8 +1,32 @@
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestore
 local SessionRestore = {}
+
+--- The `Config.acp_providers` key the session's agent was built from.
+--- Restore is provider-local: an ACP session ID only means anything to the agent that
+--- issued it, and `SessionRegistry.create` otherwise picks up the global `Config.provider`.
+--- Matched on config-table identity: `provider_config` carries a display `name`, not the
+--- key `Config.acp_providers` is indexed by.
+--- @param session agentic.SessionManager
+--- @return agentic.UserConfig.ProviderName|nil provider_name
+local function provider_of(session)
+    local provider_config = session.agent and session.agent.provider_config
+
+    if not provider_config then
+        return nil
+    end
+
+    for provider_name, candidate in pairs(Config.acp_providers) do
+        if candidate == provider_config then
+            return provider_name
+        end
+    end
+
+    return nil
+end
 
 --- @param bufnr integer|nil
 --- @return boolean is_blank
@@ -48,7 +72,17 @@ local function restore_into_new_session(
         return
     end
 
-    local session = SessionRegistry.create()
+    -- Already loaded locally: show it. Two managers on one ACP session ID collide in the
+    -- client's subscriber map, and the newer one wins every update and permission prompt.
+    local live = SessionRegistry.find_by_acp_session_id(session_id)
+    local live_key = live and live.session_key
+
+    if live and live_key then
+        SessionRegistry.show_session(live_key)
+        return
+    end
+
+    local session = SessionRegistry.create(provider_of(current_session))
     local session_key = session and session.session_key
 
     if not session or not session_key then

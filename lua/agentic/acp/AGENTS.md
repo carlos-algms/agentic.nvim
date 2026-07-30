@@ -83,17 +83,17 @@ flowchart TD
 - `ACPTransport` invokes `on_message` directly inside its stdio reader, so
   everything below it starts in a **fast event context**.
 - **Notifications** route through `ACPClient:__with_subscriber`, which re-resolves
-  the subscriber and invokes the handler inside `vim.schedule`. By the time a
-  `session/update` handler runs, it is on the main loop.
+  the subscriber and invokes the handler inside `vim.schedule`. A
+  `session/update` handler therefore runs on the main loop.
 - **Request responses** have no such hop: `ACPClient:_handle_message` calls the
-  requester's callback synchronously, still in the fast context. So a
+  requester's callback synchronously, still in the fast context. A
   `create_session` / `load_session` response callback may not call `nvim_*`
   without its own `vim.schedule`.
 
-The event-context asymmetry can trigger fast-context API failures; see the root
-`AGENTS.md` trap and regression test. Response dispatch remains synchronous
-because initialization state transitions depend on message ordering. Each
-response callback schedules only its API-touching work.
+This asymmetry triggers fast-context API failures — see the root `AGENTS.md` trap
+and its regression test. Response dispatch stays synchronous because
+initialization state transitions depend on message ordering, so each response
+callback schedules only its API-touching work.
 
 ## Protocol flow details
 

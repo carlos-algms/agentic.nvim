@@ -113,6 +113,19 @@ end
 --- @param session_id string
 --- @param handlers agentic.acp.ClientHandlers
 function ACPClient:_subscribe(session_id, handlers)
+    -- One subscriber per session ID: a replacement reroutes every update and permission
+    -- prompt to the newer handlers. Legitimate on a reconnect replay, a defect when two
+    -- managers claim one ID (`SessionRestore` dedups on the way in). Logged, not blocked:
+    -- refusing the write would strand a reconnect's fresh handlers.
+    if
+        self.subscribers[session_id]
+        and self.subscribers[session_id] ~= handlers
+    then
+        Logger.debug(
+            "Replacing existing subscriber for session_id: " .. session_id
+        )
+    end
+
     self.subscribers[session_id] = handlers
 end
 

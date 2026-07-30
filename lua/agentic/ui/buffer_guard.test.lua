@@ -6,17 +6,15 @@ local ChatWidget = require("agentic.ui.chat_widget")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local WidgetRegistry = require("agentic.ui.widget_registry")
 
---- Real widgets, not callback stubs: the guard resolves the owning widget per
---- event through `WidgetRegistry`, so a fake owner would bypass the very lookup
---- under test.
+--- Real widgets, not stubs: the guard resolves the owner per event through
+--- `WidgetRegistry`, so a fake owner bypasses the lookup under test.
 --- @return agentic.ui.ChatWidget
 local function new_widget()
     return ChatWidget:new(spy.new(function() end) --[[@as function]])
 end
 
---- Unnamed, empty and `nofile` is the state a panel buffer is created in.
---- `:edit` reuses such a buffer, clearing its buftype and setting its name —
---- that is the repurpose the guard has to undo.
+--- Unnamed, empty, `nofile`: how a panel buffer is created. `:edit` reuses it,
+--- clearing buftype and setting a name — the repurpose the guard undoes.
 --- @param bufnr integer
 local function make_repurposable(bufnr)
     pcall(vim.api.nvim_buf_set_name, bufnr, "")
@@ -134,8 +132,8 @@ describe("BufferGuard", function()
         local foreign = vim.api.nvim_create_buf(true, false)
         vim.api.nvim_win_set_buf(widget2.win_nrs.chat, foreign)
 
-        -- Resolving the owner from the first registered widget instead of from
-        -- `vim.w.agentic_bufnr` would land the buffer in the OTHER tab.
+        -- Owner from the first registered widget instead of `vim.w.agentic_bufnr`
+        -- lands the buffer in the OTHER tab.
         local wins = vim.fn.win_findbuf(foreign)
         assert.is_true(#wins > 0)
         for _, winid in ipairs(wins) do
@@ -184,10 +182,10 @@ describe("BufferGuard", function()
         BufferGuard.ensure()
         widget2 = new_widget()
 
-        -- Counting autocommands cannot detect a re-create:
+        -- Counting autocmds cannot detect a re-create:
         -- `nvim_create_augroup(name, { clear = true })` returns the same id and
-        -- wipes the previous autocmd, so the count stays 1 either way. The
-        -- autocmd's own id is what changes when `ensure` is not a no-op.
+        -- wipes the previous autocmd, so the count stays 1 either way. Only the
+        -- autocmd id changes when `ensure` is not a no-op.
         assert.equal(first_id, guard_autocmd_id())
     end)
 
@@ -207,7 +205,6 @@ describe("BufferGuard", function()
         assert.equal("nofile", vim.bo[replacement].buftype)
         assert.equal(replacement, vim.w[widget.win_nrs.chat].agentic_bufnr)
 
-        -- The repurposed buffer holding the file left the widget window.
         local file_wins = vim.fn.win_findbuf(old_chat)
         for _, winid in ipairs(file_wins) do
             assert.is_not.equal(widget.win_nrs.chat, winid)
@@ -246,8 +243,8 @@ describe("BufferGuard", function()
 
         assert_redirected_out(widget, old_chat)
 
-        -- Without the ownership transfer above, the replacement buffer has no
-        -- owner and this second edit cannot resolve a target window.
+        -- Without the ownership transfer above, the replacement has no owner and
+        -- this second edit cannot resolve a target window.
         local replacement = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
         make_repurposable(replacement)
         vim.api.nvim_set_current_win(widget.win_nrs.chat)
@@ -264,14 +261,13 @@ describe("BufferGuard", function()
     it(
         "does not leak widget window options to the editor window after redirect",
         function()
-            -- Widget windows hold panel-styled options (no number column,
-            -- no signcolumn, custom winhighlight, etc.). When a foreign
-            -- buffer briefly cohabits a widget window before being
-            -- redirected, those window-local options must not follow the
-            -- buffer to its target window.
+            -- Widget windows hold panel-styled window-local options. A foreign
+            -- buffer briefly cohabiting a widget window must not carry them to
+            -- its target window — what the `vim.wo[winid][0]` `:setlocal`
+            -- sentinel prevents.
             --
-            -- Forces non-default global options so a leak from PANEL
-            -- defaults is observable as a divergence on the editor window.
+            -- Non-default globals below make a leak from PANEL defaults
+            -- observable as a divergence on the editor window.
             local saved = {
                 number = vim.o.number,
                 signcolumn = vim.o.signcolumn,
@@ -286,7 +282,7 @@ describe("BufferGuard", function()
             local editor_win = vim.api.nvim_get_current_win()
             widget:show({ focus_prompt = false })
 
-            -- Snapshot editor window options BEFORE any cohabit cycle
+            -- Snapshot BEFORE any cohabit cycle
             local editor_before = {
                 number = vim.wo[editor_win].number,
                 signcolumn = vim.wo[editor_win].signcolumn,
@@ -299,16 +295,14 @@ describe("BufferGuard", function()
                 foldcolumn = vim.wo[editor_win].foldcolumn,
             }
 
-            -- Force a foreign buffer into the chat widget window. This
-            -- triggers BufEnter inside the widget and, in turn, a
-            -- redirect to the editor window via BufferGuard.
+            -- Triggers BufEnter inside the widget, hence a BufferGuard redirect
+            -- to the editor window.
             vim.api.nvim_set_current_win(widget.win_nrs.chat)
             local foreign = vim.api.nvim_create_buf(true, false)
             vim.api.nvim_buf_set_name(foreign, vim.fn.tempname() .. "_leak.txt")
             vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
-            -- Editor window should now hold the foreign buffer with its
-            -- ORIGINAL options intact, not panel-styled.
+            -- Foreign buffer lands with ORIGINAL options, not panel-styled.
             assert.equal(foreign, vim.api.nvim_win_get_buf(editor_win))
             assert.equal(editor_before.number, vim.wo[editor_win].number)
             assert.equal(
@@ -345,17 +339,15 @@ describe("BufferGuard", function()
     )
 end)
 
--- Child process tests for cursor-follow behavior.
--- vim.schedule callbacks require event loop processing that
--- can't be safely done in same-process mini.test (vim.wait
--- escapes pcall, causing silent test skips). Child process
--- tests use RPC round-trips to flush the event loop.
+-- Child process: cursor-follow runs in `vim.schedule`, and flushing the event
+-- loop in-process needs `vim.wait`, which escapes pcall and silently skips
+-- tests. RPC round-trips flush it instead.
 local Child = require("tests.helpers.child")
 
 describe("BufferGuard cursor follow (child)", function()
     local child = Child.new()
 
-    --- Creates a real widget in the child and focuses its chat window.
+    --- Real widget in the child, chat window focused.
     --- @return integer editor_win
     --- @return integer chat_win
     local function setup_widget_in_child()
@@ -383,7 +375,6 @@ describe("BufferGuard cursor follow (child)", function()
     it("moves cursor to editor window after foreign buffer redirect", function()
         local editor_win, chat_win = setup_widget_in_child()
 
-        -- Force a foreign buffer into the widget window
         local foreign = child.api.nvim_create_buf(true, false)
         child.api.nvim_win_set_buf(chat_win, foreign)
 
@@ -391,10 +382,7 @@ describe("BufferGuard cursor follow (child)", function()
         child.flush()
         vim.uv.sleep(50)
 
-        -- Cursor should have followed the foreign buffer
         assert.equal(editor_win, child.api.nvim_get_current_win())
-
-        -- Editor window should have the foreign buffer
         assert.equal(foreign, child.api.nvim_win_get_buf(editor_win))
     end)
 
@@ -403,17 +391,14 @@ describe("BufferGuard cursor follow (child)", function()
 
         local editor_win = setup_widget_in_child()
 
-        -- :edit a file while in the widget window
         child.cmd("edit " .. child.fn.fnameescape(tmpfile))
 
         -- Flush scheduled cursor-follow callback
         child.flush()
         vim.uv.sleep(50)
 
-        -- Cursor should be in the editor window
         assert.equal(editor_win, child.api.nvim_get_current_win())
 
-        -- Editor window should display the file
         local editor_buf = child.api.nvim_win_get_buf(editor_win)
         local editor_name = child.api.nvim_buf_get_name(editor_buf)
         assert.equal(vim.fn.resolve(tmpfile), editor_name)

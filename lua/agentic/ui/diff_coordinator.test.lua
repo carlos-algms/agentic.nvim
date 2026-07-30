@@ -19,7 +19,7 @@ describe("agentic.ui.DiffCoordinator", function()
     before_each(function()
         show_diff_stub = spy.stub(DiffPreview, "show_diff")
         clear_diff_stub = spy.stub(DiffPreview, "clear_diff")
-        -- Current tabpage matches the owned one unless a test overrides it.
+        -- Current tab matches the owned one unless a case overrides it.
         tabpage_stub = spy.stub(vim.api, "nvim_get_current_tabpage")
         tabpage_stub:returns(OWNED_TAB)
 
@@ -100,8 +100,8 @@ describe("agentic.ui.DiffCoordinator", function()
         end)
 
         it("renders when the widget is visible in a non-current tab", function()
-            -- The old rule refused unless the widget's tab was current, so a
-            -- background session never rendered its diff.
+            -- Defect: the old rule refused unless the widget's tab was current,
+            -- so a background session never rendered its diff.
             tabpage_stub:returns(OWNED_TAB + 1)
             local c = make_coordinator({ t1 = edit_block() })
 
@@ -173,8 +173,8 @@ describe("agentic.ui.DiffCoordinator", function()
     end)
 end)
 
--- Real widgets and real DiffPreview: the stubbed suite above cannot show that a
--- diff lands in the session's own tab without moving the cursor.
+-- Real widget and real DiffPreview: the stubbed suite above cannot show a diff
+-- landing in the session's own tab without moving the cursor.
 describe("agentic.ui.DiffCoordinator (real widget)", function()
     local ChatWidget = require("agentic.ui.chat_widget")
     local FileSystem = require("agentic.utils.file_system")
@@ -196,11 +196,10 @@ describe("agentic.ui.DiffCoordinator (real widget)", function()
         Config.diff_preview.enabled = true
         Config.diff_preview.layout = "inline"
 
-        -- `show_diff` defers the first `navigate_next` through `vim.schedule`.
-        -- Left queued, it fires during a LATER case, after this one's tab and
-        -- buffer are gone. Run it inline instead: no pending work escapes, and
-        -- flushing in-process would pump mini.test's own queue
-        -- (`references/async-tests.md`).
+        -- `show_diff` defers the first `navigate_next` via `vim.schedule`. Left
+        -- queued it fires during a LATER case, after this one's tab and buffer
+        -- are gone. Run inline: nothing escapes, and flushing in-process would
+        -- pump mini.test's own queue (`references/async-tests.md`).
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(callback)
             callback()

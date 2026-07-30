@@ -45,6 +45,7 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @field _hidden_chat_winid? integer
 --- @field _size? agentic.ui.ChatWidget.Size Size to reopen at, refreshed on every `hide`
 --- @field session_key? integer Registry key, published by `SessionRegistry.create`
+--- @field name_suffixed? boolean Sticky latch owned by `WindowDecoration`: once a second session coexisted, this widget's buffer names keep their " (N)" suffix. Never cleared
 --- @field _header_refresh_scheduled boolean
 --- @field headers agentic.ui.ChatWidget.Headers Mutated in place by `WindowDecoration.get_headers_state` callers
 --- @field session_state? agentic.acp.SessionState Set by SessionManager
@@ -235,14 +236,15 @@ end
 
 --- Closes all windows but keeps buffers in memory
 --- @param keep_insert boolean|nil Set when a `show` follows immediately
-function ChatWidget:hide(keep_insert)
+--- @param tabpage integer|nil Placement captured before an async boundary, when `win_nrs.chat` is already gone
+function ChatWidget:hide(keep_insert, tabpage)
     if not keep_insert then
         vim.cmd("stopinsert")
     end
 
     self:_remember_size()
 
-    self:_ensure_fallback_window()
+    self:_ensure_fallback_window(tabpage)
 
     self:_avoid_auto_close_cmd(function()
         WidgetLayout.close(self.win_nrs)
@@ -255,8 +257,17 @@ function ChatWidget:hide(keep_insert)
 end
 
 --- Closing a tab's last window destroys that tab, silently when it is not the current one.
-function ChatWidget:_ensure_fallback_window()
-    if not self:get_visible_tab_id() or self:find_first_non_widget_window() then
+--- @param tabpage integer|nil Placement captured before an async boundary
+function ChatWidget:_ensure_fallback_window(tabpage)
+    -- Liveness is re-resolved here, never captured: only the tabpage IDENTITY
+    -- crosses the boundary.
+    if tabpage and not vim.api.nvim_tabpage_is_valid(tabpage) then
+        return
+    end
+
+    tabpage = tabpage or self:get_visible_tab_id()
+
+    if not tabpage or self:find_first_non_widget_window(tabpage) then
         return
     end
 
@@ -424,8 +435,12 @@ function ChatWidget:_initialize()
                 if winid == closed_winid then
                     -- Last point the chat window is measurable; WinClosed fires before removal from the layout.
                     self:_remember_size()
+                    -- Placement too: the closed window may be `win_nrs.chat`, the only
+                    -- handle `get_visible_tab_id` reads, so by schedule time it answers
+                    -- nil and the fallback keeping a widget-only tab alive is skipped.
+                    local tabpage = self:get_visible_tab_id()
                     vim.schedule(function()
-                        self:hide()
+                        self:hide(nil, tabpage)
                     end)
                     return
                 end
@@ -741,10 +756,11 @@ local EXCLUDED_FILETYPES = {
 
 --- Scoped to the widget's own tabpage, and excludes EVERY registered widget
 --- buffer so one session cannot eject a buffer into another's panel window.
+--- @param tabpage integer|nil Overrides the derived placement, for a caller holding a tabpage captured before an async boundary
 --- @return number|nil winid
-function ChatWidget:find_first_non_widget_window()
-    local widget_tab = self:get_visible_tab_id()
-    if not widget_tab then
+function ChatWidget:find_first_non_widget_window(tabpage)
+    local widget_tab = tabpage or self:get_visible_tab_id()
+    if not widget_tab or not vim.api.nvim_tabpage_is_valid(widget_tab) then
         return nil
     end
 
@@ -817,9 +833,22 @@ function ChatWidget:open_editor_window(bufnr)
     local split_cmd = SPLIT_CMD_BY_POSITION[self.current_position]
         or SPLIT_CMD_BY_POSITION.right
 
-    -- Splits in the widget's tabpage without moving the user's focus.
-    local anchor_win = self.win_nrs.chat or self.win_nrs.input
-    if not anchor_win or not vim.api.nvim_win_is_valid(anchor_win) then
+    -- Splits in the widget's tabpage without moving the user's focus. The chat handle is
+    -- already dead when a `WinClosed` on it reaches here, so any surviving widget
+    -- window will do as the anchor.
+    local anchor_win = BufHelpers.is_win_usable(self.win_nrs.chat)
+            and self.win_nrs.chat
+        or nil
+    if not anchor_win then
+        for _, candidate in pairs(self.win_nrs) do
+            if BufHelpers.is_win_usable(candidate) then
+                anchor_win = candidate
+                break
+            end
+        end
+    end
+
+    if not anchor_win then
         return nil
     end
 

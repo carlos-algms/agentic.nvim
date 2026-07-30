@@ -9,8 +9,8 @@ describe("DiffSplitView", function()
     local test_tabpage
     local read_stub
 
-    --- Split state now lives on the owning session's diff state, not on the
-    --- tabpage, so each case gets a fresh one.
+    --- Split state lives on the owning session's diff state, not the tabpage,
+    --- so each case gets a fresh one.
     --- @type agentic.ui.DiffState
     local diff_state
 
@@ -24,6 +24,16 @@ describe("DiffSplitView", function()
     local function show_split(opts)
         opts.state = diff_state
         return DiffSplitView.show_split_diff(opts)
+    end
+
+    --- `split_state` is keyed by ABSOLUTE path; resolve test literals the same
+    --- way production does.
+    --- @param path string
+    --- @param state agentic.ui.DiffState|nil Defaults to the case's `diff_state`
+    --- @return agentic.ui.DiffSplitView.State|nil
+    local function get_split(path, state)
+        local split_states = (state or diff_state).split_state
+        return split_states and split_states[FileSystem.to_absolute_path(path)]
     end
 
     before_each(function()
@@ -95,7 +105,7 @@ describe("DiffSplitView", function()
         it(
             "should show split diff for full file replacement (empty old, file exists)",
             function()
-                -- Load the buffer so the lightweight existence check succeeds
+                -- loaded so the lightweight existence check succeeds
                 local bufnr = vim.fn.bufadd(test_file_path)
                 vim.fn.bufload(bufnr)
 
@@ -109,7 +119,7 @@ describe("DiffSplitView", function()
 
                 assert.is_true(success)
 
-                local state = diff_state.split_state
+                local state = get_split(test_file_path)
                 assert.is_not_nil(state)
 
                 if state then
@@ -128,7 +138,7 @@ describe("DiffSplitView", function()
             "should create split view with correct state and buffer options",
             function()
                 local bufnr = setup_and_show_split()
-                local state = diff_state.split_state
+                local state = get_split(test_file_path)
 
                 assert.is_not_nil(state)
                 if state then
@@ -161,7 +171,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = diff_state.split_state
+            local state = get_split(test_file_path)
             assert.is_not_nil(state)
 
             if state then
@@ -196,7 +206,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = diff_state.split_state
+            local state = get_split(test_file_path)
             assert.is_not_nil(state)
 
             if state then
@@ -247,7 +257,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = diff_state.split_state
+            local state = get_split(test_file_path)
             assert.is_not_nil(state)
 
             if state then
@@ -274,7 +284,7 @@ describe("DiffSplitView", function()
 
             assert.is_true(success)
 
-            local state = diff_state.split_state
+            local state = get_split(test_file_path)
             assert.is_not_nil(state)
 
             if state then
@@ -302,7 +312,7 @@ describe("DiffSplitView", function()
 
                 assert.is_true(success)
 
-                local state = diff_state.split_state
+                local state = get_split(test_file_path)
                 assert.is_not_nil(state)
 
                 if state then
@@ -334,7 +344,7 @@ describe("DiffSplitView", function()
             })
             assert.is_true(first)
 
-            local state1 = diff_state.split_state
+            local state1 = get_split(test_file_path)
             assert.is_not_nil(state1)
 
             local second = show_split({
@@ -344,7 +354,7 @@ describe("DiffSplitView", function()
             })
             assert.is_true(second)
 
-            local state2 = diff_state.split_state
+            local state2 = get_split(test_file_path)
             assert.is_not_nil(state2)
 
             if state2 then
@@ -360,6 +370,105 @@ describe("DiffSplitView", function()
             DiffSplitView.clear_split_diff(diff_state)
             assert.is_nil(diff_state.split_state)
             assert.equal(orig_modifiable, vim.bo[bufnr].modifiable)
+        end)
+
+        -- Two sessions on one path each own a `DiffState`, but the scratch
+        -- buffer name derives from the path alone. The second call must not
+        -- steal or invalidate the first session's split.
+        it(
+            "gives each session its own split state for the same path",
+            function()
+                --- @type agentic.ui.DiffState
+                local other_state = {}
+                local get_winid = function()
+                    return vim.api.nvim_get_current_win()
+                end
+                local diff =
+                    { old = { "local x = 1" }, new = { "local x = 2" } }
+
+                assert.is_true(show_split({
+                    file_path = test_file_path,
+                    diff = diff,
+                    get_winid = get_winid,
+                }))
+                local first = get_split(test_file_path)
+                assert.is_not_nil(first)
+                ---@cast first agentic.ui.DiffSplitView.State
+
+                assert.is_true(DiffSplitView.show_split_diff({
+                    file_path = test_file_path,
+                    diff = diff,
+                    get_winid = get_winid,
+                    state = other_state,
+                }))
+                local second = get_split(test_file_path, other_state)
+                assert.is_not_nil(second)
+                ---@cast second agentic.ui.DiffSplitView.State
+
+                assert.is_not.equal(first, second)
+                DiffSplitView.clear_split_diff(other_state)
+                assert.is_nil(other_state.split_state)
+                assert.is_not_nil(diff_state.split_state)
+
+                -- Documented consequence of the shared `<path> (suggestion)`
+                -- name: the second call reclaims the first's scratch buffer, so
+                -- the surviving state points at a dead buffer.
+                assert.is_false(vim.api.nvim_buf_is_valid(first.new_bufnr))
+            end
+        )
+
+        -- `split_state` is keyed BY PATH. A single slot let a pending edit to a
+        -- DIFFERENT file overwrite the first, orphaning its scratch buffer,
+        -- window and forced `modifiable = false` beyond `clear_split_diff`.
+        it("keeps a split per previewed file and tears down each", function()
+            local other_path = "/tmp/test_diff_split_view_fake_other.lua"
+            local get_winid = function()
+                return vim.api.nvim_get_current_win()
+            end
+
+            assert.is_true(show_split({
+                file_path = test_file_path,
+                diff = { old = { "local x = 1" }, new = { "local x = 2" } },
+                get_winid = get_winid,
+            }))
+            local first = get_split(test_file_path)
+            assert.is_not_nil(first)
+            ---@cast first agentic.ui.DiffSplitView.State
+            local first_modifiable =
+                vim.b[first.original_bufnr]._agentic_prev_modifiable
+
+            assert.is_true(show_split({
+                file_path = other_path,
+                diff = { old = { "print(x)" }, new = { "print(y)" } },
+                get_winid = get_winid,
+            }))
+            local second = get_split(other_path)
+            assert.is_not_nil(second)
+            ---@cast second agentic.ui.DiffSplitView.State
+
+            assert.is_not.equal(first.file_path, second.file_path)
+            assert.is_not.equal(first.new_bufnr, second.new_bufnr)
+            assert.is_not_nil(get_split(test_file_path))
+
+            assert.is_true(
+                DiffSplitView.clear_split_diff(diff_state, other_path)
+            )
+            assert.is_false(vim.api.nvim_buf_is_valid(second.new_bufnr))
+            assert.is_nil(get_split(other_path))
+            assert.is_not_nil(get_split(test_file_path))
+            assert.is_true(vim.api.nvim_buf_is_valid(first.new_bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(first.new_winid))
+
+            assert.is_true(
+                DiffSplitView.clear_split_diff(diff_state, test_file_path)
+            )
+            assert.is_false(vim.api.nvim_buf_is_valid(first.new_bufnr))
+            assert.is_false(vim.api.nvim_win_is_valid(first.new_winid))
+            assert.equal(
+                first_modifiable,
+                vim.bo[first.original_bufnr].modifiable
+            )
+            assert.is_nil(diff_state.split_state)
         end)
     end)
 
@@ -389,7 +498,7 @@ describe("DiffSplitView", function()
             "should handle cleanup when scratch window already closed",
             function()
                 setup_and_show_split()
-                local state = diff_state.split_state
+                local state = get_split(test_file_path)
 
                 assert.is_not_nil(state)
                 if state then
@@ -402,5 +511,43 @@ describe("DiffSplitView", function()
                 assert.is_nil(diff_state.split_state)
             end
         )
+
+        -- Closing the window explicitly makes `nvim_win_is_valid` false: the
+        -- easy case. On 0.11.x a `tabclose` leaves both handles stale-VALID and
+        -- `nvim_win_call` on one segfaults. `clear_split_diff` runs from
+        -- tool-call teardown, possibly after the user closed the tab, so the
+        -- tabpage must be consulted too.
+        it("skips stale-valid handles whose tabpage is gone", function()
+            setup_and_show_split()
+            local state = get_split(test_file_path)
+            assert.is_not_nil(state)
+            ---@cast state agentic.ui.DiffSplitView.State
+
+            local dead_tab = vim.api.nvim_win_get_tabpage(state.new_winid)
+
+            -- Dead tabpage, both window handles still valid: the exact
+            -- post-`tabclose` state 0.11.x leaves behind.
+            local real_tab_is_valid = vim.api.nvim_tabpage_is_valid
+            local tab_valid_stub =
+                spy_module.stub(vim.api, "nvim_tabpage_is_valid")
+            tab_valid_stub:invokes(function(tab)
+                return tab ~= dead_tab and real_tab_is_valid(tab)
+            end)
+            local win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+            local close_stub = spy_module.stub(vim.api, "nvim_win_close")
+
+            assert.is_true(vim.api.nvim_win_is_valid(state.original_winid))
+            assert.is_true(vim.api.nvim_win_is_valid(state.new_winid))
+
+            DiffSplitView.clear_split_diff(diff_state)
+
+            tab_valid_stub:revert()
+            win_call_stub:revert()
+            close_stub:revert()
+
+            assert.equal(0, win_call_stub.call_count)
+            assert.equal(0, close_stub.call_count)
+            assert.is_nil(diff_state.split_state)
+        end)
     end)
 end)

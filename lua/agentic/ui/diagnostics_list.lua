@@ -193,13 +193,13 @@ end
 function DiagnosticsList.get_diagnostics_at_cursor(bufnr, opts)
     bufnr = bufnr or vim.api.nvim_get_current_buf()
 
-    local winid = BufHelpers.find_visible_win(bufnr)
+    -- The invoking window is PREFERRED, not a last resort: `win_findbuf` returns tabpage
+    -- order regardless of the current tab, so an unpreferred lookup reads another tab's
+    -- cursor whenever that tab sorts earlier.
+    local winid =
+        BufHelpers.find_visible_win(bufnr, vim.api.nvim_get_current_win())
     if not winid then
-        local current_winid = vim.api.nvim_get_current_win()
-        if vim.api.nvim_win_get_buf(current_winid) ~= bufnr then
-            return {}
-        end
-        winid = current_winid
+        return {}
     end
 
     local cursor_line = vim.api.nvim_win_get_cursor(winid)[1] - 1
