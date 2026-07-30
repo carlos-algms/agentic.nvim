@@ -7,10 +7,32 @@ describe("agentic.ui.StatusAnimation", function()
 
     local bufnr
     local animation
+
+    --- Handle set, not a count: `tabclose!` closes the CURRENT tab, and the
+    --- cross-tab cases end on the original one, so a count-based loop shuts the
+    --- baseline tab and leaves the test-created one alive.
+    --- @type table<integer, true>
     local base_tabs
 
+    --- Tracked so `after_each` closes them even when an assertion throws.
+    --- Deleting a buffer only swaps the window to another buffer, so buffer
+    --- teardown cannot substitute for closing a float.
+    --- @type integer[]
+    local extra_wins
+
+    --- @param winid integer
+    --- @return integer winid
+    local function track_win(winid)
+        extra_wins[#extra_wins + 1] = winid
+        return winid
+    end
+
     before_each(function()
-        base_tabs = #vim.api.nvim_list_tabpages()
+        base_tabs = {}
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tabs[tab] = true
+        end
+        extra_wins = {}
         bufnr = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "one", "two" })
         animation = StatusAnimation:new(bufnr)
@@ -20,12 +42,18 @@ describe("agentic.ui.StatusAnimation", function()
         animation:stop()
         animation = nil
 
-        while #vim.api.nvim_list_tabpages() > base_tabs do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
+        for _, winid in ipairs(extra_wins) do
+            if vim.api.nvim_win_is_valid(winid) then
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
+        end
+
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tabs[tab] and vim.api.nvim_tabpage_is_valid(tab) then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tab)
+                    vim.cmd("tabclose!")
+                end)
             end
         end
 
@@ -168,7 +196,7 @@ describe("agentic.ui.StatusAnimation", function()
         end)
 
         it("ignores a hidden float when measuring padding", function()
-            local winid = vim.api.nvim_open_win(bufnr, false, {
+            track_win(vim.api.nvim_open_win(bufnr, false, {
                 relative = "editor",
                 row = 1,
                 col = 1,
@@ -176,7 +204,7 @@ describe("agentic.ui.StatusAnimation", function()
                 height = 3,
                 focusable = false,
                 hide = true,
-            })
+            }))
 
             animation:start("generating")
 
@@ -184,8 +212,6 @@ describe("agentic.ui.StatusAnimation", function()
             assert.is_not_nil(chunks)
             ---@cast chunks table
             assert.equal(1, #chunks)
-
-            pcall(vim.api.nvim_win_close, winid, true)
         end)
     end)
 end)
