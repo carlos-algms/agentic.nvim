@@ -80,9 +80,12 @@ end
 --- @param tabpage integer|nil Restrict the search to this tabpage
 --- @return integer|nil winid
 function BufHelpers.find_visible_win(bufnr, preferred_winid, tabpage)
+    -- `is_win_usable`, not bare `nvim_win_is_valid`: the caller's handle crossed an
+    -- event boundary, so on 0.11.x it can be stale-valid in a dead tabpage. Without
+    -- the tabpage check an unscoped call (`tabpage == nil`) hands that handle back.
     if
         preferred_winid
-        and vim.api.nvim_win_is_valid(preferred_winid)
+        and BufHelpers.is_win_usable(preferred_winid)
         and vim.api.nvim_win_get_buf(preferred_winid) == bufnr
         and is_visible_win(preferred_winid, tabpage)
     then
