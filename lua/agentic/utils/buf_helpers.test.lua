@@ -730,6 +730,36 @@ describe("BufHelpers", function()
             end
         )
 
+        -- The fallback loop needs the same guard as the preferred branch:
+        -- `win_findbuf` can report a stale-valid handle, and `is_visible_win`
+        -- trusts the tabpage a window claims without validating it. Reached with
+        -- no preferred handle, so only the fallback can answer.
+        it("rejects a stale-valid fallback window in a dead tabpage", function()
+            vim.cmd("tabnew")
+            local real_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(real_win, bufnr)
+
+            vim.cmd("tabnew")
+            local stale_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(stale_win, bufnr)
+
+            vim.cmd("tabnew")
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+
+            stub(vim.api, "nvim_win_get_tabpage"):invokes(function(winid)
+                return winid == stale_win and dead_tab
+                    or original_get_tabpage(winid)
+            end)
+
+            -- Stale handle sorts first, so an unguarded fallback returns it.
+            stub(vim.fn, "win_findbuf"):invokes(function()
+                return { stale_win, real_win }
+            end)
+
+            assert.equal(real_win, BufHelpers.find_visible_win(bufnr))
+        end)
+
         it(
             "returns nil when the buffer is visible in no other tabpage",
             function()
