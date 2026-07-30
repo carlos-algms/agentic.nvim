@@ -13,10 +13,24 @@ describe("WidgetLayout", function()
     --- one is still open would otherwise have the baseline closed instead and
     --- leak the test tab with the count back at baseline.
     local base_tab_set
+    --- Stubs on `vim.api` reverted by teardown. Reverting only after the call
+    --- under test leaks them to the rest of the run when that call raises, and
+    --- these cases stub `nvim_win_is_valid` itself, so the leak breaks teardown
+    --- and every later case rather than just this one.
+    local api_stubs
+
+    --- @param name string `vim.api` function to stub
+    --- @return table stub
+    local function stub_api(name)
+        local stub = spy.stub(vim.api, name)
+        table.insert(api_stubs, stub)
+        return stub
+    end
 
     before_each(function()
         notify_stub = spy.stub(Logger, "notify")
         saved_chat_win_opts = nil
+        api_stubs = {}
 
         base_tab_set = {}
         for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
@@ -25,6 +39,12 @@ describe("WidgetLayout", function()
     end)
 
     after_each(function()
+        -- Before the tab cleanup below, which calls the stubbed APIs.
+        for _, stub in ipairs(api_stubs) do
+            stub:revert()
+        end
+        api_stubs = {}
+
         notify_stub:revert()
         if saved_chat_win_opts then
             Config.windows.chat.win_opts = saved_chat_win_opts
@@ -201,18 +221,12 @@ describe("WidgetLayout", function()
             local dead_tab = vim.api.nvim_get_current_tabpage()
             vim.cmd("tabclose!")
 
-            local valid_stub = spy.stub(vim.api, "nvim_win_is_valid")
-            valid_stub:returns(true)
-            local tabpage_stub = spy.stub(vim.api, "nvim_win_get_tabpage")
-            tabpage_stub:returns(dead_tab)
-            local close_stub = spy.stub(vim.api, "nvim_win_close")
+            stub_api("nvim_win_is_valid"):returns(true)
+            stub_api("nvim_win_get_tabpage"):returns(dead_tab)
+            local close_stub = stub_api("nvim_win_close")
 
             local win_nrs = { code = winid }
             WidgetLayout.close_optional_window(win_nrs, "code", "right")
-
-            valid_stub:revert()
-            tabpage_stub:revert()
-            close_stub:revert()
 
             assert.equal(0, close_stub.call_count)
             assert.is_nil(win_nrs.code)
@@ -341,19 +355,17 @@ describe("WidgetLayout", function()
             -- only axis left that can reject it.
             local dead_win = 99999
             local real_is_valid = vim.api.nvim_win_is_valid
-            local valid_stub = spy.stub(vim.api, "nvim_win_is_valid")
-            valid_stub:invokes(function(win)
+            stub_api("nvim_win_is_valid"):invokes(function(win)
                 return win == dead_win or real_is_valid(win)
             end)
             local real_get_tabpage = vim.api.nvim_win_get_tabpage
-            local tabpage_stub = spy.stub(vim.api, "nvim_win_get_tabpage")
-            tabpage_stub:invokes(function(win)
+            stub_api("nvim_win_get_tabpage"):invokes(function(win)
                 if win == dead_win then
                     return dead_tab
                 end
                 return real_get_tabpage(win)
             end)
-            local close_stub = spy.stub(vim.api, "nvim_win_close")
+            local close_stub = stub_api("nvim_win_close")
 
             local win_nrs = { files = dead_win }
             local buf_nrs = {
@@ -371,10 +383,6 @@ describe("WidgetLayout", function()
                 position = "right",
                 focus_prompt = false,
             })
-
-            valid_stub:revert()
-            tabpage_stub:revert()
-            close_stub:revert()
 
             assert.is_nil(win_nrs.files)
             assert.is_false(close_stub:called_with(dead_win, true))
