@@ -742,6 +742,42 @@ describe("agentic.SessionManager", function()
             assert.equal("User: old msg", prompt[1].text)
             assert.equal("new question", prompt[2].text)
         end)
+
+        it(
+            "derives a normalized title for restored history without one",
+            function()
+                local session = make_session()
+                --- @type agentic.acp.Content[]|nil
+                local submitted_prompt
+                session.history_to_send = {
+                    {
+                        type = "user",
+                        text = "old msg",
+                        timestamp = os.time(),
+                        provider_name = "P",
+                    },
+                }
+                session.agent.send_prompt = function(
+                    _self,
+                    _session_id,
+                    prompt,
+                    callback
+                )
+                    submitted_prompt = prompt
+                    callback(nil, nil)
+                end
+
+                submit(session, "  new   question  ")
+
+                assert.equal("new question", session.chat_history.title)
+                assert.is_nil(session.history_to_send)
+                assert.is_not_nil(submitted_prompt)
+                --- @type agentic.acp.Content[]
+                local prompt = submitted_prompt or {}
+                assert.equal("User: old msg", prompt[1].text)
+                assert.equal("  new   question  ", prompt[2].text)
+            end
+        )
     end)
 
     describe("_on_session_update: on_session_update hook", function()
