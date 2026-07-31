@@ -234,7 +234,13 @@ local function navigate_hunk(bufnr, direction)
     end)
 end
 
---- Save existing keymap for restoration
+local KEYMAP_DESC_SUFFIX = "Agentic DiffPreview"
+
+--- Buffer-local keymaps only; `maparg`'s `buffer` field is a 0/1 flag, not a buffer number.
+---
+--- Agentic's own mapping is never saved: two sessions diffing one file both run
+--- `setup_keymaps` on it, so the second call would capture the first's `]c` as the
+--- "user's" and reinstall it on teardown.
 --- @param bufnr number
 --- @param key string
 --- @return table|nil map_info
@@ -244,14 +250,16 @@ local function save_keymap(bufnr, key)
         map_info = vim.fn.maparg(key, "n", false, true)
     end)
 
-    if map_info and map_info.lhs then
-        -- vim.fn.maparg() returns buffer=1 as a flag indicating buffer-local mapping
-        -- (not the actual buffer number). We only save buffer-local keymaps.
-        if map_info.buffer == 1 then
-            return map_info
-        end
+    if not map_info or not map_info.lhs or map_info.buffer ~= 1 then
+        return nil
     end
-    return nil
+
+    local desc = map_info.desc
+    if type(desc) == "string" and desc:find(KEYMAP_DESC_SUFFIX, 1, true) then
+        return nil
+    end
+
+    return map_info
 end
 
 --- Navigate to next hunk
@@ -276,11 +284,11 @@ function M.setup_keymaps(bufnr)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
         M.navigate_next(bufnr)
-    end, { desc = "Go to next hunk - Agentic DiffPreview" })
+    end, { desc = "Go to next hunk - " .. KEYMAP_DESC_SUFFIX })
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
         M.navigate_prev(bufnr)
-    end, { desc = "Go to previous hunk - Agentic DiffPreview" })
+    end, { desc = "Go to previous hunk - " .. KEYMAP_DESC_SUFFIX })
 end
 
 --- Restore saved keymaps for buffer
@@ -294,7 +302,10 @@ function M.restore_keymaps(bufnr)
     if state and state.saved_keymaps then
         for _, saved_map in pairs(state.saved_keymaps) do
             if saved_map and saved_map.lhs then
-                local opts = { buffer = bufnr }
+                -- No `buffer` key: `BufHelpers.keymap_set` sets the scope itself,
+                -- and on 0.12.1+ both keys together raise "Conflict: 'buf' not
+                -- allowed with 'buffer'", silently swallowed by the pcall below.
+                local opts = {}
                 if saved_map.noremap == 1 then
                     opts.noremap = true
                 end
