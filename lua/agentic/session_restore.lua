@@ -1,38 +1,107 @@
+local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestore
 local SessionRestore = {}
 
---- Checks if the current session has messages or we can safely restore into it if it's empty
---- @param current_session agentic.SessionManager|nil
---- @return boolean has_conflict
-local function check_conflict(current_session)
-    return current_session ~= nil
-        and current_session.session_id ~= nil
-        and current_session.chat_history ~= nil
-        and #current_session.chat_history.messages > 0
+--- The `Config.acp_providers` key the session's agent was built from.
+--- Restore is provider-local: an ACP session ID only means anything to the agent that
+--- issued it, and `SessionRegistry.create` otherwise picks up the global `Config.provider`.
+--- Matched on config-table identity: `provider_config` carries a display `name`, not the
+--- key `Config.acp_providers` is indexed by.
+--- @param session agentic.SessionManager
+--- @return agentic.UserConfig.ProviderName|nil provider_name
+local function provider_of(session)
+    local provider_config = session.agent and session.agent.provider_config
+
+    if not provider_config then
+        return nil
+    end
+
+    for provider_name, candidate in pairs(Config.acp_providers) do
+        if candidate == provider_config then
+            return provider_name
+        end
+    end
+
+    return nil
 end
 
+--- @param bufnr integer|nil
+--- @return boolean is_blank
+local function input_is_blank(bufnr)
+    if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+        return true
+    end
+
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+
+    return vim.trim(table.concat(lines, "")) == ""
+end
+
+--- No conversation AND no staged context: files, selections, diagnostics, input.
+--- @param session agentic.SessionManager
+--- @return boolean is_empty
+local function is_empty(session)
+    return #session.chat_history.messages == 0
+        and session.file_list:is_empty()
+        and session.code_selection:is_empty()
+        and session.diagnostics_list:is_empty()
+        and input_is_blank(session.widget.buf_nrs.input)
+end
+
+--- Restores into a new session, destroying the resolved one only when it is empty.
 --- @param current_session agentic.SessionManager
---- @param on_restore fun()
-local function with_conflict_check(current_session, on_restore)
-    if check_conflict(current_session) then
-        vim.ui.select({
-            "Cancel",
-            "Clear current session and restore",
-        }, {
-            prompt = "Current session has messages. What would you like to do?",
-        }, function(choice)
-            if choice == "Clear current session and restore" then
-                on_restore()
-            end
-        end)
-    else
-        on_restore()
+--- @param session_id string
+--- @param title string|nil
+--- @param timestamp string|nil
+local function restore_into_new_session(
+    current_session,
+    session_id,
+    title,
+    timestamp
+)
+    local caps = current_session.agent.agent_capabilities
+
+    if not caps or not caps.loadSession then
+        Logger.notify(
+            "Agent does not support loading sessions",
+            vim.log.levels.WARN
+        )
+        return
+    end
+
+    -- Already loaded locally: show it. Two managers on one ACP session ID collide in the
+    -- client's subscriber map, and the newer one wins every update and permission prompt.
+    local live = SessionRegistry.find_by_acp_session_id(session_id)
+    local live_key = live and live.session_key
+
+    if live and live_key then
+        SessionRegistry.show_session(live_key)
+        return
+    end
+
+    local session = SessionRegistry.create(provider_of(current_session))
+    local session_key = session and session.session_key
+
+    if not session or not session_key then
+        Logger.notify(
+            "Could not create a session to restore into",
+            vim.log.levels.ERROR
+        )
+        return
+    end
+
+    session:load_acp_session(session_id, title, timestamp)
+    SessionRegistry.show_session(session_key)
+
+    -- Destroyed LAST: the new widget's `show` inherits its size from this one.
+    if current_session.session_key and is_empty(current_session) then
+        SessionRegistry.destroy(current_session.session_key)
     end
 end
 
---- Show session picker and restore selected session
 --- @param current_session agentic.SessionManager
 function SessionRestore.show_picker(current_session)
     local cwd = vim.fn.getcwd()
@@ -78,30 +147,24 @@ function SessionRestore.show_picker(current_session)
                         return
                     end
 
-                    with_conflict_check(current_session, function()
-                        current_session:load_acp_session(
-                            choice.session_id,
-                            choice.title,
-                            choice.updated_at
-                        )
-                        current_session.widget:show()
-                    end)
+                    restore_into_new_session(
+                        current_session,
+                        choice.session_id,
+                        choice.title,
+                        choice.updated_at
+                    )
                 end)
             end)
         end)
     end)
 end
 
---- Restore session by ID
 --- @param current_session agentic.SessionManager
 --- @param session_id string
 function SessionRestore.restore_by_id(current_session, session_id)
     current_session.agent:when_ready(function()
         vim.schedule(function()
-            with_conflict_check(current_session, function()
-                current_session:load_acp_session(session_id, nil, nil)
-                current_session.widget:show()
-            end)
+            restore_into_new_session(current_session, session_id, nil, nil)
         end)
     end)
 end

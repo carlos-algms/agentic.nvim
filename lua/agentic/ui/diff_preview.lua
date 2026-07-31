@@ -14,38 +14,20 @@ local M = {}
 
 local NS_DIFF = HunkNavigation.NS_DIFF
 
---- Get diff preview buffer from tabpage
---- @param tabpage number Tabpage ID
+--- @param state agentic.ui.DiffState
 --- @return number|nil bufnr
-local function get_diff_bufnr(tabpage)
-    return vim.t[tabpage]._agentic_diff_preview_bufnr
-end
-
---- Set diff preview buffer for tabpage
---- @param tabpage number Tabpage ID
---- @param bufnr number|nil Buffer number (nil to clear)
-local function set_diff_bufnr(tabpage, bufnr)
-    vim.t[tabpage]._agentic_diff_preview_bufnr = bufnr
-end
-
---- Get the buffer number with active diff preview for the current or specified tabpage
---- @param tabpage number|nil Tabpage ID (defaults to current tabpage)
---- @return number|nil bufnr Buffer number with active diff, or nil if none
-function M.get_active_diff_buffer(tabpage)
-    local tab = tabpage or vim.api.nvim_get_current_tabpage()
-
-    local split_state = DiffSplitView.get_split_state(tab)
+function M.get_active_diff_buffer(state)
+    local split_state = DiffSplitView.find_split_state(state)
     if split_state then
         return split_state.original_bufnr
     end
 
-    return get_diff_bufnr(tab)
+    return state.preview_bufnr
 end
 
---- Builds a highlight map for all lines parsed as a block
 --- @param lines string[]
 --- @param lang string
---- @return table<number, table<number, string>>|nil row_col_hl Map of row -> col -> hl_group
+--- @return table<number, table<number, string>>|nil row_col_hl row -> col -> hl_group
 local function build_highlight_map(lines, lang)
     if not lang or lang == "" or #lines == 0 then
         return nil
@@ -92,10 +74,8 @@ local function build_highlight_map(lines, lang)
     return row_col_hl
 end
 
---- Get the diff highlight for a column position based on word-level change
---- Always returns DIFF_ADD for line background, DIFF_ADD_WORD for changed portions
---- @param col integer 0-indexed column
---- @param change table|nil Change info from find_inline_change
+--- @param col integer 0-indexed
+--- @param change table|nil From `find_inline_change`
 --- @return string hl_group
 local function get_diff_hl_for_col(col, change)
     if change and col >= change.new_start and col < change.new_end then
@@ -104,9 +84,8 @@ local function get_diff_hl_for_col(col, change)
     return Theme.HL_GROUPS.DIFF_ADD
 end
 
---- Builds segments for a line without syntax highlighting
 --- @param line string
---- @param change table|nil Change info from find_inline_change
+--- @param change table|nil From `find_inline_change`
 --- @return table[] segments
 local function build_plain_segments(line, change)
     if not change then
@@ -118,7 +97,6 @@ local function build_plain_segments(line, change)
     local changed = line:sub(change.new_start + 1, change.new_end)
     local after = line:sub(change.new_end + 1)
 
-    -- Line-level highlight for unchanged portions, word-level for changed
     if #before > 0 then
         table.insert(segments, { before, Theme.HL_GROUPS.DIFF_ADD })
     end
@@ -132,10 +110,9 @@ local function build_plain_segments(line, change)
     return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
 end
 
---- Builds segments for a line with syntax highlighting
 --- @param line string
 --- @param col_hl table<number, string>
---- @param change table|nil Change info from find_inline_change
+--- @param change table|nil From `find_inline_change`
 --- @return table[] segments
 local function build_highlighted_segments(line, col_hl, change)
     local segments = {}
@@ -148,7 +125,6 @@ local function build_highlighted_segments(line, col_hl, change)
         local diff_hl = get_diff_hl_for_col(col, change)
         if hl ~= current_hl or diff_hl ~= current_diff_hl then
             local text = line:sub(seg_start + 1, col)
-            -- Build highlight spec: syntax highlight + diff background
             local hl_spec = current_hl and { current_hl, current_diff_hl }
                 or current_diff_hl
             table.insert(segments, { text, hl_spec })
@@ -158,7 +134,6 @@ local function build_highlighted_segments(line, col_hl, change)
         end
     end
 
-    -- Final segment
     local text = line:sub(seg_start + 1)
     if #text > 0 then
         local hl_spec = current_hl and { current_hl, current_diff_hl }
@@ -169,10 +144,8 @@ local function build_highlighted_segments(line, col_hl, change)
     return #segments > 0 and segments or { { line, Theme.HL_GROUPS.DIFF_ADD } }
 end
 
---- Build old_lines array aligned with filtered new_lines for word-level diff
---- Iterates pairs in order to match the sequential order of filtered.new_lines
 --- @param pairs agentic.ui.ToolCallDiff.ChangedPair[]
---- @return (string|nil)[]|nil aligned Array matching filtered.new_lines order, nil if no modifications
+--- @return (string|nil)[]|nil aligned Matches `filtered.new_lines` order; nil when nothing was modified
 local function build_aligned_old_lines(pairs)
     --- @type (string|nil)[]
     local aligned = {}
@@ -180,8 +153,6 @@ local function build_aligned_old_lines(pairs)
 
     for _, pair in ipairs(pairs) do
         if pair.new_line then
-            -- For each new_line in pairs (which matches filtered.new_lines order),
-            -- store the corresponding old_line (nil for pure insertions)
             table.insert(aligned, pair.old_line)
             if pair.old_line then
                 has_modifications = true
@@ -192,9 +163,8 @@ local function build_aligned_old_lines(pairs)
     return has_modifications and aligned or nil
 end
 
---- Builds virt_lines with syntax highlighting and diff background
 --- @param new_lines string[]
---- @param old_lines (string|nil)[]|nil Sequential old lines aligned with new_lines
+--- @param old_lines (string|nil)[]|nil Aligned with `new_lines`
 --- @param lang string
 --- @return table virt_lines
 local function get_highlighted_virt_lines(new_lines, old_lines, lang)
@@ -204,7 +174,6 @@ local function get_highlighted_virt_lines(new_lines, old_lines, lang)
     for row, line in ipairs(new_lines) do
         local col_hl = row_col_hl and row_col_hl[row - 1]
 
-        -- Find word-level change if we have corresponding old line
         local old_line = old_lines and old_lines[row]
         local change = old_line
             and DiffHighlighter.find_inline_change(old_line, line)
@@ -222,11 +191,13 @@ end
 --- @class agentic.ui.DiffPreview.ShowOpts
 --- @field file_path string
 --- @field diff agentic.ui.MessageWriter.ToolCallDiff
---- @field get_winid fun(bufnr: number): number|nil Called when buffer is not already visible, should return a winid
+--- @field get_winid fun(bufnr: number): number|nil Called when the buffer is not already visible
+--- @field state? agentic.ui.DiffState Mutated in place
+--- @field tabpage? integer Scopes the already-visible window lookup
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_diff(opts)
-    -- Only show diff in normal mode to avoid disrupting user workflow
+    -- Normal mode only, so the diff cannot disrupt an edit in progress.
     local mode = vim.api.nvim_get_mode().mode
     if mode ~= "n" then
         Logger.debug("show_diff: skipped, not in normal mode:", mode)
@@ -261,11 +232,11 @@ function M.show_diff(opts)
         old_text = opts.diff.old,
         new_text = opts.diff.new,
         replace_all = opts.diff.all,
-        strict = true, -- don't show fallback if match fails
+        strict = true,
     })
 
     if #diff_blocks == 0 then
-        -- Empty diff is valid (e.g. new file Write tool where content arrives in updates)
+        -- An empty diff is valid: a Write tool's content arrives in updates.
         local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new or {})
         local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old or {})
         local has_content = not ToolCallDiff.is_empty_lines(new_lines)
@@ -284,20 +255,19 @@ function M.show_diff(opts)
         bufnr = vim.fn.bufadd(opts.file_path)
     end
 
-    -- Check if buffer is already visible, otherwise request a window
-    local winid = vim.fn.bufwinid(bufnr)
-    local target_winid = winid ~= -1 and winid or opts.get_winid(bufnr)
+    -- Tab-scoped, or a copy open elsewhere pulls the diff into a foreign tab.
+    local winid = BufHelpers.find_visible_win(bufnr, nil, opts.tabpage)
+    local target_winid = winid or opts.get_winid(bufnr)
     if not target_winid then
         return
     end
 
-    M.clear_diff(bufnr)
+    M.clear_diff(bufnr, nil, opts.state)
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines
         local new_count = #block.new_lines
 
-        -- Filter unchanged lines once and reuse for both old and new highlighting
         local filtered = ToolCallDiff.filter_unchanged_lines(
             block.old_lines,
             block.new_lines
@@ -313,7 +283,7 @@ function M.show_diff(opts)
                         NS_DIFF,
                         abs_line - 1,
                         pair.old_line,
-                        pair.new_line -- nil for pure deletions
+                        pair.new_line
                     )
                 end
             end
@@ -324,11 +294,9 @@ function M.show_diff(opts)
                 or block.end_line
             local anchor_line = math.max(0, anchor_1indexed - 1)
 
-            -- Get treesitter language for syntax highlighting
             local ft = vim.bo[bufnr].filetype
             local lang = vim.treesitter.language.get_lang(ft) or ft
 
-            -- Build old_lines array aligned with new_lines for word-level diff
             local aligned_old_lines = build_aligned_old_lines(filtered.pairs)
 
             local virt_lines = get_highlighted_virt_lines(
@@ -351,33 +319,32 @@ function M.show_diff(opts)
         end
     end
 
-    -- Scroll target window to first diff block without moving cursor
     if #diff_blocks > 0 then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
-        if not ok then
-            return
+        if opts.state then
+            opts.state.preview_bufnr = bufnr
+            -- Read by hunk navigation and the rejection swap, so they act on
+            -- this window rather than another tab's view of the same file.
+            opts.state.preview_winid = target_winid
         end
-        set_diff_bufnr(tabpage, bufnr)
 
-        -- Make buffer read-only to prevent edits while diff is visible
+        -- Read-only while the diff is visible.
         vim.b[bufnr]._agentic_prev_modifiable = vim.bo[bufnr].modifiable
         vim.bo[bufnr].modifiable = false
 
-        HunkNavigation.setup_keymaps(bufnr)
+        HunkNavigation.setup_keymaps(bufnr, opts.state)
 
         vim.schedule(function()
-            HunkNavigation.navigate_next(bufnr)
+            HunkNavigation.navigate_next(bufnr, opts.state)
         end)
     end
 end
 
---- Clears the diff highlights from the given buffer
 --- @param buf number|string Buffer number or file path
---- @param is_rejection boolean|nil If true and file doesn't exist, cleanup buffer
-function M.clear_diff(buf, is_rejection)
+--- @param is_rejection boolean|nil Deletes the buffer when the file does not exist
+--- @param state agentic.ui.DiffState|nil nil leaves state untouched
+function M.clear_diff(buf, is_rejection, state)
     local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
 
-    -- Fallback: check for suggestion buffer by smart path
     if bufnr == -1 and type(buf) == "string" then
         local smart = FileSystem.to_smart_path(buf)
         local smart_bufnr = vim.fn.bufnr(smart)
@@ -390,16 +357,19 @@ function M.clear_diff(buf, is_rejection)
         return
     end
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid ~= -1 then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
-        if ok then
-            if DiffSplitView.get_split_state(tabpage) then
-                DiffSplitView.clear_split_diff(tabpage)
-                return
-            end
-            set_diff_bufnr(tabpage, nil)
+    if state then
+        -- The entry for THIS file: another file's split must survive this clear. A
+        -- split-layout session can still hold an INLINE diff for a different file
+        -- (`show_split_diff` falls back), so only a real hit returns early.
+        local split_path = type(buf) == "string" and buf
+            or vim.api.nvim_buf_get_name(bufnr)
+
+        if DiffSplitView.clear_split_diff(state, split_path) then
+            return
         end
+
+        state.preview_bufnr = nil
+        state.preview_winid = nil
     end
 
     HunkNavigation.restore_keymaps(bufnr)
@@ -408,9 +378,7 @@ function M.clear_diff(buf, is_rejection)
 
     local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
 
-    -- Restore modifiable state if it was saved
-    -- (skip for suggestion buffers on acceptance —
-    -- text stays visible until real file takes over)
+    -- Suggestion buffers keep their text visible until the real file takes over.
     if not is_suggestion then
         local prev_modifiable = vim.b[bufnr]._agentic_prev_modifiable
         if prev_modifiable ~= nil then
@@ -453,12 +421,10 @@ function M.clear_diff(buf, is_rejection)
     end
 end
 
---- Add hint line for navigation keybindings to permission request
---- @param tracker table|nil Tool call tracker with kind field
---- @param lines_to_append string[] Array of lines to append hint to
---- @return number|nil hint_line_index Index of hint line in array, or nil if not added
+--- @param tracker table|nil
+--- @param lines_to_append string[] Appended to in place
+--- @return number|nil hint_line_index nil when no hint was added
 function M.add_navigation_hint(tracker, lines_to_append)
-    -- Only add hint for edit tools with diff preview enabled
     if
         not tracker
         or tracker.kind ~= "edit"
@@ -481,16 +447,13 @@ function M.add_navigation_hint(tracker, lines_to_append)
     return hint_line_index
 end
 
---- Apply low-contrast Comment styling to hint line
---- Wrapped in pcall to prevent blocking user if styling fails
---- @param bufnr number Buffer number
---- @param ns_id number Namespace ID for extmark
---- @param button_start_row number Start row of button block
---- @param hint_line_index number Index of hint line in appended lines
+--- @param bufnr number
+--- @param ns_id number
+--- @param button_start_row number
+--- @param hint_line_index number
 function M.apply_hint_styling(bufnr, ns_id, button_start_row, hint_line_index)
     pcall(function()
         local hint_line_row = button_start_row + hint_line_index
-        -- Get the actual line content to determine end column
         local hint_line_content = vim.api.nvim_buf_get_lines(
             bufnr,
             hint_line_row,
@@ -507,40 +470,41 @@ function M.apply_hint_styling(bufnr, ns_id, button_start_row, hint_line_index)
     end)
 end
 
---- Setup hunk navigation keymaps for widget buffers
---- Allows navigating hunks in the active diff buffer from widget buffers
+--- Lets the widget buffers drive hunk navigation in the active diff buffer.
 --- @param buf_nrs table<string, number>
-function M.setup_diff_navigation_keymaps(buf_nrs)
+--- @param state agentic.ui.DiffState Captured by the closures
+function M.setup_diff_navigation_keymaps(buf_nrs, state)
     local diff_keymaps = Config.keymaps.diff_preview
 
-    for _, bufnr in pairs(buf_nrs) do
-        BufHelpers.keymap_set(bufnr, "n", diff_keymaps.next_hunk, function()
-            local diff_bufnr = M.get_active_diff_buffer()
-            if not diff_bufnr then
-                Logger.notify("No active diff preview", vim.log.levels.INFO)
-                return
-            end
-            HunkNavigation.navigate_next(diff_bufnr)
-        end, {
+    local directions = {
+        {
+            lhs = diff_keymaps.next_hunk,
+            navigate = HunkNavigation.navigate_next,
             desc = "Go to next hunk - " .. HunkNavigation.KEYMAP_DESC_SUFFIX,
-        })
-
-        BufHelpers.keymap_set(bufnr, "n", diff_keymaps.prev_hunk, function()
-            local diff_bufnr = M.get_active_diff_buffer()
-            if not diff_bufnr then
-                Logger.notify("No active diff preview", vim.log.levels.INFO)
-                return
-            end
-            HunkNavigation.navigate_prev(diff_bufnr)
-        end, {
+        },
+        {
+            lhs = diff_keymaps.prev_hunk,
+            navigate = HunkNavigation.navigate_prev,
             desc = "Go to previous hunk - "
                 .. HunkNavigation.KEYMAP_DESC_SUFFIX,
-        })
+        },
+    }
+
+    for _, bufnr in pairs(buf_nrs) do
+        for _, direction in ipairs(directions) do
+            BufHelpers.keymap_set(bufnr, "n", direction.lhs, function()
+                local diff_bufnr = M.get_active_diff_buffer(state)
+                if not diff_bufnr then
+                    Logger.notify("No active diff preview", vim.log.levels.INFO)
+                    return
+                end
+                direction.navigate(diff_bufnr, state)
+            end, { desc = direction.desc })
+        end
     end
 end
 
---- Show diff for a new file using a suggestion buffer with
---- real text content (scrollable, no virtual lines).
+--- Real text rather than virtual lines, so a new file's diff scrolls.
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 --- @param new_lines string[]
 function M._show_new_file_diff(opts, new_lines)
@@ -551,21 +515,18 @@ function M._show_new_file_diff(opts, new_lines)
         vim.api.nvim_buf_set_name(bufnr, suggestion_name)
     end
 
-    -- Set buffer properties
     vim.bo[bufnr].buflisted = false
     vim.b[bufnr]._agentic_suggestion_for = opts.file_path
 
-    -- Set filetype from real path
+    -- The real path, since the smart-path name has no usable extension.
     local ft = vim.filetype.match({ filename = opts.file_path })
     if ft then
         vim.bo[bufnr].filetype = ft
     end
 
-    -- Write content as real text
     vim.bo[bufnr].modifiable = true
     vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
 
-    -- Apply green diff highlights on all lines
     vim.api.nvim_buf_set_extmark(bufnr, NS_DIFF, 0, 0, {
         end_row = #new_lines - 1,
         end_col = #new_lines[#new_lines],
@@ -575,14 +536,13 @@ function M._show_new_file_diff(opts, new_lines)
 
     vim.bo[bufnr].modifiable = false
 
-    -- Display in window; delete orphaned buffer if no window available
+    -- Deleted rather than orphaned when no window can show it.
     local winid = opts.get_winid(bufnr)
     if not winid then
         pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
     end
 end
 
---- Replace suggestion buffer with the real file in the same window.
 --- Called when a file-mutating tool call completes.
 --- @param file_path string|nil
 function M.cleanup_suggestion_buffer(file_path)
@@ -599,12 +559,11 @@ function M.cleanup_suggestion_buffer(file_path)
         return
     end
 
-    local winid = vim.fn.bufwinid(suggestion_bufnr)
+    local winid = BufHelpers.find_visible_win(suggestion_bufnr)
 
-    -- Must delete suggestion buffer before bufadd because Neovim path
-    -- resolution can match the smart-path name to the absolute path.
-    -- A temporary buffer keeps the window alive during the swap.
-    if winid ~= -1 then
+    -- Deleted before `bufadd`: nvim path resolution can match the smart-path
+    -- name to the absolute path. The temp buffer keeps the window alive.
+    if winid then
         local tmp_bufnr = vim.api.nvim_create_buf(false, true)
         pcall(vim.api.nvim_win_set_buf, winid, tmp_bufnr)
         pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })

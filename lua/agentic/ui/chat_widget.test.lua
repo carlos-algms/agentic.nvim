@@ -1,7 +1,9 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local SessionRegistry = require("agentic.session_registry")
 local WindowDecoration = require("agentic.ui.window_decoration")
 
 describe("agentic.ui.ChatWidget", function()
@@ -10,7 +12,6 @@ describe("agentic.ui.ChatWidget", function()
 
     ChatWidget = require("agentic.ui.chat_widget")
 
-    --- Helper to populate a dynamic buffer with content
     --- @param widget agentic.ui.ChatWidget
     --- @param name string
     --- @param content string[]
@@ -20,13 +21,13 @@ describe("agentic.ui.ChatWidget", function()
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, content)
     end
 
-    -- Tests that behave identically regardless of layout position
+    -- Layout-independent behavior
     for _, position in ipairs({ "right", "left", "bottom" }) do
-        -- Bottom layout uses 2 to avoid touching the screen edge
+        -- Bottom uses 2 to avoid touching the screen edge
         local padding = position == "bottom" and 2 or 1
 
         describe(string.format("(%s layout)", position), function()
-            local tab_page_id
+            local widget_tab
             local widget
             local original_position
 
@@ -35,13 +36,10 @@ describe("agentic.ui.ChatWidget", function()
                 Config.windows.position = position
 
                 vim.cmd("tabnew")
-                tab_page_id = vim.api.nvim_get_current_tabpage()
+                widget_tab = vim.api.nvim_get_current_tabpage()
 
                 local on_submit_spy = spy.new(function() end)
-                widget = ChatWidget:new(
-                    tab_page_id,
-                    on_submit_spy --[[@as function]]
-                )
+                widget = ChatWidget:new(on_submit_spy --[[@as function]])
             end)
 
             after_each(function()
@@ -141,11 +139,11 @@ describe("agentic.ui.ChatWidget", function()
                 widget:show()
 
                 assert.equal(
-                    tab_page_id,
+                    widget_tab,
                     vim.api.nvim_win_get_tabpage(widget.win_nrs.chat)
                 )
                 assert.equal(
-                    tab_page_id,
+                    widget_tab,
                     vim.api.nvim_win_get_tabpage(widget.win_nrs.input)
                 )
             end)
@@ -192,7 +190,7 @@ describe("agentic.ui.ChatWidget", function()
                                 )
                             )
                             assert.equal(
-                                tab_page_id,
+                                widget_tab,
                                 vim.api.nvim_win_get_tabpage(
                                     widget.win_nrs[tc.name]
                                 )
@@ -215,18 +213,16 @@ describe("agentic.ui.ChatWidget", function()
 
                     vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
 
-                    -- Chat window does not contain the temp file
-                    -- (guard either restored chat_buf or replaced it with a
-                    -- fresh scratch buffer to keep the window clean)
+                    -- Guard restored chat_buf or swapped in a fresh scratch buffer
                     local buf_in_chat = vim.api.nvim_win_get_buf(chat_win)
                     local name_in_chat = vim.api.nvim_buf_get_name(buf_in_chat)
                     local resolved_in_chat = vim.fn.resolve(name_in_chat)
                     local resolved_tmpfile = vim.fn.resolve(tmpfile)
                     assert.are_not.equal(resolved_tmpfile, resolved_in_chat)
 
-                    -- The temp file is open in some non-widget window on the same tabpage
+                    -- Temp file lands in a non-widget window, same tabpage
                     local found_in_non_widget = false
-                    local all_wins = vim.api.nvim_tabpage_list_wins(tab_page_id)
+                    local all_wins = vim.api.nvim_tabpage_list_wins(widget_tab)
                     local widget_win_ids = {}
                     for _, wid in pairs(widget.win_nrs) do
                         if wid then
@@ -256,17 +252,14 @@ describe("agentic.ui.ChatWidget", function()
                         local chat_buf = widget.buf_nrs.chat
                         local input_buf = widget.buf_nrs.input
 
-                        -- Swap: put input_buf into chat_win (a widget buffer,
-                        -- but the WRONG one for this window).
+                        -- A widget buffer, but the WRONG one for this window
                         vim.api.nvim_set_current_win(chat_win)
                         vim.api.nvim_win_set_buf(chat_win, input_buf)
 
-                        -- Guard should have restored the correct buffer
                         assert.equal(
                             chat_buf,
                             vim.api.nvim_win_get_buf(chat_win)
                         )
-                        -- Input window should be unaffected
                         assert.equal(
                             input_buf,
                             vim.api.nvim_win_get_buf(input_win)
@@ -274,24 +267,33 @@ describe("agentic.ui.ChatWidget", function()
                     end
                 )
 
-                it("guard is cleaned up after destroy", function()
-                    widget:show()
-                    widget:destroy()
+                it(
+                    "leaves the shared buffer guard alive after destroy",
+                    function()
+                        widget:show()
+                        widget:destroy()
 
-                    assert.is_nil(widget._guard_augroup)
+                        -- Augroup is module-wide: tearing it down on destroy
+                        -- would disarm every other session's guard.
+                        local autocmds = vim.api.nvim_get_autocmds({
+                            group = "AgenticBufferGuard",
+                            event = "BufEnter",
+                        })
+                        assert.equal(1, #autocmds)
 
-                    -- Prevent double-destroy in after_each
-                    widget = nil
-                end)
+                        -- Prevent double-destroy in after_each
+                        widget = nil
+                    end
+                )
 
                 it(
                     "skips floating windows in find_first_non_widget_window",
                     function()
                         widget:show()
 
-                        -- Close all non-widget windows on the tabpage
+                        -- Leave only widget windows on the tabpage
                         local all_wins =
-                            vim.api.nvim_tabpage_list_wins(tab_page_id)
+                            vim.api.nvim_tabpage_list_wins(widget_tab)
                         local widget_win_ids = {}
                         for _, wid in pairs(widget.win_nrs) do
                             if wid then
@@ -304,7 +306,6 @@ describe("agentic.ui.ChatWidget", function()
                             end
                         end
 
-                        -- Create a floating window
                         local float_buf = vim.api.nvim_create_buf(false, true)
                         local float_win =
                             vim.api.nvim_open_win(float_buf, false, {
@@ -317,7 +318,6 @@ describe("agentic.ui.ChatWidget", function()
 
                         local result = widget:find_first_non_widget_window()
                         assert.is_nil(result)
-                        -- Clean up floating window and buffer
                         vim.api.nvim_win_close(float_win, true)
                         vim.api.nvim_buf_delete(float_buf, { force = true })
                     end
@@ -461,10 +461,9 @@ describe("agentic.ui.ChatWidget", function()
             end)
 
             describe("WinClosed autocmd", function()
-                -- _closing is set synchronously by the WinClosed handler
-                -- and only reset inside vim.schedule (which doesn't run
-                -- in same-process tests). So _closing == true means the
-                -- handler matched and scheduled hide().
+                -- WinClosed sets `_closing` synchronously, resetting it only
+                -- inside `vim.schedule`, which never runs in same-process
+                -- tests. So `_closing == true` means it scheduled hide().
 
                 it(
                     "close_optional_window does not trigger WinClosed handler",
@@ -478,11 +477,8 @@ describe("agentic.ui.ChatWidget", function()
 
                         widget:close_optional_window("code")
 
-                        -- Code window is gone
                         assert.is_nil(widget.win_nrs.code)
-                        -- WinClosed handler did NOT schedule hide()
                         assert.is_false(widget._closing)
-                        -- Core windows still exist
                         assert.is_true(
                             vim.api.nvim_win_is_valid(widget.win_nrs.chat)
                         )
@@ -562,7 +558,7 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end
 
-    -- Right and left layouts behave identically, only split direction differs
+    -- Right and left differ only in split direction
     for _, side in ipairs({ "right", "left" }) do
         describe(string.format("(%s layout) specific", side), function()
             local widget
@@ -575,10 +571,7 @@ describe("agentic.ui.ChatWidget", function()
                 vim.cmd("tabnew")
 
                 local on_submit_spy = spy.new(function() end)
-                widget = ChatWidget:new(
-                    vim.api.nvim_get_current_tabpage(),
-                    on_submit_spy --[[@as function]]
-                )
+                widget = ChatWidget:new(on_submit_spy --[[@as function]])
             end)
 
             after_each(function()
@@ -602,9 +595,7 @@ describe("agentic.ui.ChatWidget", function()
                 local input_pos =
                     vim.api.nvim_win_get_position(widget.win_nrs.input)
 
-                -- Input row should be greater than chat row (below)
                 assert.is_true(input_pos[1] > chat_pos[1])
-                -- Same column position
                 assert.equal(chat_pos[2], input_pos[2])
             end)
 
@@ -629,10 +620,7 @@ describe("agentic.ui.ChatWidget", function()
             vim.cmd("tabnew")
 
             local on_submit_spy = spy.new(function() end)
-            widget = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy --[[@as function]]
-            )
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -655,9 +643,7 @@ describe("agentic.ui.ChatWidget", function()
             local input_pos =
                 vim.api.nvim_win_get_position(widget.win_nrs.input)
 
-            -- Same row (horizontal split)
             assert.equal(chat_pos[1], input_pos[1])
-            -- Input column should be greater than chat column (to the right)
             assert.is_true(input_pos[2] > chat_pos[2])
         end)
 
@@ -674,7 +660,7 @@ describe("agentic.ui.ChatWidget", function()
 
                 local expected = math.floor((chat_width + input_width) * ratio)
 
-                -- Allow +-1 rounding tolerance
+                -- +-1 rounding tolerance
                 assert.is_true(math.abs(input_width - expected) <= 1)
             end
         )
@@ -693,10 +679,7 @@ describe("agentic.ui.ChatWidget", function()
             Config.windows.position = "right"
 
             local on_submit_spy = spy.new(function() end)
-            widget = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy --[[@as function]]
-            )
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
 
             show_stub = spy.stub(widget, "show")
             notify_stub = spy.stub(Logger, "notify")
@@ -778,7 +761,7 @@ describe("agentic.ui.ChatWidget", function()
 
             assert.spy(show_stub).was.called(1)
             local call_args = show_stub.calls[1]
-            -- call_args[1] is self, call_args[2] is the opts table
+            -- [1] is self, [2] the opts table
             assert.equal(false, call_args[2].focus_prompt)
         end)
 
@@ -791,44 +774,209 @@ describe("agentic.ui.ChatWidget", function()
 
         it("two widgets rotate independently", function()
             local on_submit_spy2 = spy.new(function() end)
-            widget2 = ChatWidget:new(
-                vim.api.nvim_get_current_tabpage(),
-                on_submit_spy2 --[[@as function]]
-            )
+            widget2 = ChatWidget:new(on_submit_spy2 --[[@as function]])
             show_stub2 = spy.stub(widget2, "show")
 
             -- Both start at "right" (Config default)
             assert.equal("right", widget.current_position)
             assert.equal("right", widget2.current_position)
 
-            -- Rotate widget 1
             widget:rotate_layout({ "right", "bottom", "left" })
             assert.equal("bottom", widget.current_position)
             assert.equal("right", widget2.current_position)
 
-            -- Rotate widget 2
             widget2:rotate_layout({ "right", "bottom", "left" })
             assert.equal("bottom", widget.current_position)
             assert.equal("bottom", widget2.current_position)
 
-            -- Rotate widget 1 again
             widget:rotate_layout({ "right", "bottom", "left" })
             assert.equal("left", widget.current_position)
             assert.equal("bottom", widget2.current_position)
         end)
     end)
 
+    describe("size memory", function()
+        local widget
+        local widget2
+        local widget3
+        local original_position
+        local saved_sessions
+
+        before_each(function()
+            original_position = Config.windows.position
+            Config.windows.position = "right"
+            saved_sessions = SessionRegistry.sessions
+            SessionRegistry.sessions = {}
+
+            vim.cmd("tabnew")
+
+            local on_submit_spy = spy.new(function() end)
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            -- `pairs` is hole-safe: any subset of the three may exist.
+            for _, w in pairs({ widget, widget2, widget3 }) do
+                pcall(function()
+                    w:destroy()
+                end)
+            end
+            widget = nil
+            widget2 = nil
+            widget3 = nil
+
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+
+            SessionRegistry.sessions = saved_sessions
+            Config.windows.position = original_position
+        end)
+
+        --- Registers `w`'s session under `key` so size seeding reaches it
+        --- @param key integer
+        --- @param w any
+        local function register_session(key, w)
+            --- @type any
+            local session = { widget = w }
+            SessionRegistry.sessions[key] = session
+        end
+
+        it("uses the configured width for the first widget", function()
+            widget:show({ focus_prompt = false })
+
+            -- 40% of the 80-column headless editor
+            assert.equal(32, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+
+        it("preserves a manual chat width across hide and show", function()
+            widget:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
+
+            widget:hide()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+
+        it("inherits the stored width of an existing session", function()
+            widget:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
+            widget:hide()
+            register_session(1, widget)
+
+            local on_submit_spy = spy.new(function() end)
+            widget2 = ChatWidget:new(on_submit_spy --[[@as function]])
+            register_session(2, widget2)
+            widget2:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget2.win_nrs.chat))
+        end)
+
+        it("preserves height but not width in the bottom layout", function()
+            widget.current_position = "bottom"
+            widget:show({ focus_prompt = false })
+            local initial_width =
+                vim.api.nvim_win_get_width(widget.win_nrs.chat)
+            BufHelpers.win_set_height(widget.win_nrs.chat, 12)
+            BufHelpers.win_set_width(widget.win_nrs.chat, 20)
+
+            widget:hide()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(12, vim.api.nvim_win_get_height(widget.win_nrs.chat))
+            assert.equal(
+                initial_width,
+                vim.api.nvim_win_get_width(widget.win_nrs.chat)
+            )
+        end)
+
+        it(
+            "skips a stored size that lacks the axis the new layout needs",
+            function()
+                -- Session 1 only ran `bottom`: stores height, no width. Stopping
+                -- there hands a `right` widget a width-less size, silently
+                -- falling back to the configured one.
+                widget.current_position = "bottom"
+                widget:show({ focus_prompt = false })
+                BufHelpers.win_set_height(widget.win_nrs.chat, 12)
+                widget:hide()
+
+                widget2 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+                widget2:show({ focus_prompt = false })
+                BufHelpers.win_set_width(widget2.win_nrs.chat, 50)
+                widget2:hide()
+
+                register_session(1, widget)
+                register_session(2, widget2)
+
+                widget3 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+                widget3:show({ focus_prompt = false })
+
+                assert.equal(
+                    50,
+                    vim.api.nvim_win_get_width(widget3.win_nrs.chat)
+                )
+            end
+        )
+
+        it("copies the inherited size instead of sharing the table", function()
+            widget:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
+            widget:hide()
+            register_session(1, widget)
+
+            -- Only session 1 registered, so later widgets seed from `widget`.
+            -- A shared table would let this resize rewrite session 1's width,
+            -- and widget3 would inherit 60.
+            widget2 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget2:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget2.win_nrs.chat, 60)
+            widget2:hide()
+
+            widget3 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget3:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget3.win_nrs.chat))
+        end)
+
+        it("keeps the remembered width when hide runs twice", function()
+            widget:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
+
+            widget:hide()
+            -- Second `hide` has no chat window; measuring anyway would
+            -- overwrite the stored width with the current window's.
+            widget:hide()
+
+            widget:show({ focus_prompt = false })
+
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+
+        it("restores the width after rotating away and back", function()
+            widget:show({ focus_prompt = false })
+            BufHelpers.win_set_width(widget.win_nrs.chat, 50)
+
+            widget:rotate_layout({ "right", "bottom" })
+            assert.equal("bottom", widget.current_position)
+            widget:rotate_layout({ "right", "bottom" })
+
+            assert.equal("right", widget.current_position)
+            assert.equal(50, vim.api.nvim_win_get_width(widget.win_nrs.chat))
+        end)
+    end)
+
     describe("hidden chat window lifecycle", function()
         local widget
-        local tab_page_id
 
         before_each(function()
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local on_submit_spy = spy.new(function() end)
-            widget =
-                ChatWidget:new(tab_page_id, on_submit_spy --[[@as function]])
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
         end)
 
         after_each(function()
@@ -955,17 +1103,472 @@ describe("agentic.ui.ChatWidget", function()
         end)
     end)
 
-    describe("input header suffix", function()
-        local tab_page_id
+    describe("get_visible_tab_id", function()
+        local widget
+        local widget_tab
+
+        before_each(function()
+            vim.cmd("tabnew")
+            widget_tab = vim.api.nvim_get_current_tabpage()
+
+            local on_submit_spy = spy.new(function() end)
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("returns nil for a widget that has never been shown", function()
+            assert.is_nil(widget:get_visible_tab_id())
+        end)
+
+        it("returns the tabpage the widget is shown in", function()
+            widget:show({ focus_prompt = false })
+
+            assert.equal(widget:get_visible_tab_id(), widget_tab)
+        end)
+
+        it("returns the widget's own tab, not the current one", function()
+            widget:show({ focus_prompt = false })
+
+            vim.cmd("tabnew")
+            local other_tab = vim.api.nvim_get_current_tabpage()
+            assert.is_not_nil(widget:get_visible_tab_id())
+            assert.equal(widget:get_visible_tab_id(), widget_tab)
+            assert.is_not.equal(widget:get_visible_tab_id(), other_tab)
+
+            vim.cmd("tabclose")
+        end)
+
+        it("returns nil after hide, despite the hidden float", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            -- Float holds the chat buffer for ADR 0001 fold anchoring, but sits
+            -- outside win_nrs and must not count as visible.
+            assert.is_not_nil(widget._hidden_chat_winid)
+            assert.is_nil(widget:get_visible_tab_id())
+        end)
+
+        it("agrees with is_open across never-shown, shown, hidden", function()
+            widget:show({ focus_prompt = false })
+            assert.is_true(widget:is_open())
+
+            widget:hide()
+            assert.is_false(widget:is_open())
+        end)
+
+        -- ADR 0008: `show` re-renders IN PLACE. A bare `show` from another tab
+        -- splits from the current window, leaving an untracked second copy in
+        -- the tab the user is looking at.
+        it(
+            "show() re-renders in the widget's own tab, not the current one",
+            function()
+                widget:show({ focus_prompt = false })
+                local before = vim.tbl_values(widget.win_nrs)
+                assert.is_true(#before > 0)
+
+                vim.cmd("tabnew")
+                local other_tab = vim.api.nvim_get_current_tabpage()
+                local other_wins = #vim.api.nvim_tabpage_list_wins(other_tab)
+
+                widget:show({ focus_prompt = false })
+
+                assert.equal(widget_tab, widget:get_visible_tab_id())
+                for _, winid in pairs(widget.win_nrs) do
+                    assert.equal(
+                        widget_tab,
+                        vim.api.nvim_win_get_tabpage(winid)
+                    )
+                end
+                assert.equal(
+                    other_wins,
+                    #vim.api.nvim_tabpage_list_wins(other_tab)
+                )
+                assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+
+                vim.cmd("tabclose")
+            end
+        )
+
+        it("rerender() from another tab keeps the widget in place", function()
+            widget:show({ focus_prompt = false })
+
+            vim.cmd("tabnew")
+            local other_tab = vim.api.nvim_get_current_tabpage()
+            local other_wins = #vim.api.nvim_tabpage_list_wins(other_tab)
+
+            widget:rerender()
+
+            assert.equal(widget_tab, widget:get_visible_tab_id())
+            assert.equal(other_wins, #vim.api.nvim_tabpage_list_wins(other_tab))
+
+            vim.cmd("tabclose")
+        end)
+
+        -- ADR 0008 names `rerender` an in-place `show` caller that cannot break
+        -- "at most one visible widget per tabpage"; the nil-tab early return is
+        -- the whole proof. Without it, a `plan` update from a hidden session
+        -- surfaced a second widget.
+        it("rerender() is a no-op for a hidden widget", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            vim.cmd("tabnew")
+            local other_tab = vim.api.nvim_get_current_tabpage()
+            local other_wins = #vim.api.nvim_tabpage_list_wins(other_tab)
+
+            widget:rerender()
+
+            assert.is_nil(widget:get_visible_tab_id())
+            assert.is_false(widget:is_open())
+            assert.equal(other_wins, #vim.api.nvim_tabpage_list_wins(other_tab))
+
+            vim.cmd("tabclose")
+        end)
+    end)
+
+    describe("widget registry integration", function()
+        local WidgetRegistry = require("agentic.ui.widget_registry")
         local widget
 
         before_each(function()
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
-            widget = ChatWidget:new(
-                tab_page_id,
-                spy.new(function() end) --[[@as function]]
-            )
+
+            local on_submit_spy = spy.new(function() end)
+            widget = ChatWidget:new(on_submit_spy --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("registers every buffer with the widget registry", function()
+            for _, bufnr in pairs(widget.buf_nrs) do
+                assert.equal(WidgetRegistry.get(bufnr), widget)
+            end
+        end)
+
+        it("unregisters its buffers on destroy", function()
+            local bufnrs = vim.tbl_values(widget.buf_nrs)
+            assert.is_true(#bufnrs > 0)
+
+            widget:destroy()
+            widget = nil
+
+            for _, bufnr in ipairs(bufnrs) do
+                assert.is_nil(WidgetRegistry.get(bufnr))
+            end
+        end)
+    end)
+
+    describe("find_first_non_widget_window", function()
+        local widget
+        local widget2
+        local notify_stub
+
+        before_each(function()
+            vim.cmd("tabnew")
+            notify_stub = spy.stub(Logger, "notify")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            for _, w in ipairs({ widget, widget2 }) do
+                if w then
+                    pcall(function()
+                        w:destroy()
+                    end)
+                end
+            end
+            widget = nil
+            widget2 = nil
+            notify_stub:revert()
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it("returns nil for a hidden widget", function()
+            assert.is_nil(widget:find_first_non_widget_window())
+
+            widget:show({ focus_prompt = false })
+            assert.is_not_nil(widget:find_first_non_widget_window())
+
+            widget:hide()
+            assert.is_nil(widget:find_first_non_widget_window())
+        end)
+
+        it("never returns another widget's window in the same tab", function()
+            widget:show({ focus_prompt = false })
+            widget2 = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget2:show({ focus_prompt = false })
+
+            local own = widget:find_first_non_widget_window()
+            local other = widget2:find_first_non_widget_window()
+            assert.is_not_nil(own)
+            assert.is_not_nil(other)
+
+            for _, pair in ipairs({
+                { own, widget2.win_nrs },
+                { own, widget.win_nrs },
+                { other, widget.win_nrs },
+                { other, widget2.win_nrs },
+            }) do
+                for _, winid in pairs(pair[2]) do
+                    assert.is_not.equal(pair[1], winid)
+                end
+            end
+        end)
+
+        it("does not fall back to an eligible window in another tab", function()
+            widget:show({ focus_prompt = false })
+            local widget_tab = widget:get_visible_tab_id()
+
+            for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(widget_tab)) do
+                if not vim.w[winid].agentic_bufnr then
+                    pcall(vim.api.nvim_win_close, winid, true)
+                end
+            end
+
+            -- Another tab holds an eligible editor window. A global
+            -- `nvim_list_wins()` enumeration hands it back, and `hide`/`destroy`
+            -- then closes the widget's own tab out from under the user.
+            vim.cmd("tabnew")
+            local other_tab = vim.api.nvim_get_current_tabpage()
+            local other_win = vim.api.nvim_get_current_win()
+
+            assert.is_nil(widget:find_first_non_widget_window())
+
+            local fallback = widget:open_editor_window()
+            assert.is_not_nil(fallback)
+            ---@cast fallback integer
+            assert.is_not.equal(other_win, fallback)
+            assert.equal(widget_tab, vim.api.nvim_win_get_tabpage(fallback))
+            assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+
+            vim.cmd("tabclose")
+        end)
+
+        it(
+            "never returns a window showing a registered widget buffer it did not create",
+            function()
+                widget:show({ focus_prompt = false })
+
+                widget2 =
+                    ChatWidget:new(spy.new(function() end) --[[@as function]])
+
+                local fallback = widget:find_first_non_widget_window()
+                assert.is_not_nil(fallback)
+                ---@cast fallback integer
+
+                -- A window no widget created carries no `vim.w.agentic_bufnr`,
+                -- so the registry lookup is the only axis that rejects it.
+                -- Returning it ejects a redirected file into another
+                -- session's panel buffer.
+                vim.api.nvim_win_set_buf(fallback, widget2.buf_nrs.chat)
+                assert.is_nil(vim.w[fallback].agentic_bufnr)
+
+                assert.is_not.equal(
+                    fallback,
+                    widget:find_first_non_widget_window()
+                )
+            end
+        )
+    end)
+
+    describe("hide across tabs", function()
+        local widget
+        local notify_stub
+
+        before_each(function()
+            vim.cmd("tabnew")
+            notify_stub = spy.stub(Logger, "notify")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            notify_stub:revert()
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "keeps the chat buffer attached when no fallback window can be created",
+            function()
+                widget:show({ focus_prompt = false })
+
+                -- ADR 0001: once hidden, the float is the chat buffer's only
+                -- window. Losing it loses the fold anchor.
+                widget.find_first_non_widget_window = function()
+                    return nil
+                end
+                widget.open_editor_window = function()
+                    return nil
+                end
+
+                widget:hide()
+
+                assert.is_true(#vim.fn.win_findbuf(widget.buf_nrs.chat) > 0)
+                assert.is_not_nil(widget._hidden_chat_winid)
+                assert.spy(notify_stub).was.called(1)
+            end
+        )
+
+        it("does not report a fallback failure for a hidden widget", function()
+            widget:show({ focus_prompt = false })
+            widget:hide()
+
+            -- A hidden widget owns no windows: nothing to keep the tab alive,
+            -- no fallback to create.
+            widget:hide()
+
+            assert.equal(0, notify_stub.call_count)
+        end)
+
+        it(
+            "creates the fallback window in the widget's tab, not the current one",
+            function()
+                widget:show({ focus_prompt = false })
+                local widget_tab = widget:get_visible_tab_id()
+
+                -- Leave only widget windows in the widget's tab
+                for _, winid in
+                    ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
+                do
+                    if not vim.w[winid].agentic_bufnr then
+                        pcall(vim.api.nvim_win_close, winid, true)
+                    end
+                end
+
+                vim.cmd("tabnew")
+                local other_tab = vim.api.nvim_get_current_tabpage()
+
+                widget:hide()
+
+                assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+                assert.is_true(#vim.api.nvim_tabpage_list_wins(widget_tab) > 0)
+                assert.equal(0, notify_stub.call_count)
+
+                vim.cmd("tabclose")
+            end
+        )
+    end)
+
+    describe("destroy", function()
+        local widget
+
+        before_each(function()
+            vim.cmd("tabnew")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        after_each(function()
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
+        end)
+
+        it(
+            "closes the windows and deletes the buffers of a visible widget",
+            function()
+                widget:show({ focus_prompt = false })
+                local chat_win = widget.win_nrs.chat
+                local input_win = widget.win_nrs.input
+                local bufnrs = vim.tbl_values(widget.buf_nrs)
+
+                widget:destroy()
+                widget = nil
+
+                assert.is_false(vim.api.nvim_win_is_valid(chat_win))
+                assert.is_false(vim.api.nvim_win_is_valid(input_win))
+                for _, bufnr in ipairs(bufnrs) do
+                    assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+                end
+            end
+        )
+
+        it("deletes the buffers of a hidden widget without raising", function()
+            local bufnrs = vim.tbl_values(widget.buf_nrs)
+
+            assert.has_no_errors(function()
+                widget:destroy()
+            end)
+            widget = nil
+
+            for _, bufnr in ipairs(bufnrs) do
+                assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            end
+        end)
+
+        -- Destroying a session visible in ANOTHER tab is reachable from
+        -- `Agentic.destroy_session` and `SessionRestore`, both resolving through
+        -- `_most_recent`. Closing that tab's last windows invalidates the
+        -- tabpage silently: the user loses a tab with no error.
+        it(
+            "keeps the tabpage alive when the widget holds its only windows",
+            function()
+                widget:show({ focus_prompt = false })
+                local widget_tab = widget:get_visible_tab_id()
+
+                for _, winid in
+                    ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
+                do
+                    if not vim.w[winid].agentic_bufnr then
+                        pcall(vim.api.nvim_win_close, winid, true)
+                    end
+                end
+
+                vim.cmd("tabnew")
+                local other_tab = vim.api.nvim_get_current_tabpage()
+
+                widget:destroy()
+                widget = nil
+
+                assert.is_true(vim.api.nvim_tabpage_is_valid(widget_tab))
+                assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
+
+                vim.cmd("tabclose")
+            end
+        )
+    end)
+
+    describe("input header suffix", function()
+        local widget
+
+        before_each(function()
+            vim.cmd("tabnew")
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
         after_each(function()
@@ -978,27 +1581,115 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         it("seeds normal-mode hints at construction time", function()
-            local headers = WindowDecoration.get_headers_state(tab_page_id)
+            local headers =
+                WindowDecoration.get_headers_state(widget.buf_nrs.input)
             assert.equal(
                 "submit: <CR> | change mode: <S-Tab>",
                 headers.input.suffix
             )
+            -- Identity, not deep equality: the accessor must hand back the
+            -- widget's OWN table so caller mutations persist without a
+            -- write-back. `assert.equal` deep-compares and passes against a
+            -- copy; only `==` pins ownership.
+            assert.is_true(headers == widget.headers)
         end)
     end)
 
+    describe("header state ownership", function()
+        local widget_a
+        local widget_b
+        local base_tabs
+
+        before_each(function()
+            base_tabs = #vim.api.nvim_list_tabpages()
+            vim.cmd("tabnew")
+            widget_a =
+                ChatWidget:new(spy.new(function() end) --[[@as function]])
+            widget_b =
+                ChatWidget:new(spy.new(function() end) --[[@as function]])
+        end)
+
+        -- Closes down to the pre-case tab count, not one fixed `tabclose`: the
+        -- hide/show case opens a SECOND tab, and a red assertion there used to
+        -- skip its trailing cleanup and leak a tabpage into every later case.
+        after_each(function()
+            for _, widget in ipairs({ widget_a, widget_b }) do
+                pcall(function()
+                    widget:destroy()
+                end)
+            end
+            while #vim.api.nvim_list_tabpages() > base_tabs do
+                local ok = pcall(function()
+                    vim.cmd("tabclose")
+                end)
+                if not ok then
+                    break
+                end
+            end
+        end)
+
+        it("keeps each widget's header context independent", function()
+            local headers_a =
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.chat)
+            headers_a.chat.context = "context A"
+
+            local headers_b =
+                WindowDecoration.get_headers_state(widget_b.buf_nrs.chat)
+
+            assert.equal(
+                "context A",
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.chat).chat.context
+            )
+            assert.is_nil(headers_b.chat.context)
+        end)
+
+        it(
+            "keeps header context across hide and show in another tab",
+            function()
+                widget_a:show()
+                WindowDecoration.get_headers_state(widget_a.buf_nrs.input).input.context =
+                    "3 files"
+                widget_a:hide()
+
+                vim.cmd("tabnew")
+                widget_a:show()
+
+                assert.equal(
+                    "3 files",
+                    WindowDecoration.get_headers_state(widget_a.buf_nrs.input).input.context
+                )
+            end
+        )
+
+        it(
+            "hands out a fresh default table per call when no widget owns the bufnr",
+            function()
+                local bufnr = vim.api.nvim_create_buf(false, true)
+
+                -- The owned path returns the widget's own table, which callers
+                -- MUST mutate in place. The unowned fallback cannot: each call
+                -- deep-copies the module defaults, so this mutation is
+                -- discarded rather than shared with the next caller.
+                WindowDecoration.get_headers_state(bufnr).chat.context =
+                    "leaked"
+                local second = WindowDecoration.get_headers_state(bufnr)
+
+                -- Deleted before asserting: a red assertion must not leak it.
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+
+                assert.is_nil(second.chat.context)
+            end
+        )
+    end)
+
     describe("_render_dynamic_headers", function()
-        local tab_page_id
         local widget
         local original_headers
 
         before_each(function()
             original_headers = Config.headers
             vim.cmd("tabnew")
-            tab_page_id = vim.api.nvim_get_current_tabpage()
-            widget = ChatWidget:new(
-                tab_page_id,
-                spy.new(function() end) --[[@as function]]
-            )
+            widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
         end)
 
         after_each(function()
@@ -1046,5 +1737,139 @@ describe("agentic.ui.ChatWidget", function()
             end
             assert.is_true(panels.files)
         end)
+    end)
+end)
+
+-- Child process: `rotate_layout` restores the cursor inside `vim.schedule`;
+-- flushing in-process pumps mini.test's own queue (measured: a later file's case
+-- ran inside this one). `references/async-tests.md` prescribes a child here.
+local Child = require("tests.helpers.child")
+
+describe(
+    "agentic.ui.ChatWidget rotate_layout cursor restore (child)",
+    function()
+        local child = Child.new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        it("never restores the cursor into the hidden chat float", function()
+            -- Rotating from the chat window makes the chat buffer "previous",
+            -- and `hide` leaves it attached only to the hidden float (ADR 0001).
+            -- The replaced lookup returned that float, landing the cursor in a
+            -- window the user cannot see.
+            child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            vim.api.nvim_set_current_win(_G.widget.win_nrs.chat)
+            _G.widget:rotate_layout({ "right", "bottom" })
+        ]])
+
+            child.flush()
+            vim.uv.sleep(50)
+            child.flush()
+
+            -- The exact window, not "some visible one": asserting only
+            -- focusable/hide passes with cursor restoration deleted entirely,
+            -- since a bare `show` already leaves the cursor in a real window.
+            assert.equal(
+                child.lua_get("_G.widget.win_nrs.chat"),
+                child.lua_get("vim.api.nvim_get_current_win()")
+            )
+
+            local config = child.lua_get(
+                "vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())"
+            )
+
+            assert.is_true(config.focusable)
+            assert.is_falsy(config.hide)
+        end)
+    end
+)
+
+-- Child process: WinClosed defers `hide` through `vim.schedule`; flushing
+-- in-process pumps mini.test's own queue.
+describe("agentic.ui.ChatWidget WinClosed deferred hide (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it("keeps a widget-only tab alive when the chat window closes", function()
+        -- `WinClosed` invalidates `win_nrs.chat` before the scheduled `hide`, so
+        -- `get_visible_tab_id()` answers nil and `_ensure_fallback_window`
+        -- returns early. `WidgetLayout.close` then takes the remaining windows
+        -- down with the tabpage.
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            vim.cmd("tabnew")
+            _G.widget_tab = vim.api.nvim_get_current_tabpage()
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+
+            for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(_G.widget_tab)) do
+                if not vim.w[winid].agentic_bufnr then
+                    pcall(vim.api.nvim_win_close, winid, true)
+                end
+            end
+
+            vim.api.nvim_win_close(_G.widget.win_nrs.chat, true)
+        ]])
+
+        child.flush()
+
+        assert.is_true(
+            child.lua_get("vim.api.nvim_tabpage_is_valid(_G.widget_tab)")
+        )
+        assert.is_true(
+            child.lua_get("#vim.api.nvim_tabpage_list_wins(_G.widget_tab) > 0")
+        )
+    end)
+end)
+
+describe("agentic.ui.ChatWidget WinClosed size memory (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it("keeps a manual width when the user closes the chat window", function()
+        -- `:q` on the chat window reaches `hide` only through `vim.schedule`, by
+        -- which time the window is gone and nothing is left to measure.
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            local BufHelpers = require("agentic.utils.buf_helpers")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            _G.target_width =
+                vim.api.nvim_win_get_width(_G.widget.win_nrs.chat) + 5
+            BufHelpers.win_set_width(_G.widget.win_nrs.chat, _G.target_width)
+            vim.api.nvim_win_close(_G.widget.win_nrs.chat, true)
+        ]])
+
+        child.flush()
+
+        child.lua([[ _G.widget:show({ focus_prompt = false }) ]])
+
+        assert.equal(
+            child.lua_get("_G.target_width"),
+            child.lua_get("vim.api.nvim_win_get_width(_G.widget.win_nrs.chat)")
+        )
     end)
 end)

@@ -53,7 +53,6 @@ describe("diff_preview", function()
             fs_stat_stub:revert()
             Config.diff_preview.layout = orig_layout
 
-            -- Clean up any buffers created during test
             for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
                 if
                     bufnr ~= initial_bufnr and vim.api.nvim_buf_is_valid(bufnr)
@@ -62,7 +61,6 @@ describe("diff_preview", function()
                 end
             end
 
-            -- Restore initial buffer in current window
             if initial_bufnr and vim.api.nvim_buf_is_valid(initial_bufnr) then
                 pcall(vim.api.nvim_win_set_buf, 0, initial_bufnr)
             end
@@ -82,7 +80,7 @@ describe("diff_preview", function()
         end)
 
         it("creates suggestion buffer with real text for new files", function()
-            -- fs_stat already stubbed to return nil in before_each
+            -- new file: fs_stat nil from before_each
             read_stub:invokes(function()
                 return nil
             end)
@@ -102,17 +100,13 @@ describe("diff_preview", function()
             local bufnr = vim.fn.bufnr(test_path)
             assert.is_true(bufnr ~= -1)
 
-            -- Buffer should contain real text, not be empty
             local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
             assert.same(new_content, lines)
 
-            -- Buffer should be unlisted
             assert.is_false(vim.bo[bufnr].buflisted)
 
-            -- Buffer should have _agentic_suggestion_for set
             assert.equal(test_path, vim.b[bufnr]._agentic_suggestion_for)
 
-            -- Buffer should not be modifiable
             assert.is_false(vim.bo[bufnr].modifiable)
         end)
 
@@ -137,8 +131,8 @@ describe("diff_preview", function()
                     get_winid = get_winid_spy --[[@as function]],
                 })
 
-                -- Buffer may exist (normal diff path), but should
-                -- NOT be a suggestion buffer
+                -- Buffer may exist via the normal diff path, but not as a
+                -- suggestion buffer
                 local bufnr = vim.fn.bufnr(test_path)
                 if bufnr ~= -1 then
                     assert.is_nil(vim.b[bufnr]._agentic_suggestion_for)
@@ -149,7 +143,7 @@ describe("diff_preview", function()
         it(
             "sets filetype on suggestion buffer for extensionless" .. " files",
             function()
-                -- fs_stat already stubbed to return nil in before_each
+                -- new file: fs_stat nil from before_each
                 read_stub:invokes(function()
                     return nil
                 end)
@@ -168,7 +162,7 @@ describe("diff_preview", function()
                 local bufnr = vim.fn.bufnr(test_path)
                 assert.is_true(bufnr ~= -1)
 
-                -- Filetype should be detected from the real path
+                -- detected from the real path, not the buffer name
                 local ft = vim.bo[bufnr].filetype
                 assert.equal("make", ft)
             end
@@ -177,7 +171,7 @@ describe("diff_preview", function()
         it(
             "silently skips diff when both old and new are empty (new file Write tool)",
             function()
-                -- Simulate new file: file doesn't exist
+                -- new file: does not exist
                 read_stub:invokes(function()
                     return nil
                 end)
@@ -191,9 +185,8 @@ describe("diff_preview", function()
                     get_winid = get_winid_spy --[[@as function]],
                 })
 
-                -- Should not open a window
                 assert.spy(get_winid_spy).was.called(0)
-                -- Should not show a warning notification
+                -- silently: no warning
                 assert.spy(notify_spy).was.called(0)
             end
         )
@@ -299,7 +292,7 @@ describe("diff_preview", function()
                 local bufnr = vim.api.nvim_create_buf(false, true)
                 vim.bo[bufnr].modifiable = true
 
-                -- Simulate what show_diff does: save state and set read-only
+                -- as show_diff does: save state, set read-only
                 vim.b[bufnr]._agentic_prev_modifiable = true
                 vim.bo[bufnr].modifiable = false
 
@@ -319,7 +312,7 @@ describe("diff_preview", function()
                     local bufnr = vim.api.nvim_create_buf(false, true)
                     vim.bo[bufnr].modifiable = false
 
-                    -- Simulate show_diff on already non-modifiable buffer
+                    -- as show_diff on an already non-modifiable buffer
                     vim.b[bufnr]._agentic_prev_modifiable = false
                     vim.bo[bufnr].modifiable = false
 
@@ -338,7 +331,6 @@ describe("diff_preview", function()
             vim.api.nvim_buf_set_name(bufnr, "/tmp/new.lua")
             vim.b[bufnr]._agentic_suggestion_for = "/tmp/new.lua"
 
-            -- Write content
             vim.api.nvim_buf_set_lines(
                 bufnr,
                 0,
@@ -347,7 +339,6 @@ describe("diff_preview", function()
                 { "local M = {}", "return M" }
             )
 
-            -- Add diff highlights
             local NS_DIFF =
                 vim.api.nvim_create_namespace("agentic_diff_preview")
             vim.api.nvim_buf_set_extmark(bufnr, NS_DIFF, 0, 0, {
@@ -357,25 +348,22 @@ describe("diff_preview", function()
                 hl_eol = true,
             })
 
-            -- Simulate acceptance (is_rejection = false/nil)
+            -- acceptance: is_rejection nil
             DiffPreview.clear_diff(bufnr)
 
-            -- Buffer should still exist and have content
             assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
             local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
             assert.same({ "local M = {}", "return M" }, lines)
 
-            -- Extmarks should be cleared
             local marks =
                 vim.api.nvim_buf_get_extmarks(bufnr, NS_DIFF, 0, -1, {})
             assert.same({}, marks)
 
-            -- Cleanup
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         end)
 
         it("deletes suggestion buffer on rejection", function()
-            -- Need a window to display the buffer
+            -- needs a window to display the buffer
             vim.cmd("enew")
             local alt_bufnr = vim.api.nvim_get_current_buf()
 
@@ -384,22 +372,33 @@ describe("diff_preview", function()
             vim.b[bufnr]._agentic_suggestion_for = "/tmp/rejected.lua"
             vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "content" })
 
-            -- Display suggestion buffer in current window
             vim.api.nvim_win_set_buf(0, bufnr)
 
             DiffPreview.clear_diff(bufnr, true)
 
-            -- Buffer should be deleted
             assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
 
-            -- Window should show alternate buffer
             local current = vim.api.nvim_get_current_buf()
             assert.equal(alt_bufnr, current)
 
-            -- Cleanup
             if vim.api.nvim_buf_is_valid(alt_bufnr) then
                 pcall(vim.api.nvim_buf_delete, alt_bufnr, { force = true })
             end
+        end)
+
+        it("rejects in the window the diff was painted in", function()
+            local bufnr = new_named_buf("/tmp/rejected_painted.lua")
+            local other_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(other_win, bufnr)
+            local painted_win = split_showing(bufnr, other_win)
+            --- @type agentic.ui.DiffState
+            local state = { preview_bufnr = bufnr, preview_winid = painted_win }
+
+            DiffPreview.clear_diff(bufnr, true, state)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(painted_win))
+            assert.is_nil(state.preview_winid)
         end)
 
         it("keeps the user's other window open on rejection", function()
@@ -495,6 +494,27 @@ describe("diff_preview", function()
             assert.equal(bufnr, vim.api.nvim_win_get_buf(winid))
 
             vim.fn.delete(file_path)
+        end)
+
+        it("clears only the state of the session that cleared", function()
+            local bufnr = new_named_buf("/tmp/two_sessions_one_file.lua")
+            local win_a = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(win_a, bufnr)
+            local win_b = split_showing(bufnr, win_a)
+            --- @type agentic.ui.DiffState
+            local state_a = { preview_bufnr = bufnr, preview_winid = win_a }
+            --- @type agentic.ui.DiffState
+            local state_b = { preview_bufnr = bufnr, preview_winid = win_b }
+
+            DiffPreview.clear_diff(bufnr, false, state_a)
+
+            assert.is_nil(state_a.preview_bufnr)
+            assert.is_nil(state_a.preview_winid)
+            assert.equal(bufnr, state_b.preview_bufnr)
+            assert.equal(win_b, state_b.preview_winid)
+            assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(win_a))
+            assert.is_true(vim.api.nvim_win_is_valid(win_b))
         end)
     end)
 end)

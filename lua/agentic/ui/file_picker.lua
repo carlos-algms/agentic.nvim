@@ -149,7 +149,7 @@ function FilePicker:scan_files()
         if vim.v.shell_error == 0 and output ~= "" then
             local files = {}
             for line in output:gmatch("[^\n]+") do
-                if line ~= "" then
+                if line ~= "" and vim.uv.fs_stat(line) then
                     local relative_path = FileSystem.to_smart_path(line)
                     table.insert(files, {
                         word = "@" .. relative_path,

@@ -1,6 +1,7 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 -- See https://agentclientprotocol.com/protocol/tool-calls.md
 local PERMISSION_KIND_PRIORITY = {
@@ -99,8 +100,7 @@ function PermissionManager:has_pending()
     return next(self.pending) ~= nil
 end
 
---- Register a new permission request. Multiple requests can be pending
---- simultaneously; out-of-order resolution is supported.
+--- Multiple requests may be pending at once, resolved in any order.
 --- @param request agentic.acp.RequestPermission
 --- @param callback fun(option_id: string|nil)
 function PermissionManager:add_request(request, callback)
@@ -205,10 +205,9 @@ function PermissionManager:_jump_cursor_to_button(tool_call_id, button_index)
         return
     end
 
-    -- Cycle keys only fire when the cursor sits on the focused permission
-    -- section, so the section is already on-screen; no `zb` needed.
-    -- Re-anchoring here would scroll the viewport on every cycle, hiding
-    -- buttons below the cursor row.
+    -- No `zb`: cycle keys only fire with the cursor on the focused section, so it is
+    -- already on-screen. Re-anchoring would scroll on every cycle, hiding the buttons
+    -- below the cursor row.
     pcall(vim.api.nvim_win_set_cursor, winid, { button_row + 1, 0 })
 end
 
@@ -234,8 +233,8 @@ function PermissionManager:_submit_focused_button()
     self:resolve(self.focused_id, opt.optionId)
 end
 
---- Fire the callback for tool_call_id with option_id and remove the request.
---- If the resolved request was focused, advances focus to next pending head.
+--- Fires the request's callback and removes it. A focused request advances focus to the
+--- next pending head.
 --- @param tool_call_id string
 --- @param option_id string|nil
 function PermissionManager:resolve(tool_call_id, option_id)
@@ -273,8 +272,7 @@ function PermissionManager:resolve(tool_call_id, option_id)
     end
 end
 
---- Clear all pending requests (e.g. on session stop or teardown). Fires every
---- pending callback with nil.
+--- Fires every pending callback with nil. For session stop or teardown.
 function PermissionManager:clear()
     --- @type string[]
     local ids = vim.list_extend({}, self._order)
@@ -295,8 +293,7 @@ function PermissionManager:clear()
     self.focused_id = nil
 end
 
---- Remove permission request for a specific tool call ID (e.g. when tool call
---- fails before user granted it). Equivalent to resolve with nil option_id.
+--- `resolve` with a nil option_id, for a tool call that failed before being granted.
 --- @param tool_call_id string
 function PermissionManager:remove_request_by_tool_call_id(tool_call_id)
     if self.pending[tool_call_id] then
@@ -304,12 +301,9 @@ function PermissionManager:remove_request_by_tool_call_id(tool_call_id)
     end
 end
 
---- Set focus to new_id (may be nil to clear focus). Repaints the previously
---- focused block (if still pending) and the new focused block, rotates the
---- focus keymaps (digits + cycle keys + <CR>), and jumps the cursor to the
---- new focused row. Resets focused_button_index to 1 on every block-focus
---- change.
---- @param new_id string|nil
+--- Repaints the old and new focused blocks, rotates the focus keymaps (digits, cycle
+--- keys, `<CR>`), jumps the cursor to the new row, and resets `focused_button_index`.
+--- @param new_id string|nil nil clears focus
 --- @protected
 function PermissionManager:_set_focus(new_id)
     local old_id = self.focused_id
@@ -457,25 +451,29 @@ function PermissionManager:_install_focus_keymaps(pending)
     )
 end
 
---- Find the first focusable window showing the chat buffer. The chat buffer
---- may also live in a non-focusable float (`ChatWidget._hidden_chat_winid`)
---- while the widget is hidden; cursor moves there are invisible to the user,
---- so we skip those windows.
+--- Skips the non-focusable float the chat buffer sits in while hidden
+--- (`ChatWidget._hidden_chat_winid`): cursor moves there are invisible.
+---
+--- The owner's own window is PREFERRED, not a last resort: `win_findbuf` returns
+--- tabpage order regardless of the current tab, so an unpreferred lookup scrolls a
+--- copy in an earlier tab that the session does not own. Every caller here moves the
+--- cursor or scrolls, so the misplacement is visible. Regression:
+--- `permission_manager.test.lua::"moves the cursor in the owning widget's window, not a copy in another tab"`.
 --- @return integer|nil winid
 --- @protected
 function PermissionManager:_find_visible_chat_winid()
-    for _, winid in ipairs(vim.fn.win_findbuf(self.message_writer.bufnr)) do
-        if vim.api.nvim_win_get_config(winid).focusable then
-            return winid
-        end
-    end
-    return nil
+    local bufnr = self.message_writer.bufnr
+    local owner = WidgetRegistry.get(bufnr)
+
+    return BufHelpers.find_visible_win(
+        bufnr,
+        owner and owner.win_nrs.chat or nil
+    )
 end
 
---- True when the cursor sits on the focused block's status row or on any
---- of its rendered button rows. Cycle keys and `<CR>` only fire on those
---- rows; elsewhere (including spacer rows between buttons or before status)
---- the gate falls through to default motion.
+--- True on the focused block's status row or any of its button rows. Cycle keys and
+--- `<CR>` fire only there; elsewhere (spacer rows included) the gate falls through to
+--- default motion.
 --- @return boolean
 function PermissionManager:_cursor_on_focused_row()
     if not self.focused_id then
@@ -569,10 +567,9 @@ function PermissionManager:_jump_cursor_to(tool_call_id)
     local target_row = self.message_writer:get_button_row(tool_call_id, 1)
         or end_row
 
-    -- Anchor the STATUS ROW at window bottom (matches chat auto-scroll
-    -- convention), THEN place cursor on the target button. Anchoring at the
-    -- cursor row would hide button rows + status below the cursor when
-    -- target_row is button 1.
+    -- Anchor the STATUS ROW at window bottom (chat auto-scroll convention), THEN place
+    -- the cursor on the target button. Anchoring at the cursor row would hide the button
+    -- and status rows below it when `target_row` is button 1.
     pcall(vim.api.nvim_win_set_cursor, winid, { end_row + 1, 0 })
     vim.api.nvim_win_call(winid, function()
         vim.cmd("noautocmd normal! zb")

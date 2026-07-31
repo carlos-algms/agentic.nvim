@@ -23,7 +23,8 @@ describe("Add diagnostics to session", function()
 
     local function get_session_diagnostics()
         return child.lua([[
-            local session = require("agentic.session_registry").get_session_for_tab_page()
+            local session = require("agentic.session_registry").current()
+            assert(session, "expected an existing session")
             return session.diagnostics_list:get_diagnostics()
         ]])
     end
@@ -55,8 +56,8 @@ describe("Add diagnostics to session", function()
         assert.equal(vim.diagnostic.severity.ERROR, diagnostics[1].severity)
 
         local diagnostics_winid = child.lua([[
-            local session = require("agentic.session_registry")
-                .get_session_for_tab_page()
+            local session = require("agentic.session_registry").current()
+            assert(session, "expected an existing session")
             return session.widget.win_nrs.diagnostics
         ]])
         assert.truthy(diagnostics_winid)
@@ -116,7 +117,8 @@ describe("Add diagnostics to session", function()
         assert.equal(0, #get_session_diagnostics())
 
         local is_open = child.lua([[
-            local session = require("agentic.session_registry").get_session_for_tab_page()
+            local session = require("agentic.session_registry").current()
+            assert(session, "expected an existing session")
             return session.widget:is_open()
         ]])
         assert.is_false(is_open)

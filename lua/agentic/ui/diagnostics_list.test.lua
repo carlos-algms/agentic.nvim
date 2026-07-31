@@ -1,6 +1,8 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
+local BufHelpers = require("agentic.utils.buf_helpers")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 describe("agentic.ui.DiagnosticsList", function()
     local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -13,6 +15,10 @@ describe("agentic.ui.DiagnosticsList", function()
     local diagnostics_list
     --- @type TestSpy
     local on_change_spy
+    --- @type TestStub|nil
+    local find_visible_win_stub
+    --- @type agentic.ui.ChatWidget|nil
+    local registered_widget
 
     --- @return agentic.ui.DiagnosticsList.Diagnostic
     local function create_diagnostic(overrides)
@@ -39,12 +45,21 @@ describe("agentic.ui.DiagnosticsList", function()
             col = 0,
         })
         on_change_spy = spy.new(function() end)
+        find_visible_win_stub = nil
+        registered_widget = nil
 
         diagnostics_list =
             DiagnosticsList:new(bufnr, on_change_spy --[[@as function]])
     end)
 
     after_each(function()
+        if find_visible_win_stub then
+            find_visible_win_stub:revert()
+        end
+        if registered_widget then
+            WidgetRegistry.unregister(registered_widget)
+        end
+
         if on_change_spy and on_change_spy.revert then
             on_change_spy:revert()
         end
@@ -59,6 +74,26 @@ describe("agentic.ui.DiagnosticsList", function()
     end)
 
     describe("add and get_diagnostics", function()
+        it("prefers the owning widget's diagnostics window", function()
+            local preferred_winid
+            --- @type any
+            local widget = {
+                buf_nrs = { diagnostics = bufnr },
+                win_nrs = { diagnostics = 2468 },
+            }
+            registered_widget = widget
+            WidgetRegistry.register(registered_widget)
+            find_visible_win_stub = spy.stub(BufHelpers, "find_visible_win")
+            find_visible_win_stub:invokes(function(_bufnr, preferred)
+                preferred_winid = preferred
+                return nil
+            end)
+
+            diagnostics_list:add(create_diagnostic())
+
+            assert.equal(2468, preferred_winid)
+        end)
+
         it("adds diagnostic and retrieves it", function()
             local diagnostic = create_diagnostic()
 
