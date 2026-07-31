@@ -136,7 +136,7 @@ local function open_split_view(
     vim.bo[scratch_bufnr].modifiable = false
 
     vim.schedule(function()
-        if not vim.api.nvim_win_is_valid(target_winid) then
+        if not BufHelpers.is_win_usable(target_winid) then
             return
         end
         local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"

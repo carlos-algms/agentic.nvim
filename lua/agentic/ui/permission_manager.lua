@@ -454,21 +454,35 @@ end
 --- Skips the non-focusable float the chat buffer sits in while hidden
 --- (`ChatWidget._hidden_chat_winid`): cursor moves there are invisible.
 ---
---- The owner's own window is PREFERRED, not a last resort: `win_findbuf` returns
---- tabpage order regardless of the current tab, so an unpreferred lookup scrolls a
---- copy in an earlier tab that the session does not own. Every caller here moves the
---- cursor or scrolls, so the misplacement is visible. Regression:
+--- When an owner exists, only its usable chat window is eligible. Falling back to a
+--- foreign copy while the owner is hidden scrolls a different session's placement.
+--- Ownerless buffers retain the legacy visible-window lookup. Regressions:
 --- `permission_manager.test.lua::"moves the cursor in the owning widget's window, not a copy in another tab"`.
+--- `permission_manager.test.lua::"does not use a foreign visible copy when the owning widget is hidden"`.
 --- @return integer|nil winid
 --- @protected
 function PermissionManager:_find_visible_chat_winid()
     local bufnr = self.message_writer.bufnr
     local owner = WidgetRegistry.get(bufnr)
 
-    return BufHelpers.find_visible_win(
-        bufnr,
-        owner and owner.win_nrs.chat or nil
-    )
+    if not owner then
+        return BufHelpers.find_visible_win(bufnr)
+    end
+
+    local owner_winid = owner.win_nrs.chat
+    if not owner_winid or not BufHelpers.is_win_usable(owner_winid) then
+        return nil
+    end
+    if vim.api.nvim_win_get_buf(owner_winid) ~= bufnr then
+        return nil
+    end
+
+    local config = vim.api.nvim_win_get_config(owner_winid)
+    if not config.focusable or config.hide then
+        return nil
+    end
+
+    return owner_winid
 end
 
 --- True on the focused block's status row or any of its button rows. Cycle keys and

@@ -14,6 +14,8 @@ describe("DiffSplitView", function()
     local win_call_stub
     --- @type TestStub|nil
     local close_stub
+    --- @type TestStub|nil
+    local schedule_stub
 
     --- Split state lives on the owning session's diff state, not the tabpage,
     --- so each case gets a fresh one.
@@ -46,6 +48,7 @@ describe("DiffSplitView", function()
         tab_valid_stub = nil
         win_call_stub = nil
         close_stub = nil
+        schedule_stub = nil
         read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
         stub_file_content({ "local x = 1", "print(x)", "" })
         diff_state = {}
@@ -62,6 +65,9 @@ describe("DiffSplitView", function()
         end
         if close_stub then
             close_stub:revert()
+        end
+        if schedule_stub then
+            schedule_stub:revert()
         end
         read_stub:revert()
         pcall(DiffSplitView.clear_split_diff, diff_state)
@@ -448,6 +454,39 @@ describe("DiffSplitView", function()
                     vim.bo[original_bufnr].modifiable
                 )
                 assert.equal(original_modified, vim.bo[original_bufnr].modified)
+            end
+        )
+
+        it(
+            "skips scheduled navigation when the target window's tabpage is gone",
+            function()
+                local scheduled_navigation
+                schedule_stub = spy_module.stub(vim, "schedule")
+                schedule_stub:invokes(function(callback)
+                    scheduled_navigation = callback
+                end)
+
+                setup_and_show_split()
+                local state = get_split(test_file_path)
+                assert.is_not_nil(state)
+                assert.is_not_nil(scheduled_navigation)
+                ---@cast state agentic.ui.DiffSplitView.State
+                ---@cast scheduled_navigation function
+
+                local dead_tab =
+                    vim.api.nvim_win_get_tabpage(state.original_winid)
+                local real_tab_is_valid = vim.api.nvim_tabpage_is_valid
+                tab_valid_stub =
+                    spy_module.stub(vim.api, "nvim_tabpage_is_valid")
+                tab_valid_stub:invokes(function(tabpage)
+                    return tabpage ~= dead_tab and real_tab_is_valid(tabpage)
+                end)
+                win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+
+                assert.is_true(vim.api.nvim_win_is_valid(state.original_winid))
+                scheduled_navigation()
+
+                assert.equal(0, win_call_stub.call_count)
             end
         )
 

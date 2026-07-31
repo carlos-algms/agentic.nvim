@@ -668,6 +668,31 @@ describe("agentic.ui.PermissionManager", function()
         )
 
         it(
+            "does not use a foreign visible copy when the owning widget is hidden",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                local owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = {},
+                }
+                WidgetRegistry.register(owner)
+                registered_owner = owner
+
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+                pm:_jump_cursor_to("tc-1")
+                assert.equal(1, vim.api.nvim_win_get_cursor(winid)[1])
+            end
+        )
+
+        it(
             "block focus on a block without pending permission falls back to end_row",
             function()
                 seed_block("tc-1")
