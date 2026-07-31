@@ -70,7 +70,9 @@ local function cleanup_stale_suggestion_buf(suggestion_name)
     end
 
     for _, winid in ipairs(vim.fn.win_findbuf(existing)) do
-        pcall(vim.api.nvim_win_close, winid, true)
+        if BufHelpers.is_win_usable(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
+        end
     end
 
     pcall(vim.api.nvim_buf_delete, existing, { force = true })

@@ -396,6 +396,33 @@ describe("DiffSplitView", function()
             assert.equal(orig_modifiable, vim.bo[bufnr].modifiable)
         end)
 
+        it(
+            "skips a stale-valid suggestion window whose tabpage is gone",
+            function()
+                setup_and_show_split()
+                local stale_state = get_split(test_file_path)
+                assert.is_not_nil(stale_state)
+                ---@cast stale_state agentic.ui.DiffSplitView.State
+
+                local dead_tab =
+                    vim.api.nvim_win_get_tabpage(stale_state.new_winid)
+                local real_tab_is_valid = vim.api.nvim_tabpage_is_valid
+                tab_valid_stub =
+                    spy_module.stub(vim.api, "nvim_tabpage_is_valid")
+                tab_valid_stub:invokes(function(tab)
+                    return tab ~= dead_tab and real_tab_is_valid(tab)
+                end)
+                close_stub = spy_module.stub(vim.api, "nvim_win_close")
+
+                assert.is_true(vim.api.nvim_win_is_valid(stale_state.new_winid))
+                assert.is_false(vim.api.nvim_tabpage_is_valid(dead_tab))
+                assert.has_no_errors(function()
+                    setup_and_show_split()
+                end)
+                assert.equal(0, close_stub.call_count)
+            end
+        )
+
         -- Two sessions on one path each own a `DiffState`, but the scratch
         -- buffer name derives from the path alone. The second call must not
         -- steal or invalidate the first session's split.
