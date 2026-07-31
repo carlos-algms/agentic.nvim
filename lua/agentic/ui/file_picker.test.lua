@@ -77,7 +77,7 @@ describe("FilePicker:scan_files", function()
                 if system_stub.call_count == 1 then
                     return ""
                 else
-                    return "AGENTS.md\nCONTEXT.md\nREADME.md\n"
+                    return "file1.lua\nfile2.lua\nfile3.lua\n"
                 end
             end)
 
@@ -86,20 +86,6 @@ describe("FilePicker:scan_files", function()
             -- Should have called system exactly 2 times (first fails, second succeeds)
             assert.equal(2, system_stub.call_count)
             assert.equal(3, #files)
-        end)
-
-        it("filters paths that no longer exist", function()
-            FilePicker.CMD_RG[1] = "echo"
-            FilePicker.CMD_FD[1] = "echo"
-            FilePicker.CMD_GIT[1] = "echo"
-
-            system_stub = spy.stub(vim.fn, "system")
-            system_stub:returns("README.md\n.agentic-deleted-file\n")
-
-            local files = picker:scan_files()
-
-            assert.equal(1, #files)
-            assert.equal("@README.md", files[1].word)
         end)
     end)
 

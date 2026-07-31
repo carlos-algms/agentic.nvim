@@ -103,14 +103,16 @@ function SessionRegistry.visible_here()
     return nil
 end
 
---- The live session already holding an ACP session ID, if any. An already-loaded ID
---- must be shown, not given a second manager: the client keys subscribers by session
---- ID, so the second manager steals the first's updates and permission prompts.
+--- The live session already holding an ACP session ID on this provider, if any.
 --- @param acp_session_id string
+--- @param agent agentic.acp.ACPClient
 --- @return agentic.SessionManager|nil
-function SessionRegistry.find_by_acp_session_id(acp_session_id)
+function SessionRegistry.find_by_acp_session_id(acp_session_id, agent)
     for _, session in pairs(SessionRegistry.sessions) do
-        if session:has_acp_session_id(acp_session_id) then
+        if
+            session.agent == agent
+            and session:has_acp_session_id(acp_session_id)
+        then
             return session
         end
     end

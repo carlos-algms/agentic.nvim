@@ -445,47 +445,95 @@ describe("agentic.SessionRegistry", function()
     -- the second manager steals the first one's updates.
     describe("find_by_acp_session_id", function()
         it("finds the live session holding the ACP id", function()
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local agent = {}
             local other = create_mock_session()
             local match = create_mock_session()
             other.session_key = 1
             other.session_id = "acp-other"
+            other.agent = agent
             match.session_key = 2
             match.session_id = "acp-match"
+            match.agent = agent
             SessionRegistry.sessions[1] = other
             SessionRegistry.sessions[2] = match
 
             assert.equal(
                 match,
-                SessionRegistry.find_by_acp_session_id("acp-match")
+                SessionRegistry.find_by_acp_session_id("acp-match", agent)
             )
         end)
 
         it("returns nil for an id no live session holds", function()
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local agent = {}
             local session = create_mock_session()
             session.session_key = 1
             session.session_id = "acp-1"
+            session.agent = agent
             SessionRegistry.sessions[1] = session
 
-            assert.is_nil(SessionRegistry.find_by_acp_session_id("acp-2"))
+            assert.is_nil(
+                SessionRegistry.find_by_acp_session_id("acp-2", agent)
+            )
         end)
 
         it("ignores sessions with no ACP id yet", function()
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local agent = {}
             local session = create_mock_session()
             session.session_key = 1
+            session.agent = agent
             SessionRegistry.sessions[1] = session
 
-            assert.is_nil(SessionRegistry.find_by_acp_session_id("acp-1"))
+            assert.is_nil(
+                SessionRegistry.find_by_acp_session_id("acp-1", agent)
+            )
         end)
 
         it("finds a session loading the ACP id", function()
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local agent = {}
             local session = create_mock_session()
             session.session_key = 1
             session._restoring_session_id = "acp-1"
+            session.agent = agent
             SessionRegistry.sessions[1] = session
 
             assert.equal(
                 session,
-                SessionRegistry.find_by_acp_session_id("acp-1")
+                SessionRegistry.find_by_acp_session_id("acp-1", agent)
+            )
+        end)
+
+        it("restricts the ACP id lookup to one provider client", function()
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local requested_agent = {}
+            --- @type agentic.acp.ACPClient
+            ---@diagnostic disable-next-line: missing-fields
+            local other_agent = {}
+            local wrong_provider = create_mock_session()
+            wrong_provider.session_key = 1
+            wrong_provider.session_id = "shared-id"
+            wrong_provider.agent = other_agent
+            local match = create_mock_session()
+            match.session_key = 2
+            match.session_id = "shared-id"
+            match.agent = requested_agent
+            SessionRegistry.sessions[1] = wrong_provider
+            SessionRegistry.sessions[2] = match
+
+            assert.equal(
+                match,
+                SessionRegistry.find_by_acp_session_id(
+                    "shared-id",
+                    requested_agent
+                )
             )
         end)
     end)

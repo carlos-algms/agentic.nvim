@@ -85,7 +85,10 @@ local function restore_into_new_session(
 
     -- Already loaded locally: show it. Two managers on one ACP session ID collide in the
     -- client's subscriber map, and the newer one wins every update and permission prompt.
-    local live = SessionRegistry.find_by_acp_session_id(session_id)
+    local live = SessionRegistry.find_by_acp_session_id(
+        session_id,
+        current_session.agent
+    )
     local live_key = live and live.session_key
 
     if live and live_key then
