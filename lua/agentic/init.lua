@@ -4,6 +4,7 @@ local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
 local SessionNavigation = require("agentic.session_navigation")
 local SessionRestore = require("agentic.session_restore")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Object = require("agentic.utils.object")
 local Logger = require("agentic.utils.logger")
 
@@ -246,6 +247,9 @@ local function apply_provider_switch(provider_name)
         local saved_files = session.file_list:get_files()
         local saved_selections = session.code_selection:get_selections()
         local widget_was_open = session.widget:is_open()
+        local widget_tab = widget_was_open
+                and session.widget:get_visible_tab_id()
+            or nil
         local session_key = session.session_key
         -- Captured BEFORE the destroy, while the old widget still has windows.
         local anchor_win = widget_was_open
@@ -264,26 +268,34 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        Logger.debug("apply_provider_switch: destroying old session")
-        if session_key then
-            SessionRegistry.destroy(session_key)
+        local new_key = new_session.session_key
+
+        if not new_key then
+            return
         end
 
-        Config.provider = provider_name
-
-        Logger.debug(
-            "apply_provider_switch: new_session created, session_id="
-                .. tostring(new_session.session_id)
-        )
-        for _, file_path in ipairs(saved_files) do
-            new_session.file_list:add(file_path)
-        end
-        for _, selection in ipairs(saved_selections) do
-            new_session.code_selection:add(selection)
-        end
-
-        -- Set here, not earlier: `new_session()` clears `history_to_send`.
+        -- The old session stays registered until the replacement ACP session is
+        -- ready. A subprocess-level failure must not discard the user's transcript.
         new_session:on_session_ready(function(ready_session)
+            if
+                not session_key
+                or SessionRegistry.sessions[session_key] ~= session
+            then
+                SessionRegistry.destroy(new_key)
+                return
+            end
+
+            Logger.debug("apply_provider_switch: destroying old session")
+            SessionRegistry.destroy(session_key)
+            Config.provider = provider_name
+
+            for _, file_path in ipairs(saved_files) do
+                ready_session.file_list:add(file_path)
+            end
+            for _, selection in ipairs(saved_selections) do
+                ready_session.code_selection:add(selection)
+            end
+
             Logger.debug(
                 "Replaying "
                     .. tostring(#saved_messages)
@@ -295,34 +307,52 @@ local function apply_provider_switch(provider_name)
             ready_session.history_to_send = saved_messages
 
             ready_session.message_writer:replay_history_messages(saved_messages)
-        end)
 
-        local new_key = new_session.session_key
+            if not widget_was_open then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
 
-        if not new_key then
-            return
-        end
+            -- Only the tab identity crosses the async create and teardown boundary.
+            -- Resolve a live editor window again before rebuilding the widget.
+            if
+                not widget_tab or not vim.api.nvim_tabpage_is_valid(widget_tab)
+            then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
 
-        if not widget_was_open then
-            SessionRegistry.set_most_recent(new_key)
-            return
-        end
+            local live_anchor = anchor_win
+            if
+                not live_anchor
+                or not BufHelpers.is_win_usable(live_anchor)
+                or vim.api.nvim_win_get_tabpage(live_anchor) ~= widget_tab
+            then
+                live_anchor =
+                    session.widget:find_first_non_widget_window(widget_tab)
+            end
 
-        -- `anchor_win` re-tested for LuaLS, which cannot narrow it through a boolean.
-        local anchor_is_elsewhere = anchor_win ~= nil
-            and vim.api.nvim_win_is_valid(anchor_win)
-            and vim.api.nvim_win_get_tabpage(anchor_win)
-                ~= vim.api.nvim_get_current_tabpage()
+            if not live_anchor or not BufHelpers.is_win_usable(live_anchor) then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
 
-        if not anchor_win or not anchor_is_elsewhere then
-            SessionRegistry.show_session(new_key)
-            return
-        end
+            -- `focus_prompt = false`: the focus hop is scheduled inside `show_layout`
+            -- and would drag the cursor into the anchor's tabpage.
+            vim.api.nvim_win_call(live_anchor, function()
+                SessionRegistry.show_session(new_key, { focus_prompt = false })
+            end)
+        end, function()
+            if SessionRegistry.sessions[new_key] == new_session then
+                SessionRegistry.destroy(new_key)
+            end
 
-        -- `focus_prompt = false`: the focus hop is scheduled inside `show_layout` and
-        -- would drag the cursor into the anchor's tabpage.
-        vim.api.nvim_win_call(anchor_win, function()
-            SessionRegistry.show_session(new_key, { focus_prompt = false })
+            Logger.notify(
+                "Failed to create session for provider '"
+                    .. provider_name
+                    .. "'.",
+                vim.log.levels.ERROR
+            )
         end)
     end)
 end

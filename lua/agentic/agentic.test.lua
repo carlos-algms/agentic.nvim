@@ -22,6 +22,7 @@ describe("agentic: switch_provider", function()
     local transient_stubs
     local original_provider
     local initial_tab_id
+    local deferred_create_callback
     --- @type table<integer, boolean>
     local initial_tabs
 
@@ -53,6 +54,7 @@ describe("agentic: switch_provider", function()
             initial_tabs[tabpage] = true
         end
         transient_stubs = {}
+        deferred_create_callback = nil
         logger_notify_stub = spy.stub(Logger, "notify")
 
         -- Queue callbacks so they run after synchronous code completes
@@ -83,6 +85,11 @@ describe("agentic: switch_provider", function()
 
             -- Synchronous: mini.test has no event loop to pump
             function fake_agent:create_session(_handlers, callback)
+                if agent_name == "DeferredProvider" then
+                    deferred_create_callback = callback
+                    return
+                end
+
                 callback({
                     sessionId = "test-session-" .. agent_name,
                     configOptions = nil,
@@ -225,6 +232,41 @@ describe("agentic: switch_provider", function()
         assert.equal(session, SessionRegistry.sessions[session.session_key])
         assert.spy(logger_notify_stub).was.called(1)
     end)
+
+    it(
+        "keeps the original session when replacement creation fails asynchronously",
+        function()
+            local Agentic = require("agentic")
+            local session = create_session()
+            session.session_id = "old-session-id" --[[@as string]]
+            session.chat_history:add_message({
+                type = "user",
+                text = "keep this message",
+                timestamp = os.time(),
+                provider_name = "OriginalProvider",
+            } --[[@as agentic.ui.ChatHistory.Message]])
+
+            Agentic.switch_provider({ provider = "DeferredProvider" })
+            flush_schedule()
+
+            assert.equal(session, SessionRegistry.sessions[session.session_key])
+            assert.equal(original_provider, Config.provider)
+            assert.is_not_nil(deferred_create_callback)
+
+            deferred_create_callback(nil, { message = "creation failed" })
+            flush_schedule()
+
+            assert.equal(session, SessionRegistry.sessions[session.session_key])
+            assert.equal(1, #session.chat_history.messages)
+            assert.equal(
+                "keep this message",
+                session.chat_history.messages[1].text
+            )
+            assert.equal(original_provider, Config.provider)
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            assert.spy(logger_notify_stub).was.called()
+        end
+    )
 
     it("reuses the switched session on the next open", function()
         local Agentic = require("agentic")
@@ -481,6 +523,7 @@ describe("agentic: switch_provider", function()
             local widget_tab = vim.api.nvim_get_current_tabpage()
             SessionRegistry.show_session(session.session_key)
             assert.equal(widget_tab, session.widget:get_visible_tab_id())
+            flush_schedule()
 
             vim.api.nvim_set_current_tabpage(initial_tab_id)
             local win_before = vim.api.nvim_get_current_win()
@@ -495,6 +538,76 @@ describe("agentic: switch_provider", function()
             local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
             assert.is_not_nil(replacement)
             assert.equal(widget_tab, replacement.widget:get_visible_tab_id())
+        end
+    )
+
+    it(
+        "keeps the replacement hidden when the original tab closes during teardown",
+        function()
+            local Agentic = require("agentic")
+            local session = create_session()
+            session.session_id = "old-session-id" --[[@as string]]
+
+            vim.cmd("tabnew")
+            local widget_tab = vim.api.nvim_get_current_tabpage()
+            SessionRegistry.show_session(session.session_key)
+            flush_schedule()
+            vim.api.nvim_set_current_tabpage(initial_tab_id)
+
+            local original_destroy = SessionRegistry.destroy
+            local destroy_stub = track_stub(SessionRegistry, "destroy")
+            destroy_stub:invokes(function(session_key)
+                original_destroy(session_key)
+                if vim.api.nvim_tabpage_is_valid(widget_tab) then
+                    vim.cmd(
+                        "tabclose "
+                            .. vim.api.nvim_tabpage_get_number(widget_tab)
+                    )
+                end
+            end)
+
+            Agentic.switch_provider({ provider = "TabClosedProvider" })
+            flush_schedule()
+
+            local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+            assert.is_not_nil(replacement)
+            assert.is_nil(replacement.widget:get_visible_tab_id())
+            assert.equal(initial_tab_id, vim.api.nvim_get_current_tabpage())
+        end
+    )
+
+    it(
+        "re-resolves the replacement anchor after old-session teardown",
+        function()
+            local Agentic = require("agentic")
+            local session = create_session()
+            session.session_id = "old-session-id" --[[@as string]]
+
+            vim.cmd("tabnew")
+            local widget_tab = vim.api.nvim_get_current_tabpage()
+            SessionRegistry.show_session(session.session_key)
+            flush_schedule()
+            local stale_anchor = session.widget:find_first_non_widget_window()
+            assert.is_not_nil(stale_anchor)
+            vim.api.nvim_set_current_tabpage(initial_tab_id)
+
+            local original_destroy = SessionRegistry.destroy
+            local destroy_stub = track_stub(SessionRegistry, "destroy")
+            destroy_stub:invokes(function(session_key)
+                original_destroy(session_key)
+                vim.api.nvim_win_call(stale_anchor, function()
+                    vim.cmd("new")
+                end)
+                vim.api.nvim_win_close(stale_anchor, true)
+            end)
+
+            Agentic.switch_provider({ provider = "ReanchoredProvider" })
+            flush_schedule()
+
+            local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+            assert.is_not_nil(replacement)
+            assert.equal(widget_tab, replacement.widget:get_visible_tab_id())
+            assert.equal(initial_tab_id, vim.api.nvim_get_current_tabpage())
         end
     )
 

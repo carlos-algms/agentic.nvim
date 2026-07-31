@@ -222,15 +222,18 @@ function ChatWidget:rotate_layout(layouts)
     })
 
     vim.schedule(function()
-        -- Tab-scoped: an unscoped lookup would yank the cursor into another tab.
-        local win = BufHelpers.find_visible_win(
-            previous_buf,
-            nil,
-            self:get_visible_tab_id()
-        )
-        if win then
-            vim.api.nvim_set_current_win(win)
+        local tabpage = self:get_visible_tab_id()
+        if not tabpage then
+            return
         end
+
+        -- Tab-scoped: an unscoped lookup would yank the cursor into another tab.
+        local win = BufHelpers.find_visible_win(previous_buf, nil, tabpage)
+        if not win then
+            return
+        end
+
+        vim.api.nvim_set_current_win(win)
         if previous_mode == "i" then
             vim.cmd("startinsert")
         end

@@ -1858,6 +1858,77 @@ describe(
             assert.is_true(config.focusable)
             assert.is_falsy(config.hide)
         end)
+
+        it(
+            "drops cursor restoration after the widget becomes hidden",
+            function()
+                child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+
+            _G.widget:rotate_layout({ "right", "bottom" })
+            _G.widget:hide()
+
+            vim.cmd("tabnew")
+            _G.safe_tab = vim.api.nvim_get_current_tabpage()
+            _G.safe_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(_G.safe_win, vim.api.nvim_create_buf(true, false))
+        ]])
+
+                child.flush()
+
+                assert.equal(
+                    child.lua_get("_G.safe_tab"),
+                    child.lua_get("vim.api.nvim_get_current_tabpage()")
+                )
+                assert.equal(
+                    child.lua_get("_G.safe_win"),
+                    child.lua_get("vim.api.nvim_get_current_win()")
+                )
+            end
+        )
+
+        it(
+            "does not restore insert mode without the previous window",
+            function()
+                child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+
+            _G.previous_win = _G.widget:find_first_non_widget_window()
+            _G.previous_buf = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_win_set_buf(_G.previous_win, _G.previous_buf)
+            vim.api.nvim_set_current_win(_G.previous_win)
+
+            _G.rotate_without_previous_window = function()
+                _G.widget:rotate_layout({ "right", "bottom" })
+                vim.api.nvim_win_set_buf(
+                    _G.previous_win,
+                    vim.api.nvim_create_buf(true, false)
+                )
+                _G.safe_win = vim.api.nvim_get_current_win()
+            end
+            vim.api.nvim_buf_set_keymap(
+                _G.previous_buf,
+                "i",
+                "<F5>",
+                "<Cmd>lua _G.rotate_without_previous_window()<CR>",
+                { noremap = true }
+            )
+        ]])
+
+                child.type_keys("i", "<F5>")
+                child.flush()
+
+                assert.equal("n", child.fn.mode())
+                assert.equal(
+                    child.lua_get("_G.safe_win"),
+                    child.lua_get("vim.api.nvim_get_current_win()")
+                )
+            end
+        )
     end
 )
 

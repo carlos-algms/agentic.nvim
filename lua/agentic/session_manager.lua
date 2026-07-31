@@ -35,7 +35,8 @@ local Hooks = require("agentic.utils.hooks")
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
 --- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
---- @field _session_ready_callbacks fun()[]
+--- @field _session_creation_failed boolean
+--- @field _session_ready_callbacks fun(succeeded: boolean)[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -76,6 +77,7 @@ function SessionManager:new()
         _is_restoring_session = false,
         _connection_error = false,
         _destroyed = false,
+        _session_creation_failed = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
     }, self)
@@ -221,7 +223,8 @@ end
 
 function SessionManager:_handle_connection_error()
     self._connection_error = true
-    self._session_ready_callbacks = {}
+    self._session_creation_failed = true
+    SessionManager._resolve_session_ready_callbacks(self, false)
     self.is_generating = false
     self.status_animation:stop()
     self.message_writer:write_message(
@@ -235,9 +238,30 @@ function SessionManager:_handle_connection_error()
     )
 end
 
+--- @param succeeded boolean
+function SessionManager:_resolve_session_ready_callbacks(succeeded)
+    local callbacks = self._session_ready_callbacks or {}
+    self._session_ready_callbacks = {}
+
+    if #callbacks == 0 then
+        return
+    end
+
+    vim.schedule(function()
+        if self._destroyed then
+            return
+        end
+
+        for _, callback in ipairs(callbacks) do
+            callback(succeeded)
+        end
+    end)
+end
+
 --- Fires on the next tick when the session is already ready.
 --- @param callback fun(session: agentic.SessionManager)
-function SessionManager:on_session_ready(callback)
+--- @param on_failure fun(session: agentic.SessionManager)|nil
+function SessionManager:on_session_ready(callback, on_failure)
     if self.session_id then
         Logger.debug(
             "on_session_ready: session already ready, scheduling callback immediately"
@@ -252,11 +276,26 @@ function SessionManager:on_session_ready(callback)
         return
     end
 
+    if self._connection_error or self._session_creation_failed then
+        if on_failure then
+            vim.schedule(function()
+                if not self._destroyed then
+                    on_failure(self)
+                end
+            end)
+        end
+        return
+    end
+
     Logger.debug(
         "on_session_ready: queueing callback, will fire when session ready"
     )
-    table.insert(self._session_ready_callbacks, function()
-        callback(self)
+    table.insert(self._session_ready_callbacks, function(succeeded)
+        if succeeded then
+            callback(self)
+        elseif on_failure then
+            on_failure(self)
+        end
     end)
 end
 
@@ -737,6 +776,7 @@ function SessionManager:new_session(opts)
     opts = opts or {}
     local restore_mode = opts.restore_mode or false
     local on_created = opts.on_created
+    self._session_creation_failed = false
     if not restore_mode then
         self:_cancel_session()
     end
@@ -801,6 +841,8 @@ function SessionManager:new_session(opts)
         if err or not response then
             -- Already logged in `create_session`.
             self.session_id = nil
+            self._session_creation_failed = true
+            SessionManager._resolve_session_ready_callbacks(self, false)
             return
         end
 
@@ -878,10 +920,7 @@ function SessionManager:new_session(opts)
                         .. " session ready callbacks"
                 )
             end
-            for _, cb in ipairs(self._session_ready_callbacks) do
-                cb()
-            end
-            self._session_ready_callbacks = {}
+            SessionManager._resolve_session_ready_callbacks(self, true)
         end)
     end)
 end

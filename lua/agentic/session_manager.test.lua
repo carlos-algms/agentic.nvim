@@ -329,6 +329,8 @@ describe("agentic.SessionManager", function()
         local health_check_stub
         local agent_state
         local invoke_agent_callback
+        local create_response
+        local create_error
 
         --- @type fun()[]
         local schedule_queue = {}
@@ -355,6 +357,13 @@ describe("agentic.SessionManager", function()
             health_check_stub:returns(true)
             agent_state = "ready"
             invoke_agent_callback = true
+            create_response = {
+                sessionId = "test-session",
+                configOptions = nil,
+                modes = nil,
+                models = nil,
+            }
+            create_error = nil
             get_instance_stub = spy.stub(AgentInstance, "get_instance")
             get_instance_stub:invokes(function(provider_name, callback)
                 --- @type agentic.acp.ACPClient
@@ -367,12 +376,7 @@ describe("agentic.SessionManager", function()
                 }
                 fake.agent_info = {}
                 function fake:create_session(_h, cb)
-                    cb({
-                        sessionId = "test-session",
-                        configOptions = nil,
-                        modes = nil,
-                        models = nil,
-                    })
+                    cb(create_response, create_error)
                 end
                 function fake:cancel_session() end
                 if callback and invoke_agent_callback then
@@ -427,6 +431,21 @@ describe("agentic.SessionManager", function()
 
             assert.is_false(callback_called)
             assert.equal(1, #session._session_ready_callbacks)
+        end)
+
+        it("fires the failure callback when session creation fails", function()
+            create_response = nil
+            create_error = { message = "creation failed" }
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local ready_spy = spy.new(function() end)
+            local failure_spy = spy.new(function() end)
+
+            session:on_session_ready(ready_spy, failure_spy)
+            flush_schedule()
+
+            assert.spy(ready_spy).was.called(0)
+            assert.spy(failure_spy).was.called_with(session)
+            assert.equal(0, #session._session_ready_callbacks)
         end)
 
         it("ignores a cached-client error callback after destroy", function()
