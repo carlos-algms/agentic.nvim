@@ -59,6 +59,37 @@ acp_providers = {
 }
 ```
 
+## A request handler MUST always answer; a notification handler need not
+
+`ACPClient:_handle_notification` dispatches two shapes of inbound JSON-RPC
+message, and they carry opposite obligations:
+
+- A **notification** (`session/update`) has no `id`. Nothing is waiting on it, so
+  dropping it when the subscriber is gone is correct.
+- A **request** (`session/request_permission`) has an `id`. The provider blocks
+  until that `id` is answered, and the subprocess is **shared across every
+  session** (ADR 0004), so one unanswered request hangs the agent for all of them.
+  Every exit path owes a `__send_result`.
+
+`ACPClient:__with_subscriber` therefore takes an `on_missing` callback:
+
+```lua
+--- @param on_missing fun()|nil Runs when no subscriber answers
+function ACPClient:__with_subscriber(session_id, callback, on_missing)
+```
+
+It fires on **both** misses — the synchronous one (no subscriber when the message
+arrives) and the deferred one (the subscriber was dropped while the `vim.schedule`
+body sat in the queue). The subscriber is re-resolved **inside** the schedule for
+exactly that reason; `cancel_session` nils it mid-flight.
+
+Only `__handle_request_permission` passes `on_missing`, answering
+`{ outcome = "cancelled" }`. The three notification call sites pass nothing and
+keep returning silently.
+
+Regression:
+`lua/agentic/acp/acp_client.test.lua::"answers cancelled when the subscriber is gone"`.
+
 ## Protocol flow details
 
 The full event pipeline, ACPClient lifecycle, stdio framing, sync/async

@@ -24,6 +24,11 @@ describe("ACPClient", function()
 
     local mock_transport
 
+    --- Reverted in `after_each`: an assertion throwing mid-test must not leave
+    --- `vim.schedule` stubbed for every later file.
+    --- @type TestStub|nil
+    local schedule_stub
+
     --- @type fun(state: agentic.acp.ClientConnectionState)|nil
     local captured_on_state_change
 
@@ -119,6 +124,39 @@ describe("ACPClient", function()
         end)
     end
 
+    --- Queues `vim.schedule` callbacks so a test can drop the subscriber
+    --- between scheduling and running, as `cancel_session` does when a session
+    --- is destroyed mid-stream. The stub is reverted in `after_each`.
+    --- @return fun()[] queue
+    local function queue_schedules()
+        --- @type fun()[]
+        local queue = {}
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(fn)
+            queue[#queue + 1] = fn
+        end)
+
+        return queue
+    end
+
+    --- @param queue fun()[]
+    local function drain(queue)
+        for _, fn in ipairs(queue) do
+            fn()
+        end
+    end
+
+    --- @return table[] sent decoded JSON-RPC frames
+    local function capture_sent()
+        --- @type table[]
+        local sent = {}
+        transport_send_stub:invokes(function(_self, data)
+            sent[#sent + 1] = vim.json.decode(data)
+        end)
+
+        return sent
+    end
+
     before_each(function()
         package.loaded["agentic.acp.acp_client"] = nil
         package.loaded["agentic.acp.acp_transport"] = nil
@@ -147,6 +185,11 @@ describe("ACPClient", function()
     end)
 
     after_each(function()
+        if schedule_stub then
+            schedule_stub:revert()
+            schedule_stub = nil
+        end
+
         logger_debug_stub:revert()
         logger_debug_to_file_stub:revert()
         logger_notify_stub:revert()
@@ -501,6 +544,304 @@ describe("ACPClient", function()
 
             -- callbacks table should be empty after drain
             assert.equal(0, vim.tbl_count(client.callbacks))
+        end)
+    end)
+
+    describe("__with_subscriber", function()
+        it("delivers to a subscriber that is still registered", function()
+            local client = create_ready_client()
+            local queue = queue_schedules()
+            local received = spy.new(function() end)
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            --- @diagnostic disable-next-line: invisible
+            client:__with_subscriber("s1", function(sub)
+                received(sub)
+            end)
+
+            drain(queue)
+
+            assert.spy(received).was.called(1)
+            assert.equal(NOOP_HANDLERS, received.calls[1][1])
+        end)
+
+        it("skips a subscriber dropped before the callback runs", function()
+            local client = create_ready_client()
+            local queue = queue_schedules()
+            local received = spy.new(function() end)
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            --- @diagnostic disable-next-line: invisible
+            client:__with_subscriber("s1", function(sub)
+                received(sub)
+            end)
+
+            -- `cancel_session` drops the subscriber while the update is queued
+            client.subscribers["s1"] = nil
+
+            drain(queue)
+
+            assert.spy(received).was.called(0)
+        end)
+
+        it("logs when a subscriber replaces an existing one", function()
+            local client = create_ready_client()
+
+            --- @type agentic.acp.ClientHandlers
+            local replacement = {
+                on_session_update = function() end,
+                on_request_permission = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+            }
+
+            logger_debug_stub:reset()
+
+            --- @diagnostic disable-next-line: invisible
+            client:_subscribe("s1", NOOP_HANDLERS)
+            assert.spy(logger_debug_stub).was.called(0)
+
+            --- @diagnostic disable-next-line: invisible
+            client:_subscribe("s1", replacement)
+
+            assert.spy(logger_debug_stub).was.called(1)
+            assert.truthy(
+                logger_debug_stub.calls[1][1]:match(
+                    "Replacing existing subscriber"
+                )
+            )
+
+            -- Re-subscribing the SAME handlers is a no-op, not a collision
+            --- @diagnostic disable-next-line: invisible
+            client:_subscribe("s1", replacement)
+            assert.spy(logger_debug_stub).was.called(1)
+        end)
+    end)
+
+    describe("__handle_request_permission", function()
+        local REQUEST = {
+            sessionId = "s1",
+            toolCall = { toolCallId = "tc-1", kind = "edit" },
+            options = {
+                {
+                    optionId = "allow_once",
+                    name = "Allow",
+                    kind = "allow_once",
+                },
+            },
+        }
+
+        -- `on_missing` EARLY return, distinct from the deferred drop below: no
+        -- subscriber when the request arrives, so `__with_subscriber` never
+        -- schedules. Unanswered, the JSON-RPC request hangs the subprocess every
+        -- other session shares.
+        it(
+            "answers cancelled when no subscriber was ever registered",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue = queue_schedules()
+
+                assert.is_nil(client.subscribers["s1"])
+
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(13, REQUEST)
+
+                -- Answered synchronously: nothing was queued to drain.
+                assert.equal(0, #queue)
+
+                assert.equal(1, #sent)
+                assert.equal(13, sent[1].id)
+                assert.same(
+                    { outcome = { outcome = "cancelled" } },
+                    sent[1].result
+                )
+            end
+        )
+
+        it("answers cancelled when the subscriber is gone", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            client.subscribers["s1"] = NOOP_HANDLERS
+            --- @diagnostic disable-next-line: invisible
+            client:__handle_request_permission(7, REQUEST)
+
+            -- `cancel_session` drops the subscriber while the request is queued.
+            -- A response is still owed: the subprocess is shared across every
+            -- session.
+            client.subscribers["s1"] = nil
+
+            drain(queue)
+
+            assert.equal(1, #sent)
+            assert.equal(7, sent[1].id)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
+        it(
+            "answers cancelled when the handler resolves with no option",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue = queue_schedules()
+
+                --- @type agentic.acp.ClientHandlers
+                local handlers = {
+                    on_session_update = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                    -- `PermissionManager:clear` resolves pending requests with a
+                    -- nil option on teardown.
+                    on_request_permission = function(_request, callback)
+                        callback(nil)
+                    end,
+                }
+
+                client.subscribers["s1"] = handlers
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(9, REQUEST)
+
+                drain(queue)
+
+                assert.equal(1, #sent)
+                assert.same(
+                    { outcome = { outcome = "cancelled" } },
+                    sent[1].result
+                )
+            end
+        )
+
+        -- A malformed request still carries a JSON-RPC `id`. Throwing left it
+        -- unanswered AND threw through the transport read loop, hanging the
+        -- subprocess every other session shares.
+        it("answers cancelled when the request is invalid", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            -- `pcall` result is asserted: a handler that answers cancelled and
+            -- THEN throws still breaks the caller, so the throw must fail the
+            -- test loudly with its message rather than be swallowed.
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible, missing-fields
+                client:__handle_request_permission(15, { sessionId = "s1" })
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            -- Answered synchronously: no subscriber lookup happens at all.
+            assert.equal(0, #queue)
+
+            assert.equal(1, #sent)
+            assert.equal(15, sent[1].id)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
+        -- `_handle_message` dispatches on `method` alone and forwards
+        -- `message.params` unchecked, so a frame with no `params` reaches the
+        -- handler with a nil request. Indexing it threw through the transport
+        -- read loop and left the `id` unanswered.
+        it("answers cancelled when the request payload is missing", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            -- `pcall` result is asserted: a handler that answers cancelled and
+            -- THEN throws still breaks the caller, so the throw must fail the
+            -- test loudly with its message rather than be swallowed.
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(17, nil)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            -- Answered synchronously: no subscriber lookup happens at all.
+            assert.equal(0, #queue)
+
+            assert.equal(1, #sent)
+            assert.equal(17, sent[1].id)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+        end)
+
+        -- A truthy non-table `toolCall` passes a `not request.toolCall` guard.
+        -- `__build_tool_call_message` then indexes it inside the scheduled
+        -- subscriber dispatch: a number throws ("attempt to index a number
+        -- value"), leaving the JSON-RPC `id` unanswered. A string would only
+        -- yield a junk-but-harmless message, so the number is the shape that
+        -- genuinely fails.
+        it("answers cancelled when the tool call is malformed", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            local asked = spy.new(function() end)
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(request, callback)
+                    asked(request, callback)
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            --- @type agentic.acp.RequestPermission
+            --- @diagnostic disable-next-line: assign-type-mismatch, missing-fields
+            local malformed = { sessionId = "s1", toolCall = 42 }
+
+            -- `vim.schedule` is stubbed, so a throw from the scheduled body
+            -- escapes into `drain` instead of dying on the (real) event loop.
+            -- Captured here so the payload assertions below report the failure.
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(19, malformed)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 19)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.equal(asked.call_count, 0)
+        end)
+
+        it("answers selected when the user picks an option", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(_request, callback)
+                    callback("allow_once")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+            --- @diagnostic disable-next-line: invisible
+            client:__handle_request_permission(11, REQUEST)
+
+            drain(queue)
+
+            assert.equal(1, #sent)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "allow_once" },
+            }, sent[1].result)
         end)
     end)
 
