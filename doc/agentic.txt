@@ -646,6 +646,10 @@ Override default keybindings via the `keymaps` config option:
   }
 <
 
+The `widget`, `prompt`, `chat`, `diff_preview`, and `permission` sections are
+independently overridable. Each section is partial: specify only the bindings
+to change, and omitted bindings keep their defaults.
+
 The per-block permission keys (`h`, `l`, `j`, `k`, `<Left>`, `<Right>`,
 `<Up>`, `<Down>`, `<CR>`, `1`..`4`) are fixed and not configurable. Only
 `cycle_next` / `cycle_prev` can be remapped via `keymaps.permission`.

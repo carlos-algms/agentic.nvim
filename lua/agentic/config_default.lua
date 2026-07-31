@@ -70,6 +70,19 @@
 
 --- @alias agentic.UserConfig.KeymapValue string | string[] | (string | agentic.UserConfig.KeymapEntry)[]
 
+--- @class agentic.UserConfig.Keymaps.Widget
+--- @field close agentic.UserConfig.KeymapValue Close the widget
+--- @field change_mode agentic.UserConfig.KeymapValue Cycle the agent session mode
+--- @field switch_provider agentic.UserConfig.KeymapValue Open the provider switcher
+--- @field switch_model agentic.UserConfig.KeymapValue Open the model switcher
+--- @field change_thought_level agentic.UserConfig.KeymapValue Open the thought-level switcher
+--- @field open_options agentic.UserConfig.KeymapValue Open the agent config options modal
+
+--- @class agentic.UserConfig.Keymaps.Prompt
+--- @field submit agentic.UserConfig.KeymapValue Submit the prompt
+--- @field paste_image agentic.UserConfig.KeymapValue Paste an image from the clipboard
+--- @field accept_completion agentic.UserConfig.KeymapValue Accept the current completion item
+
 --- @class agentic.UserConfig.Keymaps.Permission
 --- @field cycle_next agentic.UserConfig.KeymapValue Focus next pending permission block
 --- @field cycle_prev agentic.UserConfig.KeymapValue Focus previous pending permission block
@@ -80,11 +93,15 @@
 --- @field next_tool_call agentic.UserConfig.KeymapValue Jump to next tool call
 --- @field prev_tool_call agentic.UserConfig.KeymapValue Jump to previous tool call
 
+--- @class agentic.UserConfig.Keymaps.DiffPreview
+--- @field next_hunk string Jump to next hunk
+--- @field prev_hunk string Jump to previous hunk
+
 --- @class agentic.UserConfig.Keymaps
---- @field widget table<string, agentic.UserConfig.KeymapValue>
---- @field prompt table<string, agentic.UserConfig.KeymapValue>
+--- @field widget agentic.UserConfig.Keymaps.Widget
+--- @field prompt agentic.UserConfig.Keymaps.Prompt
 --- @field chat agentic.UserConfig.Keymaps.Chat
---- @field diff_preview table<string, string>
+--- @field diff_preview agentic.UserConfig.Keymaps.DiffPreview
 --- @field permission agentic.UserConfig.Keymaps.Permission
 
 --- Window options passed to nvim_set_option_value
@@ -234,7 +251,11 @@
 --- @class (partial) agentic.PartialUserConfig.Windows.Files: agentic.UserConfig.Windows.Files
 --- @class (partial) agentic.PartialUserConfig.Windows.Diagnostics: agentic.UserConfig.Windows.Diagnostics
 --- @class (partial) agentic.PartialUserConfig.Windows.Todos: agentic.UserConfig.Windows.Todos
---- @class (partial) agentic.PartialUserConfig.Keymaps: agentic.UserConfig.Keymaps
+--- @class (partial) agentic.PartialUserConfig.Keymaps.Widget: agentic.UserConfig.Keymaps.Widget
+--- @class (partial) agentic.PartialUserConfig.Keymaps.Prompt: agentic.UserConfig.Keymaps.Prompt
+--- @class (partial) agentic.PartialUserConfig.Keymaps.Chat: agentic.UserConfig.Keymaps.Chat
+--- @class (partial) agentic.PartialUserConfig.Keymaps.DiffPreview: agentic.UserConfig.Keymaps.DiffPreview
+--- @class (partial) agentic.PartialUserConfig.Keymaps.Permission: agentic.UserConfig.Keymaps.Permission
 --- @class (partial) agentic.PartialUserConfig.SpinnerChars: agentic.UserConfig.SpinnerChars
 --- @class (partial) agentic.PartialUserConfig.StatusIcons: agentic.UserConfig.StatusIcons
 --- @class (partial) agentic.PartialUserConfig.DiagnosticIcons: agentic.UserConfig.DiagnosticIcons
@@ -259,6 +280,13 @@
 --- @field files? agentic.PartialUserConfig.Windows.Files
 --- @field diagnostics? agentic.PartialUserConfig.Windows.Diagnostics
 --- @field todos? agentic.PartialUserConfig.Windows.Todos
+
+--- @class (partial) agentic.PartialUserConfig.Keymaps: agentic.UserConfig.Keymaps
+--- @field widget? agentic.PartialUserConfig.Keymaps.Widget
+--- @field prompt? agentic.PartialUserConfig.Keymaps.Prompt
+--- @field chat? agentic.PartialUserConfig.Keymaps.Chat
+--- @field diff_preview? agentic.PartialUserConfig.Keymaps.DiffPreview
+--- @field permission? agentic.PartialUserConfig.Keymaps.Permission
 
 --- Folding partial with nested type overrides
 --- @class (partial) agentic.PartialUserConfig.Folding: agentic.UserConfig.Folding
