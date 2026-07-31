@@ -711,6 +711,8 @@ describe("agentic.SessionManager", function()
 
         it("keeps a restored title while consuming history", function()
             local session = make_session()
+            --- @type agentic.acp.Content[]|nil
+            local submitted_prompt
             session.chat_history.title = "restored title"
             session.history_to_send = {
                 {
@@ -720,11 +722,25 @@ describe("agentic.SessionManager", function()
                     provider_name = "P",
                 },
             }
+            session.agent.send_prompt = function(
+                _self,
+                _session_id,
+                prompt,
+                callback
+            )
+                submitted_prompt = prompt
+                callback(nil, nil)
+            end
 
             submit(session, "new question")
 
             assert.equal("restored title", session.chat_history.title)
             assert.is_nil(session.history_to_send)
+            assert.is_not_nil(submitted_prompt)
+            --- @type agentic.acp.Content[]
+            local prompt = submitted_prompt or {}
+            assert.equal("User: old msg", prompt[1].text)
+            assert.equal("new question", prompt[2].text)
         end)
     end)
 
