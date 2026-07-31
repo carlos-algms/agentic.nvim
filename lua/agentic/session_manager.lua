@@ -1045,10 +1045,10 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             -- the request, which would otherwise pin this dead manager's handlers.
             if self._destroyed then
                 if self._restoring_session_id == session_id then
+                    if not err then
+                        self.agent:cancel_session(session_id)
+                    end
                     self._restoring_session_id = nil
-                end
-                if not err then
-                    self.agent:cancel_session(session_id)
                 end
 
                 return
