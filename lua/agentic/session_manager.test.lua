@@ -2675,6 +2675,7 @@ describe("agentic.SessionManager", function()
                 message_writer = {
                     write_message = function() end,
                     write_finish_message = function() end,
+                    destroy = function() end,
                 },
                 status_animation = {
                     start = function() end,
@@ -2684,6 +2685,7 @@ describe("agentic.SessionManager", function()
                     get_visible_tab_id = function()
                         return widget_tab
                     end,
+                    destroy = function() end,
                 },
                 agent = {
                     provider_config = { name = "TestProvider" },
@@ -2694,6 +2696,8 @@ describe("agentic.SessionManager", function()
                 can_submit_prompt = function()
                     return true
                 end,
+                _cancel_session = function() end,
+                destroy = SessionManager.destroy,
                 _handle_input_submit = SessionManager._handle_input_submit,
             } --[[@as agentic.SessionManager]]
         end
@@ -2752,6 +2756,32 @@ describe("agentic.SessionManager", function()
             local data = complete_response()
             assert.equal(22, data.tab_page_id)
             assert.equal(7, data.session_key)
+        end)
+
+        it("drops queued response completion after destroy", function()
+            local finish_spy = spy.new(function() end)
+            local stop_spy = spy.new(function() end)
+            local hook_spy = spy.new(function() end)
+            Config.hooks = Config.hooks or {}
+            Config.hooks.on_response_complete = function(data)
+                hook_spy(data)
+            end
+
+            local session = make_session()
+            session.message_writer.write_finish_message = finish_spy
+            session.status_animation.stop = stop_spy
+            session:_handle_input_submit("hello")
+
+            assert.is_not_nil(send_prompt_callback)
+            --- @diagnostic disable-next-line: need-check-nil
+            send_prompt_callback(nil, nil)
+            session:destroy()
+            flush_schedule()
+
+            assert.spy(finish_spy).was.called(0)
+            assert.spy(stop_spy).was.called(0)
+            assert.spy(hook_spy).was.called(0)
+            assert.is_true(session.is_generating)
         end)
 
         it("titles the session from the first prompt only", function()

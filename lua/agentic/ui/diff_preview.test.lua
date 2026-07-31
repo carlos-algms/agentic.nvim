@@ -32,6 +32,18 @@ local function has_buffer_keymap(bufnr, lhs)
 end
 
 describe("diff_preview", function()
+    --- @type integer
+    local outer_baseline_bufnr
+
+    before_each(function()
+        outer_baseline_bufnr = vim.api.nvim_create_buf(false, true)
+    end)
+
+    after_each(function()
+        assert.is_true(vim.api.nvim_buf_is_valid(outer_baseline_bufnr))
+        vim.api.nvim_buf_delete(outer_baseline_bufnr, { force = true })
+    end)
+
     describe("show_diff", function()
         local read_stub
         local get_winid_spy
@@ -40,6 +52,8 @@ describe("diff_preview", function()
         local orig_layout
         --- @type table<integer, true>
         local base_tabs
+        --- @type table<integer, true>
+        local base_bufs
 
         --- @type integer|nil
         local initial_bufnr
@@ -49,6 +63,10 @@ describe("diff_preview", function()
             base_tabs = {}
             for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
                 base_tabs[tab] = true
+            end
+            base_bufs = {}
+            for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+                base_bufs[bufnr] = true
             end
             read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
             read_stub:invokes(function()
@@ -73,7 +91,7 @@ describe("diff_preview", function()
 
             for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
                 if
-                    bufnr ~= initial_bufnr and vim.api.nvim_buf_is_valid(bufnr)
+                    not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr)
                 then
                     pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
                 end

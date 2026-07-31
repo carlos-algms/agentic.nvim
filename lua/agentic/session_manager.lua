@@ -604,7 +604,7 @@ function SessionManager:_handle_input_submit(input_text)
 
     self.agent:send_prompt(self.session_id, prompt, function(response, err)
         vim.schedule(function()
-            if self.session_id ~= session_id then
+            if self._destroyed or self.session_id ~= session_id then
                 return
             end
 
