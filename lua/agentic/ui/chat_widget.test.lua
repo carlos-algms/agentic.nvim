@@ -1891,6 +1891,56 @@ describe("agentic.ui.ChatWidget WinClosed deferred hide (child)", function()
             child.lua_get("#vim.api.nvim_tabpage_list_wins(_G.widget_tab) > 0")
         )
     end)
+
+    it(
+        "keeps replacement windows after closing a cached cross-tab window",
+        function()
+            child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            _G.widget_tab = _G.widget:get_visible_tab_id()
+
+            vim.cmd("tabnew")
+            _G.stale_input = vim.api.nvim_open_win(
+                _G.widget.buf_nrs.input,
+                false,
+                { split = "right", win = -1 }
+            )
+            _G.widget.win_nrs.input = _G.stale_input
+
+            _G.widget:show({ focus_prompt = false })
+            _G.replacement_chat = _G.widget.win_nrs.chat
+            _G.replacement_input = _G.widget.win_nrs.input
+        ]])
+
+            child.flush()
+
+            assert.is_false(
+                child.lua_get("vim.api.nvim_win_is_valid(_G.stale_input)")
+            )
+            assert.equal(
+                child.lua_get("_G.replacement_chat"),
+                child.lua_get("_G.widget.win_nrs.chat")
+            )
+            assert.equal(
+                child.lua_get("_G.replacement_input"),
+                child.lua_get("_G.widget.win_nrs.input")
+            )
+            assert.is_true(
+                child.lua_get("vim.api.nvim_win_is_valid(_G.replacement_chat)")
+            )
+            assert.is_true(
+                child.lua_get("vim.api.nvim_win_is_valid(_G.replacement_input)")
+            )
+            assert.equal(
+                child.lua_get("_G.widget_tab"),
+                child.lua_get(
+                    "vim.api.nvim_win_get_tabpage(_G.replacement_chat)"
+                )
+            )
+        end
+    )
 end)
 
 describe("agentic.ui.ChatWidget WinClosed size memory (child)", function()

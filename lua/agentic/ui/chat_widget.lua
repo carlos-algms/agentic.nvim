@@ -126,6 +126,9 @@ function ChatWidget:show(opts)
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
         size = self._size,
+        with_programmatic_close = function(fn)
+            self:_avoid_auto_close_cmd(fn)
+        end,
     }
 
     local visible_tab = self:get_visible_tab_id()

@@ -12,6 +12,7 @@ local Logger = require("agentic.utils.logger")
 --- @field focus_prompt? boolean
 --- @field position agentic.UserConfig.Windows.Position
 --- @field size? agentic.ui.ChatWidget.Size Overrides the configured size on this layout's axis
+--- @field with_programmatic_close? fun(fn: fun())
 
 --- @class agentic.ui.WidgetLayout
 local WidgetLayout = {}
@@ -169,18 +170,39 @@ local function is_in_current_tabpage(winid)
         == vim.api.nvim_get_current_tabpage()
 end
 
+--- @param winid integer|nil
+--- @param with_programmatic_close fun(fn: fun())|nil
+local function close_layout_window(winid, with_programmatic_close)
+    if not BufHelpers.is_win_usable(winid) then
+        return
+    end
+
+    ---@cast winid integer
+    local function close()
+        vim.api.nvim_win_close(winid, true)
+    end
+
+    if with_programmatic_close then
+        with_programmatic_close(close)
+    else
+        pcall(close)
+    end
+end
+
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
 --- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
+--- @param with_programmatic_close fun(fn: fun())|nil
 --- @return integer
 local function get_or_create_window(
     win_nrs,
     panel_name,
     bufnr,
     open_opts,
-    win_opts
+    win_opts,
+    with_programmatic_close
 )
     local cached_winid = win_nrs[panel_name]
     if is_in_current_tabpage(cached_winid) then
@@ -191,10 +213,7 @@ local function get_or_create_window(
     -- A stale handle from another tab would otherwise be left untracked once
     -- `win_nrs` is repointed, showing a second copy of the widget in the tab
     -- the user left.
-    if BufHelpers.is_win_usable(cached_winid) then
-        ---@cast cached_winid integer
-        pcall(vim.api.nvim_win_close, cached_winid, true)
-    end
+    close_layout_window(cached_winid, with_programmatic_close)
 
     local new_winid =
         open_win(bufnr, false, open_opts, panel_name, win_opts or {})
@@ -209,22 +228,21 @@ end
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
+--- @param with_programmatic_close fun(fn: fun())|nil
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
     window_name,
     open_win_opts,
     max_height,
-    position
+    position,
+    with_programmatic_close
 )
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
 
     if BufHelpers.is_buffer_empty(bufnr) then
-        if BufHelpers.is_win_usable(winid) then
-            ---@cast winid integer
-            pcall(vim.api.nvim_win_close, winid, true)
-        end
+        close_layout_window(winid, with_programmatic_close)
         win_nrs[window_name] = nil
         return
     end
@@ -232,10 +250,7 @@ local function open_or_resize_dynamic_window(
     if not is_in_current_tabpage(winid) then
         -- A stale handle from another tab would otherwise be left untracked
         -- once `win_nrs` is repointed at the new window.
-        if BufHelpers.is_win_usable(winid) then
-            ---@cast winid integer
-            pcall(vim.api.nvim_win_close, winid, true)
-        end
+        close_layout_window(winid, with_programmatic_close)
 
         -- Opened at min height so wrapped rows can be measured against the real
         -- window width, then resized; a buffer-line count understates wraps.
@@ -244,6 +259,7 @@ local function open_or_resize_dynamic_window(
         win_nrs[window_name] = winid
     end
 
+    ---@cast winid integer
     local height = calculate_dynamic_height(winid, bufnr, max_height, position)
     vim.api.nvim_win_set_config(winid, { height = height })
 
@@ -256,6 +272,7 @@ local function show_layout(params, position)
     local is_bottom = position == "bottom"
     local win_nrs = params.win_nrs
     local buf_nrs = params.buf_nrs
+    local with_close = params.with_programmatic_close
     local should_focus = params.focus_prompt == nil
         or params.focus_prompt == true
 
@@ -284,7 +301,7 @@ local function show_layout(params, position)
         winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
-    })
+    }, with_close)
 
     Fold.setup_window(win_nrs.chat, buf_nrs.chat)
 
@@ -303,12 +320,12 @@ local function show_layout(params, position)
 
     get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
         winfixheight = not is_bottom,
-    })
+    }, with_close)
 
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
         win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
-    }, Config.windows.code.max_height, position)
+    }, Config.windows.code.max_height, position, with_close)
 
     local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -316,7 +333,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.files.max_height, position)
+    }, Config.windows.files.max_height, position, with_close)
 
     ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -324,7 +341,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.diagnostics.max_height, position)
+    }, Config.windows.diagnostics.max_height, position, with_close)
 
     if Config.windows.todos.display then
         ref_win = is_bottom
@@ -334,7 +351,7 @@ local function show_layout(params, position)
         open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
             win = ref_win,
             split = "below",
-        }, Config.windows.todos.max_height, position)
+        }, Config.windows.todos.max_height, position, with_close)
     end
 
     if should_focus then
