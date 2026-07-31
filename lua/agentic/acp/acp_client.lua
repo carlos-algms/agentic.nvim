@@ -541,8 +541,19 @@ end
 --- @param message_id number
 --- @param request agentic.acp.RequestPermission|nil
 function ACPClient:__handle_request_permission(message_id, request)
+    local answered = false
+
+    --- Idempotent: the dispatch guard cancels on a throw that may land after
+    --- the subscriber already answered, and two results on one `id` is a
+    --- protocol violation.
     --- @param option_id string|nil nil is a cancellation, not a selection
     local function answer(option_id)
+        if answered then
+            return
+        end
+
+        answered = true
+
         --- @type agentic.acp.RequestPermissionOutcome
         local outcome = option_id
                 and { outcome = "selected", optionId = option_id }
@@ -558,17 +569,10 @@ function ACPClient:__handle_request_permission(message_id, request)
         or type(request.sessionId) ~= "string"
         or type(request.toolCall) ~= "table"
     then
-        -- The `id` is owed an answer even when the payload is unusable, and
-        -- `error()` here would throw through the transport read loop. A frame
-        -- with no `params` arrives here as a nil request, so the type check
-        -- must come before any indexing.
-        -- The nested checks are by TYPE, not truthiness: `sessionId` indexes
-        -- `self.subscribers`, so a non-string silently matches no subscriber,
-        -- and a truthy non-table `toolCall` throws inside the scheduled
-        -- `__build_tool_call_message`, leaving the `id` unanswered.
-        -- Regression: acp_client.test.lua::"answers cancelled when the request is invalid"
-        -- Regression: acp_client.test.lua::"answers cancelled when the request payload is missing"
-        -- Regression: acp_client.test.lua::"answers cancelled when the tool call is malformed"
+        -- Checked by TYPE, not truthiness: a non-string `sessionId` silently
+        -- matches no subscriber, and a truthy non-table `toolCall` throws
+        -- inside the scheduled `__build_tool_call_message`. Either way the
+        -- `id` is owed an answer.
         Logger.notify(
             "Invalid session/request_permission: " .. vim.inspect(request)
         )
@@ -580,13 +584,30 @@ function ACPClient:__handle_request_permission(message_id, request)
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
-        local message = self:__build_tool_call_message(request.toolCall)
-        subscriber.on_tool_call_update(message)
+        -- The type guard above only covers the payload's top level; nested
+        -- shapes and both subscriber callbacks can still throw in here.
+        -- `vim.schedule` swallows that throw, so the read loop survives while
+        -- the shared subprocess waits on the `id` forever. See
+        -- `lua/agentic/acp/AGENTS.md`.
+        local ok, err = pcall(function()
+            local message = self:__build_tool_call_message(request.toolCall)
+            subscriber.on_tool_call_update(message)
 
-        subscriber.on_request_permission(request, answer)
+            subscriber.on_request_permission(request, answer)
+        end)
+
+        if not ok then
+            -- Always notified: a silent cancel hides a genuine UI bug behind a
+            -- permission prompt that merely "didn't appear".
+            Logger.notify(
+                "Failed to dispatch session/request_permission: "
+                    .. tostring(err)
+            )
+            -- No-op when the subscriber already answered before throwing.
+            answer(nil)
+        end
     end, function()
         -- The request is still outstanding on the shared provider subprocess.
-        -- Regression: acp_client.test.lua::"answers cancelled when the subscriber is gone"
         answer(nil)
     end)
 end

@@ -843,6 +843,476 @@ describe("ACPClient", function()
                 outcome = { outcome = "selected", optionId = "allow_once" },
             }, sent[1].result)
         end)
+
+        -- The subprocess is shared across every session, so a stranded `id`
+        -- hangs all of them, not just this one.
+        it("answers cancelled when on_request_permission throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function()
+                    error("boom in on_request_permission")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(21, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 21)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:match(
+                    "boom in on_request_permission"
+                )
+            )
+        end)
+
+        -- The permission flow renders the tool call before prompting, so a
+        -- throw in `on_tool_call_update` aborts the dispatch before
+        -- `on_request_permission` is ever reached.
+        it("answers cancelled when on_tool_call_update throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            local asked = spy.new(function() end)
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function()
+                    error("boom in on_tool_call_update")
+                end,
+                on_request_permission = function(request, callback)
+                    asked(request, callback)
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(23, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 23)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.equal(asked.call_count, 0)
+        end)
+
+        -- `toolCall` is a table, so the pre-dispatch type guard passes, but
+        -- `update.content` elements are unchecked: `content.type` on a number
+        -- throws inside the scheduled `__build_tool_call_message`.
+        it(
+            "answers cancelled when the nested tool call content is malformed",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue = queue_schedules()
+
+                local asked = spy.new(function() end)
+
+                --- @type agentic.acp.ClientHandlers
+                local handlers = {
+                    on_session_update = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                    on_request_permission = function(request, callback)
+                        asked(request, callback)
+                    end,
+                }
+
+                client.subscribers["s1"] = handlers
+
+                --- @type agentic.acp.RequestPermission
+                --- @diagnostic disable-next-line: missing-fields
+                local malformed = {
+                    sessionId = "s1",
+                    --- @diagnostic disable-next-line: assign-type-mismatch
+                    toolCall = { toolCallId = "t1", content = { 5 } },
+                }
+
+                local ok, err = pcall(function()
+                    --- @diagnostic disable-next-line: invisible
+                    client:__handle_request_permission(25, malformed)
+
+                    drain(queue)
+                end)
+                assert.equal(ok, true)
+                assert.is_nil(err)
+
+                assert.equal(#sent, 1)
+                assert.equal(sent[1].id, 25)
+                assert.equal(sent[1].result.outcome.outcome, "cancelled")
+                assert.equal(asked.call_count, 0)
+            end
+        )
+
+        -- The `id` was already answered before the throw. A second
+        -- `__send_result` on the same `id` is a protocol violation, so the
+        -- dispatch guard must not overwrite a real selection with a cancel.
+        it("answers once when the handler answers and then throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(_request, callback)
+                    callback("allow_once")
+                    error("boom after answering")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(27, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 27)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "allow_once" },
+            }, sent[1].result)
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:match("boom after answering")
+            )
+        end)
+    end)
+
+    -- An agent can leave several permission requests outstanding at once and the
+    -- user may answer them in any order, or never. `answer`/`answered` are
+    -- per-invocation locals, so each `id` must carry its own state: a shared flag
+    -- would drop the second answer, a shared `answer` would cross the wires.
+    -- Every case uses DISTINCT ids, tool_call_ids and option ids so a cross-wire
+    -- fails instead of coincidentally matching.
+    describe("__handle_request_permission concurrency", function()
+        --- @param n integer
+        --- @param session_id string|nil Defaults to "s1"
+        --- @return agentic.acp.RequestPermission request
+        local function make_request(n, session_id)
+            --- @type agentic.acp.RequestPermission
+            --- @diagnostic disable-next-line: missing-fields
+            local request = {
+                sessionId = session_id or "s1",
+                toolCall = { toolCallId = "tc-" .. n, kind = "edit" },
+                options = {
+                    {
+                        optionId = "opt-" .. n,
+                        name = "Allow " .. n,
+                        kind = "allow_once",
+                    },
+                },
+            }
+
+            return request
+        end
+
+        --- Collects one `answer` callback per request, keyed by tool_call_id, so
+        --- a test can invoke them in an order of its choosing.
+        --- @param answers table<string, fun(option_id: string|nil)>
+        --- @return agentic.acp.ClientHandlers handlers
+        local function collecting_handlers(answers)
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(request, callback)
+                    answers[request.toolCall.toolCallId] = callback
+                end,
+            }
+
+            return handlers
+        end
+
+        --- @param sent table[]
+        --- @return table<number, string> outcome_by_id
+        local function outcomes_by_id(sent)
+            --- @type table<number, string>
+            local by_id = {}
+
+            for _, frame in ipairs(sent) do
+                by_id[frame.id] = frame.result.outcome.optionId
+                    or frame.result.outcome.outcome
+            end
+
+            return by_id
+        end
+
+        it("answers two outstanding requests in reverse order", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(101, make_request(1))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(102, make_request(2))
+
+                drain(queue)
+
+                -- Reverse order: the SECOND request is answered first.
+                answers["tc-2"]("opt-2")
+                answers["tc-1"]("opt-1")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 2)
+
+            -- Frame order follows answer order, and each id keeps its OWN option.
+            assert.equal(sent[1].id, 102)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "opt-2" },
+            }, sent[1].result)
+            assert.equal(sent[2].id, 101)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "opt-1" },
+            }, sent[2].result)
+        end)
+
+        it("answers three outstanding requests middle-first", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(201, make_request(1))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(202, make_request(2))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(203, make_request(3))
+
+                drain(queue)
+
+                answers["tc-2"]("opt-2")
+                answers["tc-3"]("opt-3")
+                answers["tc-1"]("opt-1")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 3)
+            assert.same({
+                [201] = "opt-1",
+                [202] = "opt-2",
+                [203] = "opt-3",
+            }, outcomes_by_id(sent))
+        end)
+
+        it("leaves an unanswered request outstanding", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(301, make_request(1))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(302, make_request(2))
+
+                drain(queue)
+
+                answers["tc-2"]("opt-2")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            -- Answering one must not answer the other on its behalf.
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 302)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "opt-2" },
+            }, sent[1].result)
+        end)
+
+        -- A throw is scoped to the `id` that threw: the dispatch guard cancels
+        -- only its own request, never a sibling still waiting on the user.
+        it("cancels only the request whose dispatch throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(request, callback)
+                    if request.toolCall.toolCallId == "tc-1" then
+                        error("boom in tc-1")
+                    end
+
+                    answers[request.toolCall.toolCallId] = callback
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(401, make_request(1))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(402, make_request(2))
+
+                drain(queue)
+
+                answers["tc-2"]("opt-2")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 2)
+            assert.same({
+                [401] = "cancelled",
+                [402] = "opt-2",
+            }, outcomes_by_id(sent))
+        end)
+
+        -- `cancel_session` nils the subscriber between the two dispatches. The
+        -- first already holds its `answer` closure and still resolves normally;
+        -- the second re-resolves inside `vim.schedule`, finds nothing, and
+        -- cancels.
+        it("cancels only the request left without a subscriber", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(501, make_request(1))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(502, make_request(2))
+
+                -- Only the FIRST scheduled body runs while the subscriber lives.
+                queue[1]()
+                answers["tc-1"]("opt-1")
+
+                client.subscribers["s1"] = nil
+                queue[2]()
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 2)
+            assert.same({
+                [501] = "opt-1",
+                [502] = "cancelled",
+            }, outcomes_by_id(sent))
+            assert.is_nil(answers["tc-2"])
+        end)
+
+        -- The subprocess is shared across sessions (ADR 0004), so a request
+        -- stuck on one session must not strand another's. Answered out of
+        -- order, and `s2` throws, which is that failure expressed across the
+        -- session boundary.
+        it("keeps requests on different sessions independent", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            --- @type agentic.acp.ClientHandlers
+            local throwing = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function()
+                    error("boom in s2")
+                end,
+            }
+
+            client.subscribers["s2"] = throwing
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(601, make_request(1, "s1"))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(602, make_request(2, "s2"))
+
+                drain(queue)
+
+                -- s2 already cancelled itself by throwing; s1 answers after it.
+                answers["tc-1"]("opt-1")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 2)
+
+            -- s2's throw cancels only its own `id`; s1 keeps its own optionId.
+            assert.equal(sent[1].id, 602)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+            assert.equal(sent[2].id, 601)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "opt-1" },
+            }, sent[2].result)
+            assert.is_nil(answers["tc-2"])
+        end)
     end)
 
     describe("__build_tool_call_message", function()
