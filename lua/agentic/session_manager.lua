@@ -41,6 +41,20 @@ local Hooks = require("agentic.utils.hooks")
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
+local TITLE_MAX_CHARS = 60
+
+--- @param prompt string
+--- @return string title
+local function title_from_prompt(prompt)
+    local title = vim.trim((prompt:gsub("%s+", " ")))
+
+    if vim.fn.strchars(title) > TITLE_MAX_CHARS then
+        title = vim.fn.strcharpart(title, 0, TITLE_MAX_CHARS - 1) .. "…"
+    end
+
+    return title
+end
+
 --- @param tab_page_id integer
 function SessionManager:new(tab_page_id)
     local AgentInstance = require("agentic.acp.agent_instance")
@@ -517,13 +531,13 @@ function SessionManager:_handle_input_submit(input_text)
     --- @type agentic.acp.Content[]
     local prompt = {}
 
-    -- If restored/switched session, prepend history on first submit
     if self.history_to_send then
-        self.chat_history.title = input_text -- Update title for restored session
         ChatHistory.prepend_restored_messages(self.history_to_send, prompt)
         self.history_to_send = nil
-    elseif self.chat_history.title == "" then
-        self.chat_history.title = input_text -- Set title for new session
+    end
+
+    if self.chat_history.title == "" then
+        self.chat_history.title = title_from_prompt(input_text)
     end
 
     table.insert(prompt, {

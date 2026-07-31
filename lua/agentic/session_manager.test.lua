@@ -591,6 +591,35 @@ describe("agentic.SessionManager", function()
             end
         end)
 
+        --- @return agentic.SessionManager
+        local function make_session()
+            local tab_page_id = vim.api.nvim_get_current_tabpage()
+            local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
+            flush_schedule()
+            session.session_id = "test-session"
+
+            local SessionRegistry = require("agentic.session_registry")
+            SessionRegistry.sessions[tab_page_id] = session
+
+            session.agent.send_prompt = function(
+                _self,
+                _session_id,
+                _prompt,
+                callback
+            )
+                callback(nil, nil)
+            end
+
+            return session
+        end
+
+        --- @param session agentic.SessionManager
+        --- @param prompt string
+        local function submit(session, prompt)
+            assert.is_true(session:_handle_input_submit(prompt))
+            flush_schedule()
+        end
+
         it("prepends history on first submit and clears it", function()
             local tab_page_id = vim.api.nvim_get_current_tabpage()
             local session = SessionManager:new(tab_page_id) --[[@as agentic.SessionManager]]
@@ -626,6 +655,76 @@ describe("agentic.SessionManager", function()
             -- Prompt should contain the restored history
             assert.is_not_nil(submitted_prompt)
             assert.truthy(#submitted_prompt >= 2)
+        end)
+
+        it("uses a short first prompt as the title", function()
+            local session = make_session()
+
+            submit(session, "short prompt")
+
+            assert.equal("short prompt", session.chat_history.title)
+        end)
+
+        it("collapses whitespace in the title", function()
+            local session = make_session()
+
+            submit(session, "  fix  the\n  parser  ")
+
+            assert.equal("fix the parser", session.chat_history.title)
+        end)
+
+        it("truncates a long ASCII title to 60 codepoints", function()
+            local session = make_session()
+
+            submit(session, ("x"):rep(200))
+
+            assert.equal(("x"):rep(59) .. "…", session.chat_history.title)
+            assert.equal(60, vim.fn.strchars(session.chat_history.title))
+        end)
+
+        it("truncates a long CJK title on a codepoint boundary", function()
+            local session = make_session()
+
+            submit(session, ("日"):rep(120))
+
+            assert.equal(("日"):rep(59) .. "…", session.chat_history.title)
+            assert.equal(60, vim.fn.strchars(session.chat_history.title))
+        end)
+
+        it("keeps a title at exactly 60 codepoints", function()
+            local session = make_session()
+            local prompt = ("x"):rep(60)
+
+            submit(session, prompt)
+
+            assert.equal(prompt, session.chat_history.title)
+        end)
+
+        it("keeps the first title on later submits", function()
+            local session = make_session()
+
+            submit(session, "first prompt")
+            submit(session, "second prompt")
+
+            assert.equal("first prompt", session.chat_history.title)
+        end)
+
+        it("keeps a restored title while consuming history", function()
+            local session = make_session()
+            session.chat_history.title = "restored title"
+            session.history_to_send = {
+                {
+                    type = "user",
+                    text = "old msg",
+                    timestamp = os.time(),
+                    provider_name = "P",
+                },
+            }
+
+            submit(session, "new question")
+
+            assert.equal("restored title", session.chat_history.title)
+            assert.is_nil(session.history_to_send)
         end)
     end)
 
