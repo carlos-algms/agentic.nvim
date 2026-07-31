@@ -1964,7 +1964,9 @@ describe("agentic.SessionManager", function()
                     },
                     status_animation = {
                         start = function() end,
-                        stop = function() end,
+                        stop = function()
+                            _G.t.stop_fast = vim.in_fast_event()
+                        end,
                     },
                     _cancel_session = function() end,
                     _build_handlers = function()
@@ -1995,11 +1997,15 @@ describe("agentic.SessionManager", function()
                 vim.wait(2000, function()
                     return _G.t.fast ~= nil
                 end)
+                vim.wait(2000, function()
+                    return _G.t.stop_fast ~= nil
+                end)
             ]])
 
             -- Sanity: the timer really did produce a fast event context.
             assert.is_true(child.lua_get("_G.t.dispatch_fast"))
 
+            assert.is_false(child.lua_get("_G.t.stop_fast"))
             assert.is_false(child.lua_get("_G.t.fast"))
             assert.is_true(child.lua_get("_G.t.ok"))
         end)
@@ -2132,11 +2138,13 @@ describe("agentic.SessionManager", function()
         local captured_create_callback
         --- @type TestSpy|nil
         local widget_destroy_spy
+        local original_provider
 
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
 
+            original_provider = Config.provider
             notify_stub = spy.stub(Logger, "notify")
             schedule_queue = {}
             schedule_stub = spy.stub(vim, "schedule")
@@ -2184,6 +2192,7 @@ describe("agentic.SessionManager", function()
             if widget_destroy_spy then
                 widget_destroy_spy:revert()
             end
+            Config.provider = original_provider
             notify_stub:revert()
             schedule_stub:revert()
             health_check_stub:revert()
@@ -2529,7 +2538,10 @@ describe("agentic.SessionManager", function()
             end
 
             for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
-                if not baseline_tabs[tabpage] then
+                if
+                    not baseline_tabs[tabpage]
+                    and vim.api.nvim_tabpage_is_valid(tabpage)
+                then
                     vim.cmd(
                         "tabclose " .. vim.api.nvim_tabpage_get_number(tabpage)
                     )

@@ -357,10 +357,11 @@ local function show_layout(params, position)
     if should_focus then
         vim.schedule(function()
             local winid = win_nrs.input
-            if not winid or not BufHelpers.is_win_usable(winid) then
+            if not is_in_current_tabpage(winid) then
                 return
             end
 
+            ---@cast winid integer
             vim.api.nvim_set_current_win(winid)
             BufHelpers.start_insert_on_last_char()
         end)

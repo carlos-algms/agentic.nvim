@@ -152,7 +152,7 @@ describe("agentic: switch_provider", function()
             vim.api.nvim_set_current_tabpage(initial_tab_id)
         end
         for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
-            if not initial_tabs[tp] then
+            if not initial_tabs[tp] and vim.api.nvim_tabpage_is_valid(tp) then
                 vim.cmd("tabclose " .. vim.api.nvim_tabpage_get_number(tp))
             end
         end

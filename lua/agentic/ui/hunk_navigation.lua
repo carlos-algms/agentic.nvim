@@ -300,8 +300,10 @@ end
 function M.setup_keymaps(bufnr, diff_state)
     local keymaps = Config.keymaps.diff_preview
     local state = get_state(bufnr)
-    state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
-    state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
+    state.saved_keymaps.next = state.saved_keymaps.next
+        or save_keymap(bufnr, keymaps.next_hunk)
+    state.saved_keymaps.prev = state.saved_keymaps.prev
+        or save_keymap(bufnr, keymaps.prev_hunk)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
         M.navigate_next(bufnr, diff_state)

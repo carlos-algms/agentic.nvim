@@ -407,6 +407,22 @@ describe("hunk_navigation", function()
             assert.equal(next(after_prev), nil)
         end)
 
+        it("preserves the original keymap across repeated setup", function()
+            Config.keymaps.diff_preview.next_hunk = "]c"
+            BufHelpers.keymap_set(test_bufnr, "n", "]c", ":echo 'original'<CR>")
+
+            local before_map = get_keymap_in_buf(test_bufnr, "]c")
+            local original_rhs = before_map.rhs
+
+            HunkNavigation.setup_keymaps(test_bufnr)
+            HunkNavigation.setup_keymaps(test_bufnr)
+            HunkNavigation.restore_keymaps(test_bufnr)
+
+            local restored = get_keymap_in_buf(test_bufnr, "]c")
+            assert.is_true(is_buffer_local(restored))
+            assert.equal(restored.rhs, original_rhs)
+        end)
+
         it("clears the anchors cache after restore", function()
             HunkNavigation.setup_keymaps(test_bufnr)
             add_hunk(test_bufnr, test_ns, 1)

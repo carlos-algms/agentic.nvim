@@ -759,7 +759,7 @@ These keybindings are automatically set in Agentic buffers:
 | `<C-v>`          | i     | Paste image from clipboard (same as Claude-code)                |
 | `<Tab>`          | i     | Accept file completion                                          |
 | `<localLeader>s` | n     | Switch ACP provider (preserves chat history)                    |
-| `<localLeader>m` | n     | Switch model without (preserves chat history)                   |
+| `<localLeader>m` | n     | Switch model (keeps history)                                    |
 | `<localLeader>t` | n     | Select thought effort level (model-dependent on Claude)         |
 | `<localLeader>o` | n     | Open options modal                                              |
 | `<localLeader>l` | n     | List every live session and open the chosen one                 |

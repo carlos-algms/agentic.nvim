@@ -803,13 +803,13 @@ function SessionManager:new_session(opts)
             return
         end
 
-        self.status_animation:stop()
-
         -- Fast event context here; `Hooks.invoke` defers delivery, NOT the payload build.
         vim.schedule(function()
             if self._destroyed then
                 return
             end
+
+            self.status_animation:stop()
 
             --- @type agentic.UserConfig.CreateSessionResponseData
             local hook_data = {

@@ -395,23 +395,14 @@ describe("race: stale create_session after load_acp_session", function()
         local create_cb_ref = {}
         local load_cb_ref = {}
         local session = make_session(create_cb_ref, load_cb_ref)
-        local owner = session
-        local cancel_session = session.agent.cancel_session
-        session.agent.cancel_session = function(agent, session_id)
-            cancel_session(agent, session_id)
-            owner = nil
-        end
 
         session:load_acp_session("restored-id", "title", nil)
         session:_cancel_session()
         session._destroyed = true
 
-        local replacement = {}
-        owner = replacement
         load_cb_ref.cb(nil)
         drain()
 
-        assert.equal(replacement, owner)
-        assert.equal(1, #session._cancelled)
+        assert.same({ "restored-id" }, session._cancelled)
     end)
 end)

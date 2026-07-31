@@ -120,6 +120,7 @@ end)()
         child.lua([[ require("agentic").new_session() ]])
         child.flush()
 
+        assert.equal(2, session_count())
         assert.equal(-1, session_tab(1))
         assert.equal(tab, session_tab(2))
         assert.same({ "AgenticChat", "AgenticInput" }, widget_filetypes(tab))

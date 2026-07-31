@@ -105,10 +105,10 @@ describe("Open and Close Chat Widget", function()
             ]])
         )
 
-        assert.has_no_errors(function()
-            child.cmd("tabclose")
-            child.flush()
-        end)
+        child.cmd("messages clear")
+        child.cmd("tabclose")
+        child.flush()
+        assert.equal("", child.cmd_capture("messages"))
 
         -- Sessions no longer die with their tab: the second one survives hidden
         assert.equal(
@@ -186,15 +186,16 @@ end)()
         local expected_input_bufnr = child.lua_get([[
 (function()
     local session = require("agentic.session_registry").current()
+    assert(session, "expected a session after toggle()")
     return session.widget.buf_nrs.input
 end)()
 ]])
         assert.equal(expected_input_bufnr, current_bufnr)
 
-        assert.has_no_errors(function()
-            child.cmd("tabclose")
-            child.flush()
-        end)
+        child.cmd("messages clear")
+        child.cmd("tabclose")
+        child.flush()
+        assert.equal("", child.cmd_capture("messages"))
 
         local current_tab = child.api.nvim_get_current_tabpage()
         assert.equal(1, current_tab)
