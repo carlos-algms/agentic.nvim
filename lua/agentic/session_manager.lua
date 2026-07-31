@@ -894,15 +894,23 @@ function SessionManager:_start_spinner(state)
 end
 
 function SessionManager:_cancel_session()
+    local session_id = self.session_id
+    local restoring_session_id = self._restoring_session_id
+
     self._is_restoring_session = false
-    self._restoring_session_id = nil
     self.is_generating = false
     self.status_animation:stop()
 
-    if self.session_id then
+    if session_id then
+        self.agent:cancel_session(session_id)
+    end
+    if restoring_session_id and restoring_session_id ~= session_id then
+        self.agent:cancel_session(restoring_session_id)
+    end
+
+    if session_id or restoring_session_id then
         -- Guarded: an unconditional clear would wipe the files and selections
         -- staged before the first session exists.
-        self.agent:cancel_session(self.session_id)
         self.widget:clear()
         self.todo_list:clear()
         self.file_list:clear()
@@ -913,6 +921,7 @@ function SessionManager:_cancel_session()
     end
 
     self.session_id = nil
+    self._restoring_session_id = nil
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 

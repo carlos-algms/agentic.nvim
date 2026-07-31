@@ -114,6 +114,7 @@ describe("race: stale create_session after load_acp_session", function()
             file_list = { clear = function() end },
             code_selection = { clear = function() end },
             diagnostics_list = { clear = function() end },
+            session_state = { clear = function() end },
             config_options = {
                 clear = function() end,
                 mode = nil,
@@ -373,5 +374,20 @@ describe("race: stale create_session after load_acp_session", function()
 
         assert.is_nil(session._restoring_session_id)
         assert.is_nil(session.session_id)
+    end)
+
+    it("cancels an in-flight restore before starting a new session", function()
+        local create_cb_ref = {}
+        local load_cb_ref = {}
+        local session = make_session(create_cb_ref, load_cb_ref)
+        local clear_spy = spy.new(function() end)
+        session.widget.clear = clear_spy
+
+        session:load_acp_session("restored-id", "title", nil)
+        session:new_session()
+
+        assert.is_true(vim.tbl_contains(session._cancelled, "restored-id"))
+        assert.is_nil(session._restoring_session_id)
+        assert.spy(clear_spy).was.called(1)
     end)
 end)
