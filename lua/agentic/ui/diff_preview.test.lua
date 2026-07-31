@@ -5,6 +5,20 @@ local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 
+--- Closes every tabpage absent from the baseline set. Counting tabpages and
+--- closing the *current* one can shut a baseline tab while a created one lives.
+--- @param base_tabs table<integer, true>
+local function close_extra_tabs(base_tabs)
+    for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+        if not base_tabs[tab] and vim.api.nvim_tabpage_is_valid(tab) then
+            pcall(function()
+                vim.api.nvim_set_current_tabpage(tab)
+                vim.cmd("tabclose!")
+            end)
+        end
+    end
+end
+
 describe("diff_preview", function()
     describe("show_diff", function()
         local read_stub
@@ -186,6 +200,62 @@ describe("diff_preview", function()
     end)
 
     describe("clear_diff", function()
+        --- @type integer[]
+        local created_wins
+        --- @type integer[]
+        local created_bufs
+        --- @type table<integer, true>
+        local base_tabs
+        --- @type integer
+        local augroup
+
+        before_each(function()
+            created_wins = {}
+            created_bufs = {}
+            base_tabs = {}
+            for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+                base_tabs[tab] = true
+            end
+            augroup = vim.api.nvim_create_augroup(
+                "agentic_diff_preview_test",
+                { clear = true }
+            )
+        end)
+
+        after_each(function()
+            -- A leaked autocmd corrupts every later test file.
+            pcall(vim.api.nvim_del_augroup_by_id, augroup)
+            for _, winid in ipairs(created_wins) do
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
+            for _, bufnr in ipairs(created_bufs) do
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+            close_extra_tabs(base_tabs)
+        end)
+
+        --- @param name string
+        --- @return integer bufnr
+        local function new_named_buf(name)
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            created_bufs[#created_bufs + 1] = bufnr
+            vim.api.nvim_buf_set_name(bufnr, name)
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "content" })
+            return bufnr
+        end
+
+        --- @param bufnr integer
+        --- @param parent integer
+        --- @return integer winid
+        local function split_showing(bufnr, parent)
+            local winid = vim.api.nvim_open_win(bufnr, false, {
+                split = "below",
+                win = parent,
+            })
+            created_wins[#created_wins + 1] = winid
+            return winid
+        end
+
         it("clears the diff without any error", function()
             local bufnr = vim.api.nvim_create_buf(false, true)
 
@@ -330,6 +400,101 @@ describe("diff_preview", function()
             if vim.api.nvim_buf_is_valid(alt_bufnr) then
                 pcall(vim.api.nvim_buf_delete, alt_bufnr, { force = true })
             end
+        end)
+
+        it("keeps the user's other window open on rejection", function()
+            local bufnr = new_named_buf("/tmp/rejected_two_windows.lua")
+            local first_alt = new_named_buf("/tmp/first_alternate.lua")
+            local second_alt = new_named_buf("/tmp/second_alternate.lua")
+
+            -- Each window gets its OWN alternate, so the swap must resolve `#`
+            -- inside each window rather than reuse the current window's.
+            local first_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(first_win, first_alt)
+            vim.api.nvim_win_set_buf(first_win, bufnr)
+
+            local second_win = split_showing(second_alt, first_win)
+            vim.api.nvim_win_set_buf(second_win, bufnr)
+
+            DiffPreview.clear_diff(bufnr, true)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(first_win))
+            assert.is_true(vim.api.nvim_win_is_valid(second_win))
+            assert.equal(first_alt, vim.api.nvim_win_get_buf(first_win))
+            assert.equal(second_alt, vim.api.nvim_win_get_buf(second_win))
+        end)
+
+        it("finishes the rejection when a window dies mid-loop", function()
+            local bufnr = new_named_buf("/tmp/rejected_dying_window.lua")
+            local alt = new_named_buf("/tmp/dying_alternate.lua")
+
+            local first_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(first_win, alt)
+            vim.api.nvim_win_set_buf(first_win, bufnr)
+
+            local second_win = split_showing(alt, first_win)
+            vim.api.nvim_win_set_buf(second_win, bufnr)
+
+            local third_win = split_showing(alt, first_win)
+            vim.api.nvim_win_set_buf(third_win, bufnr)
+
+            -- `win_findbuf` snapshots the window list up front; swapping the
+            -- first window fires autocmds that can kill a LATER entry.
+            vim.api.nvim_create_autocmd("BufEnter", {
+                group = augroup,
+                buffer = alt,
+                callback = function()
+                    if vim.api.nvim_win_is_valid(third_win) then
+                        vim.api.nvim_win_close(third_win, true)
+                    end
+                end,
+            })
+
+            DiffPreview.clear_diff(bufnr, true)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(first_win))
+            assert.is_true(vim.api.nvim_win_is_valid(second_win))
+            assert.equal(alt, vim.api.nvim_win_get_buf(first_win))
+            assert.equal(alt, vim.api.nvim_win_get_buf(second_win))
+        end)
+
+        it("keeps a window on the rejected file in another tabpage", function()
+            local bufnr = new_named_buf("/tmp/rejected_other_tab.lua")
+
+            local first_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(first_win, bufnr)
+
+            vim.cmd("tabnew")
+            local other_tab_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(other_tab_win, bufnr)
+            vim.api.nvim_set_current_win(first_win)
+
+            DiffPreview.clear_diff(bufnr, true)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(other_tab_win))
+        end)
+
+        it("deletes nothing when the rejected file exists on disk", function()
+            local file_path = vim.fn.tempname()
+            local ok = vim.fn.writefile({ "content" }, file_path)
+            assert.equal(0, ok)
+
+            local bufnr = vim.fn.bufadd(file_path)
+            created_bufs[#created_bufs + 1] = bufnr
+            vim.fn.bufload(bufnr)
+
+            local winid = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(winid, bufnr)
+
+            DiffPreview.clear_diff(bufnr, true)
+
+            assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
+            assert.equal(bufnr, vim.api.nvim_win_get_buf(winid))
+
+            vim.fn.delete(file_path)
         end)
     end)
 end)
