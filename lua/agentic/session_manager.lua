@@ -306,6 +306,14 @@ function SessionManager:has_acp_session_id(acp_session_id)
         or self._restoring_session_id == acp_session_id
 end
 
+--- @param acp_session_id string
+--- @return boolean owns_ready_id
+function SessionManager:owns_ready_acp_session(acp_session_id)
+    return not self._destroyed
+        and not self._is_restoring_session
+        and self.session_id == acp_session_id
+end
+
 --- Notifies the user with the reason when it answers false.
 --- @return boolean can_submit
 function SessionManager:can_submit_prompt()

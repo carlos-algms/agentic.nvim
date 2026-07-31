@@ -291,6 +291,61 @@ describe("agentic: switch_provider", function()
         assert.spy(logger_notify_stub).was.called()
     end)
 
+    it("aborts a deferred provider switch after source /new", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+
+        Agentic.switch_provider({ provider = "DeferredProvider" })
+        flush_schedule()
+
+        session:new_session()
+        flush_schedule()
+        local new_source_id = session.session_id
+        assert.is_not_nil(new_source_id)
+        assert.are_not.equal("old-session-id", new_source_id)
+
+        deferred_create_callback({
+            sessionId = "deferred-session",
+            configOptions = nil,
+            modes = nil,
+            models = nil,
+        })
+        flush_schedule()
+
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
+        assert.equal(new_source_id, session.session_id)
+        assert.equal(original_provider, Config.provider)
+        assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        assert.spy(logger_notify_stub).was.called()
+    end)
+
+    it("aborts a deferred provider switch during source restore", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+
+        Agentic.switch_provider({ provider = "DeferredProvider" })
+        flush_schedule()
+        session._is_restoring_session = true
+        session._restoring_session_id = "restoring-session-id"
+
+        deferred_create_callback({
+            sessionId = "deferred-session",
+            configOptions = nil,
+            modes = nil,
+            models = nil,
+        })
+        flush_schedule()
+
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
+        assert.equal("old-session-id", session.session_id)
+        assert.equal("restoring-session-id", session._restoring_session_id)
+        assert.equal(original_provider, Config.provider)
+        assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        assert.spy(logger_notify_stub).was.called()
+    end)
+
     it("captures provider-switch state at replacement commit", function()
         local Agentic = require("agentic")
         local session = create_session()

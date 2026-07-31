@@ -237,6 +237,7 @@ local function apply_provider_switch(provider_name)
             return
         end
 
+        local source_session_id = session.session_id --[[@as string]]
         local session_key = session.session_key
 
         Logger.debug("apply_provider_switch: creating new session")
@@ -265,6 +266,15 @@ local function apply_provider_switch(provider_name)
                 or SessionRegistry.sessions[session_key] ~= session
             then
                 SessionRegistry.destroy(new_key)
+                return
+            end
+
+            if not session:owns_ready_acp_session(source_session_id) then
+                SessionRegistry.destroy(new_key)
+                Logger.notify(
+                    "Cannot switch provider: the source session changed. Try again.",
+                    vim.log.levels.WARN
+                )
                 return
             end
 
