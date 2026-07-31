@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Theme = require("agentic.theme")
 
@@ -415,6 +416,95 @@ describe("hunk_navigation", function()
 
             local anchors = get_hunk_anchors(test_bufnr)
             assert.equal(#anchors, 1)
+        end)
+    end)
+
+    describe("save_keymap desc filter", function()
+        local Config
+        local original_keymaps
+
+        before_each(function()
+            vim.cmd("buffer " .. test_bufnr)
+            Config = require("agentic.config")
+            original_keymaps = vim.deepcopy(Config.keymaps.diff_preview)
+            Config.keymaps.diff_preview.next_hunk = "<leader>hn"
+            Config.keymaps.diff_preview.prev_hunk = "<leader>hp"
+        end)
+
+        after_each(function()
+            Config.keymaps.diff_preview = original_keymaps
+            BufHelpers.keymap_del(test_bufnr, "n", "<leader>hn")
+            BufHelpers.keymap_del(test_bufnr, "n", "<leader>hp")
+            pcall(vim.keymap.del, "n", "<leader>hn")
+            pcall(vim.keymap.del, "n", "<leader>hp")
+            HunkNavigation.clear_state(test_bufnr)
+        end)
+
+        it(
+            "saves and restores a user mapping with an unrelated desc",
+            function()
+                BufHelpers.keymap_set(
+                    test_bufnr,
+                    "n",
+                    "<leader>hn",
+                    ":echo 'user'<CR>",
+                    { desc = "User next hunk" }
+                )
+
+                HunkNavigation.setup_keymaps(test_bufnr)
+                HunkNavigation.restore_keymaps(test_bufnr)
+
+                local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+                assert.is_true(is_buffer_local(restored))
+                assert.equal(restored.rhs, ":echo 'user'<CR>")
+            end
+        )
+
+        it(
+            "does not save a mapping whose desc marks it as Agentic's",
+            function()
+                BufHelpers.keymap_set(
+                    test_bufnr,
+                    "n",
+                    "<leader>hn",
+                    ":echo 'ours'<CR>",
+                    { desc = "Go to next hunk - Agentic DiffPreview" }
+                )
+
+                HunkNavigation.setup_keymaps(test_bufnr)
+                HunkNavigation.restore_keymaps(test_bufnr)
+
+                assert.is_true(
+                    vim.tbl_isempty(get_keymap_in_buf(test_bufnr, "<leader>hn"))
+                )
+            end
+        )
+
+        it("saves a mapping that carries no desc", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'no desc'<CR>"
+            )
+
+            HunkNavigation.setup_keymaps(test_bufnr)
+            HunkNavigation.restore_keymaps(test_bufnr)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_true(is_buffer_local(restored))
+            assert.equal(restored.rhs, ":echo 'no desc'<CR>")
+        end)
+
+        it("does not save a global mapping", function()
+            vim.keymap.set("n", "<leader>hn", ":echo 'global'<CR>")
+
+            HunkNavigation.setup_keymaps(test_bufnr)
+            HunkNavigation.restore_keymaps(test_bufnr)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_false(is_buffer_local(restored))
+            assert.equal(":echo 'global'<CR>", restored.rhs)
         end)
     end)
 end)
