@@ -388,20 +388,32 @@ end
 --- @param winid integer|nil
 --- @param callback fun()|nil
 function ChatWidget:move_cursor_to(winid, callback)
+    --- @type agentic.ui.ChatWidget.PanelNames|nil
+    local window_name
+    for name, owned_winid in pairs(self.win_nrs) do
+        if owned_winid == winid then
+            window_name = name
+            break
+        end
+    end
+
     vim.schedule(function()
-        if winid and vim.api.nvim_win_is_valid(winid) then
-            if Config.settings.move_cursor_to_chat_on_submit then
-                vim.api.nvim_set_current_win(winid)
-            end
+        local owned_winid = window_name and self.win_nrs[window_name] or nil
+        if not owned_winid or not BufHelpers.is_win_usable(owned_winid) then
+            return
+        end
 
-            -- Scroll to the bottom so auto-scroll re-engages.
-            vim.api.nvim_win_call(winid, function()
-                vim.cmd("normal! G0zb")
-            end)
+        if Config.settings.move_cursor_to_chat_on_submit then
+            vim.api.nvim_set_current_win(owned_winid)
+        end
 
-            if callback then
-                callback()
-            end
+        -- Scroll to the bottom so auto-scroll re-engages.
+        vim.api.nvim_win_call(owned_winid, function()
+            vim.cmd("normal! G0zb")
+        end)
+
+        if callback then
+            callback()
         end
     end)
 end

@@ -357,10 +357,12 @@ local function show_layout(params, position)
     if should_focus then
         vim.schedule(function()
             local winid = win_nrs.input
-            if winid and vim.api.nvim_win_is_valid(winid) then
-                vim.api.nvim_set_current_win(winid)
-                BufHelpers.start_insert_on_last_char()
+            if not winid or not BufHelpers.is_win_usable(winid) then
+                return
             end
+
+            vim.api.nvim_set_current_win(winid)
+            BufHelpers.start_insert_on_last_char()
         end)
     end
 end

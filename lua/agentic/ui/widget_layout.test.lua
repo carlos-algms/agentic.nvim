@@ -1,5 +1,6 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
@@ -259,6 +260,49 @@ describe("WidgetLayout", function()
     end)
 
     describe("open", function()
+        it("skips deferred input focus when its tabpage is gone", function()
+            local schedule_stub = spy.stub(vim, "schedule")
+            api_stubs[#api_stubs + 1] = schedule_stub
+            local insert_stub =
+                spy.stub(BufHelpers, "start_insert_on_last_char")
+            api_stubs[#api_stubs + 1] = insert_stub
+
+            vim.cmd("tabnew")
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+            vim.cmd("tabnew")
+
+            local win_nrs = {}
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+            })
+
+            local input_win = win_nrs.input
+            assert.is_not_nil(input_win)
+            local focus_callback =
+                schedule_stub.calls[schedule_stub.call_count][1]
+
+            stub_api("nvim_win_is_valid"):returns(true)
+            stub_api("nvim_win_get_tabpage"):returns(dead_tab)
+            local set_current_stub = stub_api("nvim_set_current_win")
+
+            focus_callback()
+
+            assert.equal(0, set_current_stub.call_count)
+            assert.equal(0, insert_stub.call_count)
+        end)
+
         it(
             "creates a fresh chat window when the cached one is in another tab",
             function()

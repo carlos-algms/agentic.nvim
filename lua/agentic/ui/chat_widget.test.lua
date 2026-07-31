@@ -1932,6 +1932,103 @@ describe(
     end
 )
 
+describe("agentic.ui.ChatWidget deferred cursor move (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it("uses the replacement owned window after a layout change", function()
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            _G.old_input = _G.widget.win_nrs.input
+            _G.cursor_callback_called = false
+
+            _G.widget:move_cursor_to(_G.old_input, function()
+                _G.cursor_callback_called = true
+            end)
+            _G.widget:hide()
+            _G.widget:show({ focus_prompt = false })
+            _G.replacement_input = _G.widget.win_nrs.input
+        ]])
+
+        child.flush()
+
+        assert.is_false(
+            child.lua_get("vim.api.nvim_win_is_valid(_G.old_input)")
+        )
+        assert.is_true(child.lua_get("_G.cursor_callback_called"))
+        assert.equal(
+            child.lua_get("_G.replacement_input"),
+            child.lua_get("vim.api.nvim_get_current_win()")
+        )
+    end)
+
+    it("skips a stale-valid replacement window in a closed tab", function()
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            _G.target_input = _G.widget.win_nrs.input
+            _G.cursor_callback_called = false
+            _G.set_current_calls = 0
+            _G.win_call_calls = 0
+
+            vim.cmd("tabnew")
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+
+            _G.widget:move_cursor_to(_G.target_input, function()
+                _G.cursor_callback_called = true
+            end)
+
+            local real_is_valid = vim.api.nvim_win_is_valid
+            local real_get_tabpage = vim.api.nvim_win_get_tabpage
+            local real_set_current = vim.api.nvim_set_current_win
+            local real_win_call = vim.api.nvim_win_call
+            vim.api.nvim_win_is_valid = function(winid)
+                if winid == _G.target_input then
+                    return true
+                end
+                return real_is_valid(winid)
+            end
+            vim.api.nvim_win_get_tabpage = function(winid)
+                if winid == _G.target_input then
+                    return dead_tab
+                end
+                return real_get_tabpage(winid)
+            end
+            vim.api.nvim_set_current_win = function(winid)
+                if winid == _G.target_input then
+                    _G.set_current_calls = _G.set_current_calls + 1
+                    return
+                end
+                return real_set_current(winid)
+            end
+            vim.api.nvim_win_call = function(winid, callback)
+                if winid == _G.target_input then
+                    _G.win_call_calls = _G.win_call_calls + 1
+                    return
+                end
+                return real_win_call(winid, callback)
+            end
+        ]])
+
+        child.flush()
+
+        assert.equal(0, child.lua_get("_G.set_current_calls"))
+        assert.equal(0, child.lua_get("_G.win_call_calls"))
+        assert.is_false(child.lua_get("_G.cursor_callback_called"))
+    end)
+end)
+
 -- Child process: WinClosed defers `hide` through `vim.schedule`; flushing
 -- in-process pumps mini.test's own queue.
 describe("agentic.ui.ChatWidget WinClosed deferred hide (child)", function()

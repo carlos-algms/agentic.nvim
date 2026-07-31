@@ -237,19 +237,6 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        Logger.debug(
-            "apply_provider_switch: saving "
-                .. tostring(#session.chat_history.messages)
-                .. " messages"
-        )
-        local saved_messages = session.chat_history.messages
-        local saved_title = session.chat_history.title
-        local saved_files = session.file_list:get_files()
-        local saved_selections = session.code_selection:get_selections()
-        local widget_was_open = session.widget:is_open()
-        local widget_tab = widget_was_open
-                and session.widget:get_visible_tab_id()
-            or nil
         local session_key = session.session_key
 
         Logger.debug("apply_provider_switch: creating new session")
@@ -281,6 +268,29 @@ local function apply_provider_switch(provider_name)
                 return
             end
 
+            if session.is_generating then
+                SessionRegistry.destroy(new_key)
+                Logger.notify(
+                    "Cannot switch provider while generating. Stop generation first.",
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            local saved_messages = session.chat_history.messages
+            local saved_title = session.chat_history.title
+            local saved_files = session.file_list:get_files()
+            local saved_selections = session.code_selection:get_selections()
+            local widget_was_open = session.widget:is_open()
+            local widget_tab = widget_was_open
+                    and session.widget:get_visible_tab_id()
+                or nil
+
+            Logger.debug(
+                "apply_provider_switch: saving "
+                    .. tostring(#saved_messages)
+                    .. " messages"
+            )
             Logger.debug("apply_provider_switch: destroying old session")
             SessionRegistry.destroy(session_key)
             Config.provider = provider_name

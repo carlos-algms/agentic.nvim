@@ -268,6 +268,78 @@ describe("agentic: switch_provider", function()
         end
     )
 
+    it("aborts a deferred provider switch when generation starts", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+
+        Agentic.switch_provider({ provider = "DeferredProvider" })
+        flush_schedule()
+        session.is_generating = true
+
+        deferred_create_callback({
+            sessionId = "deferred-session",
+            configOptions = nil,
+            modes = nil,
+            models = nil,
+        })
+        flush_schedule()
+
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
+        assert.equal(original_provider, Config.provider)
+        assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+        assert.spy(logger_notify_stub).was.called()
+    end)
+
+    it("captures provider-switch state at replacement commit", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+
+        Agentic.switch_provider({ provider = "DeferredProvider" })
+        flush_schedule()
+
+        session.chat_history:add_message({
+            type = "user",
+            text = "added while replacement initialized",
+            timestamp = os.time(),
+            provider_name = "OriginalProvider",
+        } --[[@as agentic.ui.ChatHistory.Message]])
+        session.chat_history.title = "Updated title"
+        session.file_list:add(vim.fn.fnamemodify("tests/init.lua", ":p"))
+        session.code_selection:add({
+            file_path = "tests/init.lua",
+            start_line = 1,
+            end_line = 1,
+            lines = { "late context" },
+        } --[[@as agentic.Selection]])
+        vim.cmd("tabnew")
+        local latest_widget_tab = vim.api.nvim_get_current_tabpage()
+        SessionRegistry.show_session(session.session_key)
+        flush_schedule()
+        vim.api.nvim_set_current_tabpage(initial_tab_id)
+
+        deferred_create_callback({
+            sessionId = "deferred-session",
+            configOptions = nil,
+            modes = nil,
+            models = nil,
+        })
+        flush_schedule()
+
+        local replacement = SessionRegistry.sessions[2] --[[@as agentic.SessionManager]]
+        assert.is_not_nil(replacement)
+        assert.equal(1, #replacement.chat_history.messages)
+        assert.equal(
+            "added while replacement initialized",
+            replacement.chat_history.messages[1].text
+        )
+        assert.equal("Updated title", replacement.chat_history.title)
+        assert.equal(1, #replacement.file_list:get_files())
+        assert.equal(1, #replacement.code_selection:get_selections())
+        assert.equal(latest_widget_tab, replacement.widget:get_visible_tab_id())
+    end)
+
     it("reuses the switched session on the next open", function()
         local Agentic = require("agentic")
 
