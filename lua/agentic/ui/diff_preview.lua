@@ -439,15 +439,24 @@ function M.clear_diff(buf, is_rejection)
             -- closes each window still holding the buffer. `win_findbuf` is
             -- tab-agnostic on purpose — that window may be in another tabpage.
             for _, buf_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-                -- The TARGET window's alternate buffer, not the current one's.
-                local alt = vim.api.nvim_win_call(buf_winid, function()
-                    return vim.fn.bufnr("#")
-                end)
+                -- An earlier swap fires autocmds that can close a later window
+                -- in this snapshot; a dead window needs no swap.
+                if BufHelpers.is_win_usable(buf_winid) then
+                    -- The TARGET window's alternate buffer, not the current one's.
+                    local ok, alt = pcall(
+                        vim.api.nvim_win_call,
+                        buf_winid,
+                        function()
+                            return vim.fn.bufnr("#")
+                        end
+                    )
 
-                local target_buf = (alt ~= -1 and alt ~= bufnr) and alt
-                    or vim.api.nvim_create_buf(true, true)
+                    local target_buf = (ok and alt ~= -1 and alt ~= bufnr)
+                            and alt
+                        or vim.api.nvim_create_buf(true, true)
 
-                pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
+                    pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
+                end
             end
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         end

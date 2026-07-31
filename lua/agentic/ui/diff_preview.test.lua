@@ -206,6 +206,8 @@ describe("diff_preview", function()
         local created_bufs
         --- @type table<integer, true>
         local base_tabs
+        --- @type integer
+        local augroup
 
         before_each(function()
             created_wins = {}
@@ -214,9 +216,15 @@ describe("diff_preview", function()
             for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
                 base_tabs[tab] = true
             end
+            augroup = vim.api.nvim_create_augroup(
+                "agentic_diff_preview_test",
+                { clear = true }
+            )
         end)
 
         after_each(function()
+            -- A leaked autocmd corrupts every later test file.
+            pcall(vim.api.nvim_del_augroup_by_id, augroup)
             for _, winid in ipairs(created_wins) do
                 pcall(vim.api.nvim_win_close, winid, true)
             end
@@ -415,6 +423,41 @@ describe("diff_preview", function()
             assert.is_true(vim.api.nvim_win_is_valid(second_win))
             assert.equal(first_alt, vim.api.nvim_win_get_buf(first_win))
             assert.equal(second_alt, vim.api.nvim_win_get_buf(second_win))
+        end)
+
+        it("finishes the rejection when a window dies mid-loop", function()
+            local bufnr = new_named_buf("/tmp/rejected_dying_window.lua")
+            local alt = new_named_buf("/tmp/dying_alternate.lua")
+
+            local first_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(first_win, alt)
+            vim.api.nvim_win_set_buf(first_win, bufnr)
+
+            local second_win = split_showing(alt, first_win)
+            vim.api.nvim_win_set_buf(second_win, bufnr)
+
+            local third_win = split_showing(alt, first_win)
+            vim.api.nvim_win_set_buf(third_win, bufnr)
+
+            -- `win_findbuf` snapshots the window list up front; swapping the
+            -- first window fires autocmds that can kill a LATER entry.
+            vim.api.nvim_create_autocmd("BufEnter", {
+                group = augroup,
+                buffer = alt,
+                callback = function()
+                    if vim.api.nvim_win_is_valid(third_win) then
+                        vim.api.nvim_win_close(third_win, true)
+                    end
+                end,
+            })
+
+            DiffPreview.clear_diff(bufnr, true)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+            assert.is_true(vim.api.nvim_win_is_valid(first_win))
+            assert.is_true(vim.api.nvim_win_is_valid(second_win))
+            assert.equal(alt, vim.api.nvim_win_get_buf(first_win))
+            assert.equal(alt, vim.api.nvim_win_get_buf(second_win))
         end)
 
         it("keeps a window on the rejected file in another tabpage", function()
