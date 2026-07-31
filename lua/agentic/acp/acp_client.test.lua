@@ -843,6 +843,176 @@ describe("ACPClient", function()
                 outcome = { outcome = "selected", optionId = "allow_once" },
             }, sent[1].result)
         end)
+
+        -- A UI defect inside `on_request_permission` must not strand the
+        -- JSON-RPC `id`: the subprocess is shared across every session, so the
+        -- throw would hang all of them, not just this one.
+        it("answers cancelled when on_request_permission throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function()
+                    error("boom in on_request_permission")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            -- `vim.schedule` is stubbed, so a throw from the scheduled body
+            -- escapes into `drain` instead of dying on the (real) event loop.
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(21, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 21)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:match(
+                    "boom in on_request_permission"
+                )
+            )
+        end)
+
+        -- The permission flow renders the tool call before prompting, so a
+        -- throw in `on_tool_call_update` aborts the dispatch before
+        -- `on_request_permission` is ever reached.
+        it("answers cancelled when on_tool_call_update throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            local asked = spy.new(function() end)
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function()
+                    error("boom in on_tool_call_update")
+                end,
+                on_request_permission = function(request, callback)
+                    asked(request, callback)
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(23, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 23)
+            assert.equal(sent[1].result.outcome.outcome, "cancelled")
+            assert.equal(asked.call_count, 0)
+        end)
+
+        -- `toolCall` is a table, so the pre-dispatch type guard passes, but
+        -- `update.content` elements are unchecked: `content.type` on a number
+        -- throws inside the scheduled `__build_tool_call_message`.
+        it(
+            "answers cancelled when the nested tool call content is malformed",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local queue = queue_schedules()
+
+                local asked = spy.new(function() end)
+
+                --- @type agentic.acp.ClientHandlers
+                local handlers = {
+                    on_session_update = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                    on_request_permission = function(request, callback)
+                        asked(request, callback)
+                    end,
+                }
+
+                client.subscribers["s1"] = handlers
+
+                --- @type agentic.acp.RequestPermission
+                --- @diagnostic disable-next-line: missing-fields
+                local malformed = {
+                    sessionId = "s1",
+                    --- @diagnostic disable-next-line: assign-type-mismatch
+                    toolCall = { toolCallId = "t1", content = { 5 } },
+                }
+
+                local ok, err = pcall(function()
+                    --- @diagnostic disable-next-line: invisible
+                    client:__handle_request_permission(25, malformed)
+
+                    drain(queue)
+                end)
+                assert.equal(ok, true)
+                assert.is_nil(err)
+
+                assert.equal(#sent, 1)
+                assert.equal(sent[1].id, 25)
+                assert.equal(sent[1].result.outcome.outcome, "cancelled")
+                assert.equal(asked.call_count, 0)
+            end
+        )
+
+        -- The `id` was already answered before the throw. A second
+        -- `__send_result` on the same `id` is a protocol violation, so the
+        -- dispatch guard must not overwrite a real selection with a cancel.
+        it("answers once when the handler answers and then throws", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function(_request, callback)
+                    callback("allow_once")
+                    error("boom after answering")
+                end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(27, REQUEST)
+
+                drain(queue)
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 1)
+            assert.equal(sent[1].id, 27)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "allow_once" },
+            }, sent[1].result)
+        end)
     end)
 
     describe("__build_tool_call_message", function()

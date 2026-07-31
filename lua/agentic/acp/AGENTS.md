@@ -90,6 +90,44 @@ keep returning silently.
 Regression:
 `lua/agentic/acp/acp_client.test.lua::"answers cancelled when the subscriber is gone"`.
 
+### The dispatch body MUST answer even when it throws
+
+A missing subscriber is not the only way to strand the `id`. The pre-dispatch
+type guard in `__handle_request_permission` only validates the payload's **top
+level**; everything below it runs unchecked inside the `vim.schedule` body, where
+three reachable throws left the `id` unanswered:
+
+- `subscriber.on_request_permission` throws (a UI defect)
+- `subscriber.on_tool_call_update` throws (same)
+- `__build_tool_call_message` throws on a payload the type guard accepts.
+  `update.content` is type-checked but its **elements** are not, so
+  `toolCall = { toolCallId = "t1", content = { 5 } }` indexes a number.
+
+`vim.schedule` swallows the error, so the transport read loop survives — which is
+why this failed silently rather than crashing. The shared subprocess (ADR 0004)
+just waits, and every session hangs with it.
+
+The dispatch body is therefore wrapped in a `pcall` that answers
+`{ outcome = "cancelled" }` on failure. Two rules govern it:
+
+- It MUST `Logger.notify` the error. A silent cancel hides genuine UI bugs in
+  `on_request_permission` behind a permission prompt that merely "didn't appear".
+- `answer` MUST be idempotent. The subscriber can invoke its callback and _then_
+  throw; the `id` is already answered at that point, and a second `__send_result`
+  on one `id` is a protocol violation. The guard's cancel is a no-op once
+  answered, so a real `selected` outcome is never overwritten.
+
+Do NOT harden `__build_tool_call_message` instead. One guard at the dispatch
+boundary closes all three variants; hardening the builder is a larger diff for
+the same bug and still would not cover a throwing subscriber callback.
+
+Regressions:
+
+- `lua/agentic/acp/acp_client.test.lua::"answers cancelled when on_request_permission throws"`
+- `lua/agentic/acp/acp_client.test.lua::"answers cancelled when on_tool_call_update throws"`
+- `lua/agentic/acp/acp_client.test.lua::"answers cancelled when the nested tool call content is malformed"`
+- `lua/agentic/acp/acp_client.test.lua::"answers once when the handler answers and then throws"`
+
 ## Protocol flow details
 
 The full event pipeline, ACPClient lifecycle, stdio framing, sync/async

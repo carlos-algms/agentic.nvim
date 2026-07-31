@@ -541,8 +541,19 @@ end
 --- @param message_id number
 --- @param request agentic.acp.RequestPermission|nil
 function ACPClient:__handle_request_permission(message_id, request)
+    local answered = false
+
+    --- Idempotent: the dispatch guard below cancels on a throw, and the
+    --- subscriber may already have answered before throwing. A second
+    --- `__send_result` on one `id` is a protocol violation.
     --- @param option_id string|nil nil is a cancellation, not a selection
     local function answer(option_id)
+        if answered then
+            return
+        end
+
+        answered = true
+
         --- @type agentic.acp.RequestPermissionOutcome
         local outcome = option_id
                 and { outcome = "selected", optionId = option_id }
@@ -580,10 +591,31 @@ function ACPClient:__handle_request_permission(message_id, request)
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
-        local message = self:__build_tool_call_message(request.toolCall)
-        subscriber.on_tool_call_update(message)
+        -- Any throw in here still owes the `id` an answer. The type guard above
+        -- only covers the payload's top level: nested shapes reach
+        -- `__build_tool_call_message` unchecked, and either subscriber callback
+        -- can throw on a UI defect. `vim.schedule` swallows the error, so the
+        -- read loop survives but the shared subprocess waits forever.
+        -- Notified, never silent: a swallowed throw hides real UI bugs.
+        -- Regression: acp_client.test.lua::"answers cancelled when on_request_permission throws"
+        -- Regression: acp_client.test.lua::"answers cancelled when on_tool_call_update throws"
+        -- Regression: acp_client.test.lua::"answers cancelled when the nested tool call content is malformed"
+        -- Regression: acp_client.test.lua::"answers once when the handler answers and then throws"
+        local ok, err = pcall(function()
+            local message = self:__build_tool_call_message(request.toolCall)
+            subscriber.on_tool_call_update(message)
 
-        subscriber.on_request_permission(request, answer)
+            subscriber.on_request_permission(request, answer)
+        end)
+
+        if not ok then
+            Logger.notify(
+                "Failed to dispatch session/request_permission: "
+                    .. tostring(err)
+            )
+            -- No-op when the subscriber already answered before throwing.
+            answer(nil)
+        end
     end, function()
         -- The request is still outstanding on the shared provider subprocess.
         -- Regression: acp_client.test.lua::"answers cancelled when the subscriber is gone"
