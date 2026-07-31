@@ -502,9 +502,9 @@ describe("hunk_navigation", function()
             HunkNavigation.setup_keymaps(test_bufnr)
             HunkNavigation.restore_keymaps(test_bufnr)
 
-            assert.is_false(
-                is_buffer_local(get_keymap_in_buf(test_bufnr, "<leader>hn"))
-            )
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.is_false(is_buffer_local(restored))
+            assert.equal(":echo 'global'<CR>", restored.rhs)
         end)
     end)
 end)
