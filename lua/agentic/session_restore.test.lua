@@ -20,10 +20,12 @@ describe("SessionRestore", function()
     local destroy_stub
     --- @type TestStub
     local show_session_stub
+    --- @type TestStub
+    local find_live_stub
     --- Stands in for the session `SessionRegistry.create` hands back
     local restored_session
 
-    --- @param opts {chat_history?: table, list_sessions?: TestSpy, empty?: boolean, load_session_capable?: boolean}|nil
+    --- @param opts {chat_history?: table, list_sessions?: TestSpy, when_ready?: TestSpy, empty?: boolean, load_session_capable?: boolean}|nil
     local function create_mock_session(opts)
         opts = opts or {}
         local is_empty = opts.empty ~= false
@@ -57,11 +59,12 @@ describe("SessionRestore", function()
                 agent_capabilities = caps,
                 cancel_session = spy.new(function() end),
                 list_sessions = opts.list_sessions or spy.new(function() end),
-                when_ready = spy.new(function(_self, cb)
+                when_ready = opts.when_ready or spy.new(function(_self, cb)
                     cb()
                 end),
             },
             load_acp_session = spy.new(function() end),
+            _destroyed = false,
         }
     end
 
@@ -96,6 +99,8 @@ describe("SessionRestore", function()
         end)
         destroy_stub = spy.stub(SessionRegistry, "destroy")
         show_session_stub = spy.stub(SessionRegistry, "show_session")
+        find_live_stub = spy.stub(SessionRegistry, "find_by_acp_session_id")
+        find_live_stub:returns(nil)
     end)
 
     after_each(function()
@@ -105,6 +110,7 @@ describe("SessionRestore", function()
         create_stub:revert()
         destroy_stub:revert()
         show_session_stub:revert()
+        find_live_stub:revert()
     end)
 
     describe("restore_by_id", function()
@@ -138,6 +144,26 @@ describe("SessionRestore", function()
 
             assert.spy(destroy_stub).was.called_with(1)
         end)
+
+        it(
+            "shows a live session and discards a distinct empty placeholder",
+            function()
+                local session = create_mock_session()
+                local live_session = create_mock_session({ empty = false })
+                live_session.session_id = "abc-123"
+                live_session.session_key = 7
+                find_live_stub:returns(live_session)
+
+                SessionRestore.restore_by_id(
+                    session --[[@as agentic.SessionManager]],
+                    "abc-123"
+                )
+
+                assert.spy(create_stub).was.called(0)
+                assert.spy(show_session_stub).was.called_with(7)
+                assert.spy(destroy_stub).was.called_with(1)
+            end
+        )
 
         -- Files, code selections and diagnostics are user work; only explicit
         -- intent may discard them.
@@ -205,6 +231,46 @@ describe("SessionRestore", function()
 
             assert.spy(vim_ui_select_stub).was.called(0)
         end)
+
+        it("does nothing when destroyed before the ready callback", function()
+            local ready_callback
+            local when_ready = spy.new(function(_self, callback)
+                ready_callback = callback
+            end)
+            local session = create_mock_session({ when_ready = when_ready })
+
+            SessionRestore.restore_by_id(
+                session --[[@as agentic.SessionManager]],
+                "abc-123"
+            )
+            session._destroyed = true
+            ready_callback()
+
+            assert.spy(vim_schedule_stub).was.called(0)
+            assert.spy(create_stub).was.called(0)
+            assert.spy(show_session_stub).was.called(0)
+        end)
+
+        it(
+            "does nothing when destroyed before the scheduled restore",
+            function()
+                local scheduled_callback
+                vim_schedule_stub:invokes(function(callback)
+                    scheduled_callback = callback
+                end)
+                local session = create_mock_session()
+
+                SessionRestore.restore_by_id(
+                    session --[[@as agentic.SessionManager]],
+                    "abc-123"
+                )
+                session._destroyed = true
+                scheduled_callback()
+
+                assert.spy(create_stub).was.called(0)
+                assert.spy(show_session_stub).was.called(0)
+            end
+        )
     end)
 
     describe("show_picker with ACP session list", function()
@@ -321,6 +387,67 @@ describe("SessionRestore", function()
             assert.spy(destroy_stub).was.called(0)
             assert.spy(create_stub).was.called(1)
             assert.spy(show_session_stub).was.called_with(99)
+        end)
+
+        it("does nothing when destroyed before the ready callback", function()
+            local ready_callback
+            local when_ready = spy.new(function(_self, callback)
+                ready_callback = callback
+            end)
+            local session = create_mock_session({ when_ready = when_ready })
+
+            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
+            session._destroyed = true
+            ready_callback()
+
+            assert.spy(session.agent.list_sessions).was.called(0)
+            assert.spy(vim_schedule_stub).was.called(0)
+            assert.spy(vim_ui_select_stub).was.called(0)
+        end)
+
+        it("does nothing when destroyed before the list callback", function()
+            local list_callback
+            local list_sessions = spy.new(function(_self, _cwd, callback)
+                list_callback = callback
+            end)
+            local session = create_mock_session({
+                list_sessions = list_sessions,
+            })
+
+            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
+            session._destroyed = true
+            list_callback({ sessions = acp_sessions }, nil)
+
+            assert.spy(vim_schedule_stub).was.called(0)
+            assert.spy(vim_ui_select_stub).was.called(0)
+            assert.spy(create_stub).was.called(0)
+        end)
+
+        it("does nothing when destroyed before the picker schedule", function()
+            local scheduled_callback
+            vim_schedule_stub:invokes(function(callback)
+                scheduled_callback = callback
+            end)
+            local session = create_acp_session()
+
+            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
+            session._destroyed = true
+            scheduled_callback()
+
+            assert.spy(vim_ui_select_stub).was.called(0)
+            assert.spy(create_stub).was.called(0)
+        end)
+
+        it("does nothing when destroyed before the picker choice", function()
+            local session = create_acp_session()
+
+            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
+            local callback = select_session(1)
+            session._destroyed = true
+            callback({ session_id = "acp-1", title = "ACP First" })
+
+            assert.spy(create_stub).was.called(0)
+            assert.spy(show_session_stub).was.called(0)
         end)
     end)
 end)

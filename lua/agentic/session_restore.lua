@@ -5,6 +5,13 @@ local SessionRegistry = require("agentic.session_registry")
 --- @class agentic.SessionRestore
 local SessionRestore = {}
 
+--- @param session agentic.SessionManager
+--- @return boolean destroyed
+local function is_destroyed(session)
+    --- @diagnostic disable-next-line: invisible
+    return session._destroyed
+end
+
 --- The `Config.acp_providers` key the session's agent was built from.
 --- Restore is provider-local: an ACP session ID only means anything to the agent that
 --- issued it, and `SessionRegistry.create` otherwise picks up the global `Config.provider`.
@@ -62,6 +69,10 @@ local function restore_into_new_session(
     title,
     timestamp
 )
+    if is_destroyed(current_session) then
+        return
+    end
+
     local caps = current_session.agent.agent_capabilities
 
     if not caps or not caps.loadSession then
@@ -79,6 +90,13 @@ local function restore_into_new_session(
 
     if live and live_key then
         SessionRegistry.show_session(live_key)
+        if
+            live ~= current_session
+            and current_session.session_key
+            and is_empty(current_session)
+        then
+            SessionRegistry.destroy(current_session.session_key)
+        end
         return
     end
 
@@ -104,9 +122,21 @@ end
 
 --- @param current_session agentic.SessionManager
 function SessionRestore.show_picker(current_session)
+    if is_destroyed(current_session) then
+        return
+    end
+
     local cwd = vim.fn.getcwd()
     current_session.agent:when_ready(function()
+        if is_destroyed(current_session) then
+            return
+        end
+
         current_session.agent:list_sessions(cwd, function(result, err)
+            if is_destroyed(current_session) then
+                return
+            end
+
             if err or not result then
                 Logger.notify(
                     "Failed to list sessions: "
@@ -137,13 +167,17 @@ function SessionRestore.show_picker(current_session)
             end
 
             vim.schedule(function()
+                if is_destroyed(current_session) then
+                    return
+                end
+
                 vim.ui.select(items, {
                     prompt = "Select session to restore:",
                     format_item = function(item)
                         return item.display
                     end,
                 }, function(choice)
-                    if not choice then
+                    if is_destroyed(current_session) or not choice then
                         return
                     end
 
@@ -162,8 +196,20 @@ end
 --- @param current_session agentic.SessionManager
 --- @param session_id string
 function SessionRestore.restore_by_id(current_session, session_id)
+    if is_destroyed(current_session) then
+        return
+    end
+
     current_session.agent:when_ready(function()
+        if is_destroyed(current_session) then
+            return
+        end
+
         vim.schedule(function()
+            if is_destroyed(current_session) then
+                return
+            end
+
             restore_into_new_session(current_session, session_id, nil, nil)
         end)
     end)

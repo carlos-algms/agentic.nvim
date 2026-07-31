@@ -19,6 +19,18 @@ local function close_extra_tabs(base_tabs)
     end
 end
 
+--- @param bufnr integer
+--- @param lhs string
+--- @return boolean found
+local function has_buffer_keymap(bufnr, lhs)
+    for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
+        if keymap.lhs == lhs then
+            return true
+        end
+    end
+    return false
+end
+
 describe("diff_preview", function()
     describe("show_diff", function()
         local read_stub
@@ -26,12 +38,18 @@ describe("diff_preview", function()
         local notify_spy
         local fs_stat_stub
         local orig_layout
+        --- @type table<integer, true>
+        local base_tabs
 
         --- @type integer|nil
         local initial_bufnr
 
         before_each(function()
             initial_bufnr = vim.api.nvim_get_current_buf()
+            base_tabs = {}
+            for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+                base_tabs[tab] = true
+            end
             read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
             read_stub:invokes(function()
                 return { "local x = 1", "print(x)", "" }, nil
@@ -64,6 +82,7 @@ describe("diff_preview", function()
             if initial_bufnr and vim.api.nvim_buf_is_valid(initial_bufnr) then
                 pcall(vim.api.nvim_win_set_buf, 0, initial_bufnr)
             end
+            close_extra_tabs(base_tabs)
         end)
 
         it("should not open a window when diff matching fails", function()
@@ -108,6 +127,77 @@ describe("diff_preview", function()
             assert.equal(test_path, vim.b[bufnr]._agentic_suggestion_for)
 
             assert.is_false(vim.bo[bufnr].modifiable)
+        end)
+
+        it("isolates same-path suggestion previews by session state", function()
+            read_stub:invokes(function()
+                return nil
+            end)
+
+            local test_path = "/tmp/test_shared_suggestion.lua"
+            --- @type agentic.ui.DiffState
+            local state_a = {}
+            --- @type agentic.ui.DiffState
+            local state_b = {}
+
+            local win_a = vim.api.nvim_get_current_win()
+            vim.cmd("tabnew")
+            local win_b = vim.api.nvim_get_current_win()
+
+            local function show_in(winid, state, value)
+                DiffPreview.show_diff({
+                    file_path = test_path,
+                    diff = { old = {}, new = { value } },
+                    state = state,
+                    get_winid = function(bufnr)
+                        vim.api.nvim_win_set_buf(winid, bufnr)
+                        return winid
+                    end,
+                })
+            end
+
+            show_in(win_a, state_a, "session a")
+            show_in(win_b, state_b, "session b")
+
+            assert.is_not_nil(state_a.preview_bufnr)
+            assert.is_not_nil(state_b.preview_bufnr)
+            assert.is_not.equal(state_a.preview_bufnr, state_b.preview_bufnr)
+            assert.is_not.equal(
+                vim.api.nvim_buf_get_name(state_a.preview_bufnr),
+                vim.api.nvim_buf_get_name(state_b.preview_bufnr)
+            )
+            assert.is_true(
+                has_buffer_keymap(
+                    state_a.preview_bufnr,
+                    Config.keymaps.diff_preview.next_hunk
+                )
+            )
+            assert.is_true(
+                has_buffer_keymap(
+                    state_b.preview_bufnr,
+                    Config.keymaps.diff_preview.next_hunk
+                )
+            )
+
+            local state_b_bufnr = state_b.preview_bufnr
+            ---@cast state_b_bufnr integer
+            DiffPreview.clear_diff(test_path, true, state_a)
+
+            assert.is_nil(state_a.preview_bufnr)
+            assert.equal(state_b_bufnr, state_b.preview_bufnr)
+            assert.is_true(vim.api.nvim_buf_is_valid(state_b_bufnr))
+            assert.equal(
+                "session b",
+                vim.api.nvim_buf_get_lines(state_b_bufnr, 0, 1, false)[1]
+            )
+            assert.is_true(
+                has_buffer_keymap(
+                    state_b_bufnr,
+                    Config.keymaps.diff_preview.next_hunk
+                )
+            )
+
+            DiffPreview.clear_diff(test_path, true, state_b)
         end)
 
         it(
@@ -515,6 +605,30 @@ describe("diff_preview", function()
             assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
             assert.is_true(vim.api.nvim_win_is_valid(win_a))
             assert.is_true(vim.api.nvim_win_is_valid(win_b))
+        end)
+
+        it("cleans only the owning session's same-path suggestion", function()
+            local file_path = "/tmp/shared_cleanup_suggestion.lua"
+            local suggestion_a = new_named_buf(
+                FileSystem.to_smart_path(file_path) .. " (suggestion a)"
+            )
+            local suggestion_b = new_named_buf(
+                FileSystem.to_smart_path(file_path) .. " (suggestion b)"
+            )
+            vim.b[suggestion_a]._agentic_suggestion_for = file_path
+            vim.b[suggestion_b]._agentic_suggestion_for = file_path
+
+            --- @type agentic.ui.DiffState
+            local state_a = { preview_bufnr = suggestion_a }
+            --- @type agentic.ui.DiffState
+            local state_b = { preview_bufnr = suggestion_b }
+
+            DiffPreview.cleanup_suggestion_buffer(file_path, state_a)
+
+            assert.is_false(vim.api.nvim_buf_is_valid(suggestion_a))
+            assert.is_nil(state_a.preview_bufnr)
+            assert.is_true(vim.api.nvim_buf_is_valid(suggestion_b))
+            assert.equal(suggestion_b, state_b.preview_bufnr)
         end)
     end)
 end)

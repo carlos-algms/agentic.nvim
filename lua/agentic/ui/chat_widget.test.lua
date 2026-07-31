@@ -30,10 +30,24 @@ describe("agentic.ui.ChatWidget", function()
             local widget_tab
             local widget
             local original_position
+            --- @type table<integer, boolean>
+            local baseline_tabs
+            local repurposed_chat_buf
+            local sticky_tmpfile
+            local sticky_float_win
+            local sticky_float_buf
 
             before_each(function()
                 original_position = Config.windows.position
                 Config.windows.position = position
+                baseline_tabs = {}
+                for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                    baseline_tabs[tabpage] = true
+                end
+                repurposed_chat_buf = nil
+                sticky_tmpfile = nil
+                sticky_float_win = nil
+                sticky_float_buf = nil
 
                 vim.cmd("tabnew")
                 widget_tab = vim.api.nvim_get_current_tabpage()
@@ -48,9 +62,39 @@ describe("agentic.ui.ChatWidget", function()
                         widget:destroy()
                     end)
                 end
-                pcall(function()
-                    vim.cmd("tabclose")
-                end)
+
+                if
+                    sticky_float_win
+                    and vim.api.nvim_win_is_valid(sticky_float_win)
+                then
+                    vim.api.nvim_win_close(sticky_float_win, true)
+                end
+                for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                    if not baseline_tabs[tabpage] then
+                        vim.cmd(
+                            "tabclose! "
+                                .. vim.api.nvim_tabpage_get_number(tabpage)
+                        )
+                    end
+                end
+                if
+                    repurposed_chat_buf
+                    and vim.api.nvim_buf_is_valid(repurposed_chat_buf)
+                then
+                    vim.api.nvim_buf_delete(
+                        repurposed_chat_buf,
+                        { force = true }
+                    )
+                end
+                if
+                    sticky_float_buf
+                    and vim.api.nvim_buf_is_valid(sticky_float_buf)
+                then
+                    vim.api.nvim_buf_delete(sticky_float_buf, { force = true })
+                end
+                if sticky_tmpfile then
+                    os.remove(sticky_tmpfile)
+                end
 
                 Config.windows.position = original_position
             end)
@@ -208,16 +252,17 @@ describe("agentic.ui.ChatWidget", function()
 
                     vim.api.nvim_set_current_win(chat_win)
 
-                    local tmpfile = vim.fn.tempname() .. ".lua"
-                    vim.fn.writefile({ "-- test" }, tmpfile)
+                    sticky_tmpfile = vim.fn.tempname() .. ".lua"
+                    vim.fn.writefile({ "-- test" }, sticky_tmpfile)
+                    repurposed_chat_buf = widget.buf_nrs.chat
 
-                    vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
+                    vim.cmd("edit " .. vim.fn.fnameescape(sticky_tmpfile))
 
                     -- Guard restored chat_buf or swapped in a fresh scratch buffer
                     local buf_in_chat = vim.api.nvim_win_get_buf(chat_win)
                     local name_in_chat = vim.api.nvim_buf_get_name(buf_in_chat)
                     local resolved_in_chat = vim.fn.resolve(name_in_chat)
-                    local resolved_tmpfile = vim.fn.resolve(tmpfile)
+                    local resolved_tmpfile = vim.fn.resolve(sticky_tmpfile)
                     assert.are_not.equal(resolved_tmpfile, resolved_in_chat)
 
                     -- Temp file lands in a non-widget window, same tabpage
@@ -238,7 +283,6 @@ describe("agentic.ui.ChatWidget", function()
                             end
                         end
                     end
-                    os.remove(tmpfile)
                     assert.is_true(found_in_non_widget)
                 end)
 
@@ -306,9 +350,9 @@ describe("agentic.ui.ChatWidget", function()
                             end
                         end
 
-                        local float_buf = vim.api.nvim_create_buf(false, true)
-                        local float_win =
-                            vim.api.nvim_open_win(float_buf, false, {
+                        sticky_float_buf = vim.api.nvim_create_buf(false, true)
+                        sticky_float_win =
+                            vim.api.nvim_open_win(sticky_float_buf, false, {
                                 relative = "editor",
                                 width = 10,
                                 height = 3,
@@ -318,8 +362,6 @@ describe("agentic.ui.ChatWidget", function()
 
                         local result = widget:find_first_non_widget_window()
                         assert.is_nil(result)
-                        vim.api.nvim_win_close(float_win, true)
-                        vim.api.nvim_buf_delete(float_buf, { force = true })
                     end
                 )
             end)
@@ -1283,8 +1325,14 @@ describe("agentic.ui.ChatWidget", function()
         local widget
         local widget2
         local notify_stub
+        --- @type table<integer, boolean>
+        local baseline_tabs
 
         before_each(function()
+            baseline_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                baseline_tabs[tabpage] = true
+            end
             vim.cmd("tabnew")
             notify_stub = spy.stub(Logger, "notify")
             widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
@@ -1301,9 +1349,13 @@ describe("agentic.ui.ChatWidget", function()
             widget = nil
             widget2 = nil
             notify_stub:revert()
-            pcall(function()
-                vim.cmd("tabclose")
-            end)
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not baseline_tabs[tabpage] then
+                    vim.cmd(
+                        "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                    )
+                end
+            end
         end)
 
         it("returns nil for a hidden widget", function()
@@ -1363,8 +1415,6 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_not.equal(other_win, fallback)
             assert.equal(widget_tab, vim.api.nvim_win_get_tabpage(fallback))
             assert.equal(other_tab, vim.api.nvim_get_current_tabpage())
-
-            vim.cmd("tabclose")
         end)
 
         it(
@@ -1598,10 +1648,16 @@ describe("agentic.ui.ChatWidget", function()
     describe("header state ownership", function()
         local widget_a
         local widget_b
-        local base_tabs
+        --- @type table<integer, boolean>
+        local baseline_tabs
+        local unowned_bufnr
 
         before_each(function()
-            base_tabs = #vim.api.nvim_list_tabpages()
+            baseline_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                baseline_tabs[tabpage] = true
+            end
+            unowned_bufnr = nil
             vim.cmd("tabnew")
             widget_a =
                 ChatWidget:new(spy.new(function() end) --[[@as function]])
@@ -1618,13 +1674,15 @@ describe("agentic.ui.ChatWidget", function()
                     widget:destroy()
                 end)
             end
-            while #vim.api.nvim_list_tabpages() > base_tabs do
-                local ok = pcall(function()
-                    vim.cmd("tabclose")
-                end)
-                if not ok then
-                    break
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not baseline_tabs[tabpage] then
+                    vim.cmd(
+                        "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                    )
                 end
+            end
+            if unowned_bufnr and vim.api.nvim_buf_is_valid(unowned_bufnr) then
+                vim.api.nvim_buf_delete(unowned_bufnr, { force = true })
             end
         end)
 
@@ -1664,18 +1722,15 @@ describe("agentic.ui.ChatWidget", function()
         it(
             "hands out a fresh default table per call when no widget owns the bufnr",
             function()
-                local bufnr = vim.api.nvim_create_buf(false, true)
+                unowned_bufnr = vim.api.nvim_create_buf(false, true)
 
                 -- The owned path returns the widget's own table, which callers
                 -- MUST mutate in place. The unowned fallback cannot: each call
                 -- deep-copies the module defaults, so this mutation is
                 -- discarded rather than shared with the next caller.
-                WindowDecoration.get_headers_state(bufnr).chat.context =
+                WindowDecoration.get_headers_state(unowned_bufnr).chat.context =
                     "leaked"
-                local second = WindowDecoration.get_headers_state(bufnr)
-
-                -- Deleted before asserting: a red assertion must not leak it.
-                vim.api.nvim_buf_delete(bufnr, { force = true })
+                local second = WindowDecoration.get_headers_state(unowned_bufnr)
 
                 assert.is_nil(second.chat.context)
             end

@@ -99,16 +99,17 @@ ends.
 **MessageWriter**. Reachable from any of its buffer numbers via
 **WidgetRegistry**.
 
-**ChatWidget buffers**: The five buffers held on `ChatWidget.buf_nrs`:
+**ChatWidget buffers**: The six buffers held on `ChatWidget.buf_nrs`:
 
 - `chat` — the streaming transcript. Owned by **MessageWriter**.
 - `input` — user prompt entry buffer.
 - `files` — backs the **FileList** view.
 - `code` — backs the **CodeSelection** view.
 - `diagnostics` — buffer-diagnostics view attached to the prompt.
+- `todos` — backs the **TodoList** view.
 
 When a doc says "chat buffer" it means `buf_nrs.chat` specifically. "Widget
-buffer" means any of the five.
+buffer" means any of the six.
 
 **WidgetLayout**: Geometry/window management for **ChatWidget**. Opens, closes,
 resizes panels. Applies `PANEL_WINDOW_OPTS` via `vim.wo[winid][0]`.

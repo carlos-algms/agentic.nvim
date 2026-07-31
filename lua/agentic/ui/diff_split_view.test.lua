@@ -8,6 +8,12 @@ describe("DiffSplitView", function()
     local test_file_path = "/tmp/test_diff_split_view_fake.lua"
     local test_tabpage
     local read_stub
+    --- @type TestStub|nil
+    local tab_valid_stub
+    --- @type TestStub|nil
+    local win_call_stub
+    --- @type TestStub|nil
+    local close_stub
 
     --- Split state lives on the owning session's diff state, not the tabpage,
     --- so each case gets a fresh one.
@@ -37,6 +43,9 @@ describe("DiffSplitView", function()
     end
 
     before_each(function()
+        tab_valid_stub = nil
+        win_call_stub = nil
+        close_stub = nil
         read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
         stub_file_content({ "local x = 1", "print(x)", "" })
         diff_state = {}
@@ -45,6 +54,15 @@ describe("DiffSplitView", function()
     end)
 
     after_each(function()
+        if tab_valid_stub then
+            tab_valid_stub:revert()
+        end
+        if win_call_stub then
+            win_call_stub:revert()
+        end
+        if close_stub then
+            close_stub:revert()
+        end
         read_stub:revert()
         pcall(DiffSplitView.clear_split_diff, diff_state)
         if test_tabpage and vim.api.nvim_tabpage_is_valid(test_tabpage) then
@@ -380,6 +398,9 @@ describe("DiffSplitView", function()
             function()
                 --- @type agentic.ui.DiffState
                 local other_state = {}
+                local original_bufnr = vim.fn.bufadd(test_file_path)
+                local original_modifiable = vim.bo[original_bufnr].modifiable
+                local original_modified = vim.bo[original_bufnr].modified
                 local get_winid = function()
                     return vim.api.nvim_get_current_win()
                 end
@@ -406,14 +427,27 @@ describe("DiffSplitView", function()
                 ---@cast second agentic.ui.DiffSplitView.State
 
                 assert.is_not.equal(first, second)
+                assert.is_not.equal(first.new_bufnr, second.new_bufnr)
+                assert.is_not.equal(
+                    vim.api.nvim_buf_get_name(first.new_bufnr),
+                    vim.api.nvim_buf_get_name(second.new_bufnr)
+                )
                 DiffSplitView.clear_split_diff(other_state)
                 assert.is_nil(other_state.split_state)
                 assert.is_not_nil(diff_state.split_state)
+                assert.is_true(vim.api.nvim_buf_is_valid(first.new_bufnr))
+                assert.is_true(vim.api.nvim_win_is_valid(first.new_winid))
+                assert.is_false(vim.bo[original_bufnr].modifiable)
+                assert.is_true(vim.bo[original_bufnr].modified)
 
-                -- Documented consequence of the shared `<path> (suggestion)`
-                -- name: the second call reclaims the first's scratch buffer, so
-                -- the surviving state points at a dead buffer.
+                DiffSplitView.clear_split_diff(diff_state)
+                assert.is_nil(diff_state.split_state)
                 assert.is_false(vim.api.nvim_buf_is_valid(first.new_bufnr))
+                assert.equal(
+                    original_modifiable,
+                    vim.bo[original_bufnr].modifiable
+                )
+                assert.equal(original_modified, vim.bo[original_bufnr].modified)
             end
         )
 
@@ -518,6 +552,9 @@ describe("DiffSplitView", function()
         -- tool-call teardown, possibly after the user closed the tab, so the
         -- tabpage must be consulted too.
         it("skips stale-valid handles whose tabpage is gone", function()
+            local original_bufnr = vim.fn.bufadd(test_file_path)
+            local original_modifiable = vim.bo[original_bufnr].modifiable
+            local original_modified = vim.bo[original_bufnr].modified
             setup_and_show_split()
             local state = get_split(test_file_path)
             assert.is_not_nil(state)
@@ -528,26 +565,23 @@ describe("DiffSplitView", function()
             -- Dead tabpage, both window handles still valid: the exact
             -- post-`tabclose` state 0.11.x leaves behind.
             local real_tab_is_valid = vim.api.nvim_tabpage_is_valid
-            local tab_valid_stub =
-                spy_module.stub(vim.api, "nvim_tabpage_is_valid")
+            tab_valid_stub = spy_module.stub(vim.api, "nvim_tabpage_is_valid")
             tab_valid_stub:invokes(function(tab)
                 return tab ~= dead_tab and real_tab_is_valid(tab)
             end)
-            local win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
-            local close_stub = spy_module.stub(vim.api, "nvim_win_close")
+            win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+            close_stub = spy_module.stub(vim.api, "nvim_win_close")
 
             assert.is_true(vim.api.nvim_win_is_valid(state.original_winid))
             assert.is_true(vim.api.nvim_win_is_valid(state.new_winid))
 
             DiffSplitView.clear_split_diff(diff_state)
 
-            tab_valid_stub:revert()
-            win_call_stub:revert()
-            close_stub:revert()
-
             assert.equal(0, win_call_stub.call_count)
             assert.equal(0, close_stub.call_count)
             assert.is_nil(diff_state.split_state)
+            assert.equal(original_modifiable, vim.bo[original_bufnr].modifiable)
+            assert.equal(original_modified, vim.bo[original_bufnr].modified)
         end)
     end)
 end)

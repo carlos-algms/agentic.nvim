@@ -20,7 +20,11 @@ describe("agentic.ui.PermissionManager", function()
     local schedule_stub
     --- @type TestSpy|nil
     local cmd_spy
-    local base_tabs
+    --- @type TestSpy|nil
+    local repaint_spy
+    local own_win
+    --- @type table<integer, boolean>
+    local baseline_tabs
     --- Registered by a single case; unregistered in teardown so a failed
     --- assertion cannot leave a stale `bufnr -> widget` mapping behind.
     --- @type table|nil
@@ -88,8 +92,13 @@ describe("agentic.ui.PermissionManager", function()
     end
 
     before_each(function()
-        base_tabs = #vim.api.nvim_list_tabpages()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
         registered_owner = nil
+        own_win = nil
+        repaint_spy = nil
 
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(fn)
@@ -119,6 +128,10 @@ describe("agentic.ui.PermissionManager", function()
             cmd_spy:revert()
             cmd_spy = nil
         end
+        if repaint_spy then
+            repaint_spy:revert()
+            repaint_spy = nil
+        end
 
         schedule_stub:revert()
 
@@ -127,18 +140,21 @@ describe("agentic.ui.PermissionManager", function()
             registered_owner = nil
         end
 
-        while #vim.api.nvim_list_tabpages() > base_tabs do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
-            end
+        if own_win and vim.api.nvim_win_is_valid(own_win) then
+            vim.api.nvim_win_close(own_win, true)
         end
-
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
         end
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.cmd(
+                    "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                )
+            end
+        end
+
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
@@ -452,7 +468,7 @@ describe("agentic.ui.PermissionManager", function()
                 spy.new(function() end) --[[@as function]]
             )
 
-            local repaint_spy = spy.on(writer, "repaint_status_row")
+            repaint_spy = spy.on(writer, "repaint_status_row")
             pm:_cycle_focus(1)
 
             assert.equal(2, repaint_spy.call_count)
@@ -462,8 +478,6 @@ describe("agentic.ui.PermissionManager", function()
             end
             assert.is_true(ids["tc-1"])
             assert.is_true(ids["tc-2"])
-
-            repaint_spy:revert()
         end)
     end)
 
@@ -615,7 +629,7 @@ describe("agentic.ui.PermissionManager", function()
                 vim.api.nvim_win_set_buf(foreign_win, bufnr)
 
                 vim.cmd("tabnew")
-                local own_win = vim.api.nvim_open_win(bufnr, true, {
+                own_win = vim.api.nvim_open_win(bufnr, true, {
                     relative = "editor",
                     width = 80,
                     height = 40,

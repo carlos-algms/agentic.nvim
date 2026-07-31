@@ -59,9 +59,25 @@ describe("BufferGuard", function()
     local widget
     local widget2
     local tmpfiles
+    --- @type table<integer, boolean>
+    local baseline_tabs
+    --- @type integer[]
+    local cleanup_buffers
+    local saved_options
 
     before_each(function()
         tmpfiles = {}
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        cleanup_buffers = {}
+        saved_options = {
+            number = vim.o.number,
+            signcolumn = vim.o.signcolumn,
+            cursorline = vim.o.cursorline,
+            list = vim.o.list,
+        }
         vim.cmd("tabnew")
         widget = new_widget()
     end)
@@ -79,12 +95,22 @@ describe("BufferGuard", function()
             os.remove(path)
         end
 
-        while #vim.api.nvim_list_tabpages() > 1 do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
+        vim.o.number = saved_options.number
+        vim.o.signcolumn = saved_options.signcolumn
+        vim.o.cursorline = saved_options.cursorline
+        vim.o.list = saved_options.list
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.cmd(
+                    "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                )
+            end
+        end
+
+        for _, bufnr in ipairs(cleanup_buffers) do
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                vim.api.nvim_buf_delete(bufnr, { force = true })
             end
         end
     end)
@@ -96,6 +122,7 @@ describe("BufferGuard", function()
             vim.api.nvim_set_current_win(widget.win_nrs.chat)
 
             local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
             vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
             assert.equal(
@@ -130,6 +157,7 @@ describe("BufferGuard", function()
 
         vim.api.nvim_set_current_win(widget2.win_nrs.chat)
         local foreign = vim.api.nvim_create_buf(true, false)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
         vim.api.nvim_win_set_buf(widget2.win_nrs.chat, foreign)
 
         -- Owner from the first registered widget instead of `vim.w.agentic_bufnr`
@@ -161,6 +189,7 @@ describe("BufferGuard", function()
                 #vim.api.nvim_tabpage_list_wins(widget:get_visible_tab_id())
 
             local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
             vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
             assert.equal(
@@ -197,6 +226,7 @@ describe("BufferGuard", function()
         tmpfiles[#tmpfiles + 1] = path
 
         local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
         vim.api.nvim_set_current_win(widget.win_nrs.chat)
         vim.cmd("edit " .. vim.fn.fnameescape(path))
 
@@ -219,6 +249,7 @@ describe("BufferGuard", function()
         tmpfiles[#tmpfiles + 1] = path
 
         local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
         vim.api.nvim_set_current_win(widget.win_nrs.chat)
         vim.cmd("edit " .. vim.fn.fnameescape(path))
 
@@ -238,6 +269,7 @@ describe("BufferGuard", function()
         tmpfiles[#tmpfiles + 1] = second
 
         local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
         vim.api.nvim_set_current_win(widget.win_nrs.chat)
         vim.cmd("edit " .. vim.fn.fnameescape(first))
 
@@ -246,6 +278,7 @@ describe("BufferGuard", function()
         -- Without the ownership transfer above, the replacement has no owner and
         -- this second edit cannot resolve a target window.
         local replacement = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+        cleanup_buffers[#cleanup_buffers + 1] = replacement
         make_repurposable(replacement)
         vim.api.nvim_set_current_win(widget.win_nrs.chat)
         vim.cmd("edit " .. vim.fn.fnameescape(second))
@@ -268,12 +301,6 @@ describe("BufferGuard", function()
             --
             -- Non-default globals below make a leak from PANEL defaults
             -- observable as a divergence on the editor window.
-            local saved = {
-                number = vim.o.number,
-                signcolumn = vim.o.signcolumn,
-                cursorline = vim.o.cursorline,
-                list = vim.o.list,
-            }
             vim.o.number = true
             vim.o.signcolumn = "yes"
             vim.o.cursorline = true
@@ -299,6 +326,7 @@ describe("BufferGuard", function()
             -- to the editor window.
             vim.api.nvim_set_current_win(widget.win_nrs.chat)
             local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
             vim.api.nvim_buf_set_name(foreign, vim.fn.tempname() .. "_leak.txt")
             vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
@@ -330,11 +358,6 @@ describe("BufferGuard", function()
             )
 
             WidgetLayout.close(widget.win_nrs)
-
-            vim.o.number = saved.number
-            vim.o.signcolumn = saved.signcolumn
-            vim.o.cursorline = saved.cursorline
-            vim.o.list = saved.list
         end
     )
 end)
@@ -404,5 +427,69 @@ describe("BufferGuard cursor follow (child)", function()
         assert.equal(vim.fn.resolve(tmpfile), editor_name)
 
         os.remove(tmpfile)
+    end)
+
+    it(
+        "does not use a closed redirect window after the schedule boundary",
+        function()
+            local editor_win, chat_win = setup_widget_in_child()
+
+            local result = child.lua_get(
+                [[(function(editor, chat)
+            local original_schedule = vim.schedule
+            vim.schedule = function(callback)
+                _G.buffer_guard_follow = callback
+            end
+
+            local foreign = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_win_set_buf(chat, foreign)
+            vim.schedule = original_schedule
+            vim.api.nvim_win_close(editor, true)
+
+            local ok = pcall(_G.buffer_guard_follow)
+            return { ok, vim.api.nvim_get_current_win() }
+        end)(...)]],
+                { editor_win, chat_win }
+            )
+
+            assert.is_true(result[1])
+            assert.is_not.equal(editor_win, result[2])
+        end
+    )
+
+    it("follows the widget's destination after it moves tabpages", function()
+        local old_editor, chat_win = setup_widget_in_child()
+
+        local result = child.lua_get(
+            [[(function(old_target, chat)
+            local original_schedule = vim.schedule
+            vim.schedule = function(callback)
+                _G.buffer_guard_follow = callback
+            end
+
+            local foreign = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_win_set_buf(chat, foreign)
+            vim.schedule = original_schedule
+
+            _G.widget:hide()
+            vim.cmd("tabnew")
+            local new_target = vim.api.nvim_get_current_win()
+            _G.widget:show({ focus_prompt = false })
+            _G.buffer_guard_follow()
+
+            return {
+                old_target,
+                new_target,
+                vim.api.nvim_get_current_win(),
+                vim.api.nvim_win_get_buf(new_target),
+                foreign,
+            }
+        end)(...)]],
+            { old_editor, chat_win }
+        )
+
+        assert.equal(result[2], result[3])
+        assert.equal(result[5], result[4])
+        assert.is_not.equal(result[1], result[3])
     end)
 end)

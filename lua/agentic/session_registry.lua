@@ -44,13 +44,6 @@ end
 --- @param provider_name agentic.UserConfig.ProviderName|nil Defaults to `Config.provider`
 --- @return agentic.SessionManager|nil
 function SessionRegistry.create(provider_name)
-    if not ACPHealth.check_configured_provider() then
-        Logger.debug("Session creation aborted: No configured ACP provider")
-        return nil
-    end
-
-    local SessionManager = require("agentic.session_manager")
-
     -- `SessionManager:new` resolves its agent from `Config.provider` synchronously, so a
     -- caller needing a specific provider borrows the global for that call only. The wrong
     -- provider sends a restored ACP session ID to an agent that never issued it.
@@ -60,7 +53,14 @@ function SessionRegistry.create(provider_name)
         Config.provider = provider_name
     end
 
+    local provider_available = false
     local ok, session = pcall(function()
+        provider_available = ACPHealth.check_configured_provider()
+        if not provider_available then
+            return nil
+        end
+
+        local SessionManager = require("agentic.session_manager")
         return SessionManager:new() --[[@as agentic.SessionManager|nil]]
     end)
 
@@ -68,6 +68,11 @@ function SessionRegistry.create(provider_name)
 
     if not ok then
         Logger.debug("Session creation failed:", session)
+        return nil
+    end
+
+    if not provider_available then
+        Logger.debug("Session creation aborted: No configured ACP provider")
         return nil
     end
 
@@ -154,17 +159,16 @@ function SessionRegistry.create_with_current_session_guard(
 
     --- @param choice string|nil
     local function create(choice)
-        -- Committed HERE, not before the `vim.ui.select` below: cancelling the prompt
-        -- used to leave the global provider switched with no session to show for it, so
-        -- the NEXT `new_session` silently used the wrong provider.
-        if provider_name then
-            Config.provider = provider_name
-        end
-
-        local session = SessionRegistry.create()
+        local session = SessionRegistry.create(provider_name)
 
         if not session then
             return
+        end
+
+        -- Committed only after creation succeeds: cancellation or a failed health check
+        -- must leave the provider used by the current session unchanged.
+        if provider_name then
+            Config.provider = provider_name
         end
 
         on_created(session)

@@ -432,14 +432,51 @@ describe("hunk_navigation split mode", function()
 
     local test_bufnr
     local saved_layout
-    local base_tabs
+    --- @type table<integer, true>
+    local baseline_tabs
+    --- @type integer[]
+    local created_windows
+    --- @type integer[]
+    local created_buffers
+
+    --- @return integer bufnr
+    local function create_buffer()
+        local bufnr = vim.api.nvim_create_buf(false, true)
+        created_buffers[#created_buffers + 1] = bufnr
+        return bufnr
+    end
+
+    --- @return integer winid
+    local function create_tab()
+        vim.cmd("tabnew")
+        local winid = vim.api.nvim_get_current_win()
+        created_windows[#created_windows + 1] = winid
+        return winid
+    end
+
+    --- @param bufnr integer
+    --- @param parent integer
+    --- @return integer winid
+    local function create_split(bufnr, parent)
+        local winid = vim.api.nvim_open_win(bufnr, false, {
+            split = "right",
+            win = parent,
+        })
+        created_windows[#created_windows + 1] = winid
+        return winid
+    end
 
     before_each(function()
-        base_tabs = #vim.api.nvim_list_tabpages()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        created_windows = {}
+        created_buffers = {}
         saved_layout = Config.diff_preview.layout
         Config.diff_preview.layout = "split"
 
-        test_bufnr = vim.api.nvim_create_buf(false, true)
+        test_bufnr = create_buffer()
         local lines = {}
         for i = 1, 60 do
             lines[#lines + 1] = "line " .. i
@@ -449,18 +486,30 @@ describe("hunk_navigation split mode", function()
 
     after_each(function()
         Config.diff_preview.layout = saved_layout
-        HunkNavigation.clear_state(test_bufnr)
-
-        while #vim.api.nvim_list_tabpages() > base_tabs do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
+        for _, winid in ipairs(created_windows) do
+            if BufHelpers.is_win_usable(winid) then
+                pcall(vim.api.nvim_win_close, winid, true)
             end
         end
 
-        pcall(vim.api.nvim_buf_delete, test_bufnr, { force = true })
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if
+                not baseline_tabs[tabpage]
+                and vim.api.nvim_tabpage_is_valid(tabpage)
+            then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+
+        for _, bufnr in ipairs(created_buffers) do
+            HunkNavigation.clear_state(bufnr)
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
     end)
 
     it("navigates the split's own window, not another tab's", function()
@@ -468,26 +517,21 @@ describe("hunk_navigation split mode", function()
         -- window carries the diff; without it the lookup takes tabpage order,
         -- hits a window not in diff mode, and reports "no more hunks" while the
         -- real diff sits untouched.
-        vim.cmd("tabnew")
-        local foreign_win = vim.api.nvim_get_current_win()
+        local foreign_win = create_tab()
         vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
         vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
 
-        vim.cmd("tabnew")
-        local split_win = vim.api.nvim_get_current_win()
+        local split_win = create_tab()
         vim.api.nvim_win_set_buf(split_win, test_bufnr)
         vim.api.nvim_win_set_cursor(split_win, { 1, 0 })
 
         -- Identical except line 30, so `]c` from line 1 has somewhere to go.
-        local scratch = vim.api.nvim_create_buf(false, true)
+        local scratch = create_buffer()
         local scratch_lines =
             vim.api.nvim_buf_get_lines(test_bufnr, 0, -1, false)
         scratch_lines[30] = "changed line 30"
         vim.api.nvim_buf_set_lines(scratch, 0, -1, false, scratch_lines)
-        local scratch_win = vim.api.nvim_open_win(scratch, false, {
-            split = "right",
-            win = split_win,
-        })
+        local scratch_win = create_split(scratch, split_win)
 
         vim.api.nvim_win_call(split_win, function()
             vim.cmd("diffthis")
@@ -536,26 +580,22 @@ describe("hunk_navigation split mode", function()
             --- @return number scratch_winid
             --- @return number scratch_bufnr
             local function open_split(label)
-                local bufnr = vim.api.nvim_create_buf(false, true)
+                local bufnr = create_buffer()
                 local lines = {}
                 for i = 1, 60 do
                     lines[#lines + 1] = label .. " line " .. i
                 end
                 vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
 
-                vim.cmd("tabnew")
-                local original_winid = vim.api.nvim_get_current_win()
+                local original_winid = create_tab()
                 vim.api.nvim_win_set_buf(original_winid, bufnr)
                 vim.api.nvim_win_set_cursor(original_winid, { 1, 0 })
 
-                local scratch = vim.api.nvim_create_buf(false, true)
+                local scratch = create_buffer()
                 local scratch_lines = vim.deepcopy(lines)
                 scratch_lines[30] = label .. " changed line 30"
                 vim.api.nvim_buf_set_lines(scratch, 0, -1, false, scratch_lines)
-                local scratch_winid = vim.api.nvim_open_win(scratch, false, {
-                    split = "right",
-                    win = original_winid,
-                })
+                local scratch_winid = create_split(scratch, original_winid)
 
                 vim.api.nvim_win_call(original_winid, function()
                     vim.cmd("diffthis")
@@ -603,15 +643,14 @@ describe("hunk_navigation split mode", function()
             -- takes the inline path. An arbitrary entry (or the raw map) keeps
             -- the `layout == "split"` branch live and runs `]c` in a non-diff
             -- window, so the extmark anchor is never reached.
-            local buf_c = vim.api.nvim_create_buf(false, true)
+            local buf_c = create_buffer()
             local lines_c = {}
             for i = 1, 60 do
                 lines_c[#lines_c + 1] = "gamma line " .. i
             end
             vim.api.nvim_buf_set_lines(buf_c, 0, -1, false, lines_c)
 
-            vim.cmd("tabnew")
-            local win_c = vim.api.nvim_get_current_win()
+            local win_c = create_tab()
             vim.api.nvim_win_set_buf(win_c, buf_c)
             vim.api.nvim_win_set_cursor(win_c, { 1, 0 })
             add_hunk(buf_c, test_ns, 10)
@@ -631,8 +670,7 @@ describe("hunk_navigation split mode", function()
     )
 
     it("falls back to any visible window without split state", function()
-        vim.cmd("tabnew")
-        local only_win = vim.api.nvim_get_current_win()
+        local only_win = create_tab()
         vim.api.nvim_win_set_buf(only_win, test_bufnr)
         vim.api.nvim_win_set_cursor(only_win, { 1, 0 })
 
@@ -648,17 +686,17 @@ describe("hunk_navigation split mode", function()
         -- closed, so the `find_visible_win` fallback fires. Landing on session
         -- two's window drives `]c` against someone else's diff, or a non-diff
         -- window that raises E99.
-        vim.cmd("tabnew")
-        local foreign_win = vim.api.nvim_get_current_win()
+        local foreign_win = create_tab()
         vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
         vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
 
-        vim.cmd("tabnew")
+        create_tab()
         local owner_tab = vim.api.nvim_get_current_tabpage()
         -- Second window in the owner's tab, so closing the painted one leaves
         -- the tabpage (and the scope) alive.
         vim.cmd("split")
         local owner_win = vim.api.nvim_get_current_win()
+        created_windows[#created_windows + 1] = owner_win
         vim.api.nvim_win_set_buf(owner_win, test_bufnr)
 
         add_hunk(test_bufnr, test_ns, 10)
@@ -684,12 +722,10 @@ describe("hunk_navigation split mode", function()
         -- strip the mapping session two still needs.
         local keymaps = Config.keymaps.diff_preview
 
-        vim.cmd("tabnew")
-        local win_one = vim.api.nvim_get_current_win()
+        local win_one = create_tab()
         vim.api.nvim_win_set_buf(win_one, test_bufnr)
 
-        vim.cmd("tabnew")
-        local win_two = vim.api.nvim_get_current_win()
+        local win_two = create_tab()
         vim.api.nvim_win_set_buf(win_two, test_bufnr)
 
         --- @type agentic.ui.DiffState

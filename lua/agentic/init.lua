@@ -242,6 +242,7 @@ local function apply_provider_switch(provider_name)
                 .. " messages"
         )
         local saved_messages = session.chat_history.messages
+        local saved_title = session.chat_history.title
         local saved_files = session.file_list:get_files()
         local saved_selections = session.code_selection:get_selections()
         local widget_was_open = session.widget:is_open()
@@ -251,15 +252,13 @@ local function apply_provider_switch(provider_name)
                 and session.widget:find_first_non_widget_window()
             or nil
 
-        -- Validated BEFORE destroying the old session.
-        local ok, new_agent = pcall(
-            AgentInstance.get_instance,
-            provider_name,
-            function() end
-        )
-        if not ok or not new_agent then
+        Logger.debug("apply_provider_switch: creating new session")
+        local new_session = SessionRegistry.create(provider_name)
+        if not new_session then
             Logger.notify(
-                "Provider '" .. provider_name .. "' not available.",
+                "Failed to create session for provider '"
+                    .. provider_name
+                    .. "'.",
                 vim.log.levels.ERROR
             )
             return
@@ -271,18 +270,6 @@ local function apply_provider_switch(provider_name)
         end
 
         Config.provider = provider_name
-
-        Logger.debug("apply_provider_switch: creating new session")
-        local new_session = SessionRegistry.create()
-        if not new_session then
-            Logger.notify(
-                "Failed to create session for provider '"
-                    .. provider_name
-                    .. "'.",
-                vim.log.levels.ERROR
-            )
-            return
-        end
 
         Logger.debug(
             "apply_provider_switch: new_session created, session_id="
@@ -304,6 +291,7 @@ local function apply_provider_switch(provider_name)
             )
 
             ready_session.chat_history.messages = saved_messages
+            ready_session.chat_history.title = saved_title
             ready_session.history_to_send = saved_messages
 
             ready_session.message_writer:replay_history_messages(saved_messages)

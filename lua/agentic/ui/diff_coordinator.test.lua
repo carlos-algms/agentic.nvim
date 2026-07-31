@@ -185,14 +185,18 @@ describe("agentic.ui.DiffCoordinator (real widget)", function()
     local file_path
     local saved_enabled
     local saved_layout
-    local base_tabs
+    --- @type table<integer, boolean>
+    local baseline_tabs
     --- @type TestStub
     local schedule_stub
 
     local FILE_LINES = { "local x = 1", "print(x)", "" }
 
     before_each(function()
-        base_tabs = #vim.api.nvim_list_tabpages()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
         saved_enabled = Config.diff_preview.enabled
         saved_layout = Config.diff_preview.layout
         Config.diff_preview.enabled = true
@@ -235,20 +239,19 @@ describe("agentic.ui.DiffCoordinator (real widget)", function()
         widget = nil
         coordinator = nil
 
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.cmd(
+                    "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                )
+            end
+        end
+
         local bufnr = vim.fn.bufnr(FileSystem.to_absolute_path(file_path))
         if bufnr ~= -1 then
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         end
         os.remove(file_path)
-
-        while #vim.api.nvim_list_tabpages() > base_tabs do
-            local ok = pcall(function()
-                vim.cmd("tabclose!")
-            end)
-            if not ok then
-                break
-            end
-        end
 
         Config.diff_preview.enabled = saved_enabled
         Config.diff_preview.layout = saved_layout

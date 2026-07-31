@@ -80,6 +80,10 @@ function SessionManager:new()
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             -- A cached client may already be dead.
             if
                 self.agent.state == "error"
@@ -117,6 +121,10 @@ function SessionManager:new()
         and (self.agent.state == "error" or self.agent.state == "disconnected")
     then
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             if not self._connection_error then
                 self:_handle_connection_error()
             end
@@ -233,6 +241,10 @@ function SessionManager:on_session_ready(callback)
             "on_session_ready: session already ready, scheduling callback immediately"
         )
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             callback(self)
         end)
         return
@@ -436,7 +448,10 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         then
             vim.cmd.checktime()
 
-            DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
+            DiffPreview.cleanup_suggestion_buffer(
+                tracker.file_path,
+                self.diff_coordinator.diff_state
+            )
 
             -- Hooks reflect live writes only; a restore replays them as "completed".
             if

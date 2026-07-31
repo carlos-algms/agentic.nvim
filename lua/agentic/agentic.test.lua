@@ -18,8 +18,12 @@ describe("agentic: switch_provider", function()
     local health_check_stub
     --- @type TestStub
     local schedule_stub
+    --- @type TestStub[]
+    local transient_stubs
     local original_provider
     local initial_tab_id
+    --- @type table<integer, boolean>
+    local initial_tabs
 
     --- @type fun()[]
     local schedule_queue = {}
@@ -32,9 +36,23 @@ describe("agentic: switch_provider", function()
         end
     end
 
+    --- @param target table
+    --- @param method string
+    --- @return TestStub stub
+    local function track_stub(target, method)
+        local stub = spy.stub(target, method)
+        transient_stubs[#transient_stubs + 1] = stub
+        return stub
+    end
+
     before_each(function()
         original_provider = Config.provider
         initial_tab_id = vim.api.nvim_get_current_tabpage()
+        initial_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            initial_tabs[tabpage] = true
+        end
+        transient_stubs = {}
         logger_notify_stub = spy.stub(Logger, "notify")
 
         -- Queue callbacks so they run after synchronous code completes
@@ -100,6 +118,9 @@ describe("agentic: switch_provider", function()
 
     after_each(function()
         Config.provider = original_provider
+        for _, stub in ipairs(transient_stubs) do
+            stub:revert()
+        end
         logger_notify_stub:revert()
         schedule_stub:revert()
         health_check_stub:revert()
@@ -120,9 +141,11 @@ describe("agentic: switch_provider", function()
         SessionRegistry._most_recent = nil
         SessionRegistry._previous_most_recent = nil
 
-        vim.api.nvim_set_current_tabpage(initial_tab_id)
+        if vim.api.nvim_tabpage_is_valid(initial_tab_id) then
+            vim.api.nvim_set_current_tabpage(initial_tab_id)
+        end
         for _, tp in ipairs(vim.api.nvim_list_tabpages()) do
-            if tp ~= initial_tab_id then
+            if not initial_tabs[tp] then
                 vim.cmd("tabclose " .. vim.api.nvim_tabpage_get_number(tp))
             end
         end
@@ -155,6 +178,7 @@ describe("agentic: switch_provider", function()
             provider_name = "OriginalProvider",
         } --[[@as agentic.ui.ChatHistory.Message]]
         session.chat_history:add_message(message2)
+        session.chat_history.title = "Original session title"
 
         local initial_message_count = #session.chat_history.messages
         assert.equal(2, initial_message_count)
@@ -178,12 +202,28 @@ describe("agentic: switch_provider", function()
         assert.equal("hello", new_session.chat_history.messages[1].text)
         assert.equal("agent", new_session.chat_history.messages[2].type)
         assert.equal("hi there", new_session.chat_history.messages[2].text)
+        assert.equal("Original session title", new_session.chat_history.title)
 
         -- `history_to_send` feeds the next prompt
         assert.equal(
             initial_message_count,
             #(new_session.history_to_send or {})
         )
+    end)
+
+    it("keeps the original session when replacement creation fails", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
+        local create_stub = track_stub(SessionRegistry, "create")
+        create_stub:returns(nil)
+
+        Agentic.switch_provider({ provider = "MissingProvider" })
+
+        assert.spy(create_stub).was.called_with("MissingProvider")
+        assert.equal(original_provider, Config.provider)
+        assert.equal(session, SessionRegistry.sessions[session.session_key])
+        assert.spy(logger_notify_stub).was.called(1)
     end)
 
     it("reuses the switched session on the next open", function()
@@ -466,19 +506,15 @@ describe("agentic: switch_provider", function()
         session.is_generating = true
 
         -- Avoids a real RPC call
-        local agent_stop_stub = spy.stub(session.agent, "stop_generation")
-        local pm_clear_stub = spy.stub(session.permission_manager, "clear")
-        local anim_stop_spy = spy.stub(session.status_animation, "stop")
+        track_stub(session.agent, "stop_generation")
+        track_stub(session.permission_manager, "clear")
+        local anim_stop_spy = track_stub(session.status_animation, "stop")
 
         Agentic.stop_generation()
 
         -- Both immediate, not deferred to the callback
         assert.is_false(session.is_generating)
         assert.spy(anim_stop_spy).was.called(1)
-
-        agent_stop_stub:revert()
-        pm_clear_stub:revert()
-        anim_stop_spy:revert()
     end)
 
     -- Creation spawns a provider subprocess. Stopping generation with nothing
@@ -494,53 +530,48 @@ describe("agentic: switch_provider", function()
 
     it("delegates explicit session destruction to the registry", function()
         local Agentic = require("agentic")
-        local destroy_stub = spy.stub(SessionRegistry, "destroy")
+        local destroy_stub = track_stub(SessionRegistry, "destroy")
 
         Agentic.destroy_session({ session = 7 })
 
         assert.spy(destroy_stub).was.called_with(7)
-        destroy_stub:revert()
     end)
 
     it("delegates default session destruction to the registry", function()
         local Agentic = require("agentic")
         local destroy_current_stub =
-            spy.stub(SessionRegistry, "destroy_current")
+            track_stub(SessionRegistry, "destroy_current")
 
         Agentic.destroy_session()
 
         assert.spy(destroy_current_stub).was.called(1)
-        destroy_current_stub:revert()
     end)
 
     it("delegates session selection to SessionNavigation", function()
         local Agentic = require("agentic")
-        local select_stub = spy.stub(SessionNavigation, "select")
+        local select_stub = track_stub(SessionNavigation, "select")
 
         Agentic.select_session()
 
         assert.spy(select_stub).was.called(1)
-        select_stub:revert()
     end)
 
     it("delegates next-session navigation to SessionNavigation", function()
         local Agentic = require("agentic")
-        local next_stub = spy.stub(SessionNavigation, "next")
+        local next_stub = track_stub(SessionNavigation, "next")
 
         Agentic.next_session()
 
         assert.spy(next_stub).was.called(1)
-        next_stub:revert()
     end)
 
     it("delegates previous-session navigation to SessionNavigation", function()
         local Agentic = require("agentic")
-        local previous_stub = spy.stub(SessionNavigation, "previous")
+        local previous_stub = track_stub(SessionNavigation, "previous")
 
         Agentic.prev_session()
 
         assert.spy(previous_stub).was.called(1)
-        previous_stub:revert()
     end)
 
     it("does not clear prompt buffer when session cannot submit", function()

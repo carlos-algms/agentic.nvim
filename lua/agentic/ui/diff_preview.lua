@@ -14,6 +14,19 @@ local M = {}
 
 local NS_DIFF = HunkNavigation.NS_DIFF
 
+--- @param file_path string
+--- @param state agentic.ui.DiffState|nil
+--- @return string name
+local function suggestion_buffer_name(file_path, state)
+    local smart_path = FileSystem.to_smart_path(file_path)
+    if not state then
+        return smart_path
+    end
+
+    local state_identity = tostring(state):gsub("^table: ", "")
+    return string.format("%s (suggestion %s)", smart_path, state_identity)
+end
+
 --- @param state agentic.ui.DiffState
 --- @return number|nil bufnr
 function M.get_active_diff_buffer(state)
@@ -343,9 +356,21 @@ end
 --- @param is_rejection boolean|nil Deletes the buffer when the file does not exist
 --- @param state agentic.ui.DiffState|nil nil leaves state untouched
 function M.clear_diff(buf, is_rejection, state)
-    local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
+    --- @type integer
+    local bufnr
+    if
+        state
+        and state.preview_bufnr
+        and vim.api.nvim_buf_is_valid(state.preview_bufnr)
+        and type(buf) == "string"
+        and vim.b[state.preview_bufnr]._agentic_suggestion_for == buf
+    then
+        bufnr = state.preview_bufnr
+    else
+        bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
+    end
 
-    if bufnr == -1 and type(buf) == "string" then
+    if (not bufnr or bufnr == -1) and type(buf) == "string" then
         local smart = FileSystem.to_smart_path(buf)
         local smart_bufnr = vim.fn.bufnr(smart)
         if smart_bufnr ~= -1 and vim.b[smart_bufnr]._agentic_suggestion_for then
@@ -353,9 +378,10 @@ function M.clear_diff(buf, is_rejection, state)
         end
     end
 
-    if bufnr == -1 then
+    if not bufnr or bufnr == -1 then
         return
     end
+    ---@cast bufnr integer
 
     if state then
         -- The entry for THIS file: another file's split must survive this clear. A
@@ -367,9 +393,6 @@ function M.clear_diff(buf, is_rejection, state)
         if DiffSplitView.clear_split_diff(state, split_path) then
             return
         end
-
-        state.preview_bufnr = nil
-        state.preview_winid = nil
     end
 
     HunkNavigation.restore_keymaps(bufnr)
@@ -377,6 +400,11 @@ function M.clear_diff(buf, is_rejection, state)
     pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
 
     local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
+
+    if state and not is_suggestion then
+        state.preview_bufnr = nil
+        state.preview_winid = nil
+    end
 
     -- Suggestion buffers keep their text visible until the real file takes over.
     if not is_suggestion then
@@ -388,11 +416,15 @@ function M.clear_diff(buf, is_rejection, state)
     end
 
     -- A rejected new file has nothing on disk, so its windows need another buffer.
-    if is_rejection then
-        local file_path = vim.api.nvim_buf_get_name(bufnr)
-        local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
+    if is_rejection or is_suggestion then
+        local file_path = is_suggestion and vim.b[bufnr]._agentic_suggestion_for
+            or vim.api.nvim_buf_get_name(bufnr)
+        local abs_path = FileSystem.to_absolute_path(file_path)
+        local stat = vim.uv.fs_stat(abs_path)
+        local should_delete = (is_suggestion and (is_rejection or stat ~= nil))
+            or (not is_suggestion and is_rejection and stat == nil)
 
-        if not stat then
+        if should_delete then
             -- EVERY window, not just the painted one: `nvim_buf_delete(force)`
             -- closes each window still holding the buffer. `win_findbuf` is
             -- tab-agnostic on purpose — that window may be in another tabpage.
@@ -409,14 +441,23 @@ function M.clear_diff(buf, is_rejection, state)
                         end
                     )
 
-                    local target_buf = (ok and alt ~= -1 and alt ~= bufnr)
-                            and alt
-                        or vim.api.nvim_create_buf(true, true)
+                    local target_buf
+                    if stat then
+                        target_buf = vim.fn.bufadd(abs_path)
+                    else
+                        target_buf = (ok and alt ~= -1 and alt ~= bufnr) and alt
+                            or vim.api.nvim_create_buf(true, true)
+                    end
 
                     pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
                 end
             end
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+
+            if state and state.preview_bufnr == bufnr then
+                state.preview_bufnr = nil
+                state.preview_winid = nil
+            end
         end
     end
 end
@@ -508,7 +549,7 @@ end
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 --- @param new_lines string[]
 function M._show_new_file_diff(opts, new_lines)
-    local suggestion_name = FileSystem.to_smart_path(opts.file_path)
+    local suggestion_name = suggestion_buffer_name(opts.file_path, opts.state)
     local bufnr = vim.fn.bufnr(suggestion_name)
     if bufnr == -1 then
         bufnr = vim.api.nvim_create_buf(false, true)
@@ -540,21 +581,43 @@ function M._show_new_file_diff(opts, new_lines)
     local winid = opts.get_winid(bufnr)
     if not winid then
         pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        return
     end
+
+    if opts.state then
+        opts.state.preview_bufnr = bufnr
+        opts.state.preview_winid = winid
+    end
+
+    HunkNavigation.setup_keymaps(bufnr, opts.state)
+
+    vim.schedule(function()
+        HunkNavigation.navigate_next(bufnr, opts.state)
+    end)
 end
 
 --- Called when a file-mutating tool call completes.
 --- @param file_path string|nil
-function M.cleanup_suggestion_buffer(file_path)
+--- @param state agentic.ui.DiffState|nil Owning session state; nil supports legacy unowned callers
+function M.cleanup_suggestion_buffer(file_path, state)
     if not file_path then
         return
     end
 
-    local suggestion_name = FileSystem.to_smart_path(file_path)
-    local suggestion_bufnr = vim.fn.bufnr(suggestion_name)
+    local suggestion_bufnr
+    if state then
+        suggestion_bufnr = state.preview_bufnr
+    else
+        local suggestion_name = FileSystem.to_smart_path(file_path)
+        suggestion_bufnr = vim.fn.bufnr(suggestion_name)
+    end
+
     if
-        suggestion_bufnr == -1
+        not suggestion_bufnr
+        or suggestion_bufnr == -1
+        or not vim.api.nvim_buf_is_valid(suggestion_bufnr)
         or not vim.b[suggestion_bufnr]._agentic_suggestion_for
+        or vim.b[suggestion_bufnr]._agentic_suggestion_for ~= file_path
     then
         return
     end
@@ -574,6 +637,11 @@ function M.cleanup_suggestion_buffer(file_path)
         pcall(vim.api.nvim_buf_delete, tmp_bufnr, { force = true })
     else
         pcall(vim.api.nvim_buf_delete, suggestion_bufnr, { force = true })
+    end
+
+    if state and state.preview_bufnr == suggestion_bufnr then
+        state.preview_bufnr = nil
+        state.preview_winid = nil
     end
 end
 

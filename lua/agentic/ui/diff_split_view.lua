@@ -89,7 +89,14 @@ local function open_split_view(
     modified_lines,
     state
 )
-    local suggestion_name = abs_path .. " (suggestion)"
+    local existing_split = state
+        and state.split_state
+        and state.split_state[abs_path]
+    local is_new_owner = existing_split == nil
+    local state_identity = state and tostring(state):gsub("^table: ", "")
+        or "unowned"
+    local suggestion_name =
+        string.format("%s (suggestion %s)", abs_path, state_identity)
     cleanup_stale_suggestion_buf(suggestion_name)
 
     local scratch_bufnr = vim.api.nvim_create_buf(false, true)
@@ -118,6 +125,10 @@ local function open_split_view(
     end
     if vim.b[bufnr]._agentic_prev_modified == nil then
         vim.b[bufnr]._agentic_prev_modified = vim.bo[bufnr].modified
+    end
+    if is_new_owner then
+        local owner_count = vim.b[bufnr]._agentic_diff_split_owner_count or 0
+        vim.b[bufnr]._agentic_diff_split_owner_count = owner_count + 1
     end
     vim.bo[bufnr].modifiable = false
     vim.bo[bufnr].modified = true
@@ -306,6 +317,15 @@ local function teardown_split(state)
     end
 
     if vim.api.nvim_buf_is_valid(state.original_bufnr) then
+        local owner_count =
+            vim.b[state.original_bufnr]._agentic_diff_split_owner_count
+        if owner_count and owner_count > 1 then
+            vim.b[state.original_bufnr]._agentic_diff_split_owner_count = owner_count
+                - 1
+            return
+        end
+
+        vim.b[state.original_bufnr]._agentic_diff_split_owner_count = nil
         local prev_modifiable =
             vim.b[state.original_bufnr]._agentic_prev_modifiable
         local prev_modified = vim.b[state.original_bufnr]._agentic_prev_modified

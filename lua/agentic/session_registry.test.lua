@@ -19,6 +19,8 @@ describe("agentic.SessionRegistry", function()
 
     --- @type TestStub|nil
     local ui_select_stub
+    --- @type TestStub|nil
+    local create_session_stub
 
     --- Every `hide`/`show` appends here: ordering assertions read one list
     --- instead of comparing per-spy call counts.
@@ -122,6 +124,7 @@ describe("agentic.SessionRegistry", function()
     before_each(function()
         widget_events = {}
         show_opts = {}
+        create_session_stub = nil
         package.loaded["agentic.session_manager"] = session_manager_mock
 
         acp_health_mock.check_configured_provider = function()
@@ -175,6 +178,10 @@ describe("agentic.SessionRegistry", function()
         if ui_select_stub then
             ui_select_stub:revert()
             ui_select_stub = nil
+        end
+        if create_session_stub then
+            create_session_stub:revert()
+            create_session_stub = nil
         end
     end)
 
@@ -243,6 +250,24 @@ describe("agentic.SessionRegistry", function()
             assert.equal("gemini-acp", provider_during_new)
             assert.equal("claude-acp", config_mock.provider)
         end)
+
+        it(
+            "health-checks the requested provider and restores the current one",
+            function()
+                local provider_during_check
+                acp_health_mock.check_configured_provider = function()
+                    provider_during_check = config_mock.provider
+                    return false
+                end
+
+                local session = SessionRegistry.create("gemini-acp")
+
+                assert.is_nil(session)
+                assert.equal("gemini-acp", provider_during_check)
+                assert.equal("claude-acp", config_mock.provider)
+                assert.equal(0, #SessionRegistry.list())
+            end
+        )
 
         it("leaves the global provider alone with no argument", function()
             local provider_during_new
@@ -595,8 +620,8 @@ describe("agentic.SessionRegistry", function()
             "keeps the current session when replacement creation fails",
             function()
                 local current = SessionRegistry.resolve_or_create()
-                local create_stub = spy.stub(SessionRegistry, "create")
-                create_stub:returns(nil)
+                create_session_stub = spy.stub(SessionRegistry, "create")
+                create_session_stub:returns(nil)
                 local select_stub = get_select_stub()
 
                 SessionRegistry.create_with_current_session_guard(
@@ -612,7 +637,29 @@ describe("agentic.SessionRegistry", function()
                     SessionRegistry.sessions[current.session_key]
                 )
                 assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-                create_stub:revert()
+            end
+        )
+
+        it(
+            "does not commit the requested provider when creation fails",
+            function()
+                SessionRegistry.resolve_or_create()
+                create_session_stub = spy.stub(SessionRegistry, "create")
+                create_session_stub:returns(nil)
+                local select_stub = get_select_stub()
+
+                SessionRegistry.create_with_current_session_guard(
+                    function() end,
+                    "gemini-acp"
+                )
+
+                local items = select_stub.calls[1][1]
+                local on_choice = select_stub.calls[1][3]
+                on_choice(items[1])
+
+                assert.spy(create_session_stub).was.called_with("gemini-acp")
+                assert.equal("claude-acp", config_mock.provider)
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
             end
         )
     end)

@@ -1,3 +1,4 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 local WidgetRegistry = require("agentic.ui.widget_registry")
 
@@ -6,7 +7,8 @@ local BufferGuard = {}
 
 --- @param foreign_buf integer
 --- @param widget agentic.ui.ChatWidget Owner of the window being cleared; any other would eject into a different session's tab
-local function redirect_foreign(foreign_buf, widget)
+--- @param owner_bufnr integer Registered widget buffer used to re-resolve the owner after scheduling
+local function redirect_foreign(foreign_buf, widget, owner_bufnr)
     if not vim.api.nvim_buf_is_valid(foreign_buf) then
         return
     end
@@ -23,9 +25,31 @@ local function redirect_foreign(foreign_buf, widget)
 
     -- Neovim resets current_win after BufEnter handlers, so an inline set does not stick.
     vim.schedule(function()
-        if vim.api.nvim_win_is_valid(target_win) then
-            pcall(vim.api.nvim_set_current_win, target_win)
+        if not vim.api.nvim_buf_is_valid(foreign_buf) then
+            return
         end
+
+        local live_widget = WidgetRegistry.get(owner_bufnr)
+        if not live_widget then
+            return
+        end
+
+        local tabpage = live_widget:get_visible_tab_id()
+        if not tabpage or not vim.api.nvim_tabpage_is_valid(tabpage) then
+            return
+        end
+
+        local destination = live_widget:find_first_non_widget_window()
+        if
+            not destination
+            or not BufHelpers.is_win_usable(destination)
+            or vim.api.nvim_win_get_tabpage(destination) ~= tabpage
+        then
+            return
+        end
+
+        pcall(vim.api.nvim_win_set_buf, destination, foreign_buf)
+        pcall(vim.api.nvim_set_current_win, destination)
     end)
 end
 
@@ -65,7 +89,7 @@ local function on_buf_enter()
             return
         end
         pcall(vim.api.nvim_win_set_buf, cur_win, expected)
-        redirect_foreign(cur_buf, widget)
+        redirect_foreign(cur_buf, widget, expected)
         return
     end
 
@@ -83,7 +107,7 @@ local function on_buf_enter()
         vim.w[cur_win].agentic_bufnr = new_buf
         vim.api.nvim_win_set_buf(cur_win, new_buf)
 
-        redirect_foreign(cur_buf, widget)
+        redirect_foreign(cur_buf, widget, new_buf)
     end
 end
 

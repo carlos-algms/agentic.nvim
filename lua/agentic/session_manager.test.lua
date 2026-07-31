@@ -106,6 +106,8 @@ describe("agentic.SessionManager", function()
         local session
         --- @type integer
         local test_bufnr
+        --- @type TestStub
+        local keymap_stub
 
         before_each(function()
             render_header_spy = spy.new(function() end)
@@ -115,15 +117,13 @@ describe("agentic.SessionManager", function()
             local AgentConfigOptions =
                 require("agentic.acp.agent_config_options")
             local BufHelpers = require("agentic.utils.buf_helpers")
-            local keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
+            keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
 
             local config_opts = AgentConfigOptions:new({ chat = test_bufnr }, {
                 set_mode = function() end,
                 set_model = function() end,
                 set_thought_level = function() end,
             })
-
-            keymap_stub:revert()
 
             session = {
                 config_options = config_opts,
@@ -140,6 +140,7 @@ describe("agentic.SessionManager", function()
         end)
 
         after_each(function()
+            keymap_stub:revert()
             vim.api.nvim_buf_delete(test_bufnr, { force = true })
         end)
 
@@ -326,6 +327,8 @@ describe("agentic.SessionManager", function()
         local schedule_stub
         --- @type TestStub
         local health_check_stub
+        local agent_state
+        local invoke_agent_callback
 
         --- @type fun()[]
         local schedule_queue = {}
@@ -350,11 +353,13 @@ describe("agentic.SessionManager", function()
             end)
             health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
             health_check_stub:returns(true)
+            agent_state = "ready"
+            invoke_agent_callback = true
             get_instance_stub = spy.stub(AgentInstance, "get_instance")
             get_instance_stub:invokes(function(provider_name, callback)
                 --- @type agentic.acp.ACPClient
                 local fake = {}
-                fake.state = "ready"
+                fake.state = agent_state
                 fake.provider_config = {
                     name = provider_name or "Test",
                     initial_model = nil,
@@ -370,7 +375,7 @@ describe("agentic.SessionManager", function()
                     })
                 end
                 function fake:cancel_session() end
-                if callback then
+                if callback and invoke_agent_callback then
                     callback(fake)
                 end
                 return fake
@@ -422,6 +427,44 @@ describe("agentic.SessionManager", function()
 
             assert.is_false(callback_called)
             assert.equal(1, #session._session_ready_callbacks)
+        end)
+
+        it("ignores a cached-client error callback after destroy", function()
+            agent_state = "error"
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+
+            session:destroy()
+
+            assert.has_no_errors(function()
+                flush_schedule()
+            end)
+            assert.is_false(session._connection_error)
+        end)
+
+        it("ignores a deferred connection error after destroy", function()
+            agent_state = "error"
+            invoke_agent_callback = false
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+
+            session:destroy()
+
+            assert.has_no_errors(function()
+                flush_schedule()
+            end)
+            assert.is_false(session._connection_error)
+        end)
+
+        it("ignores an already-ready callback after destroy", function()
+            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            flush_schedule()
+            session.session_id = "ready-session" --[[@as string]]
+            local ready_spy = spy.new(function() end)
+            session:on_session_ready(ready_spy)
+
+            session:destroy()
+            flush_schedule()
+
+            assert.spy(ready_spy).was.called(0)
         end)
     end)
 
@@ -971,14 +1014,25 @@ describe("agentic.SessionManager", function()
         local SessionState = require("agentic.acp.session_state")
         --- @type TestStub
         local slash_commands_stub
+        --- @type TestStub|nil
+        local keymap_stub
+        local test_bufnr
 
         before_each(function()
             local SlashCommands = require("agentic.acp.slash_commands")
             slash_commands_stub = spy.stub(SlashCommands, "setCommands")
+            keymap_stub = nil
+            test_bufnr = nil
         end)
 
         after_each(function()
+            if keymap_stub then
+                keymap_stub:revert()
+            end
             slash_commands_stub:revert()
+            if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
+                vim.api.nvim_buf_delete(test_bufnr, { force = true })
+            end
         end)
 
         it("leaves usage nil after snapshot/cancel/restore", function()
@@ -986,9 +1040,9 @@ describe("agentic.SessionManager", function()
             local AgentConfigOptions =
                 require("agentic.acp.agent_config_options")
             local BufHelpers = require("agentic.utils.buf_helpers")
-            local test_bufnr = vim.api.nvim_create_buf(false, true)
+            test_bufnr = vim.api.nvim_create_buf(false, true)
 
-            local keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
+            keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
             local config_options = AgentConfigOptions:new(
                 { chat = test_bufnr },
                 {
@@ -997,8 +1051,6 @@ describe("agentic.SessionManager", function()
                     set_thought_level = function() end,
                 }
             )
-            keymap_stub:revert()
-
             local session_state = SessionState:new(config_options, "Test")
             session_state:set_usage({ used = 9000, size = 10000 })
 
@@ -1122,6 +1174,10 @@ describe("agentic.SessionManager", function()
         local schedule_stub
         --- @type TestStub
         local cleanup_suggestion_buffer_stub
+        --- @type TestStub|nil
+        local debug_stub
+        --- @type integer[]
+        local created_buffers
 
         --- @param tool_call_blocks table<string, table>
         --- @return agentic.SessionManager
@@ -1148,7 +1204,10 @@ describe("agentic.SessionManager", function()
                 status_animation = { start = function() end },
                 is_generating = true,
                 _start_spinner = SessionManager._start_spinner,
-                diff_coordinator = { clear = function() end },
+                diff_coordinator = {
+                    clear = function() end,
+                    diff_state = {},
+                },
                 _on_tool_call = function() end,
                 chat_history = {
                     update_tool_call = function() end,
@@ -1158,6 +1217,8 @@ describe("agentic.SessionManager", function()
         end
 
         before_each(function()
+            debug_stub = nil
+            created_buffers = {}
             checktime_stub = spy.stub(vim.cmd, "checktime")
             schedule_stub = spy.stub(vim, "schedule")
             schedule_stub:invokes(function(fn)
@@ -1168,11 +1229,19 @@ describe("agentic.SessionManager", function()
         end)
 
         after_each(function()
+            if debug_stub then
+                debug_stub:revert()
+            end
             checktime_stub:revert()
             schedule_stub:revert()
             cleanup_suggestion_buffer_stub:revert()
             Config.hooks = Config.hooks or {}
             Config.hooks.on_file_edit = nil
+            for _, bufnr in ipairs(created_buffers) do
+                if vim.api.nvim_buf_is_valid(bufnr) then
+                    vim.api.nvim_buf_delete(bufnr, { force = true })
+                end
+            end
         end)
 
         it("calls checktime for each file-mutating kind", function()
@@ -1196,6 +1265,26 @@ describe("agentic.SessionManager", function()
 
                 assert.spy(checktime_stub).was.called(1)
             end
+        end)
+
+        it("cleans the suggestion owned by the current diff state", function()
+            local file_path = "/tmp/session-owned-suggestion.lua"
+            local session = make_session({
+                ["tc-1"] = {
+                    kind = "edit",
+                    status = "in_progress",
+                    file_path = file_path,
+                },
+            })
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-1", status = "completed" }
+            )
+
+            assert
+                .stub(cleanup_suggestion_buffer_stub).was
+                .called_with(file_path, session.diff_coordinator.diff_state)
         end)
 
         it(
@@ -1277,7 +1366,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("does not call checktime when tracker is missing", function()
-            local debug_stub = spy.stub(Logger, "debug")
+            debug_stub = spy.stub(Logger, "debug")
             local session = make_session({})
 
             SessionManager._on_tool_call_update(
@@ -1286,7 +1375,6 @@ describe("agentic.SessionManager", function()
             )
 
             assert.spy(checktime_stub).was.called(0)
-            debug_stub:revert()
         end)
 
         it(
@@ -1299,6 +1387,7 @@ describe("agentic.SessionManager", function()
                 end
 
                 local test_bufnr = vim.api.nvim_create_buf(false, true)
+                created_buffers[#created_buffers + 1] = test_bufnr
                 local abs_path =
                     vim.fn.fnamemodify("./tests/fixtures/edit_hook.lua", ":p")
                 vim.api.nvim_buf_set_name(test_bufnr, abs_path)
@@ -1323,8 +1412,6 @@ describe("agentic.SessionManager", function()
                 assert.equal(3, data.session_key)
                 assert.equal(42, data.tab_page_id)
                 assert.equal(test_bufnr, data.bufnr)
-
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
             end
         )
 
@@ -1423,6 +1510,7 @@ describe("agentic.SessionManager", function()
                     ":p"
                 )
                 local test_bufnr = vim.fn.bufadd(abs_path)
+                created_buffers[#created_buffers + 1] = test_bufnr
                 assert.is_false(vim.api.nvim_buf_is_loaded(test_bufnr))
 
                 local session = make_session({
@@ -1442,8 +1530,6 @@ describe("agentic.SessionManager", function()
                 local data = hook_spy.calls[1][1]
                 assert.equal(abs_path, data.filepath)
                 assert.is_nil(data.bufnr)
-
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
             end
         )
 
@@ -2025,6 +2111,8 @@ describe("agentic.SessionManager", function()
         local captured_handlers
         --- @type fun(response: table|nil, err: table|nil)|nil
         local captured_create_callback
+        --- @type TestSpy|nil
+        local widget_destroy_spy
 
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
@@ -2041,6 +2129,7 @@ describe("agentic.SessionManager", function()
 
             captured_handlers = nil
             captured_create_callback = nil
+            widget_destroy_spy = nil
             cancel_spy = spy.new(function() end)
 
             get_instance_stub = spy.stub(AgentInstance, "get_instance")
@@ -2073,6 +2162,9 @@ describe("agentic.SessionManager", function()
         end)
 
         after_each(function()
+            if widget_destroy_spy then
+                widget_destroy_spy:revert()
+            end
             notify_stub:revert()
             schedule_stub:revert()
             health_check_stub:revert()
@@ -2224,7 +2316,7 @@ describe("agentic.SessionManager", function()
 
         it("is a no-op the second time it is called", function()
             local session = pending_session()
-            local widget_destroy_spy = spy.on(session.widget, "destroy")
+            widget_destroy_spy = spy.on(session.widget, "destroy")
 
             session:destroy()
 
@@ -2233,7 +2325,6 @@ describe("agentic.SessionManager", function()
             end)
 
             assert.spy(widget_destroy_spy).was.called(1)
-            widget_destroy_spy:revert()
         end)
     end)
 
@@ -2368,10 +2459,17 @@ describe("agentic.SessionManager", function()
         local schedule_stub
         --- @type TestSpy
         local hook_spy
+        --- @type table<integer, boolean>
+        local baseline_tabs
 
         before_each(function()
             local AgentInstance = require("agentic.acp.agent_instance")
             local ACPHealth = require("agentic.acp.acp_health")
+
+            baseline_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                baseline_tabs[tabpage] = true
+            end
 
             notify_stub = spy.stub(Logger, "notify")
             -- Inline, not queued: `Hooks.invoke` defers every payload through
@@ -2412,10 +2510,9 @@ describe("agentic.SessionManager", function()
             end
 
             for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
-                if tabpage ~= vim.api.nvim_list_tabpages()[1] then
-                    vim.api.nvim_win_close(
-                        vim.api.nvim_tabpage_list_wins(tabpage)[1],
-                        true
+                if not baseline_tabs[tabpage] then
+                    vim.cmd(
+                        "tabclose " .. vim.api.nvim_tabpage_get_number(tabpage)
                     )
                 end
             end
