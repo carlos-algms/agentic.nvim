@@ -85,6 +85,41 @@ describe("diff_preview", function()
             close_extra_tabs(base_tabs)
         end)
 
+        --- @param test_path string
+        --- @param state agentic.ui.DiffState
+        --- @param new_line string
+        --- @return integer bufnr
+        local function show_existing_diff(test_path, state, new_line)
+            fs_stat_stub:returns({ type = "file" })
+            read_stub:invokes(function()
+                return { "local x = 1", "print(x)", "" }, nil
+            end)
+
+            local bufnr = vim.fn.bufadd(test_path)
+            vim.fn.bufload(bufnr)
+            vim.bo[bufnr].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                bufnr,
+                0,
+                -1,
+                false,
+                { "local x = 1", "print(x)", "" }
+            )
+            vim.api.nvim_win_set_buf(0, bufnr)
+
+            DiffPreview.show_diff({
+                file_path = test_path,
+                diff = {
+                    old = { "local x = 1" },
+                    new = { new_line },
+                },
+                state = state,
+                get_winid = get_winid_spy --[[@as function]],
+            })
+
+            return bufnr
+        end
+
         it("should not open a window when diff matching fails", function()
             DiffPreview.show_diff({
                 file_path = "/tmp/test_diff_preview_nomatch.lua",
@@ -199,6 +234,158 @@ describe("diff_preview", function()
 
             DiffPreview.clear_diff(test_path, true, state_b)
         end)
+
+        it("skips a second inline owner for an existing-file buffer", function()
+            local test_path = "/tmp/test_existing_inline_owner.lua"
+            --- @type agentic.ui.DiffState
+            local state_a = {}
+            --- @type agentic.ui.DiffState
+            local state_b = {}
+            local bufnr = show_existing_diff(test_path, state_a, "local x = 2")
+
+            DiffPreview.show_diff({
+                file_path = test_path,
+                diff = {
+                    old = { "local x = 1" },
+                    new = { "local x = 3" },
+                },
+                state = state_b,
+                get_winid = get_winid_spy --[[@as function]],
+            })
+
+            assert.equal(
+                tostring(state_a),
+                vim.b[bufnr]._agentic_inline_diff_owner
+            )
+            assert.is_nil(state_b.preview_bufnr)
+            assert.is_nil(state_b.preview_winid)
+        end)
+
+        it(
+            "preserves the first inline owner's resources after rejection",
+            function()
+                local test_path = "/tmp/test_existing_inline_resources.lua"
+                --- @type agentic.ui.DiffState
+                local state_a = {}
+                --- @type agentic.ui.DiffState
+                local state_b = {}
+                local bufnr =
+                    show_existing_diff(test_path, state_a, "local x = 2")
+                local marks_before = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    -1,
+                    0,
+                    -1,
+                    { details = true }
+                )
+                local winid = state_a.preview_winid
+
+                DiffPreview.clear_diff(bufnr, false, state_b)
+
+                assert.equal(
+                    tostring(state_a),
+                    vim.b[bufnr]._agentic_inline_diff_owner
+                )
+                assert.equal(bufnr, state_a.preview_bufnr)
+
+                DiffPreview.show_diff({
+                    file_path = test_path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 3" },
+                    },
+                    state = state_b,
+                    get_winid = get_winid_spy --[[@as function]],
+                })
+
+                assert.same(
+                    marks_before,
+                    vim.api.nvim_buf_get_extmarks(
+                        bufnr,
+                        -1,
+                        0,
+                        -1,
+                        { details = true }
+                    )
+                )
+                assert.is_false(vim.bo[bufnr].modifiable)
+                assert.is_true(
+                    has_buffer_keymap(
+                        bufnr,
+                        Config.keymaps.diff_preview.next_hunk
+                    )
+                )
+                assert.equal(bufnr, state_a.preview_bufnr)
+                assert.equal(winid, state_a.preview_winid)
+
+                DiffPreview.clear_diff(bufnr, false, state_a)
+
+                assert.is_nil(vim.b[bufnr]._agentic_inline_diff_owner)
+                assert.is_true(vim.bo[bufnr].modifiable)
+
+                DiffPreview.show_diff({
+                    file_path = test_path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 3" },
+                    },
+                    state = state_b,
+                    get_winid = get_winid_spy --[[@as function]],
+                })
+
+                assert.equal(
+                    tostring(state_b),
+                    vim.b[bufnr]._agentic_inline_diff_owner
+                )
+                assert.equal(bufnr, state_b.preview_bufnr)
+            end
+        )
+
+        it(
+            "refreshes an existing-file inline diff for the same owner",
+            function()
+                local test_path = "/tmp/test_existing_inline_refresh.lua"
+                --- @type agentic.ui.DiffState
+                local state = {}
+                local bufnr =
+                    show_existing_diff(test_path, state, "local x = 2")
+
+                DiffPreview.show_diff({
+                    file_path = test_path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 3" },
+                    },
+                    state = state,
+                    get_winid = get_winid_spy --[[@as function]],
+                })
+
+                local marks = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    -1,
+                    0,
+                    -1,
+                    { details = true }
+                )
+                local refreshed = false
+                for _, mark in ipairs(marks) do
+                    local virt_lines = mark[4].virt_lines
+                    if virt_lines and virt_lines[1] then
+                        local segments = {}
+                        for _, segment in ipairs(virt_lines[1]) do
+                            segments[#segments + 1] = segment[1]
+                        end
+                        refreshed = table.concat(segments) == "local x = 3"
+                    end
+                end
+                assert.equal(
+                    tostring(state),
+                    vim.b[bufnr]._agentic_inline_diff_owner
+                )
+                assert.equal(bufnr, state.preview_bufnr)
+                assert.is_true(refreshed)
+            end
+        )
 
         it(
             "does NOT create suggestion buffer when file exists"

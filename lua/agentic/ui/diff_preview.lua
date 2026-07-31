@@ -13,6 +13,13 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 local M = {}
 
 local NS_DIFF = HunkNavigation.NS_DIFF
+local LEGACY_INLINE_OWNER = "legacy"
+
+--- @param state agentic.ui.DiffState|nil
+--- @return string owner
+local function inline_owner(state)
+    return state and tostring(state) or LEGACY_INLINE_OWNER
+end
 
 --- @param file_path string
 --- @param state agentic.ui.DiffState|nil
@@ -268,6 +275,15 @@ function M.show_diff(opts)
         bufnr = vim.fn.bufadd(opts.file_path)
     end
 
+    local owner = inline_owner(opts.state)
+    local active_owner = vim.b[bufnr]._agentic_inline_diff_owner
+    if active_owner ~= nil and active_owner ~= owner then
+        Logger.debug(
+            "show_diff: skipped, existing-file buffer has another owner"
+        )
+        return
+    end
+
     -- Tab-scoped, or a copy open elsewhere pulls the diff into a foreign tab.
     local winid = BufHelpers.find_visible_win(bufnr, nil, opts.tabpage)
     local target_winid = winid or opts.get_winid(bufnr)
@@ -276,6 +292,7 @@ function M.show_diff(opts)
     end
 
     M.clear_diff(bufnr, nil, opts.state)
+    vim.b[bufnr]._agentic_inline_diff_owner = owner
 
     for _, block in ipairs(diff_blocks) do
         local old_count = #block.old_lines
@@ -395,6 +412,11 @@ function M.clear_diff(buf, is_rejection, state)
         end
     end
 
+    local active_owner = vim.b[bufnr]._agentic_inline_diff_owner
+    if active_owner ~= nil and active_owner ~= inline_owner(state) then
+        return
+    end
+
     HunkNavigation.restore_keymaps(bufnr)
 
     pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
@@ -413,6 +435,7 @@ function M.clear_diff(buf, is_rejection, state)
             vim.bo[bufnr].modifiable = prev_modifiable
             vim.b[bufnr]._agentic_prev_modifiable = nil
         end
+        vim.b[bufnr]._agentic_inline_diff_owner = nil
     end
 
     -- A rejected new file has nothing on disk, so its windows need another buffer.
