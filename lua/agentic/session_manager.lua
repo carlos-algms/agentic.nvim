@@ -15,6 +15,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @class agentic.SessionManager
 --- @field session_id? string
 --- @field session_key? integer Registry key, assigned by SessionRegistry.create
+--- @field _restoring_session_id? string ACP session ID claimed by an in-flight restore
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -69,6 +70,7 @@ function SessionManager:new()
 
     self = setmetatable({
         session_id = nil,
+        _restoring_session_id = nil,
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
@@ -256,6 +258,13 @@ function SessionManager:on_session_ready(callback)
     table.insert(self._session_ready_callbacks, function()
         callback(self)
     end)
+end
+
+--- @param acp_session_id string
+--- @return boolean owns_id
+function SessionManager:has_acp_session_id(acp_session_id)
+    return self.session_id == acp_session_id
+        or self._restoring_session_id == acp_session_id
 end
 
 --- Notifies the user with the reason when it answers false.
@@ -886,6 +895,7 @@ end
 
 function SessionManager:_cancel_session()
     self._is_restoring_session = false
+    self._restoring_session_id = nil
     self.is_generating = false
     self.status_animation:stop()
 
@@ -1001,6 +1011,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     self.config_options:restore_snapshot(saved_config)
 
     self._is_restoring_session = true
+    self._restoring_session_id = session_id
     self.status_animation:start("busy")
 
     -- Before loading, so it lands at the top of the cleared buffer.
@@ -1024,6 +1035,9 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
             -- Cancelling also drops the subscriber `load_session` registered before
             -- the request, which would otherwise pin this dead manager's handlers.
             if self._destroyed then
+                if self._restoring_session_id == session_id then
+                    self._restoring_session_id = nil
+                end
                 if not err then
                     self.agent:cancel_session(session_id)
                 end
@@ -1031,7 +1045,12 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
                 return
             end
 
+            if self._restoring_session_id ~= session_id then
+                return
+            end
+
             self._is_restoring_session = false
+            self._restoring_session_id = nil
             self.status_animation:stop()
 
             -- A new session was created while the load was in flight.

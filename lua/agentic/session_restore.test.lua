@@ -165,6 +165,31 @@ describe("SessionRestore", function()
             end
         )
 
+        it("reuses a restore already in flight", function()
+            restored_session.load_acp_session = spy.new(function(_, session_id)
+                restored_session._restoring_session_id = session_id
+            end)
+            find_live_stub:invokes(function(session_id)
+                if restored_session._restoring_session_id == session_id then
+                    return restored_session
+                end
+            end)
+            local session = create_mock_session()
+
+            SessionRestore.restore_by_id(
+                session --[[@as agentic.SessionManager]],
+                "abc-123"
+            )
+            SessionRestore.restore_by_id(
+                session --[[@as agentic.SessionManager]],
+                "abc-123"
+            )
+
+            assert.spy(create_stub).was.called(1)
+            assert.spy(restored_session.load_acp_session).was.called(1)
+            assert.spy(show_session_stub).was.called(2)
+        end)
+
         -- Files, code selections and diagnostics are user work; only explicit
         -- intent may discard them.
         it("keeps a session that still holds context", function()

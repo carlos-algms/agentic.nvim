@@ -21,7 +21,7 @@
 --- Data passed to the on_create_session_response hook
 --- @class agentic.UserConfig.CreateSessionResponseData
 --- @field session_id? string Convenience field; equals response.sessionId when response is non-nil, nil if creation failed
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field response? agentic.acp.SessionCreationResponse Raw ACP create-session response, nil on error
 --- @field err? agentic.acp.ACPError Error details if session creation failed
@@ -30,13 +30,13 @@
 --- @class agentic.UserConfig.PromptSubmitData
 --- @field prompt string The user's prompt text
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 
 --- Data passed to the on_response_complete hook
 --- @class agentic.UserConfig.ResponseCompleteData
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field success boolean Whether response completed without error
 --- @field error? table Error details if failed
@@ -44,7 +44,7 @@
 --- Data passed to the on_session_update hook
 --- @class agentic.UserConfig.SessionUpdateData
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field update agentic.acp.SessionUpdateMessage ACP session update details.
 
@@ -52,7 +52,7 @@
 --- @class agentic.UserConfig.FileEditData
 --- @field filepath string Absolute path to the edited file
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 --- @field bufnr? number Buffer number if the file is loaded in a buffer
 
@@ -60,7 +60,7 @@
 --- @class agentic.UserConfig.RequestPermissionData
 --- @field request agentic.acp.RequestPermission The permission request object
 --- @field session_id string The ACP session ID
---- @field session_key? integer Stable for the session's whole life
+--- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
 
 --- @class agentic.UserConfig.KeymapEntry

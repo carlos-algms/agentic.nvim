@@ -423,7 +423,7 @@ function M.clear_diff(buf, is_rejection, state)
 
     local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
 
-    if state and not is_suggestion then
+    if state and state.preview_bufnr == bufnr and not is_suggestion then
         state.preview_bufnr = nil
         state.preview_winid = nil
     end

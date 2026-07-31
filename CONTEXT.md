@@ -94,7 +94,7 @@ ends.
 
 ### UI surface
 
-**ChatWidget**: The UI container for one **SessionManager**. Owns five buffers
+**ChatWidget**: The UI container for one **SessionManager**. Owns six buffers
 (see **ChatWidget buffers**), panel windows, autocmds, and the
 **MessageWriter**. Reachable from any of its buffer numbers via
 **WidgetRegistry**.

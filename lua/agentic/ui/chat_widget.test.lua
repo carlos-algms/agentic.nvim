@@ -1148,8 +1148,14 @@ describe("agentic.ui.ChatWidget", function()
     describe("get_visible_tab_id", function()
         local widget
         local widget_tab
+        --- @type table<integer, boolean>
+        local baseline_tabs
 
         before_each(function()
+            baseline_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                baseline_tabs[tabpage] = true
+            end
             vim.cmd("tabnew")
             widget_tab = vim.api.nvim_get_current_tabpage()
 
@@ -1164,9 +1170,16 @@ describe("agentic.ui.ChatWidget", function()
                 end)
                 widget = nil
             end
-            pcall(function()
-                vim.cmd("tabclose")
-            end)
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not baseline_tabs[tabpage] then
+                    pcall(function()
+                        vim.cmd(
+                            "tabclose! "
+                                .. vim.api.nvim_tabpage_get_number(tabpage)
+                        )
+                    end)
+                end
+            end
         end)
 
         it("returns nil for a widget that has never been shown", function()

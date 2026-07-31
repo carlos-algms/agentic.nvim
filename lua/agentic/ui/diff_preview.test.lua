@@ -812,6 +812,27 @@ describe("diff_preview", function()
             assert.is_true(vim.api.nvim_win_is_valid(win_b))
         end)
 
+        it(
+            "keeps a newer same-session preview when an older result clears",
+            function()
+                local older_bufnr = new_named_buf("/tmp/older_preview.lua")
+                local newer_bufnr = new_named_buf("/tmp/newer_preview.lua")
+                local newer_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(newer_win, newer_bufnr)
+                --- @type agentic.ui.DiffState
+                local state = {
+                    preview_bufnr = newer_bufnr,
+                    preview_winid = newer_win,
+                }
+                vim.b[older_bufnr]._agentic_inline_diff_owner = tostring(state)
+
+                DiffPreview.clear_diff(older_bufnr, false, state)
+
+                assert.equal(newer_bufnr, state.preview_bufnr)
+                assert.equal(newer_win, state.preview_winid)
+            end
+        )
+
         it("cleans only the owning session's same-path suggestion", function()
             local file_path = "/tmp/shared_cleanup_suggestion.lua"
             local suggestion_a = new_named_buf(

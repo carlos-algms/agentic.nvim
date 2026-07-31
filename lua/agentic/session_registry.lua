@@ -110,7 +110,7 @@ end
 --- @return agentic.SessionManager|nil
 function SessionRegistry.find_by_acp_session_id(acp_session_id)
     for _, session in pairs(SessionRegistry.sessions) do
-        if session.session_id == acp_session_id then
+        if session:has_acp_session_id(acp_session_id) then
             return session
         end
     end

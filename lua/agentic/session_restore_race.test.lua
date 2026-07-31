@@ -358,4 +358,20 @@ describe("race: stale create_session after load_acp_session", function()
             assert.equal(0, #session._cancelled)
         end
     )
+
+    it("claims the ACP id while restoring and clears it on failure", function()
+        local create_cb_ref = {}
+        local load_cb_ref = {}
+        local session = make_session(create_cb_ref, load_cb_ref)
+
+        session:load_acp_session("restored-id", "title", nil)
+
+        assert.equal("restored-id", session._restoring_session_id)
+
+        load_cb_ref.cb({ message = "boom" })
+        drain()
+
+        assert.is_nil(session._restoring_session_id)
+        assert.is_nil(session.session_id)
+    end)
 end)

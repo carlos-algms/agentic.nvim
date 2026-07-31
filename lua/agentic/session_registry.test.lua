@@ -39,7 +39,7 @@ describe("agentic.SessionRegistry", function()
     local function create_mock_session(visible_tab, label)
         local name = label or "session"
 
-        return {
+        local session = {
             widget = {
                 get_visible_tab_id = function()
                     return visible_tab
@@ -59,6 +59,13 @@ describe("agentic.SessionRegistry", function()
             destroy = function() end,
             is_mock = true,
         }
+
+        function session:has_acp_session_id(acp_session_id)
+            return self.session_id == acp_session_id
+                or self._restoring_session_id == acp_session_id
+        end
+
+        return session
     end
 
     session_manager_mock = {
@@ -468,6 +475,18 @@ describe("agentic.SessionRegistry", function()
             SessionRegistry.sessions[1] = session
 
             assert.is_nil(SessionRegistry.find_by_acp_session_id("acp-1"))
+        end)
+
+        it("finds a session loading the ACP id", function()
+            local session = create_mock_session()
+            session.session_key = 1
+            session._restoring_session_id = "acp-1"
+            SessionRegistry.sessions[1] = session
+
+            assert.equal(
+                session,
+                SessionRegistry.find_by_acp_session_id("acp-1")
+            )
         end)
     end)
 
