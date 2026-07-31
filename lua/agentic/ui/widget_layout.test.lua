@@ -16,6 +16,8 @@ describe("WidgetLayout", function()
     local base_tab_set
     --- @type table<integer, boolean>
     local base_buf_set
+    --- @type table<integer, boolean>
+    local base_win_set
     --- Stubs on `vim.api` reverted by teardown. Reverting only after the call
     --- under test leaks them to the rest of the run when that call raises, and
     --- these cases stub `nvim_win_is_valid` itself, so the leak breaks teardown
@@ -44,6 +46,11 @@ describe("WidgetLayout", function()
         for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
             base_buf_set[bufnr] = true
         end
+
+        base_win_set = {}
+        for _, winid in ipairs(vim.api.nvim_list_wins()) do
+            base_win_set[winid] = true
+        end
     end)
 
     after_each(function()
@@ -56,6 +63,12 @@ describe("WidgetLayout", function()
         notify_stub:revert()
         if saved_chat_win_opts then
             Config.windows.chat.win_opts = saved_chat_win_opts
+        end
+
+        for _, winid in ipairs(vim.api.nvim_list_wins()) do
+            if not base_win_set[winid] and BufHelpers.is_win_usable(winid) then
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
         end
 
         -- Nearly every case here opens a tabpage. Closing them only at the end
