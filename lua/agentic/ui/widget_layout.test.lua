@@ -14,6 +14,8 @@ describe("WidgetLayout", function()
     --- one is still open would otherwise have the baseline closed instead and
     --- leak the test tab with the count back at baseline.
     local base_tab_set
+    --- @type table<integer, boolean>
+    local base_buf_set
     --- Stubs on `vim.api` reverted by teardown. Reverting only after the call
     --- under test leaks them to the rest of the run when that call raises, and
     --- these cases stub `nvim_win_is_valid` itself, so the leak breaks teardown
@@ -36,6 +38,11 @@ describe("WidgetLayout", function()
         base_tab_set = {}
         for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
             base_tab_set[tab] = true
+        end
+
+        base_buf_set = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_buf_set[bufnr] = true
         end
     end)
 
@@ -60,6 +67,12 @@ describe("WidgetLayout", function()
                     vim.api.nvim_set_current_tabpage(tab)
                     vim.cmd("tabclose!")
                 end)
+            end
+        end
+
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_buf_set[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
             end
         end
     end)
