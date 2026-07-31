@@ -234,7 +234,7 @@ local function navigate_hunk(bufnr, direction)
     end)
 end
 
-local KEYMAP_DESC_SUFFIX = "Agentic DiffPreview"
+M.KEYMAP_DESC_SUFFIX = "Agentic DiffPreview"
 
 --- Buffer-local keymaps only; `maparg`'s `buffer` field is a 0/1 flag, not a buffer number.
 ---
@@ -255,7 +255,7 @@ local function save_keymap(bufnr, key)
     end
 
     local desc = map_info.desc
-    if type(desc) == "string" and desc:find(KEYMAP_DESC_SUFFIX, 1, true) then
+    if type(desc) == "string" and desc:find(M.KEYMAP_DESC_SUFFIX, 1, true) then
         return nil
     end
 
@@ -284,11 +284,11 @@ function M.setup_keymaps(bufnr)
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
         M.navigate_next(bufnr)
-    end, { desc = "Go to next hunk - " .. KEYMAP_DESC_SUFFIX })
+    end, { desc = "Go to next hunk - " .. M.KEYMAP_DESC_SUFFIX })
 
     BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
         M.navigate_prev(bufnr)
-    end, { desc = "Go to previous hunk - " .. KEYMAP_DESC_SUFFIX })
+    end, { desc = "Go to previous hunk - " .. M.KEYMAP_DESC_SUFFIX })
 end
 
 --- Restore saved keymaps for buffer

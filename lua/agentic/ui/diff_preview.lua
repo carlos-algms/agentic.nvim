@@ -306,14 +306,12 @@ function M.show_diff(opts)
         if old_count > 0 then
             for _, pair in ipairs(filtered.pairs) do
                 if pair.old_line and pair.old_idx then
-                    -- Convert to 0-indexed: (start_line + old_idx - 1) gives 1-indexed absolute line,
-                    -- then -1 for 0-indexed Neovim API = total -2
-                    local line = block.start_line + pair.old_idx - 2
+                    local abs_line = block.start_line + pair.old_idx - 1
 
                     DiffHighlighter.apply_diff_highlights(
                         bufnr,
                         NS_DIFF,
-                        line,
+                        abs_line - 1,
                         pair.old_line,
                         pair.new_line -- nil for pure deletions
                     )
@@ -322,17 +320,9 @@ function M.show_diff(opts)
         end
 
         if new_count > 0 and #filtered.new_lines > 0 then
-            -- Virtual lines appear below anchor (0-indexed)
-            local anchor_line
-            if old_count == 0 then
-                -- Pure insertion: anchor is line before insertion point
-                -- start_line is 1-indexed, -1 for 0-indexed, -1 for line above = -2
-                anchor_line = math.max(0, block.start_line - 2)
-            else
-                -- Modification/deletion: anchor is the last deleted line
-                -- end_line is 1-indexed, -1 for 0-indexed
-                anchor_line = math.max(0, block.end_line - 1)
-            end
+            local anchor_1indexed = old_count == 0 and block.start_line - 1
+                or block.end_line
+            local anchor_line = math.max(0, anchor_1indexed - 1)
 
             -- Get treesitter language for syntax highlighting
             local ft = vim.bo[bufnr].filetype
@@ -532,7 +522,7 @@ function M.setup_diff_navigation_keymaps(buf_nrs)
             end
             HunkNavigation.navigate_next(diff_bufnr)
         end, {
-            desc = "Go to next hunk - Agentic DiffPreview",
+            desc = "Go to next hunk - " .. HunkNavigation.KEYMAP_DESC_SUFFIX,
         })
 
         BufHelpers.keymap_set(bufnr, "n", diff_keymaps.prev_hunk, function()
@@ -543,7 +533,8 @@ function M.setup_diff_navigation_keymaps(buf_nrs)
             end
             HunkNavigation.navigate_prev(diff_bufnr)
         end, {
-            desc = "Go to previous hunk - Agentic DiffPreview",
+            desc = "Go to previous hunk - "
+                .. HunkNavigation.KEYMAP_DESC_SUFFIX,
         })
     end
 end
