@@ -611,6 +611,50 @@ describe("agentic: switch_provider", function()
         end
     )
 
+    it(
+        "rejects an ineligible live anchor after old-session teardown",
+        function()
+            local Agentic = require("agentic")
+            local session = create_session()
+            session.session_id = "old-session-id" --[[@as string]]
+
+            vim.cmd("tabnew")
+            SessionRegistry.show_session(session.session_key)
+            flush_schedule()
+            local stale_anchor = session.widget:find_first_non_widget_window()
+            assert.is_not_nil(stale_anchor)
+            vim.api.nvim_set_current_tabpage(initial_tab_id)
+
+            local eligible_anchor
+            local original_destroy = SessionRegistry.destroy
+            local destroy_stub = track_stub(SessionRegistry, "destroy")
+            destroy_stub:invokes(function(session_key)
+                original_destroy(session_key)
+                vim.api.nvim_win_call(stale_anchor, function()
+                    vim.cmd("new")
+                    eligible_anchor = vim.api.nvim_get_current_win()
+                end)
+                vim.bo[vim.api.nvim_win_get_buf(stale_anchor)].filetype =
+                    "TelescopePrompt"
+            end)
+
+            local placement_anchor
+            local original_show = SessionRegistry.show_session
+            local show_stub = track_stub(SessionRegistry, "show_session")
+            show_stub:invokes(function(...)
+                placement_anchor = vim.api.nvim_get_current_win()
+                original_show(...)
+            end)
+
+            Agentic.switch_provider({ provider = "EligibleAnchorProvider" })
+            flush_schedule()
+
+            assert.is_not_nil(eligible_anchor)
+            assert.equal(eligible_anchor, placement_anchor)
+            assert.are_not.equal(stale_anchor, placement_anchor)
+        end
+    )
+
     it("stop_generation resets is_generating and stops animation", function()
         local Agentic = require("agentic")
 

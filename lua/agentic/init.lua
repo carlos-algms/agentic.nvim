@@ -251,10 +251,6 @@ local function apply_provider_switch(provider_name)
                 and session.widget:get_visible_tab_id()
             or nil
         local session_key = session.session_key
-        -- Captured BEFORE the destroy, while the old widget still has windows.
-        local anchor_win = widget_was_open
-                and session.widget:find_first_non_widget_window()
-            or nil
 
         Logger.debug("apply_provider_switch: creating new session")
         local new_session = SessionRegistry.create(provider_name)
@@ -322,15 +318,8 @@ local function apply_provider_switch(provider_name)
                 return
             end
 
-            local live_anchor = anchor_win
-            if
-                not live_anchor
-                or not BufHelpers.is_win_usable(live_anchor)
-                or vim.api.nvim_win_get_tabpage(live_anchor) ~= widget_tab
-            then
-                live_anchor =
-                    session.widget:find_first_non_widget_window(widget_tab)
-            end
+            local live_anchor =
+                session.widget:find_first_non_widget_window(widget_tab)
 
             if not live_anchor or not BufHelpers.is_win_usable(live_anchor) then
                 SessionRegistry.set_most_recent(new_key)
