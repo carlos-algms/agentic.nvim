@@ -429,25 +429,24 @@ function M.clear_diff(buf, is_rejection)
         end
     end
 
-    -- On rejection for new files, switch window to alternate buffer
+    -- A rejected new file has nothing on disk, so its windows need another buffer.
     if is_rejection then
         local file_path = vim.api.nvim_buf_get_name(bufnr)
         local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
 
         if not stat then
-            local buf_winid = vim.fn.bufwinid(bufnr)
-            if buf_winid ~= -1 then
-                -- Get alternate buffer for the target window, not current window
+            -- EVERY window, not just the painted one: `nvim_buf_delete(force)`
+            -- closes each window still holding the buffer. `win_findbuf` is
+            -- tab-agnostic on purpose — that window may be in another tabpage.
+            for _, buf_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+                -- The TARGET window's alternate buffer, not the current one's.
                 local alt = vim.api.nvim_win_call(buf_winid, function()
                     return vim.fn.bufnr("#")
                 end)
 
-                local target_buf
-                if alt ~= -1 and alt ~= bufnr then
-                    target_buf = alt
-                else
-                    target_buf = vim.api.nvim_create_buf(true, true)
-                end
+                local target_buf = (alt ~= -1 and alt ~= bufnr) and alt
+                    or vim.api.nvim_create_buf(true, true)
+
                 pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
             end
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
