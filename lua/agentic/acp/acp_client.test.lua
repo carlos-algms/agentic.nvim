@@ -1024,12 +1024,13 @@ describe("ACPClient", function()
     -- fails instead of coincidentally matching.
     describe("__handle_request_permission concurrency", function()
         --- @param n integer
+        --- @param session_id string|nil Defaults to "s1"
         --- @return agentic.acp.RequestPermission request
-        local function make_request(n)
+        local function make_request(n, session_id)
             --- @type agentic.acp.RequestPermission
             --- @diagnostic disable-next-line: missing-fields
             local request = {
-                sessionId = "s1",
+                sessionId = session_id or "s1",
                 toolCall = { toolCallId = "tc-" .. n, kind = "edit" },
                 options = {
                     {
@@ -1258,6 +1259,58 @@ describe("ACPClient", function()
                 [501] = "opt-1",
                 [502] = "cancelled",
             }, outcomes_by_id(sent))
+            assert.is_nil(answers["tc-2"])
+        end)
+
+        -- The subprocess is shared across sessions (ADR 0004), so a request
+        -- stuck on one session must not strand another's. Answered out of
+        -- order, and `s2` throws, which is that failure expressed across the
+        -- session boundary.
+        it("keeps requests on different sessions independent", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+            local queue = queue_schedules()
+
+            --- @type table<string, fun(option_id: string|nil)>
+            local answers = {}
+            client.subscribers["s1"] = collecting_handlers(answers)
+
+            --- @type agentic.acp.ClientHandlers
+            local throwing = {
+                on_session_update = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+                on_request_permission = function()
+                    error("boom in s2")
+                end,
+            }
+
+            client.subscribers["s2"] = throwing
+
+            local ok, err = pcall(function()
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(601, make_request(1, "s1"))
+                --- @diagnostic disable-next-line: invisible
+                client:__handle_request_permission(602, make_request(2, "s2"))
+
+                drain(queue)
+
+                -- s2 already cancelled itself by throwing; s1 answers after it.
+                answers["tc-1"]("opt-1")
+            end)
+            assert.equal(ok, true)
+            assert.is_nil(err)
+
+            assert.equal(#sent, 2)
+
+            -- s2's throw cancels only its own `id`; s1 keeps its own optionId.
+            assert.equal(sent[1].id, 602)
+            assert.same({ outcome = { outcome = "cancelled" } }, sent[1].result)
+            assert.equal(sent[2].id, 601)
+            assert.same({
+                outcome = { outcome = "selected", optionId = "opt-1" },
+            }, sent[2].result)
             assert.is_nil(answers["tc-2"])
         end)
     end)
