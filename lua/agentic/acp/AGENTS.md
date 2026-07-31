@@ -110,8 +110,9 @@ just waits, and every session hangs with it.
 The dispatch body is therefore wrapped in a `pcall` that answers
 `{ outcome = "cancelled" }` on failure. Two rules govern it:
 
-- It MUST `Logger.notify` the error. A silent cancel hides genuine UI bugs in
-  `on_request_permission` behind a permission prompt that merely "didn't appear".
+- It MUST `Logger.notify` the error, **including when `answer` is already a
+  no-op**. A silent cancel hides genuine UI bugs in `on_request_permission`
+  behind a permission prompt that merely "didn't appear".
 - `answer` MUST be idempotent. The subscriber can invoke its callback and _then_
   throw; the `id` is already answered at that point, and a second `__send_result`
   on one `id` is a protocol violation. The guard's cancel is a no-op once
@@ -127,6 +128,32 @@ Regressions:
 - `lua/agentic/acp/acp_client.test.lua::"answers cancelled when on_tool_call_update throws"`
 - `lua/agentic/acp/acp_client.test.lua::"answers cancelled when the nested tool call content is malformed"`
 - `lua/agentic/acp/acp_client.test.lua::"answers once when the handler answers and then throws"`
+
+### Permission state is per-`id`, never shared
+
+An agent can leave several `session/request_permission` requests outstanding at
+once, and the user may answer them in any order — or never answer some. The
+`PermissionManager` keys `pending` by `tool_call_id` and supports out-of-order
+`resolve`, so the ACP layer must match it.
+
+`answered` and `answer` are therefore **locals of each
+`__handle_request_permission` invocation**, closing over that invocation's
+`message_id`. Hoisting either onto `self` (or any module-level table) crosses the
+wires: a shared `answered` swallows the second answer, and a shared `message_id`
+pairs one request's `optionId` with another's `id`.
+
+Each outstanding request also owns its failures. A throw in one dispatch cancels
+only that `id`, and a subscriber dropped between two dispatches cancels only the
+one still queued — the sibling holding a live `answer` closure resolves normally.
+
+`PermissionManager:clear()` fires **every** pending callback with `nil`, so all
+outstanding `id`s answer `cancelled`. That is correct on teardown: each `answer`
+is a distinct closure, so the manager's fan-out maps one-to-one onto the
+outstanding requests with no double-send.
+
+Regressions in
+`lua/agentic/acp/acp_client.test.lua::"__handle_request_permission concurrency"`,
+notably `"answers two outstanding requests in reverse order"`.
 
 ## Protocol flow details
 
