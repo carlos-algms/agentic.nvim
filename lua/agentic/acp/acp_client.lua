@@ -762,7 +762,7 @@ function ACPClient:load_session(
         cwd = cwd,
         mcpServers = mcp_servers or {},
     }, function(_result, err)
-        if err then
+        if err and self.subscribers[session_id] == handlers then
             self.subscribers[session_id] = nil
         end
 
