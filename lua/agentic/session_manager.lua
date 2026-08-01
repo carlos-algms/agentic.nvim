@@ -20,6 +20,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field session_id? string
 --- @field tab_page_id integer
 --- @field _restoring_session_id? string ACP session ID claimed by an in-flight restore
+--- @field _restoring_session_token? table Identity of the in-flight restore attempt
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -75,6 +76,7 @@ function SessionManager:new(tab_page_id)
         session_id = nil,
         tab_page_id = tab_page_id,
         _restoring_session_id = nil,
+        _restoring_session_token = nil,
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
@@ -942,6 +944,7 @@ function SessionManager:_cancel_session()
 
     self.session_id = nil
     self._restoring_session_id = nil
+    self._restoring_session_token = nil
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
@@ -1045,6 +1048,8 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
 
     self._is_restoring_session = true
     self._restoring_session_id = session_id
+    local restoring_session_token = {}
+    self._restoring_session_token = restoring_session_token
     self.status_animation:start("busy")
 
     -- Write banner before loading so it appears at top of cleared buffer
@@ -1066,23 +1071,23 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
         -- vim.schedule to run AFTER deferred session update notifications
         -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
         vim.schedule(function()
-            if self._destroyed then
-                if self._restoring_session_id == session_id then
-                    if not err then
-                        self.agent:cancel_session(session_id)
-                    end
-                    self._restoring_session_id = nil
-                end
-
+            if self._restoring_session_token ~= restoring_session_token then
                 return
             end
 
-            if self._restoring_session_id ~= session_id then
+            if self._destroyed then
+                if not err then
+                    self.agent:cancel_session(session_id)
+                end
+                self._restoring_session_id = nil
+                self._restoring_session_token = nil
+
                 return
             end
 
             self._is_restoring_session = false
             self._restoring_session_id = nil
+            self._restoring_session_token = nil
             self.status_animation:stop()
 
             -- Guard: if a new session was created while the load was in flight,

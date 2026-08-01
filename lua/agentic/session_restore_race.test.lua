@@ -400,6 +400,25 @@ describe("race: stale create_session after load_acp_session", function()
         assert.is_true(session._is_restoring_session)
     end)
 
+    it(
+        "keeps a newer same-id restore claim when an older load fails",
+        function()
+            local create_cb_ref = {}
+            local load_cb_ref = {}
+            local session = make_session(create_cb_ref, load_cb_ref)
+
+            session:load_acp_session("same-id", "older", nil)
+            local older_callback = load_cb_ref.cb
+            session:load_acp_session("same-id", "newer", nil)
+
+            older_callback({ message = "older failed" })
+            drain()
+
+            assert.equal("same-id", session._restoring_session_id)
+            assert.is_true(session._is_restoring_session)
+        end
+    )
+
     it("cancels an in-flight restore before starting a new session", function()
         local create_cb_ref = {}
         local load_cb_ref = {}
