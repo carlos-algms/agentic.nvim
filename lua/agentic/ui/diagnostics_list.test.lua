@@ -1,6 +1,9 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
+local BufHelpers = require("agentic.utils.buf_helpers")
+local WidgetLayout = require("agentic.ui.widget_layout")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 describe("agentic.ui.DiagnosticsList", function()
     local DiagnosticsList = require("agentic.ui.diagnostics_list")
@@ -13,6 +16,12 @@ describe("agentic.ui.DiagnosticsList", function()
     local diagnostics_list
     --- @type TestSpy
     local on_change_spy
+    --- @type TestStub|nil
+    local find_visible_win_stub
+    --- @type agentic.ui.ChatWidget|nil
+    local registered_widget
+    --- @type table<integer, true>
+    local baseline_tabs
 
     --- @return agentic.ui.DiagnosticsList.Diagnostic
     local function create_diagnostic(overrides)
@@ -30,6 +39,13 @@ describe("agentic.ui.DiagnosticsList", function()
     end
 
     before_each(function()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        find_visible_win_stub = nil
+        registered_widget = nil
+
         bufnr = vim.api.nvim_create_buf(false, true)
         winid = vim.api.nvim_open_win(bufnr, false, {
             relative = "editor",
@@ -45,6 +61,13 @@ describe("agentic.ui.DiagnosticsList", function()
     end)
 
     after_each(function()
+        if find_visible_win_stub then
+            find_visible_win_stub:revert()
+        end
+        if registered_widget then
+            WidgetRegistry.unregister(registered_widget)
+        end
+
         if on_change_spy and on_change_spy.revert then
             on_change_spy:revert()
         end
@@ -55,6 +78,15 @@ describe("agentic.ui.DiagnosticsList", function()
 
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
+        end
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
         end
     end)
 
@@ -257,6 +289,56 @@ describe("agentic.ui.DiagnosticsList", function()
     end)
 
     describe("buffer rendering", function()
+        it("scopes lookup to the owning widget's diagnostics window", function()
+            local captured_preferred
+            local captured_tabpage
+            --- @type any
+            local widget = {
+                tab_page_id = 1357,
+                buf_nrs = { diagnostics = bufnr },
+                win_nrs = { diagnostics = 2468 },
+            }
+            registered_widget = widget
+            WidgetRegistry.register(widget)
+            find_visible_win_stub = spy.stub(BufHelpers, "find_visible_win")
+            find_visible_win_stub:invokes(function(_, preferred, tabpage)
+                captured_preferred = preferred
+                captured_tabpage = tabpage
+                return nil
+            end)
+
+            diagnostics_list:add(create_diagnostic())
+
+            assert.equal(2468, captured_preferred)
+            assert.equal(1357, captured_tabpage)
+        end)
+
+        it("keeps default width when the registered owner is hidden", function()
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabprevious")
+
+            --- @type any
+            local widget = {
+                tab_page_id = owner_tab,
+                buf_nrs = { diagnostics = bufnr },
+                win_nrs = {},
+            }
+            registered_widget = widget
+            WidgetRegistry.register(widget)
+
+            diagnostics_list:add(create_diagnostic({
+                file_path = "/short.lua",
+                message = string.rep("long diagnostic ", 20),
+            }))
+
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local default_width =
+                WidgetLayout.calculate_width(Config.windows.width)
+            assert.is_true(vim.fn.strdisplaywidth(lines[1]) <= default_width)
+            assert.equal("...", lines[1]:sub(-3))
+        end)
+
         it("renders diagnostics in buffer", function()
             local diagnostic = create_diagnostic({
                 lnum = 10,

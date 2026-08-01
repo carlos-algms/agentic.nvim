@@ -3,6 +3,7 @@ local DiagnosticsContext = require("agentic.ui.diagnostics_context")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @return table<number, string> icons Keyed by `vim.diagnostic.severity`
 local function get_diagnostic_icons()
@@ -214,7 +215,17 @@ function DiagnosticsList:_render()
     local icons = get_diagnostic_icons()
 
     local buf_width = WidgetLayout.calculate_width(Config.windows.width)
-    local winid = BufHelpers.find_visible_win(self._bufnr, nil)
+    local owner = WidgetRegistry.get(self._bufnr)
+    local winid
+    if owner then
+        winid = BufHelpers.find_visible_win(
+            self._bufnr,
+            owner.win_nrs.diagnostics,
+            owner.tab_page_id
+        )
+    else
+        winid = BufHelpers.find_visible_win(self._bufnr, nil)
+    end
     if winid then
         buf_width = vim.api.nvim_win_get_width(winid)
     end

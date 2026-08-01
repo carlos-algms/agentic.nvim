@@ -5,6 +5,7 @@ local ChatNavigation = require("agentic.ui.chat_navigation")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"|"diagnostics"
@@ -240,6 +241,8 @@ function ChatWidget:destroy()
 
     self:_close_hidden_chat_window()
 
+    WidgetRegistry.unregister(self)
+
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
         local ok = pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
@@ -320,6 +323,7 @@ end
 
 function ChatWidget:_initialize()
     self.buf_nrs = self:_create_buf_nrs()
+    WidgetRegistry.register(self)
 
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
@@ -679,6 +683,7 @@ local EXCLUDED_FILETYPES = {
 --- @return number|nil winid The first non-widget window ID, or nil if none found
 function ChatWidget:find_first_non_widget_window()
     local all_windows = vim.api.nvim_tabpage_list_wins(self.tab_page_id)
+    local widget_bufnrs = WidgetRegistry.all_bufnrs()
 
     -- Build a set of widget window IDs for fast lookup
     local widget_win_ids = {}
@@ -695,7 +700,7 @@ function ChatWidget:find_first_non_widget_window()
             if win_config.relative == "" then
                 local bufnr = vim.api.nvim_win_get_buf(winid)
                 local ft = vim.bo[bufnr].filetype
-                if not EXCLUDED_FILETYPES[ft] then
+                if not widget_bufnrs[bufnr] and not EXCLUDED_FILETYPES[ft] then
                     return winid
                 end
             end

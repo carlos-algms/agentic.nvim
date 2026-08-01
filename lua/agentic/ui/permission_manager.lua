@@ -1,6 +1,7 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 -- See https://agentclientprotocol.com/protocol/tool-calls.md
 local PERMISSION_KIND_PRIORITY = {
@@ -464,12 +465,33 @@ end
 --- @return integer|nil winid
 --- @protected
 function PermissionManager:_find_visible_chat_winid()
-    for _, winid in ipairs(vim.fn.win_findbuf(self.message_writer.bufnr)) do
-        if vim.api.nvim_win_get_config(winid).focusable then
-            return winid
-        end
+    local bufnr = self.message_writer.bufnr
+    local owner = WidgetRegistry.get(bufnr)
+    if not owner then
+        return BufHelpers.find_visible_win(bufnr)
     end
-    return nil
+
+    if not vim.api.nvim_tabpage_is_valid(owner.tab_page_id) then
+        return nil
+    end
+
+    local owner_winid = owner.win_nrs.chat
+    if not owner_winid or not BufHelpers.is_win_usable(owner_winid) then
+        return nil
+    end
+    if vim.api.nvim_win_get_tabpage(owner_winid) ~= owner.tab_page_id then
+        return nil
+    end
+    if vim.api.nvim_win_get_buf(owner_winid) ~= bufnr then
+        return nil
+    end
+
+    local config = vim.api.nvim_win_get_config(owner_winid)
+    if not config.focusable or config.hide then
+        return nil
+    end
+
+    return owner_winid
 end
 
 --- True when the cursor sits on the focused block's status row or on any

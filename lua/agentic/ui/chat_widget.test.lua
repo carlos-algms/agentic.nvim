@@ -3,6 +3,7 @@ local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
@@ -953,6 +954,149 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_not_nil(widget._hidden_chat_winid)
             assert.is_true(vim.api.nvim_win_is_valid(widget._hidden_chat_winid))
         end)
+    end)
+
+    describe("widget buffer ownership", function()
+        local widget
+        --- @type any
+        local extra_widget
+        local baseline_tabs
+        local cleanup_buffers
+
+        before_each(function()
+            baseline_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                baseline_tabs[tabpage] = true
+            end
+            cleanup_buffers = {}
+
+            vim.cmd("tabnew")
+            widget = ChatWidget:new(
+                vim.api.nvim_get_current_tabpage(),
+                spy.new(function() end) --[[@as function]]
+            )
+        end)
+
+        after_each(function()
+            if extra_widget then
+                WidgetRegistry.unregister(extra_widget)
+                extra_widget = nil
+            end
+            if widget then
+                pcall(function()
+                    widget:destroy()
+                end)
+                widget = nil
+            end
+            for _, bufnr in ipairs(cleanup_buffers) do
+                if vim.api.nvim_buf_is_valid(bufnr) then
+                    pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+                end
+            end
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not baseline_tabs[tabpage] then
+                    pcall(function()
+                        vim.api.nvim_set_current_tabpage(tabpage)
+                        vim.cmd("tabclose!")
+                    end)
+                end
+            end
+        end)
+
+        it("registers every buffer after initialization", function()
+            for _, bufnr in pairs(widget.buf_nrs) do
+                assert.equal(widget, WidgetRegistry.get(bufnr))
+            end
+        end)
+
+        it(
+            "never selects another registered widget window as fallback",
+            function()
+                widget:show({ focus_prompt = false })
+
+                local foreign_buf = vim.api.nvim_create_buf(false, true)
+                cleanup_buffers[#cleanup_buffers + 1] = foreign_buf
+                local foreign_win = vim.api.nvim_open_win(foreign_buf, false, {
+                    split = "left",
+                    win = widget.win_nrs.chat,
+                })
+                extra_widget = {
+                    buf_nrs = { chat = foreign_buf },
+                    win_nrs = { chat = foreign_win },
+                }
+                WidgetRegistry.register(extra_widget)
+
+                local editor_win = widget:find_first_non_widget_window()
+                assert.is_not_nil(editor_win)
+                --- @cast editor_win integer
+                vim.api.nvim_win_close(editor_win, true)
+
+                assert.is_nil(widget:find_first_non_widget_window())
+            end
+        )
+
+        it(
+            "never selects an ordinary window showing a registered widget buffer",
+            function()
+                widget:show({ focus_prompt = false })
+
+                local foreign_buf = vim.api.nvim_create_buf(false, true)
+                cleanup_buffers[#cleanup_buffers + 1] = foreign_buf
+                extra_widget =
+                    { buf_nrs = { chat = foreign_buf }, win_nrs = {} }
+                WidgetRegistry.register(extra_widget)
+                vim.api.nvim_open_win(foreign_buf, false, {
+                    split = "left",
+                    win = widget.win_nrs.chat,
+                })
+
+                local editor_win = widget:find_first_non_widget_window()
+                assert.is_not_nil(editor_win)
+                --- @cast editor_win integer
+                vim.api.nvim_win_close(editor_win, true)
+
+                assert.is_nil(widget:find_first_non_widget_window())
+            end
+        )
+
+        it(
+            "resolves fallback before unregistering and deleting buffers",
+            function()
+                widget:show({ focus_prompt = false })
+
+                local events = {}
+                local original_find = widget.find_first_non_widget_window
+                local original_unregister = WidgetRegistry.unregister
+                local original_delete = vim.api.nvim_buf_delete
+                local find_stub =
+                    spy.stub(widget, "find_first_non_widget_window")
+                find_stub:invokes(function(self)
+                    events[#events + 1] = "fallback"
+                    return original_find(self)
+                end)
+                local unregister_stub = spy.stub(WidgetRegistry, "unregister")
+                unregister_stub:invokes(function(owner)
+                    events[#events + 1] = "unregister"
+                    return original_unregister(owner)
+                end)
+                local delete_stub = spy.stub(vim.api, "nvim_buf_delete")
+                delete_stub:invokes(function(bufnr, opts)
+                    events[#events + 1] = "delete"
+                    return original_delete(bufnr, opts)
+                end)
+
+                widget:destroy()
+                widget = nil
+
+                delete_stub:revert()
+                unregister_stub:revert()
+                find_stub:revert()
+
+                assert.equal("fallback", events[1])
+                assert.equal("unregister", events[2])
+                assert.equal("delete", events[3])
+            end
+        )
     end)
 
     describe("input header suffix", function()

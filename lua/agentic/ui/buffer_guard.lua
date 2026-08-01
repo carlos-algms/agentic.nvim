@@ -1,5 +1,7 @@
 -- lua/agentic/ui/buffer_guard.lua
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 --- @class agentic.ui.BufferGuard
 local BufferGuard = {}
@@ -8,18 +10,40 @@ local BufferGuard = {}
 --- @field tab_page_id integer
 --- @field find_target_window fun(): integer|nil
 
+--- @param widget agentic.ui.ChatWidget
+--- @return integer|nil destination
+local function find_destination(widget)
+    local tabpage = widget.tab_page_id
+    if not vim.api.nvim_tabpage_is_valid(tabpage) then
+        return nil
+    end
+
+    local destination = widget:find_first_non_widget_window()
+        or widget:open_editor_window()
+    if
+        not destination
+        or not BufHelpers.is_win_usable(destination)
+        or vim.api.nvim_win_get_tabpage(destination) ~= tabpage
+    then
+        return nil
+    end
+
+    return destination
+end
+
 --- Redirect a foreign buffer out of a widget window.
 --- The cursor follows the buffer to the target window via
 --- vim.schedule — setting current_win inside BufEnter doesn't
 --- stick because Neovim resets the window after the autocmd.
 --- @param foreign_buf integer
---- @param find_target_window fun(): integer|nil
-local function redirect_foreign(foreign_buf, find_target_window)
+--- @param widget agentic.ui.ChatWidget
+--- @param owner_bufnr integer
+local function redirect_foreign(foreign_buf, widget, owner_bufnr)
     if not vim.api.nvim_buf_is_valid(foreign_buf) then
         return
     end
 
-    local target_win = find_target_window()
+    local target_win = find_destination(widget)
     if not target_win then
         Logger.debug("BufferGuard: no target window for redirect")
         return
@@ -31,10 +55,36 @@ local function redirect_foreign(foreign_buf, find_target_window)
     -- vim.schedule because Neovim resets current_win after
     -- BufEnter autocmd handlers complete.
     vim.schedule(function()
-        if vim.api.nvim_win_is_valid(target_win) then
-            pcall(vim.api.nvim_set_current_win, target_win)
+        if not vim.api.nvim_buf_is_valid(foreign_buf) then
+            return
         end
+
+        local live_widget = WidgetRegistry.get(owner_bufnr)
+        if not live_widget then
+            return
+        end
+
+        local destination = find_destination(live_widget)
+        if not destination then
+            return
+        end
+
+        pcall(vim.api.nvim_win_set_buf, destination, foreign_buf)
+        pcall(vim.api.nvim_set_current_win, destination)
     end)
+end
+
+--- @param widget agentic.ui.ChatWidget
+--- @param old_bufnr integer
+--- @param new_bufnr integer
+local function transfer_ownership(widget, old_bufnr, new_bufnr)
+    for panel, bufnr in pairs(widget.buf_nrs) do
+        if bufnr == old_bufnr then
+            widget.buf_nrs[panel] = new_bufnr
+        end
+    end
+
+    WidgetRegistry.register(widget)
 end
 
 --- Core handler: called on BufEnter for every buffer.
@@ -56,6 +106,11 @@ local function on_buf_enter(cb)
         return
     end
 
+    local widget = WidgetRegistry.get(expected)
+    if not widget then
+        return
+    end
+
     local cur_buf = vim.api.nvim_get_current_buf()
 
     if cur_buf ~= expected then
@@ -63,7 +118,7 @@ local function on_buf_enter(cb)
             return
         end
         pcall(vim.api.nvim_win_set_buf, cur_win, expected)
-        redirect_foreign(cur_buf, cb.find_target_window)
+        redirect_foreign(cur_buf, widget, expected)
         return
     end
 
@@ -80,10 +135,13 @@ local function on_buf_enter(cb)
         -- scratch buffer to keep the widget window intact.
         local new_buf = vim.api.nvim_create_buf(false, true)
         vim.bo[new_buf].buftype = "nofile"
-        vim.api.nvim_win_set_buf(cur_win, new_buf)
+
+        transfer_ownership(widget, cur_buf, new_buf)
         vim.w[cur_win].agentic_bufnr = new_buf
+        vim.api.nvim_win_set_buf(cur_win, new_buf)
+
         -- Redirect the (now-named) repurposed buffer to the editor
-        redirect_foreign(cur_buf, cb.find_target_window)
+        redirect_foreign(cur_buf, widget, new_buf)
     end
 end
 
