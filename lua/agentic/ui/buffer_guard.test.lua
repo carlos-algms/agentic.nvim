@@ -74,12 +74,6 @@ local function create_widget_setup()
     --- @type agentic.ui.BufferGuard.Callbacks
     local callbacks = {
         tab_page_id = tab,
-        find_target_window = function()
-            if target_win and vim.api.nvim_win_is_valid(target_win) then
-                return target_win
-            end
-            return nil
-        end,
     }
 
     local augroup = BufferGuard.attach(callbacks)
@@ -430,20 +424,6 @@ describe("BufferGuard", function()
 
         local augroup = BufferGuard.attach({
             tab_page_id = tab,
-            find_target_window = function()
-                -- Mimics open_editor_window: create a split
-                local new_buf = vim.api.nvim_create_buf(false, true)
-                local ok, winid = pcall(
-                    vim.api.nvim_open_win,
-                    new_buf,
-                    true,
-                    { split = "left", win = -1 }
-                )
-                if ok then
-                    return winid
-                end
-                return nil
-            end,
         })
         extra_augroups[#extra_augroups + 1] = augroup
 
@@ -574,12 +554,6 @@ describe("BufferGuard", function()
 
             local augroup = BufferGuard.attach({
                 tab_page_id = tab_page_id,
-                find_target_window = function()
-                    if vim.api.nvim_win_is_valid(editor_win) then
-                        return editor_win
-                    end
-                    return nil
-                end,
             })
             extra_augroups[#extra_augroups + 1] = augroup
 
@@ -674,8 +648,7 @@ describe("BufferGuard cursor follow (child)", function()
             win = -1,
         })
 
-        -- vim.w[winid] assignment and BG.attach (which needs a
-        -- callback function) can't cross the RPC boundary.
+        -- vim.w[winid] assignment and BG.attach can't cross the RPC boundary.
         child.lua(
             [[
             local BG = require("agentic.ui.buffer_guard")
@@ -699,11 +672,6 @@ describe("BufferGuard cursor follow (child)", function()
 
             BG.attach({
                 tab_page_id = vim.api.nvim_get_current_tabpage(),
-                find_target_window = function()
-                    if vim.api.nvim_win_is_valid(editor_win) then
-                        return editor_win
-                    end
-                end,
             })
         ]],
             { editor_win, chat_win, chat_buf }

@@ -332,10 +332,6 @@ function ChatWidget:_initialize()
 
     self._guard_augroup = BufferGuard.attach({
         tab_page_id = self.tab_page_id,
-        find_target_window = function()
-            return self:find_first_non_widget_window()
-                or self:open_editor_window()
-        end,
     })
 
     -- Track whether we're programmatically closing windows

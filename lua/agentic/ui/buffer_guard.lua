@@ -8,7 +8,6 @@ local BufferGuard = {}
 
 --- @class agentic.ui.BufferGuard.Callbacks
 --- @field tab_page_id integer
---- @field find_target_window fun(): integer|nil
 
 --- @param widget agentic.ui.ChatWidget
 --- @return integer|nil destination
