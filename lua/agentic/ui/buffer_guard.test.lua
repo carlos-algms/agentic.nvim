@@ -60,7 +60,7 @@ local function create_widget_setup()
         buf_nrs = buf_nrs,
         win_nrs = win_nrs,
         find_first_non_widget_window = function()
-            if target_win and vim.api.nvim_win_is_valid(target_win) then
+            if target_win and BufHelpers.is_win_usable(target_win) then
                 return target_win
             end
             return nil
