@@ -962,6 +962,12 @@ describe("agentic.ui.ChatWidget", function()
         local extra_widget
         local baseline_tabs
         local cleanup_buffers
+        --- @type TestStub|nil
+        local find_stub
+        --- @type TestStub|nil
+        local unregister_stub
+        --- @type TestStub|nil
+        local delete_stub
 
         before_each(function()
             baseline_tabs = {}
@@ -969,6 +975,9 @@ describe("agentic.ui.ChatWidget", function()
                 baseline_tabs[tabpage] = true
             end
             cleanup_buffers = {}
+            find_stub = nil
+            unregister_stub = nil
+            delete_stub = nil
 
             vim.cmd("tabnew")
             widget = ChatWidget:new(
@@ -978,6 +987,15 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
+            if delete_stub then
+                delete_stub:revert()
+            end
+            if unregister_stub then
+                unregister_stub:revert()
+            end
+            if find_stub then
+                find_stub:revert()
+            end
             if extra_widget then
                 WidgetRegistry.unregister(extra_widget)
                 extra_widget = nil
@@ -1068,18 +1086,17 @@ describe("agentic.ui.ChatWidget", function()
                 local original_find = widget.find_first_non_widget_window
                 local original_unregister = WidgetRegistry.unregister
                 local original_delete = vim.api.nvim_buf_delete
-                local find_stub =
-                    spy.stub(widget, "find_first_non_widget_window")
+                find_stub = spy.stub(widget, "find_first_non_widget_window")
                 find_stub:invokes(function(self)
                     events[#events + 1] = "fallback"
                     return original_find(self)
                 end)
-                local unregister_stub = spy.stub(WidgetRegistry, "unregister")
+                unregister_stub = spy.stub(WidgetRegistry, "unregister")
                 unregister_stub:invokes(function(owner)
                     events[#events + 1] = "unregister"
                     return original_unregister(owner)
                 end)
-                local delete_stub = spy.stub(vim.api, "nvim_buf_delete")
+                delete_stub = spy.stub(vim.api, "nvim_buf_delete")
                 delete_stub:invokes(function(bufnr, opts)
                     events[#events + 1] = "delete"
                     return original_delete(bufnr, opts)
@@ -1089,8 +1106,11 @@ describe("agentic.ui.ChatWidget", function()
                 widget = nil
 
                 delete_stub:revert()
+                delete_stub = nil
                 unregister_stub:revert()
+                unregister_stub = nil
                 find_stub:revert()
+                find_stub = nil
 
                 assert.equal("fallback", events[1])
                 assert.equal("unregister", events[2])

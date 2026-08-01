@@ -121,9 +121,18 @@ describe("BufferGuard", function()
     local usable_stub
     --- @type TestSpy|nil
     local focus_spy
+    --- @type table<integer, true>
+    local baseline_tabs
+    --- @type agentic.ui.ChatWidget[]
+    local extra_widgets
 
     before_each(function()
         active_setups = {}
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        extra_widgets = {}
         schedule_stub = nil
         usable_stub = nil
         focus_spy = nil
@@ -141,6 +150,17 @@ describe("BufferGuard", function()
         end
         for _, setup in ipairs(active_setups) do
             setup.cleanup()
+        end
+        for _, widget in ipairs(extra_widgets) do
+            WidgetRegistry.unregister(widget)
+        end
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
         end
     end)
 
@@ -259,6 +279,41 @@ describe("BufferGuard", function()
         s.cleanup()
     end)
 
+    it("rejects a different widget that claims the owner buffer", function()
+        local s = create_widget_setup()
+        vim.api.nvim_set_current_win(s.wins.chat)
+
+        local scheduled
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled = callback
+        end)
+
+        local foreign = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
+        assert.is_not_nil(scheduled)
+
+        --- @type any
+        local replacement = {
+            tab_page_id = s.tab,
+            buf_nrs = { chat = s.widget.buf_nrs.chat },
+            win_nrs = {},
+            find_first_non_widget_window = function()
+                return s.editor_win
+            end,
+            open_editor_window = function()
+                return nil
+            end,
+        }
+        extra_widgets[#extra_widgets + 1] = replacement
+        WidgetRegistry.register(replacement)
+        focus_spy = spy.on(vim.api, "nvim_set_current_win")
+
+        scheduled()
+
+        assert.spy(focus_spy).was.called(0)
+    end)
+
     it("rejects a destination outside the owner's stored tabpage", function()
         local s = create_widget_setup()
 
@@ -283,9 +338,6 @@ describe("BufferGuard", function()
         )
         assert.equal(foreign_tab, vim.api.nvim_win_get_tabpage(foreign_win))
 
-        vim.api.nvim_set_current_tabpage(foreign_tab)
-        vim.cmd("tabclose!")
-        vim.api.nvim_set_current_tabpage(s.tab)
         s.cleanup()
     end)
 

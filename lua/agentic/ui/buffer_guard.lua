@@ -60,7 +60,7 @@ local function redirect_foreign(foreign_buf, widget, owner_bufnr)
         end
 
         local live_widget = WidgetRegistry.get(owner_bufnr)
-        if not live_widget then
+        if not live_widget or live_widget ~= widget then
             return
         end
 

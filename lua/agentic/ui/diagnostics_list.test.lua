@@ -314,13 +314,9 @@ describe("agentic.ui.DiagnosticsList", function()
         end)
 
         it("keeps default width when the registered owner is hidden", function()
-            vim.cmd("tabnew")
-            local owner_tab = vim.api.nvim_get_current_tabpage()
-            vim.cmd("tabprevious")
-
             --- @type any
             local widget = {
-                tab_page_id = owner_tab,
+                tab_page_id = vim.api.nvim_get_current_tabpage(),
                 buf_nrs = { diagnostics = bufnr },
                 win_nrs = {},
             }

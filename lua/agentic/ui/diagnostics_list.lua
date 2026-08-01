@@ -218,11 +218,15 @@ function DiagnosticsList:_render()
     local owner = WidgetRegistry.get(self._bufnr)
     local winid
     if owner then
-        winid = BufHelpers.find_visible_win(
+        local owner_winid = owner.win_nrs.diagnostics
+        local candidate = BufHelpers.find_visible_win(
             self._bufnr,
-            owner.win_nrs.diagnostics,
+            owner_winid,
             owner.tab_page_id
         )
+        if candidate == owner_winid then
+            winid = candidate
+        end
     else
         winid = BufHelpers.find_visible_win(self._bufnr, nil)
     end
