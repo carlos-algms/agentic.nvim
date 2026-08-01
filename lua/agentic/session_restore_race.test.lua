@@ -67,7 +67,9 @@ describe("race: stale create_session after load_acp_session", function()
 
         local session = {
             session_id = nil,
+            _restoring_session_id = nil,
             _is_restoring_session = false,
+            _destroyed = false,
             is_generating = false,
             _session_ready_callbacks = {},
             _is_first_message = true,
@@ -376,6 +378,41 @@ describe("race: stale create_session after load_acp_session", function()
         assert.is_nil(session.session_id)
     end)
 
+    it("keeps a newer restore claim when an older load fails", function()
+        local create_cb_ref = {}
+        local load_cb_ref = {}
+        local session = make_session(create_cb_ref, load_cb_ref)
+
+        session:load_acp_session("older-id", "older", nil)
+        local older_callback = load_cb_ref.cb
+        session:load_acp_session("newer-id", "newer", nil)
+
+        older_callback({ message = "older failed" })
+        drain()
+
+        assert.equal("newer-id", session._restoring_session_id)
+        assert.is_true(session._is_restoring_session)
+    end)
+
+    it(
+        "keeps a newer same-id restore claim when an older load fails",
+        function()
+            local create_cb_ref = {}
+            local load_cb_ref = {}
+            local session = make_session(create_cb_ref, load_cb_ref)
+
+            session:load_acp_session("same-id", "older", nil)
+            local older_callback = load_cb_ref.cb
+            session:load_acp_session("same-id", "newer", nil)
+
+            older_callback({ message = "older failed" })
+            drain()
+
+            assert.equal("same-id", session._restoring_session_id)
+            assert.is_true(session._is_restoring_session)
+        end
+    )
+
     it("cancels an in-flight restore before starting a new session", function()
         local create_cb_ref = {}
         local load_cb_ref = {}
@@ -386,9 +423,56 @@ describe("race: stale create_session after load_acp_session", function()
         session:load_acp_session("restored-id", "title", nil)
         session:new_session()
 
-        assert.is_true(vim.tbl_contains(session._cancelled, "restored-id"))
+        assert.same({ "restored-id" }, session._cancelled)
         assert.is_nil(session._restoring_session_id)
         assert.spy(clear_spy).was.called(1)
+    end)
+
+    it("cancels active and restoring ACP ids once each", function()
+        local session = make_session({}, {})
+        session.session_id = "active-id"
+        session._restoring_session_id = "restored-id"
+
+        session:_cancel_session()
+
+        assert.same({ "active-id", "restored-id" }, session._cancelled)
+    end)
+
+    it("cancels one ACP id once when active and restoring ids match", function()
+        local session = make_session({}, {})
+        session.session_id = "same-id"
+        session._restoring_session_id = "same-id"
+
+        session:_cancel_session()
+
+        assert.same({ "same-id" }, session._cancelled)
+    end)
+
+    it("clears every UI state owner for a restore-only cancellation", function()
+        local session = make_session({}, {})
+        local clear_spies = {
+            spy.new(function() end),
+            spy.new(function() end),
+            spy.new(function() end),
+            spy.new(function() end),
+            spy.new(function() end),
+            spy.new(function() end),
+            spy.new(function() end),
+        }
+        session.widget.clear = clear_spies[1]
+        session.todo_list.clear = clear_spies[2]
+        session.file_list.clear = clear_spies[3]
+        session.code_selection.clear = clear_spies[4]
+        session.diagnostics_list.clear = clear_spies[5]
+        session.config_options.clear = clear_spies[6]
+        session.session_state.clear = clear_spies[7]
+        session._restoring_session_id = "restored-id"
+
+        session:_cancel_session()
+
+        for _, clear_spy in ipairs(clear_spies) do
+            assert.spy(clear_spy).was.called(1)
+        end
     end)
 
     it("does not cancel a restore reclaimed after destroy", function()
@@ -404,5 +488,37 @@ describe("race: stale create_session after load_acp_session", function()
         drain()
 
         assert.same({ "restored-id" }, session._cancelled)
+    end)
+
+    it(
+        "cancels a created ACP session whose response arrives after destroy",
+        function()
+            local create_cb_ref = {}
+            local session = make_session(create_cb_ref, {})
+
+            session:new_session()
+            session._destroyed = true
+            create_cb_ref.cb({ sessionId = "late-id" }, nil)
+            drain()
+
+            assert.is_nil(session.session_id)
+            assert.same({ "late-id" }, session._cancelled)
+        end
+    )
+
+    it("skips the deferred welcome write after destroy", function()
+        local create_cb_ref = {}
+        local session = make_session(create_cb_ref, {})
+        local write_spy = spy.new(function() end)
+        local created_spy = spy.new(function() end)
+        session.message_writer.write_structural_message = write_spy
+
+        session:new_session({ on_created = created_spy })
+        create_cb_ref.cb({ sessionId = "new-id" }, nil)
+        session._destroyed = true
+        drain()
+
+        assert.spy(write_spy).was.called(0)
+        assert.spy(created_spy).was.called(0)
     end)
 end)

@@ -16,6 +16,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field session_id? string
 --- @field session_key? integer Registry key, assigned by SessionRegistry.create
 --- @field _restoring_session_id? string ACP session ID claimed by an in-flight restore
+--- @field _restoring_session_token? table Identity of the in-flight restore attempt
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -72,6 +73,7 @@ function SessionManager:new()
     self = setmetatable({
         session_id = nil,
         _restoring_session_id = nil,
+        _restoring_session_token = nil,
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
@@ -222,6 +224,10 @@ function SessionManager:new()
 end
 
 function SessionManager:_handle_connection_error()
+    if self._destroyed then
+        return
+    end
+
     self._connection_error = true
     self._session_creation_failed = true
     SessionManager._resolve_session_ready_callbacks(self, false)
@@ -969,6 +975,7 @@ function SessionManager:_cancel_session()
 
     self.session_id = nil
     self._restoring_session_id = nil
+    self._restoring_session_token = nil
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
@@ -1068,6 +1075,8 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
 
     self._is_restoring_session = true
     self._restoring_session_id = session_id
+    local restoring_session_token = {}
+    self._restoring_session_token = restoring_session_token
     self.status_animation:start("busy")
 
     -- Before loading, so it lands at the top of the cleared buffer.
@@ -1088,25 +1097,23 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     self.agent:load_session(session_id, cwd, {}, handlers, function(err)
         -- Scheduled to run AFTER the session updates `__with_subscriber` deferred.
         vim.schedule(function()
-            -- Cancelling also drops the subscriber `load_session` registered before
-            -- the request, which would otherwise pin this dead manager's handlers.
-            if self._destroyed then
-                if self._restoring_session_id == session_id then
-                    if not err then
-                        self.agent:cancel_session(session_id)
-                    end
-                    self._restoring_session_id = nil
-                end
-
+            if self._restoring_session_token ~= restoring_session_token then
                 return
             end
 
-            if self._restoring_session_id ~= session_id then
+            if self._destroyed then
+                if not err then
+                    self.agent:cancel_session(session_id)
+                end
+                self._restoring_session_id = nil
+                self._restoring_session_token = nil
+
                 return
             end
 
             self._is_restoring_session = false
             self._restoring_session_id = nil
+            self._restoring_session_token = nil
             self.status_animation:stop()
 
             -- A new session was created while the load was in flight.

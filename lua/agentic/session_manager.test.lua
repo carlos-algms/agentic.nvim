@@ -558,6 +558,30 @@ describe("agentic.SessionManager", function()
             assert.equal(0, #session._session_ready_callbacks)
             assert.is_true(session._connection_error)
         end)
+
+        it("leaves state and UI unchanged after destroy", function()
+            local stop_spy = spy.new(function() end)
+            local write_spy = spy.new(function() end)
+            local callbacks = { function() end }
+            local session = {
+                _destroyed = true,
+                _connection_error = false,
+                _session_ready_callbacks = callbacks,
+                is_generating = true,
+                status_animation = { stop = stop_spy },
+                message_writer = { write_message = write_spy },
+                agent = { provider_config = { name = "TestProvider" } },
+                _handle_connection_error = SessionManager._handle_connection_error,
+            } --[[@as agentic.SessionManager]]
+
+            session:_handle_connection_error()
+
+            assert.is_false(session._connection_error)
+            assert.equal(callbacks, session._session_ready_callbacks)
+            assert.is_true(session.is_generating)
+            assert.spy(stop_spy).was.called(0)
+            assert.spy(write_spy).was.called(0)
+        end)
     end)
 
     describe("history_to_send consumption", function()
@@ -2382,6 +2406,9 @@ describe("agentic.SessionManager", function()
                         return 1
                     end,
                 },
+                message_writer = {
+                    write_message = function() end,
+                },
                 status_animation = {
                     stop = function() end,
                     start = function() end,
@@ -2396,6 +2423,9 @@ describe("agentic.SessionManager", function()
                     show = function() end,
                     clear = function() end,
                 },
+                _on_session_update = function() end,
+                _on_tool_call = function() end,
+                _on_tool_call_update = function() end,
                 _build_handlers = SessionManager._build_handlers,
             } --[[@as agentic.SessionManager]]
         end)
@@ -2471,6 +2501,64 @@ describe("agentic.SessionManager", function()
 
             -- No assertion: a raise here fails the case
             handlers.on_request_permission(mock_request, mock_callback)
+        end)
+
+        it(
+            "drops every handler after destroy and answers permission",
+            function()
+                local write_spy = spy.new(function() end)
+                local update_spy = spy.new(function() end)
+                local tool_spy = spy.new(function() end)
+                local tool_update_spy = spy.new(function() end)
+                local permission_spy = spy.new(function() end)
+                session._destroyed = true
+                session.message_writer.write_message = write_spy
+                session._on_session_update = update_spy
+                session._on_tool_call = tool_spy
+                session._on_tool_call_update = tool_update_spy
+
+                local handlers = session:_build_handlers()
+                handlers.on_error({ message = "late" })
+                handlers.on_session_update({ sessionUpdate = "late" })
+                handlers.on_tool_call({})
+                handlers.on_tool_call_update({})
+                handlers.on_request_permission({
+                    sessionId = "test-session-123",
+                    toolCall = { toolCallId = "tool-1", kind = "edit" },
+                    options = {},
+                }, permission_spy --[[@as function]])
+
+                assert.spy(write_spy).was.called(0)
+                assert.spy(update_spy).was.called(0)
+                assert.spy(tool_spy).was.called(0)
+                assert.spy(tool_update_spy).was.called(0)
+                assert.spy(permission_spy).was.called(1)
+                assert.is_nil(permission_spy.calls[1][1])
+            end
+        )
+    end)
+
+    describe("destroy", function()
+        it("is idempotent and marks destroyed before cancellation", function()
+            local cancel_spy = spy.new(function(session)
+                assert.is_true(session._destroyed)
+            end)
+            local widget_destroy_spy = spy.new(function() end)
+            local writer_destroy_spy = spy.new(function() end)
+            local session = {
+                _destroyed = false,
+                _cancel_session = cancel_spy,
+                widget = { destroy = widget_destroy_spy },
+                message_writer = { destroy = writer_destroy_spy },
+                destroy = SessionManager.destroy,
+            } --[[@as agentic.SessionManager]]
+
+            session:destroy()
+            session:destroy()
+
+            assert.spy(cancel_spy).was.called(1)
+            assert.spy(widget_destroy_spy).was.called(1)
+            assert.spy(writer_destroy_spy).was.called(1)
         end)
     end)
 
