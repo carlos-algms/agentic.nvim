@@ -125,6 +125,8 @@ describe("BufferGuard", function()
     local baseline_tabs
     --- @type agentic.ui.ChatWidget[]
     local extra_widgets
+    --- @type string[]
+    local tempfiles
 
     before_each(function()
         active_setups = {}
@@ -133,6 +135,7 @@ describe("BufferGuard", function()
             baseline_tabs[tabpage] = true
         end
         extra_widgets = {}
+        tempfiles = {}
         schedule_stub = nil
         usable_stub = nil
         focus_spy = nil
@@ -153,6 +156,9 @@ describe("BufferGuard", function()
         end
         for _, widget in ipairs(extra_widgets) do
             WidgetRegistry.unregister(widget)
+        end
+        for _, path in ipairs(tempfiles) do
+            os.remove(path)
         end
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             if not baseline_tabs[tabpage] then
@@ -195,6 +201,7 @@ describe("BufferGuard", function()
         -- Write a temp file so the foreign buffer has a name
         local tmpfile = vim.fn.tempname() .. ".lua"
         vim.fn.writefile({ "-- test" }, tmpfile)
+        tempfiles[#tempfiles + 1] = tmpfile
 
         vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
 
@@ -214,8 +221,29 @@ describe("BufferGuard", function()
         assert.is_nil(WidgetRegistry.get(old_chat_buf))
         assert.equal(s.widget, WidgetRegistry.get(buf_in_chat))
 
-        os.remove(tmpfile)
         s.cleanup()
+    end)
+
+    it("redirects a later foreign buffer after ownership transfer", function()
+        local s = create_widget_setup()
+        local old_chat_buf = s.bufs.chat
+        vim.api.nvim_set_current_win(s.wins.chat)
+
+        local tmpfile = vim.fn.tempname() .. ".lua"
+        vim.fn.writefile({ "-- test" }, tmpfile)
+        tempfiles[#tempfiles + 1] = tmpfile
+        vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
+
+        local replacement = s.widget.buf_nrs.chat
+        assert.are_not.equal(old_chat_buf, replacement)
+        assert.equal(s.widget, WidgetRegistry.get(replacement))
+
+        vim.api.nvim_set_current_win(s.wins.chat)
+        local later_foreign = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_win_set_buf(s.wins.chat, later_foreign)
+
+        assert.equal(replacement, vim.api.nvim_win_get_buf(s.wins.chat))
+        assert.equal(later_foreign, vim.api.nvim_win_get_buf(s.editor_win))
     end)
 
     it("re-resolves the deferred destination", function()
