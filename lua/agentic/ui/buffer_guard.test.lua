@@ -366,6 +366,69 @@ describe("BufferGuard", function()
         assert.spy(focus_spy).was.called(0)
     end)
 
+    it("ignores a foreign-buffer event claimed by another tab", function()
+        local s = create_widget_setup()
+        local expected = s.widget.buf_nrs.chat
+
+        vim.cmd("tabnew")
+        local foreign_tab = vim.api.nvim_get_current_tabpage()
+        local foreign_win = vim.api.nvim_get_current_win()
+        --- @type any
+        local foreign_widget = {
+            tab_page_id = foreign_tab,
+            buf_nrs = { chat = expected },
+            win_nrs = { chat = foreign_win },
+            find_first_non_widget_window = function()
+                return foreign_win
+            end,
+            open_editor_window = function()
+                return nil
+            end,
+        }
+        extra_widgets[#extra_widgets + 1] = foreign_widget
+        WidgetRegistry.register(foreign_widget)
+
+        vim.api.nvim_set_current_tabpage(s.tab)
+        vim.api.nvim_set_current_win(s.wins.chat)
+        local foreign_buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_win_set_buf(s.wins.chat, foreign_buf)
+
+        assert.equal(foreign_buf, vim.api.nvim_win_get_buf(s.wins.chat))
+        assert.equal(expected, foreign_widget.buf_nrs.chat)
+    end)
+
+    it("ignores a repurposed-buffer event claimed by another tab", function()
+        local s = create_widget_setup()
+        local expected = s.widget.buf_nrs.chat
+
+        vim.cmd("tabnew")
+        local foreign_tab = vim.api.nvim_get_current_tabpage()
+        local foreign_win = vim.api.nvim_get_current_win()
+        --- @type any
+        local foreign_widget = {
+            tab_page_id = foreign_tab,
+            buf_nrs = { chat = expected },
+            win_nrs = { chat = foreign_win },
+            find_first_non_widget_window = function()
+                return foreign_win
+            end,
+            open_editor_window = function()
+                return nil
+            end,
+        }
+        extra_widgets[#extra_widgets + 1] = foreign_widget
+        WidgetRegistry.register(foreign_widget)
+
+        vim.api.nvim_set_current_tabpage(s.tab)
+        vim.api.nvim_set_current_win(s.wins.chat)
+        vim.api.nvim_buf_set_name(expected, vim.fn.tempname() .. ".lua")
+        vim.bo[expected].buftype = ""
+        vim.api.nvim_exec_autocmds("BufEnter", { buffer = expected })
+
+        assert.equal(expected, vim.api.nvim_win_get_buf(s.wins.chat))
+        assert.equal(expected, foreign_widget.buf_nrs.chat)
+    end)
+
     it("rejects a destination outside the owner's stored tabpage", function()
         local s = create_widget_setup()
 

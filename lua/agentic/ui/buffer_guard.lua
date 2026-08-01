@@ -106,7 +106,7 @@ local function on_buf_enter(cb)
     end
 
     local widget = WidgetRegistry.get(expected)
-    if not widget then
+    if not widget or widget.tab_page_id ~= cb.tab_page_id then
         return
     end
 
