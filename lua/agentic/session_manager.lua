@@ -19,6 +19,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @class agentic.SessionManager
 --- @field session_id? string
 --- @field tab_page_id integer
+--- @field _restoring_session_id? string ACP session ID claimed by an in-flight restore
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -37,6 +38,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
+--- @field _destroyed boolean Async callbacks must re-check this at run time
 --- @field _session_ready_callbacks fun()[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
@@ -72,16 +74,22 @@ function SessionManager:new(tab_page_id)
     self = setmetatable({
         session_id = nil,
         tab_page_id = tab_page_id,
+        _restoring_session_id = nil,
         _is_first_message = true,
         is_generating = false,
         _is_restoring_session = false,
         _connection_error = false,
+        _destroyed = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
     }, self)
 
     local agent = AgentInstance.get_instance(Config.provider, function(_client)
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             -- Guard: cached client may be dead
             if
                 self.agent.state == "error"
@@ -90,7 +98,7 @@ function SessionManager:new(tab_page_id)
                 self:_handle_connection_error()
                 return
             end
-            self:new_session()
+            self:_bootstrap_session()
         end)
     end)
 
@@ -119,6 +127,10 @@ function SessionManager:new(tab_page_id)
         and (self.agent.state == "error" or self.agent.state == "disconnected")
     then
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             if not self._connection_error then
                 self:_handle_connection_error()
             end
@@ -222,6 +234,10 @@ end
 --- Handle provider connection failure.
 --- Stops busy animation and writes error to chat buffer.
 function SessionManager:_handle_connection_error()
+    if self._destroyed then
+        return
+    end
+
     self._connection_error = true
     self._session_ready_callbacks = {}
     self.is_generating = false
@@ -247,6 +263,10 @@ function SessionManager:on_session_ready(callback)
             "on_session_ready: session already ready, scheduling callback immediately"
         )
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             callback(self)
         end)
         return
@@ -646,6 +666,10 @@ function SessionManager:_build_handlers()
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
+            if self._destroyed then
+                return
+            end
+
             Logger.debug("Agent error: ", err)
 
             self.message_writer:write_message(
@@ -658,18 +682,35 @@ function SessionManager:_build_handlers()
         end,
 
         on_session_update = function(update)
+            if self._destroyed then
+                return
+            end
+
             self:_on_session_update(update)
         end,
 
         on_tool_call = function(tool_call)
+            if self._destroyed then
+                return
+            end
+
             self:_on_tool_call(tool_call)
         end,
 
         on_tool_call_update = function(tool_call_update)
+            if self._destroyed then
+                return
+            end
+
             self:_on_tool_call_update(tool_call_update)
         end,
 
         on_request_permission = function(request, callback)
+            if self._destroyed then
+                callback(nil)
+                return
+            end
+
             Hooks.invoke("on_request_permission", {
                 request = request,
                 session_id = self.session_id,
@@ -701,6 +742,14 @@ function SessionManager:_build_handlers()
     return handlers
 end
 
+function SessionManager:_bootstrap_session()
+    if self._destroyed or self._is_restoring_session then
+        return
+    end
+
+    self:new_session()
+end
+
 --- Create a new session, optionally cancelling any existing one
 --- @param opts {restore_mode?: boolean, on_created?: fun(), timestamp?: string|integer}|nil
 function SessionManager:new_session(opts)
@@ -716,6 +765,14 @@ function SessionManager:new_session(opts)
     local handlers = self:_build_handlers()
 
     self.agent:create_session(handlers, function(response, err)
+        if self._destroyed then
+            if response and response.sessionId then
+                self.agent:cancel_session(response.sessionId)
+            end
+
+            return
+        end
+
         self.status_animation:stop()
 
         --- @type agentic.UserConfig.CreateSessionResponseData
@@ -813,6 +870,10 @@ function SessionManager:new_session(opts)
         -- Defer to avoid fast event context issues
         -- For restore: write welcome first, then replay via on_created
         vim.schedule(function()
+            if self._destroyed then
+                return
+            end
+
             local agent_info = self.agent.agent_info
             local welcome_message = self.message_writer:generate_welcome_header(
                 self.agent.provider_config.name,
@@ -854,14 +915,22 @@ function SessionManager:_start_spinner(state)
 end
 
 function SessionManager:_cancel_session()
+    local session_id = self.session_id
+    local restoring_session_id = self._restoring_session_id
+
     self._is_restoring_session = false
     self.is_generating = false
     self.status_animation:stop()
 
-    if self.session_id then
-        -- only cancel and clear content if there was an session
-        -- Otherwise, it clears selections and files when opening for the first time
-        self.agent:cancel_session(self.session_id)
+    if session_id then
+        self.agent:cancel_session(session_id)
+    end
+    if restoring_session_id and restoring_session_id ~= session_id then
+        self.agent:cancel_session(restoring_session_id)
+    end
+
+    if session_id or restoring_session_id then
+        -- Do not clear selections and files before the first ACP session exists.
         self.widget:clear()
         self.todo_list:clear()
         self.file_list:clear()
@@ -872,6 +941,7 @@ function SessionManager:_cancel_session()
     end
 
     self.session_id = nil
+    self._restoring_session_id = nil
     self.permission_manager:clear()
     SlashCommands.setCommands(self.widget.buf_nrs.input, {})
 
@@ -938,6 +1008,12 @@ function SessionManager:_handle_new_config_options(new_config_options)
 end
 
 function SessionManager:destroy()
+    if self._destroyed then
+        return
+    end
+
+    self._destroyed = true
+
     self:_cancel_session()
     self.widget:destroy()
     if self.message_writer then
@@ -968,6 +1044,7 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
     self.config_options:restore_snapshot(saved_config)
 
     self._is_restoring_session = true
+    self._restoring_session_id = session_id
     self.status_animation:start("busy")
 
     -- Write banner before loading so it appears at top of cleared buffer
@@ -989,7 +1066,23 @@ function SessionManager:load_acp_session(session_id, title, timestamp)
         -- vim.schedule to run AFTER deferred session update notifications
         -- (user_message_chunk etc. are routed via __with_subscriber → vim.schedule)
         vim.schedule(function()
+            if self._destroyed then
+                if self._restoring_session_id == session_id then
+                    if not err then
+                        self.agent:cancel_session(session_id)
+                    end
+                    self._restoring_session_id = nil
+                end
+
+                return
+            end
+
+            if self._restoring_session_id ~= session_id then
+                return
+            end
+
             self._is_restoring_session = false
+            self._restoring_session_id = nil
             self.status_animation:stop()
 
             -- Guard: if a new session was created while the load was in flight,

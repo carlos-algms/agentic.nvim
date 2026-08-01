@@ -337,6 +337,38 @@ describe("ACPClient", function()
             assert.equal("load failed", received_err.message)
         end)
 
+        it(
+            "keeps a replacement subscriber after an older load fails",
+            function()
+                local client = create_ready_client(LOAD_CAPS)
+                local request_ids = {}
+                transport_send_stub:invokes(function(_self, data)
+                    local decoded = vim.json.decode(data)
+                    request_ids[#request_ids + 1] = decoded.id
+                end)
+                --- @type agentic.acp.ClientHandlers
+                local first_handlers = vim.deepcopy(NOOP_HANDLERS)
+                --- @type agentic.acp.ClientHandlers
+                local replacement_handlers = vim.deepcopy(NOOP_HANDLERS)
+
+                client:load_session("sid-1", "/tmp", {}, first_handlers)
+                client:load_session("sid-1", "/tmp", {}, replacement_handlers)
+
+                local on_message = captured_on_message
+                assert.is_not_nil(on_message)
+                --- @cast on_message -nil
+                on_message({
+                    jsonrpc = "2.0",
+                    id = request_ids[1],
+                    error = { code = -32000, message = "load failed" },
+                })
+
+                assert.is_true(
+                    client.subscribers["sid-1"] == replacement_handlers
+                )
+            end
+        )
+
         it("works without on_load_complete (backward compatible)", function()
             local client = create_ready_client(LOAD_CAPS)
 
