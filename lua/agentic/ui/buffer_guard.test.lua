@@ -123,10 +123,15 @@ describe("BufferGuard", function()
     local focus_spy
     --- @type table<integer, true>
     local baseline_tabs
+    --- @type table<integer, true>
+    local baseline_buffers
     --- @type agentic.ui.ChatWidget[]
     local extra_widgets
+    --- @type integer[]
+    local extra_augroups
     --- @type string[]
     local tempfiles
+    local saved_options
 
     before_each(function()
         active_setups = {}
@@ -134,8 +139,19 @@ describe("BufferGuard", function()
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             baseline_tabs[tabpage] = true
         end
+        baseline_buffers = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            baseline_buffers[bufnr] = true
+        end
         extra_widgets = {}
+        extra_augroups = {}
         tempfiles = {}
+        saved_options = {
+            number = vim.o.number,
+            signcolumn = vim.o.signcolumn,
+            cursorline = vim.o.cursorline,
+            list = vim.o.list,
+        }
         schedule_stub = nil
         usable_stub = nil
         focus_spy = nil
@@ -154,6 +170,9 @@ describe("BufferGuard", function()
         for _, setup in ipairs(active_setups) do
             setup.cleanup()
         end
+        for _, augroup in ipairs(extra_augroups) do
+            BufferGuard.detach(augroup)
+        end
         for _, widget in ipairs(extra_widgets) do
             WidgetRegistry.unregister(widget)
         end
@@ -168,6 +187,17 @@ describe("BufferGuard", function()
                 end)
             end
         end
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if
+                not baseline_buffers[bufnr] and vim.api.nvim_buf_is_valid(bufnr)
+            then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
+        vim.o.number = saved_options.number
+        vim.o.signcolumn = saved_options.signcolumn
+        vim.o.cursorline = saved_options.cursorline
+        vim.o.list = saved_options.list
     end)
 
     it(
@@ -415,6 +445,7 @@ describe("BufferGuard", function()
                 return nil
             end,
         })
+        extra_augroups[#extra_augroups + 1] = augroup
 
         --- @type any
         local widget = {
@@ -438,6 +469,7 @@ describe("BufferGuard", function()
                 return nil
             end,
         }
+        extra_widgets[#extra_widgets + 1] = widget
         WidgetRegistry.register(widget)
 
         -- Force a foreign buffer in
@@ -549,6 +581,7 @@ describe("BufferGuard", function()
                     return nil
                 end,
             })
+            extra_augroups[#extra_augroups + 1] = augroup
 
             --- @type any
             local widget = {
@@ -562,6 +595,7 @@ describe("BufferGuard", function()
                     return nil
                 end,
             }
+            extra_widgets[#extra_widgets + 1] = widget
             WidgetRegistry.register(widget)
 
             -- Force a foreign buffer into the chat widget window. This
