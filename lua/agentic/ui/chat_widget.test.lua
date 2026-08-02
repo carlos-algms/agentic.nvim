@@ -1220,12 +1220,29 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     local scheduled
     local saved_move_cursor
     local base_tabs
+    local base_bufs
+    local created_widgets
+
+    --- @return agentic.ui.ChatWidget widget
+    local function create_widget()
+        local widget = ChatWidget:new(
+            vim.api.nvim_get_current_tabpage(),
+            spy.new(function() end) --[[@as function]]
+        )
+        created_widgets[#created_widgets + 1] = widget
+        return widget
+    end
 
     before_each(function()
         base_tabs = {}
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             base_tabs[tabpage] = true
         end
+        base_bufs = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_bufs[bufnr] = true
+        end
+        created_widgets = {}
         saved_move_cursor = Config.settings.move_cursor_to_chat_on_submit
         Config.settings.move_cursor_to_chat_on_submit = true
         scheduled = nil
@@ -1236,6 +1253,11 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     end)
 
     after_each(function()
+        for _, widget in ipairs(created_widgets) do
+            pcall(function()
+                widget:destroy()
+            end)
+        end
         schedule_stub:revert()
         Config.settings.move_cursor_to_chat_on_submit = saved_move_cursor
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
@@ -1246,6 +1268,18 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
                 end)
             end
         end
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
+        local extra_bufs = 0
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] then
+                extra_bufs = extra_bufs + 1
+            end
+        end
+        assert.equal(0, extra_bufs)
     end)
 
     it("focuses a rebuilt panel instead of its captured handle", function()
@@ -1277,6 +1311,7 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     end)
 
     it("ignores a hidden destination window", function()
+        vim.cmd("tabnew")
         local current = vim.api.nvim_get_current_win()
         local bufnr = vim.api.nvim_create_buf(false, true)
         local hidden = vim.api.nvim_open_win(bufnr, false, {
@@ -1298,6 +1333,7 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     end)
 
     it("ignores a stale-valid handle whose tabpage is gone", function()
+        vim.cmd("tabnew")
         local target = vim.api.nvim_get_current_win()
         local widget = { win_nrs = { chat = target } }
         local usable_stub = spy.stub(BufHelpers, "is_win_usable")
@@ -1330,6 +1366,9 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
             current_position = "right",
             hide = function() end,
             show = function() end,
+            is_open = function()
+                return true
+            end,
         }
 
         ChatWidget.rotate_layout(widget, { "right", "left" })
@@ -1340,7 +1379,40 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         assert.equal(replacement, vim.api.nvim_get_current_win())
     end)
 
+    it("never restores rotation focus into the hidden chat float", function()
+        vim.cmd("tabnew")
+        local widget = create_widget()
+        widget:show({ focus_prompt = false })
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+
+        widget:rotate_layout({ "right", "bottom" })
+        scheduled()
+
+        assert.equal(widget.win_nrs.chat, vim.api.nvim_get_current_win())
+        local config =
+            vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())
+        assert.is_true(config.focusable)
+        assert.is_falsy(config.hide)
+    end)
+
+    it("drops rotation focus restoration after the widget hides", function()
+        vim.cmd("tabnew")
+        local widget = create_widget()
+        widget:show({ focus_prompt = false })
+
+        widget:rotate_layout({ "right", "bottom" })
+        widget:hide()
+        vim.cmd("tabnew")
+        local safe_tab = vim.api.nvim_get_current_tabpage()
+        local safe_win = vim.api.nvim_get_current_win()
+        scheduled()
+
+        assert.equal(safe_tab, vim.api.nvim_get_current_tabpage())
+        assert.equal(safe_win, vim.api.nvim_get_current_win())
+    end)
+
     it("does not restore insert mode when the prior editor is gone", function()
+        vim.cmd("tabnew")
         local mode_stub = spy.stub(vim.fn, "mode")
         mode_stub:returns("i")
         local startinsert_stub = spy.stub(vim.cmd, "startinsert")
@@ -1353,6 +1425,9 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
             current_position = "right",
             hide = function() end,
             show = function() end,
+            is_open = function()
+                return true
+            end,
         }
 
         ChatWidget.rotate_layout(widget, { "right", "left" })

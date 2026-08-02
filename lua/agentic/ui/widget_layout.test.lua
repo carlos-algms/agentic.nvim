@@ -560,6 +560,7 @@ describe("WidgetLayout deferred window guards", function()
     local schedule_stub
     local scheduled
     local base_tabs
+    local base_bufs
 
     --- @return agentic.ui.ChatWidget.BufNrs
     local function make_buffers()
@@ -578,6 +579,10 @@ describe("WidgetLayout deferred window guards", function()
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             base_tabs[tabpage] = true
         end
+        base_bufs = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_bufs[bufnr] = true
+        end
         scheduled = nil
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(callback)
@@ -595,6 +600,18 @@ describe("WidgetLayout deferred window guards", function()
                 end)
             end
         end
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
+        local extra_bufs = 0
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] then
+                extra_bufs = extra_bufs + 1
+            end
+        end
+        assert.equal(0, extra_bufs)
     end)
 
     it("replaces a cached handle owned by another tabpage", function()
@@ -634,6 +651,28 @@ describe("WidgetLayout deferred window guards", function()
         scheduled()
 
         assert.equal(foreign_tab, vim.api.nvim_get_current_tabpage())
+    end)
+
+    it("does not focus input after the owner tab closes", function()
+        vim.cmd("tabnew")
+        local owner_tab = vim.api.nvim_get_current_tabpage()
+        local win_nrs = {}
+        WidgetLayout.open({
+            tab_page_id = owner_tab,
+            buf_nrs = make_buffers(),
+            win_nrs = win_nrs,
+            position = "right",
+            focus_prompt = true,
+        })
+        assert.equal("function", type(scheduled))
+
+        vim.cmd("tabclose!")
+        local safe_tab = vim.api.nvim_get_current_tabpage()
+        local safe_win = vim.api.nvim_get_current_win()
+        scheduled()
+
+        assert.equal(safe_tab, vim.api.nvim_get_current_tabpage())
+        assert.equal(safe_win, vim.api.nvim_get_current_win())
     end)
 
     it("gates close through window usability", function()

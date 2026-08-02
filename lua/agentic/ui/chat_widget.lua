@@ -154,6 +154,9 @@ function ChatWidget:rotate_layout(layouts)
         if not vim.api.nvim_tabpage_is_valid(self.tab_page_id) then
             return
         end
+        if not self:is_open() then
+            return
+        end
         local win =
             BufHelpers.find_visible_win(previous_buf, nil, self.tab_page_id)
         if not win or not BufHelpers.is_win_usable(win) then

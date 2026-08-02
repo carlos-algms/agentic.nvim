@@ -343,7 +343,7 @@ function M.setup_keymaps(bufnr, diff_state)
     install_agentic_keymaps(bufnr, diff_state)
 end
 
-local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }
+local RESTORED_KEYMAP_FLAGS = { "silent", "expr", "nowait" }
 
 --- Restore saved keymaps for buffer
 --- @param bufnr number
@@ -379,7 +379,7 @@ function M.restore_keymaps(bufnr, diff_state)
     for _, saved_map in pairs(state.saved_keymaps) do
         if saved_map and saved_map.lhs then
             --- @type vim.keymap.set.Opts
-            local opts = {}
+            local opts = { remap = saved_map.noremap == 0 }
             for _, flag in ipairs(RESTORED_KEYMAP_FLAGS) do
                 if saved_map[flag] == 1 then
                     opts[flag] = true

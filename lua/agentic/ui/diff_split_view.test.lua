@@ -10,8 +10,19 @@ describe("DiffSplitView", function()
     local test_file_path = "/tmp/test_diff_split_view_fake.lua"
     local test_tabpage
     local read_stub
+    local base_tabs
+    local base_bufs
+    local owner_states
     --- @type agentic.ui.DiffState
     local diff_state
+
+    --- @return agentic.ui.DiffState state
+    local function new_diff_state()
+        --- @type agentic.ui.DiffState
+        local state = {}
+        owner_states[#owner_states + 1] = state
+        return state
+    end
 
     --- @param opts agentic.ui.DiffPreview.ShowOpts
     --- @return boolean success
@@ -26,29 +37,47 @@ describe("DiffSplitView", function()
     end
 
     before_each(function()
+        base_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tabs[tabpage] = true
+        end
+        base_bufs = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_bufs[bufnr] = true
+        end
+        owner_states = {}
         read_stub = spy_module.stub(FileSystem, "read_from_buffer_or_disk")
         stub_file_content({ "local x = 1", "print(x)", "" })
-        diff_state = {}
+        diff_state = new_diff_state()
         vim.cmd("tabnew")
         test_tabpage = vim.api.nvim_get_current_tabpage()
     end)
 
     after_each(function()
-        read_stub:revert()
-        if test_tabpage and vim.api.nvim_tabpage_is_valid(test_tabpage) then
-            pcall(DiffSplitView.clear_split_diff, diff_state)
-            pcall(vim.api.nvim_tabpage_del, test_tabpage)
+        for _, owner_state in ipairs(owner_states) do
+            pcall(DiffSplitView.clear_split_diff, owner_state)
         end
-        for _, path in ipairs({
-            test_file_path,
-            test_file_path .. ".first",
-            test_file_path .. ".second",
-        }) do
-            local bufnr = vim.fn.bufnr(path)
-            if bufnr ~= -1 then
+        read_stub:revert()
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
                 pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
             end
         end
+        local extra_bufs = 0
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] then
+                extra_bufs = extra_bufs + 1
+            end
+        end
+        assert.equal(0, extra_bufs)
     end)
 
     --- @return number bufnr
@@ -374,7 +403,7 @@ describe("DiffSplitView", function()
 
         it("stores two split paths under one owner", function()
             --- @type agentic.ui.DiffState
-            local owner_state = {}
+            local owner_state = new_diff_state()
             local first_path = test_file_path .. ".first"
             local second_path = test_file_path .. ".second"
             local get_winid = function(bufnr)
@@ -471,9 +500,9 @@ describe("DiffSplitView", function()
 
         it("isolates same-path scratch buffers for two owners", function()
             --- @type agentic.ui.DiffState
-            local first_state = {}
+            local first_state = new_diff_state()
             --- @type agentic.ui.DiffState
-            local second_state = {}
+            local second_state = new_diff_state()
             local get_winid = function(bufnr)
                 local winid = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_buf(winid, bufnr)
@@ -507,9 +536,9 @@ describe("DiffSplitView", function()
                 local bufnr = vim.fn.bufadd(test_file_path)
                 local original_modifiable = vim.bo[bufnr].modifiable
                 --- @type agentic.ui.DiffState
-                local first_state = {}
+                local first_state = new_diff_state()
                 --- @type agentic.ui.DiffState
-                local second_state = {}
+                local second_state = new_diff_state()
                 local function open_for(state)
                     return DiffSplitView.show_split_diff({
                         file_path = test_file_path,
@@ -546,7 +575,7 @@ describe("DiffSplitView", function()
             local foreign_win = vim.api.nvim_get_current_win()
             vim.api.nvim_win_set_buf(foreign_win, bufnr)
             --- @type agentic.ui.DiffState
-            local state = {}
+            local state = new_diff_state()
 
             DiffSplitView.show_split_diff({
                 file_path = test_file_path,
@@ -589,6 +618,34 @@ describe("DiffSplitView", function()
                 usable_stub:revert()
                 schedule_stub:revert()
                 assert.is_true(usable_called)
+                assert.equal(0, win_call_count)
+            end
+        )
+
+        it(
+            "skips scheduled navigation when the original window is repurposed",
+            function()
+                local scheduled
+                local schedule_stub = spy_module.stub(vim, "schedule")
+                schedule_stub:invokes(function(callback)
+                    scheduled = callback
+                end)
+                setup_and_show_split()
+                local split = DiffSplitView.find_split_state(diff_state)
+                assert.is_not_nil(split)
+                ---@cast split agentic.ui.DiffSplitView.State
+                local replacement_bufnr = vim.api.nvim_create_buf(false, true)
+                vim.api.nvim_win_set_buf(
+                    split.original_winid,
+                    replacement_bufnr
+                )
+                local win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+
+                scheduled()
+
+                local win_call_count = win_call_stub.call_count
+                win_call_stub:revert()
+                schedule_stub:revert()
                 assert.equal(0, win_call_count)
             end
         )

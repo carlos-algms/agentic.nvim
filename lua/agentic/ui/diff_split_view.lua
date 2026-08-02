@@ -142,12 +142,22 @@ local function open_split_view(
     vim.bo[scratch_bufnr].modifiable = false
 
     vim.schedule(function()
-        if not BufHelpers.is_win_usable(target_winid) then
+        local current_split = diff_state.split_state
+            and diff_state.split_state[abs_path]
+        if not current_split then
+            return
+        end
+        local current_winid = current_split.original_winid
+        if
+            not BufHelpers.is_win_usable(current_winid)
+            or vim.api.nvim_win_get_buf(current_winid)
+                ~= current_split.original_bufnr
+        then
             return
         end
         local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"
             or ""
-        pcall(vim.api.nvim_win_call, target_winid, function()
+        pcall(vim.api.nvim_win_call, current_winid, function()
             vim.cmd("normal! gg]c" .. center_cmd)
         end)
     end)

@@ -659,8 +659,8 @@ function M.cleanup_suggestion_buffer(file_path, state)
         return
     end
 
-    local winid = state and state.preview_winid
-        or BufHelpers.find_visible_win(suggestion_bufnr)
+    local preferred_winid = state and state.preview_winid or nil
+    local winid = BufHelpers.find_visible_win(suggestion_bufnr, preferred_winid)
 
     -- Must delete suggestion buffer before bufadd because Neovim path
     -- resolution can match the smart-path name to the absolute path.

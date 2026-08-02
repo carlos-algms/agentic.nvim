@@ -496,6 +496,25 @@ describe("hunk_navigation", function()
             assert.equal(1, restored.nowait)
         end)
 
+        it("restores a recursive mapping with its other flags", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                "v:count",
+                { remap = true, silent = true, expr = true, nowait = true }
+            )
+
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.equal(0, restored.noremap)
+            assert.equal(1, restored.silent)
+            assert.equal(1, restored.expr)
+            assert.equal(1, restored.nowait)
+        end)
+
         it(
             "keeps the newer owner callback when the older owner clears",
             function()

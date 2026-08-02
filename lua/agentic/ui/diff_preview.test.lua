@@ -769,6 +769,34 @@ describe("diff_preview owner isolation", function()
         assert.equal(bufnr, state.preview_bufnr)
     end)
 
+    it(
+        "does not replace a window repurposed after showing a suggestion",
+        function()
+            local path = vim.fn.tempname() .. ".lua"
+            --- @type agentic.ui.DiffState
+            local state = {}
+            show_new(path, state, "content")
+            local suggestion_bufnr = state.preview_bufnr
+            local preview_winid = state.preview_winid
+            assert.is_not_nil(suggestion_bufnr)
+            assert.is_not_nil(preview_winid)
+            ---@cast suggestion_bufnr integer
+            ---@cast preview_winid integer
+            local replacement_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(preview_winid, replacement_bufnr)
+
+            DiffPreview.cleanup_suggestion_buffer(path, state)
+
+            assert.equal(
+                replacement_bufnr,
+                vim.api.nvim_win_get_buf(preview_winid)
+            )
+            assert.is_false(vim.api.nvim_buf_is_valid(suggestion_bufnr))
+            assert.is_nil(state.preview_bufnr)
+            assert.is_nil(state.preview_winid)
+        end
+    )
+
     it("restricts existing-buffer lookup to the explicit tabpage", function()
         local path = vim.fn.tempname() .. ".lua"
         local bufnr = vim.fn.bufadd(path)
