@@ -1520,6 +1520,8 @@ describe("agentic.SessionManager", function()
                 assert.is_not_nil(permission_callback)
                 permission_callback("allow_once")
                 show_suggestion()
+                local real_bufnr = vim.fn.bufadd(file_path)
+                vim.fn.bufload(real_bufnr)
                 restore_keymaps_spy = spy.on(HunkNavigation, "restore_keymaps")
 
                 SessionManager._on_tool_call_update(session, {
@@ -1557,6 +1559,7 @@ describe("agentic.SessionManager", function()
                 assert.is_true(restored_owner)
                 assert.is_nil(session.diff_coordinator.diff_state.preview_bufnr)
                 assert.is_nil(session.diff_coordinator.diff_state.preview_winid)
+                assert.equal(real_bufnr, displayed_bufnr)
                 assert.equal(
                     vim.fn.fnamemodify(file_path, ":t"),
                     vim.fn.fnamemodify(displayed_name, ":t")

@@ -754,20 +754,28 @@ describe("diff_preview owner isolation", function()
         end
     )
 
-    it("nil-state cleanup ignores state-qualified suggestions", function()
-        local path = vim.fn.tempname() .. ".lua"
-        --- @type agentic.ui.DiffState
-        local state = {}
-        show_new(path, state, "content")
-        local bufnr = state.preview_bufnr
-        assert.is_not_nil(bufnr)
-        ---@cast bufnr integer
+    it(
+        "nil-state clear and cleanup ignore state-qualified suggestions",
+        function()
+            local path = vim.fn.tempname() .. ".lua"
+            --- @type agentic.ui.DiffState
+            local state = {}
+            show_new(path, state, "content")
+            local bufnr = state.preview_bufnr
+            assert.is_not_nil(bufnr)
+            ---@cast bufnr integer
 
-        DiffPreview.cleanup_suggestion_buffer(path, nil)
+            DiffPreview.clear_diff(path, false, nil)
 
-        assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
-        assert.equal(bufnr, state.preview_bufnr)
-    end)
+            assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
+            assert.equal(bufnr, state.preview_bufnr)
+
+            DiffPreview.cleanup_suggestion_buffer(path, nil)
+
+            assert.is_true(vim.api.nvim_buf_is_valid(bufnr))
+            assert.equal(bufnr, state.preview_bufnr)
+        end
+    )
 
     it(
         "does not replace a window repurposed after showing a suggestion",

@@ -27,6 +27,25 @@ local function state_identity(state)
     return state and tostring(state):gsub("^table: ", "") or LEGACY_OWNER
 end
 
+--- @param file_path string
+--- @param state agentic.ui.DiffState|nil
+--- @return integer bufnr
+local function find_suggestion_buffer(file_path, state)
+    local smart_path = FileSystem.to_smart_path(file_path)
+    local suggestion_name = state
+            and string.format(
+                "%s (suggestion %s)",
+                smart_path,
+                state_identity(state)
+            )
+        or smart_path
+    local bufnr = vim.fn.bufnr(suggestion_name)
+    if bufnr ~= -1 and vim.b[bufnr]._agentic_suggestion_for then
+        return bufnr
+    end
+    return -1
+end
+
 --- @param state agentic.ui.DiffState
 --- @return number|nil bufnr
 function M.get_active_diff_buffer(state)
@@ -399,21 +418,16 @@ function M.clear_diff(buf, is_rejection, state)
             return
         end
     end
-    local bufnr = type(buf) == "string" and vim.fn.bufnr(buf) or buf --[[@as integer]]
-
-    -- Fallback: check for suggestion buffer by smart path
-    if bufnr == -1 and type(buf) == "string" then
-        local smart = FileSystem.to_smart_path(buf)
-        local suggestion_name = state
-                and string.format(
-                    "%s (suggestion %s)",
-                    smart,
-                    state_identity(state)
-                )
-            or smart
-        local smart_bufnr = vim.fn.bufnr(suggestion_name)
-        if smart_bufnr ~= -1 and vim.b[smart_bufnr]._agentic_suggestion_for then
-            bufnr = smart_bufnr
+    local bufnr = buf --[[@as integer]]
+    if type(buf) == "string" then
+        local suggestion_bufnr = find_suggestion_buffer(buf, state)
+        if state and suggestion_bufnr ~= -1 then
+            bufnr = suggestion_bufnr
+        else
+            bufnr = vim.fn.bufnr(buf)
+            if bufnr == -1 then
+                bufnr = suggestion_bufnr
+            end
         end
     end
 
