@@ -744,6 +744,38 @@ describe("diff_preview owner isolation", function()
         assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
     end)
 
+    it("deletes a wrong-owner suggestion when refresh cannot open", function()
+        local path = vim.fn.tempname() .. ".lua"
+        --- @type agentic.ui.DiffState
+        local state = {}
+
+        show_new(path, state, "first")
+        local bufnr = state.preview_bufnr
+        assert.is_not_nil(bufnr)
+        ---@cast bufnr integer
+        vim.b[bufnr]._agentic_inline_diff_owner = "foreign"
+
+        show_new(path, state, "second", false)
+
+        assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+    end)
+
+    it("deletes a wrong-source suggestion when refresh cannot open", function()
+        local path = vim.fn.tempname() .. ".lua"
+        --- @type agentic.ui.DiffState
+        local state = {}
+
+        show_new(path, state, "first")
+        local bufnr = state.preview_bufnr
+        assert.is_not_nil(bufnr)
+        ---@cast bufnr integer
+        vim.b[bufnr]._agentic_suggestion_for = path .. ".foreign"
+
+        show_new(path, state, "second", false)
+
+        assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+    end)
+
     it(
         "replaces a different new-file suggestion only after its target opens",
         function()

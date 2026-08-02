@@ -643,6 +643,8 @@ function M._show_new_file_diff(opts, new_lines)
     end
     local owned_refresh = opts.state ~= nil
         and opts.state.preview_bufnr == bufnr
+        and vim.b[bufnr]._agentic_inline_diff_owner == owner_for(opts.state)
+        and vim.b[bufnr]._agentic_suggestion_for == opts.file_path
 
     -- Set buffer properties
     vim.bo[bufnr].buflisted = false
