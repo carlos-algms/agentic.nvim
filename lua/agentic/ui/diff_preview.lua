@@ -636,7 +636,8 @@ function M._show_new_file_diff(opts, new_lines)
             )
         or smart_path
     local bufnr = vim.fn.bufnr(suggestion_name)
-    if bufnr == -1 then
+    local created = bufnr == -1
+    if created then
         bufnr = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_buf_set_name(bufnr, suggestion_name)
     end
@@ -669,7 +670,9 @@ function M._show_new_file_diff(opts, new_lines)
     -- Display in window; delete orphaned buffer if no window available
     local winid = opts.get_winid(bufnr)
     if not winid then
-        pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        if created then
+            pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+        end
         return
     end
     retire_previous_inline_preview(opts.state, bufnr)
