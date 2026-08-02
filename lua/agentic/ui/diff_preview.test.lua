@@ -732,6 +732,18 @@ describe("diff_preview owner isolation", function()
         )
     end)
 
+    it("deletes a legacy suggestion when refresh cannot open", function()
+        local path = vim.fn.tempname() .. ".lua"
+
+        show_new(path, nil, "first")
+        local bufnr = vim.fn.bufnr(FileSystem.to_smart_path(path))
+        assert.is_not.equal(-1, bufnr)
+
+        show_new(path, nil, "second", false)
+
+        assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+    end)
+
     it(
         "replaces a different new-file suggestion only after its target opens",
         function()

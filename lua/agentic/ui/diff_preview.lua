@@ -641,6 +641,8 @@ function M._show_new_file_diff(opts, new_lines)
         bufnr = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_buf_set_name(bufnr, suggestion_name)
     end
+    local owned_refresh = opts.state ~= nil
+        and opts.state.preview_bufnr == bufnr
 
     -- Set buffer properties
     vim.bo[bufnr].buflisted = false
@@ -670,7 +672,7 @@ function M._show_new_file_diff(opts, new_lines)
     -- Display in window; delete orphaned buffer if no window available
     local winid = opts.get_winid(bufnr)
     if not winid then
-        if created then
+        if not owned_refresh then
             pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         end
         return
