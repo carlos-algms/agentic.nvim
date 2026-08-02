@@ -1255,7 +1255,7 @@ describe("agentic.ui.ChatWidget foreign cached windows (child)", function()
                 false,
                 { split = "right", win = foreign_chat }
             )
-            vim.api.nvim_open_win(
+            local bystander = vim.api.nvim_open_win(
                 vim.api.nvim_create_buf(false, true),
                 false,
                 { split = "right", win = foreign_code }
@@ -1266,13 +1266,31 @@ describe("agentic.ui.ChatWidget foreign cached windows (child)", function()
             widget.win_nrs.code = foreign_code
             widget:show({ focus_prompt = false })
 
-            return { widget.win_nrs.chat, widget.win_nrs.code }
+            return {
+                widget.win_nrs.chat,
+                widget.win_nrs.code,
+                foreign_chat,
+                foreign_code,
+                bystander,
+                owner_tab,
+            }
         ]])
 
             child.flush()
 
             assert.is_true(child.api.nvim_win_is_valid(replacement_windows[1]))
             assert.is_true(child.api.nvim_win_is_valid(replacement_windows[2]))
+            assert.is_not.equal(replacement_windows[3], replacement_windows[1])
+            assert.is_not.equal(replacement_windows[4], replacement_windows[2])
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[5]))
+            assert.equal(
+                replacement_windows[6],
+                child.api.nvim_win_get_tabpage(replacement_windows[1])
+            )
+            assert.equal(
+                replacement_windows[6],
+                child.api.nvim_win_get_tabpage(replacement_windows[2])
+            )
         end
     )
 end)
@@ -1285,6 +1303,8 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     local base_tabs
     local base_bufs
     local created_widgets
+    local mode_stub
+    local cmd_stub
 
     --- @return agentic.ui.ChatWidget widget
     local function create_widget()
@@ -1306,6 +1326,8 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
             base_bufs[bufnr] = true
         end
         created_widgets = {}
+        mode_stub = nil
+        cmd_stub = nil
         saved_move_cursor = Config.settings.move_cursor_to_chat_on_submit
         Config.settings.move_cursor_to_chat_on_submit = true
         scheduled = nil
@@ -1316,6 +1338,14 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
     end)
 
     after_each(function()
+        if cmd_stub then
+            cmd_stub:revert()
+            cmd_stub = nil
+        end
+        if mode_stub then
+            mode_stub:revert()
+            mode_stub = nil
+        end
         for _, widget in ipairs(created_widgets) do
             pcall(function()
                 widget:destroy()
@@ -1389,7 +1419,11 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
             hide = true,
             focusable = false,
         })
-        local widget = { win_nrs = { chat = hidden } }
+        local widget = {
+            tab_page_id = vim.api.nvim_get_current_tabpage(),
+            win_nrs = { chat = hidden },
+        }
+        assert.is_true(BufHelpers.is_win_usable(hidden))
 
         ChatWidget.move_cursor_to(widget, hidden)
 
@@ -1485,13 +1519,15 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
 
     it("does not restore insert mode when the prior editor is gone", function()
         vim.cmd("tabnew")
-        local mode_stub = spy.stub(vim.fn, "mode")
+        mode_stub = spy.stub(vim.fn, "mode")
         mode_stub:returns("i")
-        local startinsert_stub = spy.stub(vim.cmd, "startinsert")
         local old_win = vim.api.nvim_get_current_win()
         vim.cmd("split")
         local spare = vim.api.nvim_get_current_win()
+        local spare_bufnr = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_win_set_buf(spare, spare_bufnr)
         vim.api.nvim_set_current_win(old_win)
+        cmd_stub = spy.stub(vim, "cmd")
         local widget = {
             tab_page_id = vim.api.nvim_get_current_tabpage(),
             current_position = "right",
@@ -1510,8 +1546,11 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         vim.api.nvim_set_current_win(spare)
         rotate_callback()
 
-        assert.spy(startinsert_stub).was.called(0)
+        local cmd_call_count = cmd_stub.call_count
+        cmd_stub:revert()
+        cmd_stub = nil
         mode_stub:revert()
-        startinsert_stub:revert()
+        mode_stub = nil
+        assert.equal(0, cmd_call_count)
     end)
 end)

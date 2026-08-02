@@ -236,10 +236,12 @@ describe("diff_preview", function()
         local base_tabs
         --- @type integer
         local augroup
+        local bufnr_stub
 
         before_each(function()
             created_wins = {}
             created_bufs = {}
+            bufnr_stub = nil
             base_tabs = {}
             for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
                 base_tabs[tab] = true
@@ -251,6 +253,10 @@ describe("diff_preview", function()
         end)
 
         after_each(function()
+            if bufnr_stub then
+                bufnr_stub:revert()
+                bufnr_stub = nil
+            end
             -- A leaked autocmd corrupts every later test file.
             pcall(vim.api.nvim_del_augroup_by_id, augroup)
             for _, winid in ipairs(created_wins) do
@@ -440,6 +446,28 @@ describe("diff_preview", function()
                 pcall(vim.api.nvim_buf_delete, alt_bufnr, { force = true })
             end
         end)
+
+        it(
+            "uses an unlisted placeholder without an alternate buffer",
+            function()
+                local bufnr =
+                    new_named_buf("/tmp/rejected_without_alternate.lua")
+                mark_legacy_owner(bufnr)
+                local winid = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(winid, bufnr)
+                bufnr_stub = spy_module.stub(vim.fn, "bufnr")
+                bufnr_stub:returns(-1)
+
+                DiffPreview.clear_diff(bufnr, true)
+
+                local replacement_bufnr = vim.api.nvim_win_get_buf(winid)
+                local replacement_listed = vim.bo[replacement_bufnr].buflisted
+                bufnr_stub:revert()
+                bufnr_stub = nil
+                created_bufs[#created_bufs + 1] = replacement_bufnr
+                assert.is_false(replacement_listed)
+            end
+        )
 
         it("keeps the user's other window open on rejection", function()
             local bufnr = new_named_buf("/tmp/rejected_two_windows.lua")

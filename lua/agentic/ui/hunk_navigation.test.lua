@@ -1,6 +1,7 @@
 local assert = require("tests.helpers.assert")
 local spy_module = require("tests.helpers.spy")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local AgenticConfig = require("agentic.config")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Theme = require("agentic.theme")
 
@@ -151,14 +152,36 @@ describe("hunk_navigation", function()
 
     describe("navigation", function()
         local winid
+        local base_tabs
+        local saved_layout
+        local win_call_stub
 
         before_each(function()
+            base_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                base_tabs[tabpage] = true
+            end
+            saved_layout = AgenticConfig.diff_preview.layout
+            win_call_stub = nil
             vim.cmd("buffer " .. test_bufnr)
             winid = vim.api.nvim_get_current_win()
             HunkNavigation.setup_keymaps(test_bufnr)
         end)
 
         after_each(function()
+            if win_call_stub then
+                win_call_stub:revert()
+                win_call_stub = nil
+            end
+            AgenticConfig.diff_preview.layout = saved_layout
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not base_tabs[tabpage] then
+                    pcall(function()
+                        vim.api.nvim_set_current_tabpage(tabpage)
+                        vim.cmd("tabclose!")
+                    end)
+                end
+            end
             HunkNavigation.clear_state(test_bufnr)
         end)
 
@@ -206,13 +229,11 @@ describe("hunk_navigation", function()
 
         it("uses the painted window from the provided owner state", function()
             vim.cmd("tabnew")
-            local owner_tab = vim.api.nvim_get_current_tabpage()
             local owner_win = vim.api.nvim_get_current_win()
             vim.api.nvim_win_set_buf(owner_win, test_bufnr)
             vim.api.nvim_win_set_cursor(owner_win, { 1, 0 })
 
             vim.cmd("tabnew")
-            local foreign_tab = vim.api.nvim_get_current_tabpage()
             local foreign_win = vim.api.nvim_get_current_win()
             vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
             vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
@@ -225,13 +246,6 @@ describe("hunk_navigation", function()
 
             assert.equal(11, vim.api.nvim_win_get_cursor(owner_win)[1])
             assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
-
-            vim.api.nvim_set_current_tabpage(foreign_tab)
-            vim.cmd("tabclose!")
-            if vim.api.nvim_tabpage_is_valid(owner_tab) then
-                vim.api.nvim_set_current_tabpage(owner_tab)
-                vim.cmd("tabclose!")
-            end
         end)
 
         it(
@@ -246,6 +260,7 @@ describe("hunk_navigation", function()
         )
 
         it("prefers an owned split window over the inline preview", function()
+            AgenticConfig.diff_preview.layout = "split"
             local preview_bufnr = vim.api.nvim_create_buf(false, true)
             vim.api.nvim_buf_set_lines(
                 preview_bufnr,
@@ -259,7 +274,7 @@ describe("hunk_navigation", function()
                 false,
                 { split = "right", win = winid }
             )
-            local win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+            win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
             add_hunk(test_bufnr, test_ns, 10)
 
             HunkNavigation.navigate_next(test_bufnr, {
@@ -278,10 +293,13 @@ describe("hunk_navigation", function()
 
             local called_winid = win_call_stub.calls[1]
                 and win_call_stub.calls[1][1]
+            local win_call_count = win_call_stub.call_count
             win_call_stub:revert()
+            win_call_stub = nil
             pcall(vim.api.nvim_win_close, preview_winid, true)
             pcall(vim.api.nvim_buf_delete, preview_bufnr, { force = true })
 
+            assert.equal(1, win_call_count)
             assert.equal(winid, called_winid)
         end)
 

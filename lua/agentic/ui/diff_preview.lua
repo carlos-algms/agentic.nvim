@@ -37,7 +37,7 @@ local function delete_buffer_without_closing_windows(bufnr)
                 return vim.fn.bufnr("#")
             end)
             local target_buf = (ok and alt ~= -1 and alt ~= bufnr) and alt
-                or vim.api.nvim_create_buf(true, true)
+                or vim.api.nvim_create_buf(false, true)
             pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
         end
     end

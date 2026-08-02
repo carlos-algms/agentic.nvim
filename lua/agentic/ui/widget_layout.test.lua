@@ -561,6 +561,8 @@ describe("WidgetLayout deferred window guards", function()
     local scheduled
     local base_tabs
     local base_bufs
+    local usable_stub
+    local close_stub
 
     --- @return agentic.ui.ChatWidget.BufNrs
     local function make_buffers()
@@ -580,6 +582,8 @@ describe("WidgetLayout deferred window guards", function()
             base_tabs[tabpage] = true
         end
         base_bufs = {}
+        usable_stub = nil
+        close_stub = nil
         for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
             base_bufs[bufnr] = true
         end
@@ -591,6 +595,14 @@ describe("WidgetLayout deferred window guards", function()
     end)
 
     after_each(function()
+        if close_stub then
+            close_stub:revert()
+            close_stub = nil
+        end
+        if usable_stub then
+            usable_stub:revert()
+            usable_stub = nil
+        end
         schedule_stub:revert()
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             if not base_tabs[tabpage] then
@@ -678,15 +690,19 @@ describe("WidgetLayout deferred window guards", function()
     it("gates close through window usability", function()
         vim.cmd("tabnew")
         local winid = vim.api.nvim_get_current_win()
-        local usable_stub = spy.stub(BufHelpers, "is_win_usable")
+        usable_stub = spy.stub(BufHelpers, "is_win_usable")
         usable_stub:returns(false)
-        local close_stub = spy.stub(vim.api, "nvim_win_close")
+        close_stub = spy.stub(vim.api, "nvim_win_close")
 
         WidgetLayout.close({ chat = winid })
 
-        assert.spy(usable_stub).was.called_with(winid)
-        assert.spy(close_stub).was.called(0)
-        usable_stub:revert()
+        local usable_called = usable_stub:called_with(winid)
+        local close_count = close_stub.call_count
         close_stub:revert()
+        close_stub = nil
+        usable_stub:revert()
+        usable_stub = nil
+        assert.is_true(usable_called)
+        assert.equal(0, close_count)
     end)
 end)
