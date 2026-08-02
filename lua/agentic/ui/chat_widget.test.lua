@@ -1297,6 +1297,9 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         }
 
         ChatWidget.move_cursor_to(widget, old_win)
+        local move_callback = scheduled
+        assert.is_not_nil(move_callback)
+        ---@cast move_callback function
         widget.win_nrs.chat = replacement
         vim.api.nvim_win_close(old_win, true)
         local bystander_buf = vim.api.nvim_create_buf(false, true)
@@ -1305,7 +1308,7 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
             win = replacement,
         })
         assert.equal(bystander, vim.api.nvim_get_current_win())
-        scheduled()
+        move_callback()
 
         assert.equal(replacement, vim.api.nvim_get_current_win())
     end)
@@ -1372,9 +1375,12 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         }
 
         ChatWidget.rotate_layout(widget, { "right", "left" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
         vim.api.nvim_win_close(old_win, true)
         vim.cmd("tabnew")
-        scheduled()
+        rotate_callback()
 
         assert.equal(replacement, vim.api.nvim_get_current_win())
     end)
@@ -1401,11 +1407,14 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         widget:show({ focus_prompt = false })
 
         widget:rotate_layout({ "right", "bottom" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
         widget:hide()
         vim.cmd("tabnew")
         local safe_tab = vim.api.nvim_get_current_tabpage()
         local safe_win = vim.api.nvim_get_current_win()
-        scheduled()
+        rotate_callback()
 
         assert.equal(safe_tab, vim.api.nvim_get_current_tabpage())
         assert.equal(safe_win, vim.api.nvim_get_current_win())
@@ -1431,9 +1440,12 @@ describe("agentic.ui.ChatWidget deferred window guards", function()
         }
 
         ChatWidget.rotate_layout(widget, { "right", "left" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
         vim.api.nvim_win_close(old_win, true)
         vim.api.nvim_set_current_win(spare)
-        scheduled()
+        rotate_callback()
 
         assert.spy(startinsert_stub).was.called(0)
         mode_stub:revert()
