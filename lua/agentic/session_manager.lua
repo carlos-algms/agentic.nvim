@@ -455,9 +455,24 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         )
     end
 
+    local tracker =
+        self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
+
     -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
     local is_rejection = tool_call_update.status == "failed"
     self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
+
+    if
+        tool_call_update.status == "completed"
+        and tracker
+        and tracker.kind
+        and ACPPayloads.FILE_MUTATING_KINDS[tracker.kind]
+    then
+        DiffPreview.cleanup_suggestion_buffer(
+            tracker.file_path,
+            self.diff_coordinator.diff_state
+        )
+    end
 
     -- Remove the permission request when the tool call reaches a terminal status.
     -- `failed` covers user rejection or agent-side error;
@@ -474,17 +489,12 @@ function SessionManager:_on_tool_call_update(tool_call_update)
 
     -- Reload buffers when file-mutating tool calls complete
     if tool_call_update.status == "completed" then
-        local tracker =
-            self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
-
         if
             tracker
             and tracker.kind
             and ACPPayloads.FILE_MUTATING_KINDS[tracker.kind]
         then
             vim.cmd.checktime()
-
-            DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
 
             -- Skip the hook during restore replay: the provider replays
             -- historical tool calls as "completed" but no write happened now.

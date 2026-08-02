@@ -38,6 +38,7 @@ describe("agentic.ui.DiffCoordinator", function()
     --- @param blocks table<string, any>
     local function make_coordinator(blocks)
         local widget = {
+            buf_nrs = {},
             find_first_non_widget_window = function()
                 return 1
             end,
@@ -75,6 +76,20 @@ describe("agentic.ui.DiffCoordinator", function()
             local opts = show_diff_stub.calls[1][1]
             assert.equal("/tmp/a.lua", opts.file_path)
             assert.equal("function", type(opts.get_winid))
+        end)
+
+        it("owns state independently per coordinator", function()
+            local first = make_coordinator({ t1 = edit_block() })
+            local second = make_coordinator({ t1 = edit_block() })
+
+            first:show("t1")
+            second:show("t1")
+
+            local first_opts = show_diff_stub.calls[1][1]
+            local second_opts = show_diff_stub.calls[2][1]
+            assert.equal("table", type(first_opts.state))
+            assert.is_true(first_opts.state ~= second_opts.state)
+            assert.equal(OWNED_TAB, first_opts.tabpage)
         end)
 
         it("does nothing when diff_preview is disabled", function()
@@ -136,6 +151,19 @@ describe("agentic.ui.DiffCoordinator", function()
             assert.spy(clear_diff_stub).was.called(1)
             assert.equal("/tmp/a.lua", clear_diff_stub.calls[1][1])
             assert.equal(true, clear_diff_stub.calls[1][2])
+            assert.equal(c.diff_state, clear_diff_stub.calls[1][3])
+        end)
+
+        it("clears only its own state", function()
+            local first = make_coordinator({ t1 = edit_block() })
+            local second = make_coordinator({ t1 = edit_block() })
+            first.diff_state.preview_bufnr = 11
+            second.diff_state.preview_bufnr = 22
+
+            first:clear("t1")
+
+            assert.equal(first.diff_state, clear_diff_stub.calls[1][3])
+            assert.equal(22, second.diff_state.preview_bufnr)
         end)
 
         it("does nothing for an invalid tracker", function()

@@ -1,9 +1,11 @@
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetRegistry = require("agentic.ui.widget_registry")
+local BufHelpers = require("agentic.utils.buf_helpers")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
@@ -1210,5 +1212,345 @@ describe("agentic.ui.ChatWidget", function()
             end
             assert.is_true(panels.files)
         end)
+    end)
+end)
+
+describe("agentic.ui.ChatWidget foreign cached windows (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it(
+        "keeps replacement windows open after deferred WinClosed callbacks",
+        function()
+            local replacement_windows = child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            local widget = ChatWidget:new(owner_tab, function()
+                return true
+            end)
+            widget:show({ focus_prompt = false })
+
+            vim.bo[widget.buf_nrs.code].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                widget.buf_nrs.code,
+                0,
+                -1,
+                false,
+                { "diff" }
+            )
+
+            vim.cmd("tabnew")
+            local foreign_chat = vim.api.nvim_get_current_win()
+            local foreign_code = vim.api.nvim_open_win(
+                vim.api.nvim_create_buf(false, true),
+                false,
+                { split = "right", win = foreign_chat }
+            )
+            local bystander = vim.api.nvim_open_win(
+                vim.api.nvim_create_buf(false, true),
+                false,
+                { split = "right", win = foreign_code }
+            )
+
+            vim.api.nvim_set_current_tabpage(owner_tab)
+            widget.win_nrs.chat = foreign_chat
+            widget.win_nrs.code = foreign_code
+            widget:show({ focus_prompt = false })
+
+            return {
+                widget.win_nrs.chat,
+                widget.win_nrs.code,
+                foreign_chat,
+                foreign_code,
+                bystander,
+                owner_tab,
+            }
+        ]])
+
+            child.flush()
+
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[1]))
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[2]))
+            assert.is_not.equal(replacement_windows[3], replacement_windows[1])
+            assert.is_not.equal(replacement_windows[4], replacement_windows[2])
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[5]))
+            assert.equal(
+                replacement_windows[6],
+                child.api.nvim_win_get_tabpage(replacement_windows[1])
+            )
+            assert.equal(
+                replacement_windows[6],
+                child.api.nvim_win_get_tabpage(replacement_windows[2])
+            )
+        end
+    )
+end)
+
+describe("agentic.ui.ChatWidget deferred window guards", function()
+    local ChatWidget = require("agentic.ui.chat_widget")
+    local schedule_stub
+    local scheduled
+    local saved_move_cursor
+    local base_tabs
+    local base_bufs
+    local created_widgets
+    local mode_stub
+    local cmd_stub
+
+    --- @return agentic.ui.ChatWidget widget
+    local function create_widget()
+        local widget = ChatWidget:new(
+            vim.api.nvim_get_current_tabpage(),
+            spy.new(function() end) --[[@as function]]
+        )
+        created_widgets[#created_widgets + 1] = widget
+        return widget
+    end
+
+    before_each(function()
+        base_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tabs[tabpage] = true
+        end
+        base_bufs = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_bufs[bufnr] = true
+        end
+        created_widgets = {}
+        mode_stub = nil
+        cmd_stub = nil
+        saved_move_cursor = Config.settings.move_cursor_to_chat_on_submit
+        Config.settings.move_cursor_to_chat_on_submit = true
+        scheduled = nil
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled = callback
+        end)
+    end)
+
+    after_each(function()
+        if cmd_stub then
+            cmd_stub:revert()
+            cmd_stub = nil
+        end
+        if mode_stub then
+            mode_stub:revert()
+            mode_stub = nil
+        end
+        for _, widget in ipairs(created_widgets) do
+            pcall(function()
+                widget:destroy()
+            end)
+        end
+        schedule_stub:revert()
+        Config.settings.move_cursor_to_chat_on_submit = saved_move_cursor
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
+        end
+        local extra_bufs = 0
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_bufs[bufnr] then
+                extra_bufs = extra_bufs + 1
+            end
+        end
+        assert.equal(0, extra_bufs)
+    end)
+
+    it("focuses a rebuilt panel instead of its captured handle", function()
+        vim.cmd("tabnew")
+        local tabpage = vim.api.nvim_get_current_tabpage()
+        local old_win = vim.api.nvim_get_current_win()
+        local replacement_buf = vim.api.nvim_create_buf(false, true)
+        local replacement = vim.api.nvim_open_win(replacement_buf, false, {
+            split = "right",
+            win = old_win,
+        })
+        local widget = {
+            tab_page_id = tabpage,
+            win_nrs = { chat = old_win },
+        }
+
+        ChatWidget.move_cursor_to(widget, old_win)
+        local move_callback = scheduled
+        assert.is_not_nil(move_callback)
+        ---@cast move_callback function
+        widget.win_nrs.chat = replacement
+        vim.api.nvim_win_close(old_win, true)
+        local bystander_buf = vim.api.nvim_create_buf(false, true)
+        local bystander = vim.api.nvim_open_win(bystander_buf, true, {
+            split = "below",
+            win = replacement,
+        })
+        assert.equal(bystander, vim.api.nvim_get_current_win())
+        move_callback()
+
+        assert.equal(replacement, vim.api.nvim_get_current_win())
+    end)
+
+    it("ignores a hidden destination window", function()
+        vim.cmd("tabnew")
+        local current = vim.api.nvim_get_current_win()
+        local bufnr = vim.api.nvim_create_buf(false, true)
+        local hidden = vim.api.nvim_open_win(bufnr, false, {
+            relative = "editor",
+            row = 0,
+            col = 0,
+            width = 10,
+            height = 2,
+            hide = true,
+            focusable = false,
+        })
+        local widget = {
+            tab_page_id = vim.api.nvim_get_current_tabpage(),
+            win_nrs = { chat = hidden },
+        }
+        assert.is_true(BufHelpers.is_win_usable(hidden))
+
+        ChatWidget.move_cursor_to(widget, hidden)
+
+        assert.has_no_errors(scheduled)
+        assert.equal(current, vim.api.nvim_get_current_win())
+        pcall(vim.api.nvim_win_close, hidden, true)
+    end)
+
+    it("ignores a stale-valid handle whose tabpage is gone", function()
+        vim.cmd("tabnew")
+        local target = vim.api.nvim_get_current_win()
+        local widget = { win_nrs = { chat = target } }
+        local usable_stub = spy.stub(BufHelpers, "is_win_usable")
+        usable_stub:returns(false)
+        local focus_stub = spy.stub(vim.api, "nvim_set_current_win")
+
+        ChatWidget.move_cursor_to(widget, target)
+        scheduled()
+
+        local usable_called = usable_stub:called_with(target)
+        local focus_count = focus_stub.call_count
+        focus_stub:revert()
+        usable_stub:revert()
+        assert.is_true(usable_called)
+        assert.equal(0, focus_count)
+    end)
+
+    it("restores rotation focus in the stored tabpage", function()
+        vim.cmd("tabnew")
+        local owner_tab = vim.api.nvim_get_current_tabpage()
+        local previous_buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_win_set_buf(0, previous_buf)
+        local old_win = vim.api.nvim_get_current_win()
+        vim.cmd("split")
+        local replacement = vim.api.nvim_get_current_win()
+        vim.api.nvim_win_set_buf(replacement, previous_buf)
+        vim.api.nvim_set_current_win(old_win)
+        local widget = {
+            tab_page_id = owner_tab,
+            current_position = "right",
+            hide = function() end,
+            show = function() end,
+            is_open = function()
+                return true
+            end,
+        }
+
+        ChatWidget.rotate_layout(widget, { "right", "left" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
+        vim.api.nvim_win_close(old_win, true)
+        vim.cmd("tabnew")
+        rotate_callback()
+
+        assert.equal(replacement, vim.api.nvim_get_current_win())
+    end)
+
+    it("never restores rotation focus into the hidden chat float", function()
+        vim.cmd("tabnew")
+        local widget = create_widget()
+        widget:show({ focus_prompt = false })
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+
+        widget:rotate_layout({ "right", "bottom" })
+        scheduled()
+
+        assert.equal(widget.win_nrs.chat, vim.api.nvim_get_current_win())
+        local config =
+            vim.api.nvim_win_get_config(vim.api.nvim_get_current_win())
+        assert.is_true(config.focusable)
+        assert.is_falsy(config.hide)
+    end)
+
+    it("drops rotation focus restoration after the widget hides", function()
+        vim.cmd("tabnew")
+        local widget = create_widget()
+        widget:show({ focus_prompt = false })
+
+        widget:rotate_layout({ "right", "bottom" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
+        widget:hide()
+        vim.cmd("tabnew")
+        local safe_tab = vim.api.nvim_get_current_tabpage()
+        local safe_win = vim.api.nvim_get_current_win()
+        rotate_callback()
+
+        assert.equal(safe_tab, vim.api.nvim_get_current_tabpage())
+        assert.equal(safe_win, vim.api.nvim_get_current_win())
+    end)
+
+    it("does not restore insert mode when the prior editor is gone", function()
+        vim.cmd("tabnew")
+        mode_stub = spy.stub(vim.fn, "mode")
+        mode_stub:returns("i")
+        local old_win = vim.api.nvim_get_current_win()
+        vim.cmd("split")
+        local spare = vim.api.nvim_get_current_win()
+        local spare_bufnr = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_win_set_buf(spare, spare_bufnr)
+        vim.api.nvim_set_current_win(old_win)
+        cmd_stub = spy.stub(vim, "cmd")
+        local widget = {
+            tab_page_id = vim.api.nvim_get_current_tabpage(),
+            current_position = "right",
+            hide = function() end,
+            show = function() end,
+            is_open = function()
+                return true
+            end,
+        }
+
+        ChatWidget.rotate_layout(widget, { "right", "left" })
+        local rotate_callback = scheduled
+        assert.is_not_nil(rotate_callback)
+        ---@cast rotate_callback function
+        vim.api.nvim_win_close(old_win, true)
+        vim.api.nvim_set_current_win(spare)
+        rotate_callback()
+
+        local cmd_call_count = cmd_stub.call_count
+        cmd_stub:revert()
+        cmd_stub = nil
+        mode_stub:revert()
+        mode_stub = nil
+        assert.equal(0, cmd_call_count)
     end)
 end)

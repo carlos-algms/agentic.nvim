@@ -2,7 +2,6 @@ local Config = require("agentic.config")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local BufferGuard = require("agentic.ui.buffer_guard")
 local ChatNavigation = require("agentic.ui.chat_navigation")
-local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
 local WidgetRegistry = require("agentic.ui.widget_registry")
@@ -152,10 +151,18 @@ function ChatWidget:rotate_layout(layouts)
     })
 
     vim.schedule(function()
-        local win = vim.fn.bufwinid(previous_buf)
-        if win ~= -1 then
-            vim.api.nvim_set_current_win(win)
+        if not vim.api.nvim_tabpage_is_valid(self.tab_page_id) then
+            return
         end
+        if not self:is_open() then
+            return
+        end
+        local win =
+            BufHelpers.find_visible_win(previous_buf, nil, self.tab_page_id)
+        if not win or not BufHelpers.is_win_usable(win) then
+            return
+        end
+        vim.api.nvim_set_current_win(win)
         if previous_mode == "i" then
             vim.cmd("startinsert")
         end
@@ -301,16 +308,34 @@ end
 --- @param winid integer|nil
 --- @param callback fun()|nil
 function ChatWidget:move_cursor_to(winid, callback)
+    local panel_name
+    for name, panel_winid in pairs(self.win_nrs) do
+        if panel_winid == winid then
+            panel_name = name
+            break
+        end
+    end
+
     vim.schedule(function()
-        if winid and vim.api.nvim_win_is_valid(winid) then
+        local target_winid = panel_name and self.win_nrs[panel_name] or winid
+        if target_winid and BufHelpers.is_win_usable(target_winid) then
+            local target_bufnr = vim.api.nvim_win_get_buf(target_winid)
+            local visible_winid = BufHelpers.find_visible_win(
+                target_bufnr,
+                target_winid,
+                self.tab_page_id
+            )
+            if visible_winid ~= target_winid then
+                return
+            end
             if Config.settings.move_cursor_to_chat_on_submit then
-                vim.api.nvim_set_current_win(winid)
+                vim.api.nvim_set_current_win(target_winid)
             end
 
             -- make sure to scroll to the bottom
             -- 1. user can see the new message
             -- 2. auto-scroll will start again
-            vim.api.nvim_win_call(winid, function()
+            vim.api.nvim_win_call(target_winid, function()
                 vim.cmd("normal! G0zb")
             end)
 
@@ -440,7 +465,6 @@ function ChatWidget:_bind_keymaps()
         end
     end
 
-    DiffPreview.setup_diff_navigation_keymaps(self.buf_nrs)
     ChatNavigation.setup_keymaps(self.buf_nrs.chat)
 end
 
