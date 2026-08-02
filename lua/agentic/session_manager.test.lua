@@ -1453,7 +1453,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it(
-            "accepts its new-file suggestion before clearing diff ownership",
+            "accepts a permission-cleared new-file suggestion on completion",
             function()
                 cleanup_suggestion_buffer_stub:revert()
 
@@ -1473,6 +1473,7 @@ describe("agentic.SessionManager", function()
                 local current_winid = vim.api.nvim_get_current_win()
                 local original_bufnr = vim.api.nvim_get_current_buf()
                 local suggestion_bufnr
+                local permission_callback
 
                 session.diff_coordinator = DiffCoordinator:new(
                     { buf_nrs = {} } --[[@as agentic.ui.ChatWidget]],
@@ -1481,6 +1482,15 @@ describe("agentic.SessionManager", function()
                         return vim.api.nvim_get_current_tabpage()
                     end
                 )
+                session.diff_coordinator.show = function() end
+                session.permission_manager.add_request = function(
+                    _self,
+                    _request,
+                    callback
+                )
+                    permission_callback = callback
+                end
+                session.status_animation.stop = function() end
                 DiffPreview._show_new_file_diff({
                     file_path = file_path,
                     diff = { changed_pairs = {} },
@@ -1491,6 +1501,14 @@ describe("agentic.SessionManager", function()
                         return current_winid
                     end,
                 }, { "return true" })
+
+                local handlers = SessionManager._build_handlers(session)
+                handlers.on_request_permission({
+                    toolCall = { toolCallId = tool_call_id },
+                    options = {},
+                }, function() end)
+                assert.is_not_nil(permission_callback)
+                permission_callback("allow_once")
 
                 SessionManager._on_tool_call_update(session, {
                     tool_call_id = tool_call_id,

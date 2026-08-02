@@ -425,16 +425,18 @@ function M.clear_diff(buf, is_rejection, state)
         return
     end
 
+    local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
+
     HunkNavigation.restore_keymaps(bufnr, state)
     if state and state.preview_bufnr == bufnr then
         state.preview_bufnr = nil
         state.preview_winid = nil
     end
-    vim.b[bufnr]._agentic_inline_diff_owner = nil
+    if not is_suggestion or is_rejection then
+        vim.b[bufnr]._agentic_inline_diff_owner = nil
+    end
 
     pcall(vim.api.nvim_buf_clear_namespace, bufnr, NS_DIFF, 0, -1)
-
-    local is_suggestion = vim.b[bufnr]._agentic_suggestion_for ~= nil
 
     -- Restore modifiable state if it was saved
     -- (skip for suggestion buffers on acceptance —

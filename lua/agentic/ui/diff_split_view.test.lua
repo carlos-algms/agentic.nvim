@@ -432,6 +432,98 @@ describe("DiffSplitView", function()
             assert.is_not_nil(owner_state.split_state[second_path])
         end)
 
+        it(
+            "keeps two live paths isolated when get_winid reuses a window",
+            function()
+                local first_path = test_file_path .. ".first"
+                local second_path = test_file_path .. ".second"
+                local get_winid = function(bufnr)
+                    local winid = vim.api.nvim_get_current_win()
+                    vim.api.nvim_win_set_buf(winid, bufnr)
+                    return winid
+                end
+
+                assert.is_true(show_split({
+                    file_path = first_path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 2" },
+                    },
+                    get_winid = get_winid,
+                }))
+                assert.is_true(show_split({
+                    file_path = second_path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { "local x = 3" },
+                    },
+                    get_winid = get_winid,
+                }))
+
+                local first = diff_state.split_state[first_path]
+                local second = diff_state.split_state[second_path]
+                assert.is_not.equal(first.original_winid, second.original_winid)
+                assert.is_not.equal(first.new_winid, second.new_winid)
+                assert.equal(
+                    first.original_bufnr,
+                    vim.api.nvim_win_get_buf(first.original_winid)
+                )
+                assert.equal(
+                    second.original_bufnr,
+                    vim.api.nvim_win_get_buf(second.original_winid)
+                )
+
+                assert.is_true(
+                    DiffSplitView.clear_split_diff(diff_state, first_path)
+                )
+
+                assert.is_true(BufHelpers.is_win_usable(second.original_winid))
+                assert.is_true(BufHelpers.is_win_usable(second.new_winid))
+                assert.equal(
+                    second.original_bufnr,
+                    vim.api.nvim_win_get_buf(second.original_winid)
+                )
+                assert.equal(
+                    second.new_bufnr,
+                    vim.api.nvim_win_get_buf(second.new_winid)
+                )
+                assert.is_true(vim.wo[second.original_winid].diff)
+                assert.is_true(vim.wo[second.new_winid].diff)
+            end
+        )
+
+        it("closes an isolation window after same-path refresh", function()
+            local first_path = test_file_path .. ".first"
+            local second_path = test_file_path .. ".second"
+            local get_winid = function(bufnr)
+                local winid = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(winid, bufnr)
+                return winid
+            end
+            local function show_path(path, replacement)
+                return show_split({
+                    file_path = path,
+                    diff = {
+                        old = { "local x = 1" },
+                        new = { replacement },
+                    },
+                    get_winid = get_winid,
+                })
+            end
+
+            assert.is_true(show_path(first_path, "local x = 2"))
+            assert.is_true(show_path(second_path, "local x = 3"))
+            local isolation_winid =
+                diff_state.split_state[second_path].original_winid
+
+            assert.is_true(show_path(second_path, "local x = 4"))
+            assert.is_true(
+                DiffSplitView.clear_split_diff(diff_state, second_path)
+            )
+
+            assert.is_false(BufHelpers.is_win_usable(isolation_winid))
+        end)
+
         it("selects the owned split containing the current buffer", function()
             local current = vim.api.nvim_get_current_buf()
             local other = vim.api.nvim_create_buf(false, true)
@@ -746,6 +838,30 @@ describe("DiffSplitView", function()
             assert.is_true(usable_count > 0)
             assert.equal(0, win_call_count)
             assert.equal(0, close_count)
+        end)
+
+        it("does not tear down repurposed split windows", function()
+            setup_and_show_split()
+            local state = DiffSplitView.find_split_state(diff_state)
+            assert.is_not_nil(state)
+            ---@cast state agentic.ui.DiffSplitView.State
+            local original_replacement = vim.api.nvim_create_buf(false, true)
+            local new_replacement = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(state.original_winid, original_replacement)
+            vim.api.nvim_win_set_buf(state.new_winid, new_replacement)
+
+            DiffSplitView.clear_split_diff(diff_state)
+
+            assert.is_true(BufHelpers.is_win_usable(state.original_winid))
+            assert.is_true(BufHelpers.is_win_usable(state.new_winid))
+            assert.equal(
+                original_replacement,
+                vim.api.nvim_win_get_buf(state.original_winid)
+            )
+            assert.equal(
+                new_replacement,
+                vim.api.nvim_win_get_buf(state.new_winid)
+            )
         end)
     end)
 end)
