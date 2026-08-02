@@ -4,8 +4,8 @@ local BufferGuard = require("agentic.ui.buffer_guard")
 local ChatNavigation = require("agentic.ui.chat_navigation")
 local Logger = require("agentic.utils.logger")
 local WindowDecoration = require("agentic.ui.window_decoration")
-local WidgetLayout = require("agentic.ui.widget_layout")
 local WidgetRegistry = require("agentic.ui.widget_registry")
+local WidgetLayout = require("agentic.ui.widget_layout")
 
 --- @alias agentic.ui.ChatWidget.PanelNames "chat"|"todos"|"code"|"files"|"input"|"diagnostics"
 
@@ -325,8 +325,6 @@ function ChatWidget:destroy()
     -- MUST precede `unregister`, which makes this widget's own chat window look like a valid fallback.
     self:_ensure_fallback_window()
 
-    WidgetRegistry.unregister(self)
-
     if self._winclosed_augroup then
         pcall(vim.api.nvim_del_augroup_by_id, self._winclosed_augroup)
         self._winclosed_augroup = nil
@@ -336,6 +334,8 @@ function ChatWidget:destroy()
     WidgetLayout.close(self.win_nrs)
 
     self:_close_hidden_chat_window()
+
+    WidgetRegistry.unregister(self)
 
     for name, bufnr in pairs(self.buf_nrs) do
         self.buf_nrs[name] = nil
@@ -422,6 +422,7 @@ function ChatWidget:_initialize()
     self.headers = WindowDecoration.default_headers()
 
     self.buf_nrs = self:_create_buf_nrs()
+    WidgetRegistry.register(self)
 
     self._hidden_chat_winid =
         WidgetLayout.open_hidden_chat_window(self.buf_nrs.chat)
@@ -466,8 +467,6 @@ function ChatWidget:_initialize()
         end,
         desc = "Agentic: close widget when user closes a core window",
     })
-
-    WidgetRegistry.register(self)
 end
 
 function ChatWidget:_bind_keymaps()

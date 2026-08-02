@@ -63,6 +63,12 @@ describe("BufferGuard", function()
     local baseline_tabs
     --- @type integer[]
     local cleanup_buffers
+    --- @type agentic.ui.ChatWidget[]
+    local foreign_owners
+    --- @type TestStub|nil
+    local schedule_stub
+    --- @type TestSpy|nil
+    local focus_spy
     local saved_options
 
     before_each(function()
@@ -72,6 +78,9 @@ describe("BufferGuard", function()
             baseline_tabs[tabpage] = true
         end
         cleanup_buffers = {}
+        foreign_owners = {}
+        schedule_stub = nil
+        focus_spy = nil
         saved_options = {
             number = vim.o.number,
             signcolumn = vim.o.signcolumn,
@@ -83,6 +92,15 @@ describe("BufferGuard", function()
     end)
 
     after_each(function()
+        if focus_spy then
+            focus_spy:revert()
+        end
+        if schedule_stub then
+            schedule_stub:revert()
+        end
+        for _, owner in ipairs(foreign_owners) do
+            WidgetRegistry.unregister(owner)
+        end
         for _, w in ipairs({ widget, widget2 }) do
             pcall(function()
                 w:destroy()
@@ -289,6 +307,93 @@ describe("BufferGuard", function()
         assert.equal(widget, WidgetRegistry.get(final_buf))
 
         assert_redirected_out(widget, replacement)
+    end)
+
+    it("rejects a different widget that claims the owner buffer", function()
+        widget:show({ focus_prompt = false })
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+
+        local scheduled
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled = callback
+        end)
+
+        local foreign = vim.api.nvim_create_buf(true, false)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
+        vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
+        assert.is_not_nil(scheduled)
+
+        --- @type any
+        local replacement_owner = {
+            buf_nrs = { chat = widget.buf_nrs.chat },
+            win_nrs = {},
+            get_visible_tab_id = function()
+                return widget:get_visible_tab_id()
+            end,
+        }
+        foreign_owners[#foreign_owners + 1] = replacement_owner
+        WidgetRegistry.register(replacement_owner)
+        focus_spy = spy.on(vim.api, "nvim_set_current_win")
+
+        scheduled()
+
+        assert.spy(focus_spy).was.called(0)
+    end)
+
+    it("ignores a foreign-buffer event claimed by another tab", function()
+        widget:show({ focus_prompt = false })
+        local expected = widget.buf_nrs.chat
+
+        vim.cmd("tabnew")
+        local foreign_tab = vim.api.nvim_get_current_tabpage()
+        --- @type any
+        local foreign_owner = {
+            buf_nrs = { chat = expected },
+            win_nrs = {},
+            get_visible_tab_id = function()
+                return foreign_tab
+            end,
+        }
+        foreign_owners[#foreign_owners + 1] = foreign_owner
+        WidgetRegistry.register(foreign_owner)
+
+        local widget_tab = widget:get_visible_tab_id()
+        vim.api.nvim_set_current_tabpage(widget_tab)
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        local foreign = vim.api.nvim_create_buf(true, false)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
+        vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
+
+        assert.equal(foreign, vim.api.nvim_win_get_buf(widget.win_nrs.chat))
+    end)
+
+    it("ignores a repurposed-buffer event claimed by another tab", function()
+        widget:show({ focus_prompt = false })
+        local expected = widget.buf_nrs.chat
+
+        vim.cmd("tabnew")
+        local foreign_tab = vim.api.nvim_get_current_tabpage()
+        --- @type any
+        local foreign_owner = {
+            buf_nrs = { chat = expected },
+            win_nrs = {},
+            get_visible_tab_id = function()
+                return foreign_tab
+            end,
+        }
+        foreign_owners[#foreign_owners + 1] = foreign_owner
+        WidgetRegistry.register(foreign_owner)
+
+        local widget_tab = widget:get_visible_tab_id()
+        vim.api.nvim_set_current_tabpage(widget_tab)
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        vim.api.nvim_buf_set_name(expected, vim.fn.tempname() .. ".lua")
+        vim.bo[expected].buftype = ""
+        vim.api.nvim_exec_autocmds("BufEnter", { buffer = expected })
+
+        assert.equal(expected, vim.api.nvim_win_get_buf(widget.win_nrs.chat))
+        assert.equal(expected, widget.buf_nrs.chat)
     end)
 
     it(

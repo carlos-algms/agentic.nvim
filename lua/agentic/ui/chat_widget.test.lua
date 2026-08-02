@@ -5,6 +5,7 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
 local WindowDecoration = require("agentic.ui.window_decoration")
+local WidgetRegistry = require("agentic.ui.widget_registry")
 
 describe("agentic.ui.ChatWidget", function()
     --- @type agentic.ui.ChatWidget
@@ -1293,10 +1294,18 @@ describe("agentic.ui.ChatWidget", function()
     end)
 
     describe("widget registry integration", function()
-        local WidgetRegistry = require("agentic.ui.widget_registry")
         local widget
+        --- @type TestStub|nil
+        local find_stub
+        --- @type TestStub|nil
+        local unregister_stub
+        --- @type TestStub|nil
+        local delete_stub
 
         before_each(function()
+            find_stub = nil
+            unregister_stub = nil
+            delete_stub = nil
             vim.cmd("tabnew")
 
             local on_submit_spy = spy.new(function() end)
@@ -1304,6 +1313,15 @@ describe("agentic.ui.ChatWidget", function()
         end)
 
         after_each(function()
+            if delete_stub then
+                delete_stub:revert()
+            end
+            if unregister_stub then
+                unregister_stub:revert()
+            end
+            if find_stub then
+                find_stub:revert()
+            end
             if widget then
                 pcall(function()
                     widget:destroy()
@@ -1332,6 +1350,47 @@ describe("agentic.ui.ChatWidget", function()
                 assert.is_nil(WidgetRegistry.get(bufnr))
             end
         end)
+
+        it(
+            "resolves fallback before unregistering and deleting buffers",
+            function()
+                widget:show({ focus_prompt = false })
+
+                local events = {}
+                local original_find = widget.find_first_non_widget_window
+                local original_unregister = WidgetRegistry.unregister
+                local original_delete = vim.api.nvim_buf_delete
+                find_stub = spy.stub(widget, "find_first_non_widget_window")
+                find_stub:invokes(function(self)
+                    events[#events + 1] = "fallback"
+                    return original_find(self)
+                end)
+                unregister_stub = spy.stub(WidgetRegistry, "unregister")
+                unregister_stub:invokes(function(owner)
+                    events[#events + 1] = "unregister"
+                    return original_unregister(owner)
+                end)
+                delete_stub = spy.stub(vim.api, "nvim_buf_delete")
+                delete_stub:invokes(function(bufnr, opts)
+                    events[#events + 1] = "delete"
+                    return original_delete(bufnr, opts)
+                end)
+
+                widget:destroy()
+                widget = nil
+
+                delete_stub:revert()
+                delete_stub = nil
+                unregister_stub:revert()
+                unregister_stub = nil
+                find_stub:revert()
+                find_stub = nil
+
+                assert.equal("fallback", events[1])
+                assert.equal("unregister", events[2])
+                assert.equal("delete", events[3])
+            end
+        )
     end)
 
     describe("find_first_non_widget_window", function()

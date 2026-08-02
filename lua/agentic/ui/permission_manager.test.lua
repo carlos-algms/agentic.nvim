@@ -149,15 +149,78 @@ describe("agentic.ui.PermissionManager", function()
 
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             if not baseline_tabs[tabpage] then
-                vim.cmd(
-                    "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
-                )
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
             end
         end
 
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
+    end)
+
+    describe("registered chat owner", function()
+        it("returns the owning widget's visible chat window", function()
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            own_win = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 20,
+                row = 0,
+                col = 0,
+            })
+            registered_owner = {
+                buf_nrs = { chat = bufnr },
+                win_nrs = { chat = own_win },
+                get_visible_tab_id = function()
+                    return owner_tab
+                end,
+            }
+            WidgetRegistry.register(registered_owner)
+
+            assert.equal(own_win, pm:_find_visible_chat_winid())
+        end)
+
+        it(
+            "returns nil for a hidden owner with a foreign visible copy",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                registered_owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = {},
+                    get_visible_tab_id = function()
+                        return nil
+                    end,
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
+
+        it(
+            "rejects an owner window outside the derived owner tabpage",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                vim.cmd("tabnew")
+                local owner_tab = vim.api.nvim_get_current_tabpage()
+                vim.cmd("tabprevious")
+                registered_owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = { chat = winid },
+                    get_visible_tab_id = function()
+                        return owner_tab
+                    end,
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
     end)
 
     describe("concurrent pending map", function()
@@ -636,11 +699,14 @@ describe("agentic.ui.PermissionManager", function()
                     row = 0,
                     col = 0,
                 })
+                local owner_tab = vim.api.nvim_get_current_tabpage()
 
-                -- Only `buf_nrs` and `win_nrs` are read on this path.
                 local owner = {
                     buf_nrs = { chat = bufnr },
                     win_nrs = { chat = own_win },
+                    get_visible_tab_id = function()
+                        return owner_tab
+                    end,
                 }
                 WidgetRegistry.register(owner)
                 registered_owner = owner
@@ -674,6 +740,9 @@ describe("agentic.ui.PermissionManager", function()
                 local owner = {
                     buf_nrs = { chat = bufnr },
                     win_nrs = {},
+                    get_visible_tab_id = function()
+                        return nil
+                    end,
                 }
                 WidgetRegistry.register(owner)
                 registered_owner = owner

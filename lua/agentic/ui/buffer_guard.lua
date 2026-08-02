@@ -1,3 +1,4 @@
+-- lua/agentic/ui/buffer_guard.lua
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Logger = require("agentic.utils.logger")
 local WidgetRegistry = require("agentic.ui.widget_registry")
@@ -5,17 +6,36 @@ local WidgetRegistry = require("agentic.ui.widget_registry")
 --- @class agentic.ui.BufferGuard
 local BufferGuard = {}
 
+--- @param widget agentic.ui.ChatWidget
+--- @return integer|nil destination
+local function find_destination(widget)
+    local tabpage = widget:get_visible_tab_id()
+    if not tabpage or not vim.api.nvim_tabpage_is_valid(tabpage) then
+        return nil
+    end
+
+    local destination = widget:find_first_non_widget_window(tabpage)
+        or widget:open_editor_window()
+    if
+        not destination
+        or not BufHelpers.is_win_usable(destination)
+        or vim.api.nvim_win_get_tabpage(destination) ~= tabpage
+    then
+        return nil
+    end
+
+    return destination
+end
+
 --- @param foreign_buf integer
---- @param widget agentic.ui.ChatWidget Owner of the window being cleared; any other would eject into a different session's tab
---- @param owner_bufnr integer Registered widget buffer used to re-resolve the owner after scheduling
+--- @param widget agentic.ui.ChatWidget
+--- @param owner_bufnr integer
 local function redirect_foreign(foreign_buf, widget, owner_bufnr)
     if not vim.api.nvim_buf_is_valid(foreign_buf) then
         return
     end
 
-    local target_win = widget:find_first_non_widget_window()
-        or widget:open_editor_window()
-
+    local target_win = find_destination(widget)
     if not target_win then
         Logger.debug("BufferGuard: no target window for redirect")
         return
@@ -30,21 +50,12 @@ local function redirect_foreign(foreign_buf, widget, owner_bufnr)
         end
 
         local live_widget = WidgetRegistry.get(owner_bufnr)
-        if not live_widget then
+        if not live_widget or live_widget ~= widget then
             return
         end
 
-        local tabpage = live_widget:get_visible_tab_id()
-        if not tabpage or not vim.api.nvim_tabpage_is_valid(tabpage) then
-            return
-        end
-
-        local destination = live_widget:find_first_non_widget_window()
-        if
-            not destination
-            or not BufHelpers.is_win_usable(destination)
-            or vim.api.nvim_win_get_tabpage(destination) ~= tabpage
-        then
+        local destination = find_destination(live_widget)
+        if not destination then
             return
         end
 
@@ -53,7 +64,6 @@ local function redirect_foreign(foreign_buf, widget, owner_bufnr)
     end)
 end
 
---- Without this, the next BufEnter in that window resolves no owner.
 --- @param widget agentic.ui.ChatWidget
 --- @param old_bufnr integer
 --- @param new_bufnr integer
@@ -82,6 +92,11 @@ local function on_buf_enter()
         return
     end
 
+    local widget_tab = widget:get_visible_tab_id()
+    if widget_tab ~= vim.api.nvim_get_current_tabpage() then
+        return
+    end
+
     local cur_buf = vim.api.nvim_get_current_buf()
 
     if cur_buf ~= expected then
@@ -101,8 +116,7 @@ local function on_buf_enter()
         local new_buf = vim.api.nvim_create_buf(false, true)
         vim.bo[new_buf].buftype = "nofile"
 
-        -- BEFORE the buffer: `nvim_win_set_buf` refires BufEnter, and that
-        -- reentrant pass must already see the replacement as expected.
+        -- Reentrant BufEnter must resolve the replacement before the buffer swap.
         transfer_ownership(widget, cur_buf, new_buf)
         vim.w[cur_win].agentic_bufnr = new_buf
         vim.api.nvim_win_set_buf(cur_win, new_buf)
@@ -111,8 +125,6 @@ local function on_buf_enter()
     end
 end
 
---- Not per-session state: augroup ids are global, and isolation comes from the
---- per-window `agentic_bufnr` marker.
 --- @type integer|nil
 local augroup = nil
 

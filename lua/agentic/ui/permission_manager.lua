@@ -464,13 +464,20 @@ end
 function PermissionManager:_find_visible_chat_winid()
     local bufnr = self.message_writer.bufnr
     local owner = WidgetRegistry.get(bufnr)
-
     if not owner then
         return BufHelpers.find_visible_win(bufnr)
     end
 
+    local owner_tab = owner:get_visible_tab_id()
+    if not owner_tab or not vim.api.nvim_tabpage_is_valid(owner_tab) then
+        return nil
+    end
+
     local owner_winid = owner.win_nrs.chat
     if not owner_winid or not BufHelpers.is_win_usable(owner_winid) then
+        return nil
+    end
+    if vim.api.nvim_win_get_tabpage(owner_winid) ~= owner_tab then
         return nil
     end
     if vim.api.nvim_win_get_buf(owner_winid) ~= bufnr then
