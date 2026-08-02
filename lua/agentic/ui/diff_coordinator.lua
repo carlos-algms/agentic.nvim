@@ -7,8 +7,9 @@ local Logger = require("agentic.utils.logger")
 --- @class agentic.ui.DiffState
 --- @field preview_bufnr? integer
 --- @field preview_winid? integer Window the diff was painted in
---- @field split_state? table<string, agentic.ui.DiffSplitView.State> Keyed by absolute path: one slot per DiffState let a second pending edit to a DIFFERENT file overwrite the first, orphaning its scratch buffer and window
+--- @field split_state? table<string, agentic.ui.DiffSplitView.State>
 
+--- Coordinates edit-diff previews for one session.
 --- @class agentic.ui.DiffCoordinator
 --- @field _widget agentic.ui.ChatWidget
 --- @field _message_writer agentic.ui.MessageWriter
@@ -29,9 +30,7 @@ function DiffCoordinator:new(widget, message_writer)
         diff_state = diff_state,
     }, self)
 
-    -- Not in `ChatWidget:_bind_keymaps`: the closures need this diff state.
     DiffPreview.setup_diff_navigation_keymaps(widget.buf_nrs, diff_state)
-
     return instance
 end
 
@@ -55,7 +54,6 @@ end
 
 --- @param tool_call_id string
 function DiffCoordinator:show(tool_call_id)
-    -- Visible SOMEWHERE, not visible here: a background session renders into its own tab.
     local tabpage = self._widget:get_visible_tab_id()
     if not Config.diff_preview.enabled or not tabpage then
         return

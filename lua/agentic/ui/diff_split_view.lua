@@ -8,20 +8,23 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 --- @class agentic.ui.DiffSplitView
 local M = {}
 
---- Stored on `agentic.ui.DiffState`
+--- State for one owned split diff.
 --- @class agentic.ui.DiffSplitView.State
---- @field original_winid number
---- @field original_bufnr number
---- @field new_winid number Scratch buffer's window
---- @field new_bufnr number Scratch buffer
---- @field file_path string
+--- @field original_winid number Window ID of original file buffer
+--- @field original_bufnr number Buffer number of original file
+--- @field new_winid number Window ID of scratch buffer window
+--- @field new_bufnr number Buffer number of scratch buffer
+--- @field file_path string Path to file being diffed
+--- @field close_original_win? boolean Close an isolation split during teardown
 
---- Reconstructs the full modified file from the agent's partial diffs.
---- @param original_lines string[]
---- @param old_lines string[]
---- @param new_lines string[]
---- @param replace_all boolean|nil Replace every match rather than the first
---- @return string[]|nil modified_lines nil when the diff did not match
+--- Reconstruct full modified file from agent's partial diffs
+--- Uses ToolCallDiff.match_or_substring_fallback for matching, which includes
+--- fuzzy matching and single-line substring replacement fallback.
+--- @param original_lines string[] Original file content
+--- @param old_lines string[] Old text from agent diff
+--- @param new_lines string[] New text from agent diff
+--- @param replace_all boolean|nil If true, replace all matches; if false, replace only first match
+--- @return string[]|nil modified_lines Full modified file content, or nil if failed
 local function reconstruct_modified_file(
     original_lines,
     old_lines,
@@ -44,15 +47,17 @@ local function reconstruct_modified_file(
 
     local modified_lines = vim.deepcopy(original_lines)
 
-    -- Reverse order keeps the line indices of the remaining blocks valid.
+    -- Process blocks in reverse order to maintain line indices
     for i = #blocks, 1, -1 do
         local block = blocks[i]
 
+        -- Remove old lines
         for j = block.end_line, block.start_line, -1 do
             table.remove(modified_lines, j)
         end
 
-        -- `block.new_lines`, not the raw arg: the substring fallback produces full modified lines.
+        -- Insert new lines (use block.new_lines, not raw new_lines —
+        -- substring fallback produces full modified lines)
         for j = #block.new_lines, 1, -1 do
             table.insert(modified_lines, block.start_line, block.new_lines[j])
         end
@@ -61,7 +66,7 @@ local function reconstruct_modified_file(
     return modified_lines
 end
 
---- Avoids E95 (buffer name already in use).
+--- Clean up any existing suggestion buffer for the given path to avoid E95
 --- @param suggestion_name string
 local function cleanup_stale_suggestion_buf(suggestion_name)
     local existing = vim.fn.bufnr(suggestion_name)
@@ -69,6 +74,7 @@ local function cleanup_stale_suggestion_buf(suggestion_name)
         return
     end
 
+    -- Close any windows displaying the stale buffer
     for _, winid in ipairs(vim.fn.win_findbuf(existing)) do
         if BufHelpers.is_win_usable(winid) then
             pcall(vim.api.nvim_win_close, winid, true)
@@ -78,27 +84,29 @@ local function cleanup_stale_suggestion_buf(suggestion_name)
     pcall(vim.api.nvim_buf_delete, existing, { force = true })
 end
 
+--- Open split diff view with original and modified content
 --- @param abs_path string
 --- @param bufnr number
 --- @param target_winid number
 --- @param modified_lines string[]
---- @param state agentic.ui.DiffState|nil
+--- @param diff_state agentic.ui.DiffState
 --- @return boolean success
 local function open_split_view(
     abs_path,
     bufnr,
     target_winid,
     modified_lines,
-    state
+    diff_state,
+    close_original_win
 )
-    local existing_split = state
-        and state.split_state
-        and state.split_state[abs_path]
+    local existing_split = diff_state.split_state
+        and diff_state.split_state[abs_path]
     local is_new_owner = existing_split == nil
-    local state_identity = state and tostring(state):gsub("^table: ", "")
-        or "unowned"
+    local should_close_original_win = close_original_win
+        or (existing_split and existing_split.close_original_win)
+    local identity = tostring(diff_state):gsub("^table: ", "")
     local suggestion_name =
-        string.format("%s (suggestion %s)", abs_path, state_identity)
+        string.format("%s (suggestion %s)", abs_path, identity)
     cleanup_stale_suggestion_buf(suggestion_name)
 
     local scratch_bufnr = vim.api.nvim_create_buf(false, true)
@@ -138,65 +146,144 @@ local function open_split_view(
     vim.bo[scratch_bufnr].modifiable = false
 
     vim.schedule(function()
-        if not BufHelpers.is_win_usable(target_winid) then
+        local current_split = diff_state.split_state
+            and diff_state.split_state[abs_path]
+        if not current_split then
+            return
+        end
+        local current_winid = current_split.original_winid
+        if
+            not BufHelpers.is_win_usable(current_winid)
+            or vim.api.nvim_win_get_buf(current_winid)
+                ~= current_split.original_bufnr
+        then
             return
         end
         local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"
             or ""
-        pcall(vim.api.nvim_win_call, target_winid, function()
+        pcall(vim.api.nvim_win_call, current_winid, function()
             vim.cmd("normal! gg]c" .. center_cmd)
         end)
     end)
 
-    if state then
-        -- Keyed by path: a second pending edit to a DIFFERENT file must not
-        -- overwrite this one's window and scratch buffer handles.
-        state.split_state = state.split_state or {}
-        state.split_state[abs_path] = {
-            original_winid = target_winid,
-            original_bufnr = bufnr,
-            new_winid = new_winid,
-            new_bufnr = scratch_bufnr,
-            file_path = abs_path,
-        }
-    end
+    diff_state.split_state = diff_state.split_state or {}
+    diff_state.split_state[abs_path] = {
+        original_winid = target_winid,
+        original_bufnr = bufnr,
+        new_winid = new_winid,
+        new_bufnr = scratch_bufnr,
+        file_path = abs_path,
+        close_original_win = should_close_original_win,
+    }
 
     return true
 end
 
+--- Resolve buffer and target window for a file path.
+--- get_winid is called when the buffer is not already visible in any window.
+--- It must return a window that is displaying bufnr (i.e. call
+--- nvim_win_set_buf before returning), as open_split_view runs :diffthis
+--- on the returned window. See session_manager.lua get_winid for reference.
 --- @param abs_path string
---- @param get_winid fun(bufnr: number): number|nil Called when the buffer is not already visible; must return a window displaying bufnr
---- @param tabpage integer|nil Tab the owning widget is visible in
+--- @param get_winid fun(bufnr: number): number|nil
+--- @param tabpage integer|nil
+--- @param diff_state agentic.ui.DiffState
 --- @return number|nil bufnr
 --- @return number|nil target_winid
-local function resolve_buf_and_win(abs_path, get_winid, tabpage)
+--- @return boolean|nil close_original_win
+local function resolve_buf_and_win(abs_path, get_winid, tabpage, diff_state)
     local bufnr = vim.fn.bufnr(abs_path)
     if bufnr == -1 then
         bufnr = vim.fn.bufadd(abs_path)
     end
 
-    -- Tab-scoped: the split opens next to the session's own view of the file.
+    local existing_split = diff_state.split_state
+        and diff_state.split_state[abs_path]
+    if
+        existing_split
+        and BufHelpers.is_win_usable(existing_split.original_winid)
+        and vim.api.nvim_win_get_buf(existing_split.original_winid) == bufnr
+    then
+        return bufnr,
+            existing_split.original_winid,
+            existing_split.close_original_win
+    end
+
     local winid = BufHelpers.find_visible_win(bufnr, nil, tabpage)
     local target_winid = winid or get_winid(bufnr)
     if not target_winid then
         Logger.debug("show_split_diff: no valid window found")
-        return nil, nil
+        return nil, nil, nil
     end
 
-    -- A `get_winid` callback may return a window without loading the buffer.
+    local claimed_bufnr
+    for path, split_state in pairs(diff_state.split_state or {}) do
+        if path ~= abs_path then
+            if split_state.original_winid == target_winid then
+                claimed_bufnr = split_state.original_bufnr
+                break
+            end
+            if split_state.new_winid == target_winid then
+                claimed_bufnr = split_state.new_bufnr
+                break
+            end
+        end
+    end
+
+    if claimed_bufnr then
+        if
+            not BufHelpers.is_win_usable(target_winid)
+            or not vim.api.nvim_buf_is_valid(claimed_bufnr)
+        then
+            return nil, nil, nil
+        end
+        local restored =
+            pcall(vim.api.nvim_win_set_buf, target_winid, claimed_bufnr)
+        if not restored then
+            return nil, nil, nil
+        end
+        local opened, isolated_winid =
+            pcall(vim.api.nvim_open_win, bufnr, false, {
+                split = "right",
+                win = target_winid,
+            })
+        if not opened then
+            return nil, nil, nil
+        end
+        return bufnr, isolated_winid, true
+    end
+
+    -- Ensure the target window actually displays the buffer (get_winid
+    -- callbacks may return a window without loading the buffer into it)
     if vim.api.nvim_win_get_buf(target_winid) ~= bufnr then
         local ok, err = pcall(vim.api.nvim_win_set_buf, target_winid, bufnr)
         if not ok then
             Logger.debug("resolve_buf_and_win: failed to set buffer:", err)
-            return nil, nil
+            return nil, nil, nil
         end
     end
 
-    return bufnr, target_winid
+    local owner_count = vim.b[bufnr]._agentic_diff_split_owner_count or 0
+    if owner_count > 0 then
+        local opened, isolated_winid =
+            pcall(vim.api.nvim_open_win, bufnr, false, {
+                split = "right",
+                win = target_winid,
+            })
+        if not opened then
+            return nil, nil, nil
+        end
+        return bufnr, isolated_winid, true
+    end
+
+    return bufnr, target_winid, false
 end
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_split_diff(opts)
+    if not opts.state then
+        return false
+    end
     local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old)
     local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new)
 
@@ -210,19 +297,24 @@ function M.show_split_diff(opts)
         return false
     end
 
-    -- Full file replacement (Write tool): no old_lines, but the file may exist.
+    -- Full file replacement (Write tool): old_lines is empty but file may exist on disk
     if ToolCallDiff.is_empty_lines(old_lines) then
         local bufnr_check = vim.fn.bufnr(abs_path)
         local file_exists = (
             bufnr_check ~= -1 and vim.api.nvim_buf_is_loaded(bufnr_check)
         ) or vim.uv.fs_stat(abs_path) ~= nil
         if not file_exists then
+            -- Truly new file, fallback to inline mode
             Logger.debug("show_split_diff: new file, fallback to inline mode")
             return false
         end
 
-        local bufnr, target_winid =
-            resolve_buf_and_win(abs_path, opts.get_winid, opts.tabpage)
+        local bufnr, target_winid, close_original_win = resolve_buf_and_win(
+            abs_path,
+            opts.get_winid,
+            opts.tabpage,
+            opts.state
+        )
         if not bufnr or not target_winid then
             return false
         end
@@ -232,7 +324,8 @@ function M.show_split_diff(opts)
             bufnr,
             target_winid,
             new_lines,
-            opts.state
+            opts.state,
+            close_original_win
         )
     end
 
@@ -255,8 +348,8 @@ function M.show_split_diff(opts)
         return false
     end
 
-    local bufnr, target_winid =
-        resolve_buf_and_win(abs_path, opts.get_winid, opts.tabpage)
+    local bufnr, target_winid, close_original_win =
+        resolve_buf_and_win(abs_path, opts.get_winid, opts.tabpage, opts.state)
     if not bufnr or not target_winid then
         return false
     end
@@ -266,12 +359,11 @@ function M.show_split_diff(opts)
         bufnr,
         target_winid,
         modified_lines,
-        opts.state
+        opts.state,
+        close_original_win
     )
 end
 
---- Any one previewed split, preferring the buffer the cursor already sits in so
---- a widget keymap drives the split the user is looking at.
 --- @param diff_state agentic.ui.DiffState
 --- @return agentic.ui.DiffSplitView.State|nil state
 function M.find_split_state(diff_state)
@@ -279,9 +371,7 @@ function M.find_split_state(diff_state)
     if not split_states then
         return nil
     end
-
     local current_bufnr = vim.api.nvim_get_current_buf()
-
     --- @type agentic.ui.DiffSplitView.State|nil
     local fallback
     for _, state in pairs(split_states) do
@@ -293,25 +383,45 @@ function M.find_split_state(diff_state)
         end
         fallback = fallback or state
     end
-
     return fallback
 end
 
 --- @param state agentic.ui.DiffSplitView.State
 local function teardown_split(state)
-    -- `is_win_usable`, not bare validity: teardown can run after the user closed the
-    -- tab, and on 0.11.x such a handle answers valid while `nvim_win_call` segfaults.
-    if BufHelpers.is_win_usable(state.original_winid) then
+    if not state then
+        return
+    end
+
+    local original_owned = BufHelpers.is_win_usable(state.original_winid)
+        and vim.api.nvim_win_get_buf(state.original_winid)
+            == state.original_bufnr
+    if original_owned then
         vim.api.nvim_win_call(state.original_winid, function()
             vim.cmd("diffoff")
         end)
     end
 
-    if BufHelpers.is_win_usable(state.new_winid) then
+    local new_owned = BufHelpers.is_win_usable(state.new_winid)
+        and vim.api.nvim_win_get_buf(state.new_winid) == state.new_bufnr
+    if new_owned then
         vim.api.nvim_win_call(state.new_winid, function()
             vim.cmd("diffoff")
         end)
-        pcall(vim.api.nvim_win_close, state.new_winid, true)
+        if
+            BufHelpers.is_win_usable(state.new_winid)
+            and vim.api.nvim_win_get_buf(state.new_winid) == state.new_bufnr
+        then
+            pcall(vim.api.nvim_win_close, state.new_winid, true)
+        end
+    end
+
+    if
+        state.close_original_win
+        and BufHelpers.is_win_usable(state.original_winid)
+        and vim.api.nvim_win_get_buf(state.original_winid)
+            == state.original_bufnr
+    then
+        pcall(vim.api.nvim_win_close, state.original_winid, true)
     end
 
     if vim.api.nvim_buf_is_valid(state.new_bufnr) then
@@ -326,7 +436,6 @@ local function teardown_split(state)
                 - 1
             return
         end
-
         vim.b[state.original_bufnr]._agentic_diff_split_owner_count = nil
         local prev_modifiable =
             vim.b[state.original_bufnr]._agentic_prev_modifiable
@@ -345,16 +454,14 @@ local function teardown_split(state)
 end
 
 --- @param diff_state agentic.ui.DiffState
---- @param file_path string|nil Path to clear; nil tears down every previewed file
---- @return boolean cleared Whether any split was torn down
+--- @param file_path string|nil
+--- @return boolean cleared
 function M.clear_split_diff(diff_state, file_path)
     local split_states = diff_state.split_state
     if not split_states then
         return false
     end
-
     local cleared = false
-
     if file_path then
         local abs_path = FileSystem.to_absolute_path(file_path)
         local state = split_states[abs_path]
@@ -370,13 +477,9 @@ function M.clear_split_diff(diff_state, file_path)
             cleared = true
         end
     end
-
-    -- Nil rather than an empty table, so `if state.split_state` stays a
-    -- meaningful "any split showing?" predicate.
     if next(split_states) == nil then
         diff_state.split_state = nil
     end
-
     return cleared
 end
 

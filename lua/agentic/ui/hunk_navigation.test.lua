@@ -1,5 +1,7 @@
 local assert = require("tests.helpers.assert")
+local spy_module = require("tests.helpers.spy")
 local BufHelpers = require("agentic.utils.buf_helpers")
+local AgenticConfig = require("agentic.config")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Theme = require("agentic.theme")
 
@@ -150,14 +152,36 @@ describe("hunk_navigation", function()
 
     describe("navigation", function()
         local winid
+        local base_tabs
+        local saved_layout
+        local win_call_stub
 
         before_each(function()
+            base_tabs = {}
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                base_tabs[tabpage] = true
+            end
+            saved_layout = AgenticConfig.diff_preview.layout
+            win_call_stub = nil
             vim.cmd("buffer " .. test_bufnr)
             winid = vim.api.nvim_get_current_win()
             HunkNavigation.setup_keymaps(test_bufnr)
         end)
 
         after_each(function()
+            if win_call_stub then
+                win_call_stub:revert()
+                win_call_stub = nil
+            end
+            AgenticConfig.diff_preview.layout = saved_layout
+            for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+                if not base_tabs[tabpage] then
+                    pcall(function()
+                        vim.api.nvim_set_current_tabpage(tabpage)
+                        vim.cmd("tabclose!")
+                    end)
+                end
+            end
             HunkNavigation.clear_state(test_bufnr)
         end)
 
@@ -201,6 +225,82 @@ describe("hunk_navigation", function()
             local cursor = vim.api.nvim_win_get_cursor(winid)
             assert.equal(cursor[1], 11)
             assert.equal(cursor[2], 0)
+        end)
+
+        it("uses the painted window from the provided owner state", function()
+            vim.cmd("tabnew")
+            local owner_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(owner_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(owner_win, { 1, 0 })
+
+            vim.cmd("tabnew")
+            local foreign_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+            add_hunk(test_bufnr, test_ns, 10)
+
+            HunkNavigation.navigate_next(test_bufnr, {
+                preview_bufnr = test_bufnr,
+                preview_winid = owner_win,
+            })
+
+            assert.equal(11, vim.api.nvim_win_get_cursor(owner_win)[1])
+            assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+        end)
+
+        it(
+            "does not navigate a buffer unowned by the provided state",
+            function()
+                add_hunk(test_bufnr, test_ns, 10)
+
+                HunkNavigation.navigate_next(test_bufnr, {})
+
+                assert.equal(1, vim.api.nvim_win_get_cursor(winid)[1])
+            end
+        )
+
+        it("prefers an owned split window over the inline preview", function()
+            AgenticConfig.diff_preview.layout = "split"
+            local preview_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(
+                preview_bufnr,
+                0,
+                -1,
+                false,
+                { "preview" }
+            )
+            local preview_winid = vim.api.nvim_open_win(
+                preview_bufnr,
+                false,
+                { split = "right", win = winid }
+            )
+            win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+            add_hunk(test_bufnr, test_ns, 10)
+
+            HunkNavigation.navigate_next(test_bufnr, {
+                preview_bufnr = preview_bufnr,
+                preview_winid = preview_winid,
+                split_state = {
+                    ["/tmp/owned-split.lua"] = {
+                        original_bufnr = test_bufnr,
+                        original_winid = winid,
+                        new_bufnr = preview_bufnr,
+                        new_winid = preview_winid,
+                        file_path = "/tmp/owned-split.lua",
+                    },
+                },
+            })
+
+            local called_winid = win_call_stub.calls[1]
+                and win_call_stub.calls[1][1]
+            local win_call_count = win_call_stub.call_count
+            win_call_stub:revert()
+            win_call_stub = nil
+            pcall(vim.api.nvim_win_close, preview_winid, true)
+            pcall(vim.api.nvim_buf_delete, preview_bufnr, { force = true })
+
+            assert.equal(1, win_call_count)
+            assert.equal(winid, called_winid)
         end)
 
         it(
@@ -408,22 +508,154 @@ describe("hunk_navigation", function()
         end)
 
         it("preserves the original keymap across repeated setup", function()
-            Config.keymaps.diff_preview.next_hunk = "]c"
-            BufHelpers.keymap_set(test_bufnr, "n", "]c", ":echo 'original'<CR>")
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'original'<CR>"
+            )
+            local original = get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
 
-            local before_map = get_keymap_in_buf(test_bufnr, "]c")
-            local original_rhs = before_map.rhs
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
 
-            HunkNavigation.setup_keymaps(test_bufnr)
-            HunkNavigation.setup_keymaps(test_bufnr)
-            HunkNavigation.restore_keymaps(test_bufnr)
-
-            local restored = get_keymap_in_buf(test_bufnr, "]c")
-            assert.is_true(is_buffer_local(restored))
-            assert.equal(restored.rhs, original_rhs)
+            assert.equal(
+                original,
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
         end)
 
-        it("clears the anchors cache after restore", function()
+        it("keeps one entry for repeated setup by the same owner", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'original'<CR>"
+            )
+            --- @type agentic.ui.DiffState
+            local state = {}
+
+            HunkNavigation.setup_keymaps(test_bufnr, state)
+            HunkNavigation.setup_keymaps(test_bufnr, state)
+            HunkNavigation.restore_keymaps(test_bufnr, state)
+
+            assert.equal(
+                ":echo 'original'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+        end)
+
+        it("restores noremap silent expr and nowait", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                "v:count",
+                { noremap = true, silent = true, expr = true, nowait = true }
+            )
+
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.equal(1, restored.noremap)
+            assert.equal(1, restored.silent)
+            assert.equal(1, restored.expr)
+            assert.equal(1, restored.nowait)
+        end)
+
+        it("restores a recursive mapping with its other flags", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                "v:count",
+                { remap = true, silent = true, expr = true, nowait = true }
+            )
+
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.equal(0, restored.noremap)
+            assert.equal(1, restored.silent)
+            assert.equal(1, restored.expr)
+            assert.equal(1, restored.nowait)
+        end)
+
+        it(
+            "keeps the newer owner callback when the older owner clears",
+            function()
+                --- @type agentic.ui.DiffState
+                local older = {}
+                --- @type agentic.ui.DiffState
+                local newer = {}
+                local navigate_spy =
+                    spy_module.on(HunkNavigation, "navigate_next")
+
+                HunkNavigation.setup_keymaps(test_bufnr, older)
+                HunkNavigation.setup_keymaps(test_bufnr, newer)
+                HunkNavigation.restore_keymaps(test_bufnr, older)
+
+                local mapping = get_keymap_in_buf(test_bufnr, "<leader>hn")
+                assert.equal("function", type(mapping.callback))
+                mapping.callback()
+                assert.spy(navigate_spy).was.called_with(test_bufnr, newer)
+                navigate_spy:revert()
+            end
+        )
+
+        it(
+            "reinstalls the older owner callback when the newer owner clears",
+            function()
+                --- @type agentic.ui.DiffState
+                local older = {}
+                --- @type agentic.ui.DiffState
+                local newer = {}
+                local navigate_spy =
+                    spy_module.on(HunkNavigation, "navigate_next")
+
+                HunkNavigation.setup_keymaps(test_bufnr, older)
+                HunkNavigation.setup_keymaps(test_bufnr, newer)
+                HunkNavigation.restore_keymaps(test_bufnr, newer)
+
+                local mapping = get_keymap_in_buf(test_bufnr, "<leader>hn")
+                assert.equal("function", type(mapping.callback))
+                mapping.callback()
+                assert.spy(navigate_spy).was.called_with(test_bufnr, older)
+                navigate_spy:revert()
+            end
+        )
+
+        it("restores the user mapping after the final owner clears", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'user'<CR>"
+            )
+            --- @type agentic.ui.DiffState
+            local first = {}
+            --- @type agentic.ui.DiffState
+            local second = {}
+
+            HunkNavigation.setup_keymaps(test_bufnr, first)
+            HunkNavigation.setup_keymaps(test_bufnr, second)
+            HunkNavigation.restore_keymaps(test_bufnr, first)
+            assert.is_not.equal(
+                ":echo 'user'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+            HunkNavigation.restore_keymaps(test_bufnr, second)
+
+            assert.equal(
+                ":echo 'user'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+        end)
+
+        it("clears state after restore", function()
             HunkNavigation.setup_keymaps(test_bufnr)
             add_hunk(test_bufnr, test_ns, 1)
             local cached = get_hunk_anchors(test_bufnr)
@@ -655,10 +887,8 @@ describe("hunk_navigation split mode", function()
             assert.is_true(vim.api.nvim_win_get_cursor(win_a)[1] > 1)
             assert.equal(1, vim.api.nvim_win_get_cursor(win_b)[1])
 
-            -- A THIRD buffer with no entry. Resolving by bufnr yields nil and
-            -- takes the inline path. An arbitrary entry (or the raw map) keeps
-            -- the `layout == "split"` branch live and runs `]c` in a non-diff
-            -- window, so the extmark anchor is never reached.
+            -- A third buffer has no entry in this owner state. It must not use
+            -- an arbitrary split or fall back to unowned inline navigation.
             local buf_c = create_buffer()
             local lines_c = {}
             for i = 1, 60 do
@@ -673,7 +903,7 @@ describe("hunk_navigation split mode", function()
 
             HunkNavigation.navigate_next(buf_c, diff_state)
 
-            assert.equal(11, vim.api.nvim_win_get_cursor(win_c)[1])
+            assert.equal(1, vim.api.nvim_win_get_cursor(win_c)[1])
 
             for _, winid in ipairs({ scratch_win_a, scratch_win_b }) do
                 pcall(vim.api.nvim_win_close, winid, true)
@@ -730,46 +960,6 @@ describe("hunk_navigation split mode", function()
         HunkNavigation.navigate_next(test_bufnr, diff_state)
 
         assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
-    end)
-
-    it("restores each session's keymaps independently", function()
-        -- Buffer-local keymaps: a second session on the same buffer replaces the
-        -- first's `]c`/`[c`. Clearing out of order (session one last) must not
-        -- strip the mapping session two still needs.
-        local keymaps = Config.keymaps.diff_preview
-
-        local win_one = create_tab()
-        vim.api.nvim_win_set_buf(win_one, test_bufnr)
-
-        local win_two = create_tab()
-        vim.api.nvim_win_set_buf(win_two, test_bufnr)
-
-        --- @type agentic.ui.DiffState
-        local state_one =
-            { preview_bufnr = test_bufnr, preview_winid = win_one }
-        --- @type agentic.ui.DiffState
-        local state_two =
-            { preview_bufnr = test_bufnr, preview_winid = win_two }
-
-        HunkNavigation.setup_keymaps(test_bufnr, state_one)
-        HunkNavigation.setup_keymaps(test_bufnr, state_two)
-
-        assert.is_true(
-            is_buffer_local(get_keymap_in_buf(test_bufnr, keymaps.next_hunk))
-        )
-
-        HunkNavigation.restore_keymaps(test_bufnr)
-
-        -- Emptiness, not iteration order: `next` on a non-empty keymap dict
-        -- returns an arbitrary key, so comparing to nil passed by luck.
-        assert.equal(
-            vim.tbl_isempty(get_keymap_in_buf(test_bufnr, keymaps.next_hunk)),
-            true
-        )
-        assert.equal(
-            vim.tbl_isempty(get_keymap_in_buf(test_bufnr, keymaps.prev_hunk)),
-            true
-        )
     end)
 
     describe("save_keymap desc filter", function()

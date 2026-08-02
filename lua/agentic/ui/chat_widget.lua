@@ -227,12 +227,10 @@ function ChatWidget:rotate_layout(layouts)
             return
         end
 
-        -- Tab-scoped: an unscoped lookup would yank the cursor into another tab.
         local win = BufHelpers.find_visible_win(previous_buf, nil, tabpage)
-        if not win then
+        if not win or not BufHelpers.is_win_usable(win) then
             return
         end
-
         vim.api.nvim_set_current_win(win)
         if previous_mode == "i" then
             vim.cmd("startinsert")
@@ -389,26 +387,37 @@ end
 --- @param callback fun()|nil
 function ChatWidget:move_cursor_to(winid, callback)
     --- @type agentic.ui.ChatWidget.PanelNames|nil
-    local window_name
+    local panel_name
     for name, owned_winid in pairs(self.win_nrs) do
         if owned_winid == winid then
-            window_name = name
+            panel_name = name
             break
         end
     end
 
     vim.schedule(function()
-        local owned_winid = window_name and self.win_nrs[window_name] or nil
-        if not owned_winid or not BufHelpers.is_win_usable(owned_winid) then
+        local target_winid = panel_name and self.win_nrs[panel_name] or nil
+        if not target_winid or not BufHelpers.is_win_usable(target_winid) then
+            return
+        end
+
+        local tabpage = self:get_visible_tab_id()
+        if not tabpage then
+            return
+        end
+
+        local target_bufnr = vim.api.nvim_win_get_buf(target_winid)
+        local visible_winid =
+            BufHelpers.find_visible_win(target_bufnr, target_winid, tabpage)
+        if visible_winid ~= target_winid then
             return
         end
 
         if Config.settings.move_cursor_to_chat_on_submit then
-            vim.api.nvim_set_current_win(owned_winid)
+            vim.api.nvim_set_current_win(target_winid)
         end
 
-        -- Scroll to the bottom so auto-scroll re-engages.
-        vim.api.nvim_win_call(owned_winid, function()
+        vim.api.nvim_win_call(target_winid, function()
             vim.cmd("normal! G0zb")
         end)
 

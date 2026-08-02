@@ -156,18 +156,17 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
     return winid
 end
 
---- Reusable only in the CURRENT tabpage: a handle from another tab renders nothing
---- where the user is looking, and splits one widget's topology across two tabs.
 --- @param winid integer|nil
+--- @param expected_tabpage integer
 --- @return boolean
-local function is_in_current_tabpage(winid)
+local function is_in_tabpage(winid, expected_tabpage)
     if not BufHelpers.is_win_usable(winid) then
         return false
     end
 
     ---@cast winid integer
-    return vim.api.nvim_win_get_tabpage(winid)
-        == vim.api.nvim_get_current_tabpage()
+    local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
+    return ok and tabpage == expected_tabpage
 end
 
 --- @param winid integer|nil
@@ -194,6 +193,7 @@ end
 --- @param bufnr integer
 --- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
+--- @param expected_tabpage integer
 --- @param with_programmatic_close fun(fn: fun())|nil
 --- @return integer
 local function get_or_create_window(
@@ -202,17 +202,16 @@ local function get_or_create_window(
     bufnr,
     open_opts,
     win_opts,
+    expected_tabpage,
     with_programmatic_close
 )
     local cached_winid = win_nrs[panel_name]
-    if is_in_current_tabpage(cached_winid) then
+    if is_in_tabpage(cached_winid, expected_tabpage) then
         ---@cast cached_winid integer
         return cached_winid
     end
 
-    -- A stale handle from another tab would otherwise be left untracked once
-    -- `win_nrs` is repointed, showing a second copy of the widget in the tab
-    -- the user left.
+    win_nrs[panel_name] = nil
     close_layout_window(cached_winid, with_programmatic_close)
 
     local new_winid =
@@ -228,6 +227,7 @@ end
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
+--- @param expected_tabpage integer
 --- @param with_programmatic_close fun(fn: fun())|nil
 local function open_or_resize_dynamic_window(
     buf_nrs,
@@ -236,24 +236,25 @@ local function open_or_resize_dynamic_window(
     open_win_opts,
     max_height,
     position,
+    expected_tabpage,
     with_programmatic_close
 )
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
 
     if BufHelpers.is_buffer_empty(bufnr) then
-        close_layout_window(winid, with_programmatic_close)
         win_nrs[window_name] = nil
+        close_layout_window(winid, with_programmatic_close)
         return
     end
 
-    if not is_in_current_tabpage(winid) then
-        -- A stale handle from another tab would otherwise be left untracked
-        -- once `win_nrs` is repointed at the new window.
+    if not is_in_tabpage(winid, expected_tabpage) then
+        win_nrs[window_name] = nil
         close_layout_window(winid, with_programmatic_close)
 
-        -- Opened at min height so wrapped rows can be measured against the real
-        -- window width, then resized; a buffer-line count understates wraps.
+        -- Open at min height first so we can measure wrapped rows against the
+        -- real window width, then resize. ADR 0001 uses the same pattern for
+        -- screen-row math (fold sizing). Buffer-line count understates wraps.
         open_win_opts.height = 1
         winid = open_win(bufnr, false, open_win_opts, window_name, {})
         win_nrs[window_name] = winid
@@ -273,6 +274,7 @@ local function show_layout(params, position)
     local win_nrs = params.win_nrs
     local buf_nrs = params.buf_nrs
     local with_close = params.with_programmatic_close
+    local expected_tabpage = vim.api.nvim_get_current_tabpage()
     local should_focus = params.focus_prompt == nil
         or params.focus_prompt == true
 
@@ -301,7 +303,7 @@ local function show_layout(params, position)
         winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
-    }, with_close)
+    }, expected_tabpage, with_close)
 
     Fold.setup_window(win_nrs.chat, buf_nrs.chat)
 
@@ -320,12 +322,12 @@ local function show_layout(params, position)
 
     get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
         winfixheight = not is_bottom,
-    }, with_close)
+    }, expected_tabpage, with_close)
 
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
         win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
-    }, Config.windows.code.max_height, position, with_close)
+    }, Config.windows.code.max_height, position, expected_tabpage, with_close)
 
     local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -333,31 +335,52 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.files.max_height, position, with_close)
+    }, Config.windows.files.max_height, position, expected_tabpage, with_close)
 
     ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
         or win_nrs.input
 
-    open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
-        win = ref_win,
-        split = is_bottom and "below" or "above",
-    }, Config.windows.diagnostics.max_height, position, with_close)
+    open_or_resize_dynamic_window(
+        buf_nrs,
+        win_nrs,
+        "diagnostics",
+        {
+            win = ref_win,
+            split = is_bottom and "below" or "above",
+        },
+        Config.windows.diagnostics.max_height,
+        position,
+        expected_tabpage,
+        with_close
+    )
 
     if Config.windows.todos.display then
         ref_win = is_bottom
                 and (win_nrs.diagnostics or win_nrs.files or win_nrs.code or win_nrs.input)
             or win_nrs.chat
 
-        open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
-            win = ref_win,
-            split = "below",
-        }, Config.windows.todos.max_height, position, with_close)
+        open_or_resize_dynamic_window(
+            buf_nrs,
+            win_nrs,
+            "todos",
+            {
+                win = ref_win,
+                split = "below",
+            },
+            Config.windows.todos.max_height,
+            position,
+            expected_tabpage,
+            with_close
+        )
     end
 
     if should_focus then
         vim.schedule(function()
             local winid = win_nrs.input
-            if not is_in_current_tabpage(winid) then
+            if
+                vim.api.nvim_get_current_tabpage() ~= expected_tabpage
+                or not is_in_tabpage(winid, expected_tabpage)
+            then
                 return
             end
 

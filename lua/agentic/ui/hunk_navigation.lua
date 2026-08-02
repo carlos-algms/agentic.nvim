@@ -3,20 +3,29 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 
+--- Hunk navigation module for diff preview
+--- Manages navigation state, keymaps, and movement between diff hunks
 --- @class agentic.ui.HunkNavigation
 local M = {}
 
+--- Namespace for diff preview extmarks
 M.NS_DIFF = vim.api.nvim_create_namespace("agentic_diff_preview")
 local NS_DIFF = M.NS_DIFF
 
---- Keyed by bufnr rather than stored in `vim.b`, which serializes and so cannot hold callbacks.
+--- Per-buffer state for hunk navigation
+--- needed because `vim.b` doesn't support saving callbacks, as it will serialize, to comply with vimscript
 --- @class agentic.ui.HunkNavigation.State
---- @field saved_keymaps { next?: table, prev?: table }
---- @field anchors_cache integer[]|nil 0-indexed line numbers
+--- @field saved_keymaps { next?: table, prev?: table } Saved keymaps for restoration
+--- @field anchors_cache integer[]|nil Cached hunk anchor positions (0-indexed line numbers)
+--- @field saved_keymaps_captured boolean
+--- @field owners { key: string, state: agentic.ui.DiffState|nil }[]
+--- @field owner_lookup table<string, boolean>
 
+--- Module-level state storage (per-buffer)
 --- @type table<number, agentic.ui.HunkNavigation.State>
 local buffer_state = {}
 
+--- Get or initialize state for buffer
 --- @param bufnr number
 --- @return agentic.ui.HunkNavigation.State
 local function get_state(bufnr)
@@ -24,12 +33,17 @@ local function get_state(bufnr)
         buffer_state[bufnr] = {
             saved_keymaps = {},
             anchors_cache = nil,
+            saved_keymaps_captured = false,
+            owners = {},
+            owner_lookup = {},
         }
     end
     return buffer_state[bufnr]
 end
 
---- First deleted line per hunk, falling back to the virtual-line anchor for pure insertions.
+--- Get all hunk positions (first deleted line per hunk)
+--- Falls back to virtual line anchor for pure insertions.
+--- Groups consecutive deleted lines (only returns first line of each group).
 --- @param bufnr number
 --- @return integer[] positions 0-indexed line numbers where hunks begin
 function M._get_hunk_anchors(bufnr)
@@ -95,10 +109,11 @@ function M._get_hunk_anchors(bufnr)
     return positions
 end
 
+--- Find next/previous hunk position relative to buffer's cursor position
 --- @param bufnr number
 --- @param direction "next"|"prev"
---- @param preferred_winid integer|nil Window the diff was painted in
---- @return number|nil target_line 1-indexed
+--- @param preferred_winid integer|nil
+--- @return number|nil target_line 1-indexed line number
 local function find_hunk(bufnr, direction, preferred_winid)
     local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
@@ -111,7 +126,7 @@ local function find_hunk(bufnr, direction, preferred_winid)
     end
 
     local cursor = vim.api.nvim_win_get_cursor(winid)
-    local current_line = cursor[1] - 1
+    local current_line = cursor[1] - 1 -- 0-indexed
 
     local current_index = -1
     local is_exactly_on_anchor = false
@@ -139,13 +154,14 @@ local function find_hunk(bufnr, direction, preferred_winid)
         end
     end
 
-    return anchors[new_index + 1] + 1
+    return anchors[new_index + 1] + 1 -- 1-indexed
 end
 
+--- Calculate scroll command based on hunk size and window height
 --- @param bufnr number
 --- @param winid number
---- @param anchor_line number 0-indexed
---- @return string scroll_cmd "zt", "zz", or "" when centering is disabled
+--- @param anchor_line number 0-indexed anchor line
+--- @return string scroll_cmd "zt", "zz", or empty string if centering disabled or no extmarks
 function M.get_scroll_cmd(bufnr, winid, anchor_line)
     if not Config.diff_preview.center_on_navigate_hunks then
         return ""
@@ -172,52 +188,47 @@ function M.get_scroll_cmd(bufnr, winid, anchor_line)
     return hunk_height > (win_height / 2) and "zt" or "zz"
 end
 
---- `split_state` is keyed by absolute path, so resolve by the bufnr handed in.
---- `DiffSplitView.find_split_state` keys off the CURRENT buffer and returns another
---- file's split whenever the cursor sits outside `bufnr` — reachable, since these
---- keymaps fire on whichever window has focus.
+--- Navigate to hunk in specified direction
 --- @param bufnr number
 --- @param diff_state agentic.ui.DiffState|nil
---- @return agentic.ui.DiffSplitView.State|nil state
 local function find_split_state_for_buf(bufnr, diff_state)
     local split_states = diff_state and diff_state.split_state
     if not split_states then
         return nil
     end
-
     for _, state in pairs(split_states) do
         if state.original_bufnr == bufnr or state.new_bufnr == bufnr then
             return state
         end
     end
-
     return nil
 end
 
---- @param bufnr number
 --- @param direction "next"|"prev"
---- @param diff_state agentic.ui.DiffState|nil nil means no split diff
+--- @param diff_state agentic.ui.DiffState|nil
 local function navigate_hunk(bufnr, direction, diff_state)
     local split_state = find_split_state_for_buf(bufnr, diff_state)
+    local painted_winid
+    if diff_state then
+        if split_state then
+            painted_winid = split_state.original_bufnr == bufnr
+                    and split_state.original_winid
+                or split_state.new_winid
+        elseif diff_state.preview_bufnr == bufnr then
+            painted_winid = diff_state.preview_winid
+        else
+            return
+        end
 
-    -- Any other window is not in diff mode, so `]c` raises E99 and reports
-    -- "no more hunks" while the real diff sits in another tab.
-    local painted_winid = diff_state
-        and (
-            diff_state.preview_winid
-            or split_state and split_state.original_winid
-        )
-
-    local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
-
-    -- `find_visible_win` falls back to a GLOBAL `win_findbuf` when the preferred
-    -- window is gone: with two sessions diffing one file that drives `]c` through the
-    -- other's diff. A session that lost its painted window has nowhere to navigate.
-    if painted_winid and target_winid ~= painted_winid then
-        Logger.notify("Diff window is no longer available", vim.log.levels.WARN)
-        return
+        if not painted_winid then
+            return
+        end
     end
 
+    local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
+    if diff_state and target_winid ~= painted_winid then
+        return
+    end
     if not target_winid then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
@@ -283,28 +294,32 @@ local function save_keymap(bufnr, key)
     return map_info
 end
 
+--- Navigate to next hunk
 --- @param bufnr number
 --- @param diff_state agentic.ui.DiffState|nil
 function M.navigate_next(bufnr, diff_state)
     navigate_hunk(bufnr, "next", diff_state)
 end
 
+--- Navigate to previous hunk
 --- @param bufnr number
 --- @param diff_state agentic.ui.DiffState|nil
 function M.navigate_prev(bufnr, diff_state)
     navigate_hunk(bufnr, "prev", diff_state)
 end
 
---- @param bufnr number
---- @param diff_state agentic.ui.DiffState|nil Captured by the keymaps
-function M.setup_keymaps(bufnr, diff_state)
-    local keymaps = Config.keymaps.diff_preview
-    local state = get_state(bufnr)
-    state.saved_keymaps.next = state.saved_keymaps.next
-        or save_keymap(bufnr, keymaps.next_hunk)
-    state.saved_keymaps.prev = state.saved_keymaps.prev
-        or save_keymap(bufnr, keymaps.prev_hunk)
+local LEGACY_OWNER = "legacy"
 
+--- @param diff_state agentic.ui.DiffState|nil
+--- @return string key
+local function owner_key(diff_state)
+    return diff_state and tostring(diff_state) or LEGACY_OWNER
+end
+
+--- @param bufnr number
+--- @param diff_state agentic.ui.DiffState|nil
+local function install_agentic_keymaps(bufnr, diff_state)
+    local keymaps = Config.keymaps.diff_preview
     BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
         M.navigate_next(bufnr, diff_state)
     end, { desc = "Go to next hunk - " .. M.KEYMAP_DESC_SUFFIX })
@@ -314,27 +329,74 @@ function M.setup_keymaps(bufnr, diff_state)
     end, { desc = "Go to previous hunk - " .. M.KEYMAP_DESC_SUFFIX })
 end
 
-local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }
-
+--- Setup hunk navigation keymaps for buffer
 --- @param bufnr number
-function M.restore_keymaps(bufnr)
+--- @param diff_state agentic.ui.DiffState|nil
+function M.setup_keymaps(bufnr, diff_state)
+    local keymaps = Config.keymaps.diff_preview
+    local state = get_state(bufnr)
+    if not state.saved_keymaps_captured then
+        state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
+        state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
+        state.saved_keymaps_captured = true
+    end
+
+    local key = owner_key(diff_state)
+    if state.owner_lookup[key] then
+        for index, owner in ipairs(state.owners) do
+            if owner.key == key then
+                table.remove(state.owners, index)
+                break
+            end
+        end
+    end
+    state.owners[#state.owners + 1] = { key = key, state = diff_state }
+    state.owner_lookup[key] = true
+    install_agentic_keymaps(bufnr, diff_state)
+end
+
+local RESTORED_KEYMAP_FLAGS = { "silent", "expr", "nowait" }
+
+--- Restore saved keymaps for buffer
+--- @param bufnr number
+--- @param diff_state agentic.ui.DiffState|nil
+function M.restore_keymaps(bufnr, diff_state)
+    local state = buffer_state[bufnr]
+    if not state then
+        return
+    end
+
+    local key = owner_key(diff_state)
+    if not state.owner_lookup[key] then
+        return
+    end
+    state.owner_lookup[key] = nil
+    for index, owner in ipairs(state.owners) do
+        if owner.key == key then
+            table.remove(state.owners, index)
+            break
+        end
+    end
+
     local keymaps = Config.keymaps.diff_preview
     BufHelpers.keymap_del(bufnr, "n", keymaps.next_hunk)
     BufHelpers.keymap_del(bufnr, "n", keymaps.prev_hunk)
 
-    local state = buffer_state[bufnr]
-    local saved_keymaps = state and state.saved_keymaps or {}
+    local last_owner = state.owners[#state.owners]
+    if last_owner then
+        install_agentic_keymaps(bufnr, last_owner.state)
+        return
+    end
 
-    for _, saved_map in pairs(saved_keymaps) do
-        if saved_map.lhs then
+    for _, saved_map in pairs(state.saved_keymaps) do
+        if saved_map and saved_map.lhs then
             --- @type vim.keymap.set.Opts
-            local opts = {}
+            local opts = { remap = saved_map.noremap == 0 }
             for _, flag in ipairs(RESTORED_KEYMAP_FLAGS) do
                 if saved_map[flag] == 1 then
                     opts[flag] = true
                 end
             end
-
             pcall(
                 BufHelpers.keymap_set,
                 bufnr,

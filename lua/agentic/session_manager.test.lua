@@ -1221,6 +1221,8 @@ describe("agentic.SessionManager", function()
         local debug_stub
         --- @type integer[]
         local created_buffers
+        --- @type TestSpy|nil
+        local restore_keymaps_spy
 
         --- @param tool_call_blocks table<string, table>
         --- @return agentic.SessionManager
@@ -1261,6 +1263,7 @@ describe("agentic.SessionManager", function()
 
         before_each(function()
             debug_stub = nil
+            restore_keymaps_spy = nil
             created_buffers = {}
             checktime_stub = spy.stub(vim.cmd, "checktime")
             schedule_stub = spy.stub(vim, "schedule")
@@ -1274,6 +1277,10 @@ describe("agentic.SessionManager", function()
         after_each(function()
             if debug_stub then
                 debug_stub:revert()
+            end
+            if restore_keymaps_spy then
+                restore_keymaps_spy:revert()
+                restore_keymaps_spy = nil
             end
             checktime_stub:revert()
             schedule_stub:revert()
@@ -1310,13 +1317,12 @@ describe("agentic.SessionManager", function()
             end
         end)
 
-        it("cleans the suggestion owned by the current diff state", function()
-            local file_path = "/tmp/session-owned-suggestion.lua"
+        it("cleans up only its coordinator-owned suggestion", function()
             local session = make_session({
                 ["tc-1"] = {
                     kind = "edit",
                     status = "in_progress",
-                    file_path = file_path,
+                    file_path = "/tmp/owned.lua",
                 },
             })
 
@@ -1326,10 +1332,115 @@ describe("agentic.SessionManager", function()
             )
 
             assert
-                .stub(cleanup_suggestion_buffer_stub).was
-                .called_with(file_path, session.diff_coordinator.diff_state)
+                .spy(cleanup_suggestion_buffer_stub).was
+                .called_with("/tmp/owned.lua", session.diff_coordinator.diff_state)
         end)
 
+        it(
+            "clears a refreshed permission-cleared preview before acceptance",
+            function()
+                cleanup_suggestion_buffer_stub:revert()
+
+                local DiffCoordinator = require("agentic.ui.diff_coordinator")
+                local HunkNavigation = require("agentic.ui.hunk_navigation")
+                local file_path = "/tmp/agentic-completed-new-file-"
+                    .. tostring(vim.uv.hrtime())
+                    .. ".lua"
+                local tool_call_id = "tc-new-file"
+                local tracker = {
+                    tool_call_id = tool_call_id,
+                    kind = "edit",
+                    status = "in_progress",
+                    file_path = file_path,
+                    diff = { changed_pairs = {} },
+                }
+                local session = make_session({ [tool_call_id] = tracker })
+                local current_winid = vim.api.nvim_get_current_win()
+                local original_bufnr = vim.api.nvim_get_current_buf()
+                local suggestion_bufnr
+                local permission_callback
+
+                session.diff_coordinator = DiffCoordinator:new(
+                    { buf_nrs = {} } --[[@as agentic.ui.ChatWidget]],
+                    session.message_writer --[[@as agentic.ui.MessageWriter]]
+                )
+                session.diff_coordinator.show = function() end
+                session.permission_manager.add_request = function(
+                    _self,
+                    _request,
+                    callback
+                )
+                    permission_callback = callback
+                end
+                session.status_animation.stop = function() end
+                local function show_suggestion()
+                    DiffPreview._show_new_file_diff({
+                        file_path = file_path,
+                        diff = { changed_pairs = {} },
+                        state = session.diff_coordinator.diff_state,
+                        get_winid = function(bufnr)
+                            suggestion_bufnr = bufnr
+                            vim.api.nvim_win_set_buf(current_winid, bufnr)
+                            return current_winid
+                        end,
+                    }, { "return true" })
+                end
+
+                show_suggestion()
+                local handlers = SessionManager._build_handlers(session)
+                handlers.on_request_permission({
+                    toolCall = { toolCallId = tool_call_id },
+                    options = {},
+                }, function() end)
+                assert.is_not_nil(permission_callback)
+                permission_callback("allow_once")
+                show_suggestion()
+                local real_bufnr = vim.fn.bufadd(file_path)
+                vim.fn.bufload(real_bufnr)
+                restore_keymaps_spy = spy.on(HunkNavigation, "restore_keymaps")
+
+                SessionManager._on_tool_call_update(session, {
+                    tool_call_id = tool_call_id,
+                    status = "completed",
+                })
+
+                local suggestion_is_valid = suggestion_bufnr ~= nil
+                    and vim.api.nvim_buf_is_valid(suggestion_bufnr)
+                local displayed_bufnr = vim.api.nvim_win_get_buf(current_winid)
+                local displayed_name =
+                    vim.api.nvim_buf_get_name(displayed_bufnr)
+                local restored_owner = restore_keymaps_spy:called_with(
+                    suggestion_bufnr,
+                    session.diff_coordinator.diff_state
+                )
+
+                pcall(vim.api.nvim_win_set_buf, current_winid, original_bufnr)
+                if suggestion_bufnr then
+                    pcall(
+                        vim.api.nvim_buf_delete,
+                        suggestion_bufnr,
+                        { force = true }
+                    )
+                end
+                if displayed_bufnr ~= original_bufnr then
+                    pcall(
+                        vim.api.nvim_buf_delete,
+                        displayed_bufnr,
+                        { force = true }
+                    )
+                end
+
+                assert.is_false(suggestion_is_valid)
+                assert.is_true(restored_owner)
+                assert.is_nil(session.diff_coordinator.diff_state.preview_bufnr)
+                assert.is_nil(session.diff_coordinator.diff_state.preview_winid)
+                assert.equal(real_bufnr, displayed_bufnr)
+                assert.equal(
+                    vim.fn.fnamemodify(file_path, ":t"),
+                    vim.fn.fnamemodify(displayed_name, ":t")
+                )
+            end
+        )
         it(
             "removes pending permission on failed and completed tool-call updates",
             function()
@@ -2131,7 +2242,7 @@ describe("agentic.SessionManager", function()
         )
     end)
 
-    describe("destroy", function()
+    describe("destroy during async bootstrap", function()
         local Config = require("agentic.config")
         --- @type TestStub
         local get_instance_stub

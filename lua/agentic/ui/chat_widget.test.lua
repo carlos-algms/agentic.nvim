@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
@@ -1870,8 +1871,6 @@ end)
 -- Child process: `rotate_layout` restores the cursor inside `vim.schedule`;
 -- flushing in-process pumps mini.test's own queue (measured: a later file's case
 -- ran inside this one). `references/async-tests.md` prescribes a child here.
-local Child = require("tests.helpers.child")
-
 describe(
     "agentic.ui.ChatWidget rotate_layout cursor restore (child)",
     function()
@@ -2084,6 +2083,49 @@ describe("agentic.ui.ChatWidget deferred cursor move (child)", function()
 
         assert.equal(0, child.lua_get("_G.set_current_calls"))
         assert.equal(0, child.lua_get("_G.win_call_calls"))
+        assert.is_false(child.lua_get("_G.cursor_callback_called"))
+    end)
+
+    it("ignores a hidden destination window", function()
+        child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+            _G.current_win = vim.api.nvim_get_current_win()
+            _G.hidden_win = vim.api.nvim_open_win(
+                vim.api.nvim_create_buf(false, true),
+                false,
+                {
+                    relative = "editor",
+                    row = 0,
+                    col = 0,
+                    width = 10,
+                    height = 2,
+                    hide = true,
+                    focusable = false,
+                }
+            )
+            _G.cursor_callback_called = false
+            _G.widget = {
+                win_nrs = { chat = _G.hidden_win },
+                get_visible_tab_id = function()
+                    return vim.api.nvim_get_current_tabpage()
+                end,
+            }
+
+            ChatWidget.move_cursor_to(
+                _G.widget,
+                _G.hidden_win,
+                function()
+                    _G.cursor_callback_called = true
+                end
+            )
+        ]])
+
+        child.flush()
+
+        assert.equal(
+            child.lua_get("_G.current_win"),
+            child.lua_get("vim.api.nvim_get_current_win()")
+        )
         assert.is_false(child.lua_get("_G.cursor_callback_called"))
     end)
 end)
