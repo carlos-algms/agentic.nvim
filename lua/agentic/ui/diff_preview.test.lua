@@ -586,12 +586,16 @@ describe("diff_preview owner isolation", function()
     --- @param path string
     --- @param state agentic.ui.DiffState|nil
     --- @param line string
-    local function show_new(path, state, line)
+    --- @param can_open boolean|nil
+    local function show_new(path, state, line, can_open)
         DiffPreview.show_diff({
             file_path = path,
             diff = { old = {}, new = { line } },
             state = state,
             get_winid = function(bufnr)
+                if can_open == false then
+                    return nil
+                end
                 local winid = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_buf(winid, bufnr)
                 return winid
@@ -603,8 +607,9 @@ describe("diff_preview owner isolation", function()
     --- @param state agentic.ui.DiffState
     --- @param line string
     --- @param tabpage integer|nil
+    --- @param can_open boolean|nil
     --- @return integer bufnr
-    local function show_existing(path, state, line, tabpage)
+    local function show_existing(path, state, line, tabpage, can_open)
         fs_stat_stub:returns({ type = "file" })
         local bufnr = vim.fn.bufadd(path)
         vim.fn.bufload(bufnr)
@@ -624,6 +629,9 @@ describe("diff_preview owner isolation", function()
             state = state,
             tabpage = tabpage,
             get_winid = function(target)
+                if can_open == false then
+                    return nil
+                end
                 local winid = vim.api.nvim_get_current_win()
                 vim.api.nvim_win_set_buf(winid, target)
                 return winid
@@ -672,6 +680,46 @@ describe("diff_preview owner isolation", function()
         )
     end)
 
+    it(
+        "replaces a different new-file suggestion only after its target opens",
+        function()
+            local first_path = vim.fn.tempname() .. ".lua"
+            local second_path = vim.fn.tempname() .. ".lua"
+            --- @type agentic.ui.DiffState
+            local state = {}
+
+            show_new(first_path, state, "first")
+            local first_bufnr = state.preview_bufnr
+            assert.is_not_nil(first_bufnr)
+            ---@cast first_bufnr integer
+
+            show_new(second_path, state, "second", false)
+
+            assert.equal(first_bufnr, state.preview_bufnr)
+            assert.is_true(vim.api.nvim_buf_is_valid(first_bufnr))
+            assert.equal(
+                tostring(state),
+                vim.b[first_bufnr]._agentic_inline_diff_owner
+            )
+
+            show_new(second_path, state, "second")
+
+            local second_bufnr = state.preview_bufnr
+            assert.is_not_nil(second_bufnr)
+            ---@cast second_bufnr integer
+            assert.is_not.equal(first_bufnr, second_bufnr)
+            assert.is_false(vim.api.nvim_buf_is_valid(first_bufnr))
+            assert.equal(
+                tostring(state),
+                vim.b[second_bufnr]._agentic_inline_diff_owner
+            )
+            assert.equal(
+                second_path,
+                vim.b[second_bufnr]._agentic_suggestion_for
+            )
+        end
+    )
+
     it("rejects a second owner for an existing-file inline preview", function()
         local path = vim.fn.tempname() .. ".lua"
         --- @type agentic.ui.DiffState
@@ -718,6 +766,53 @@ describe("diff_preview owner isolation", function()
                 vim.b[bufnr]._agentic_inline_diff_owner
             )
             assert.is_not.same(before, after)
+        end
+    )
+
+    it(
+        "retires a different existing-file preview only after its target opens",
+        function()
+            local first_path = vim.fn.tempname() .. ".lua"
+            local second_path = vim.fn.tempname() .. ".lua"
+            --- @type agentic.ui.DiffState
+            local state = {}
+            local first_bufnr = show_existing(first_path, state, "local x = 2")
+            local namespace =
+                vim.api.nvim_create_namespace("agentic_diff_preview")
+            local first_marks =
+                vim.api.nvim_buf_get_extmarks(first_bufnr, namespace, 0, -1, {})
+            assert.is_true(#first_marks > 0)
+
+            show_existing(second_path, state, "local x = 3", nil, false)
+
+            assert.equal(first_bufnr, state.preview_bufnr)
+            assert.equal(
+                tostring(state),
+                vim.b[first_bufnr]._agentic_inline_diff_owner
+            )
+            assert.is_false(vim.bo[first_bufnr].modifiable)
+
+            local second_bufnr =
+                show_existing(second_path, state, "local x = 3")
+
+            assert.equal(second_bufnr, state.preview_bufnr)
+            assert.is_nil(vim.b[first_bufnr]._agentic_inline_diff_owner)
+            assert.is_nil(vim.b[first_bufnr]._agentic_prev_modifiable)
+            assert.is_true(vim.bo[first_bufnr].modifiable)
+            assert.same(
+                {},
+                vim.api.nvim_buf_get_extmarks(first_bufnr, namespace, 0, -1, {})
+            )
+
+            local found_navigation = false
+            for _, keymap in
+                ipairs(vim.api.nvim_buf_get_keymap(first_bufnr, "n"))
+            do
+                if keymap.lhs == Config.keymaps.diff_preview.next_hunk then
+                    found_navigation = true
+                end
+            end
+            assert.is_false(found_navigation)
         end
     )
 

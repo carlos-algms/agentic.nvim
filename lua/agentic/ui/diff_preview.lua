@@ -27,6 +27,66 @@ local function state_identity(state)
     return state and tostring(state):gsub("^table: ", "") or LEGACY_OWNER
 end
 
+--- @param bufnr integer
+local function delete_buffer_without_closing_windows(bufnr)
+    -- EVERY window, not just the painted one: `nvim_buf_delete(force)` closes
+    -- each window still holding the buffer.
+    for _, buf_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
+        if BufHelpers.is_win_usable(buf_winid) then
+            local ok, alt = pcall(vim.api.nvim_win_call, buf_winid, function()
+                return vim.fn.bufnr("#")
+            end)
+            local target_buf = (ok and alt ~= -1 and alt ~= bufnr) and alt
+                or vim.api.nvim_create_buf(true, true)
+            pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
+        end
+    end
+    pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+end
+
+--- @param state agentic.ui.DiffState|nil
+--- @param next_bufnr integer
+local function retire_previous_inline_preview(state, next_bufnr)
+    if not state then
+        return
+    end
+
+    local previous_bufnr = state.preview_bufnr
+    if not previous_bufnr or previous_bufnr == next_bufnr then
+        return
+    end
+
+    if not vim.api.nvim_buf_is_valid(previous_bufnr) then
+        state.preview_bufnr = nil
+        state.preview_winid = nil
+        return
+    end
+
+    if vim.b[previous_bufnr]._agentic_inline_diff_owner ~= owner_for(state) then
+        state.preview_bufnr = nil
+        state.preview_winid = nil
+        return
+    end
+
+    local is_suggestion = vim.b[previous_bufnr]._agentic_suggestion_for ~= nil
+    HunkNavigation.restore_keymaps(previous_bufnr, state)
+    pcall(vim.api.nvim_buf_clear_namespace, previous_bufnr, NS_DIFF, 0, -1)
+    vim.b[previous_bufnr]._agentic_inline_diff_owner = nil
+
+    if is_suggestion then
+        delete_buffer_without_closing_windows(previous_bufnr)
+    else
+        local prev_modifiable = vim.b[previous_bufnr]._agentic_prev_modifiable
+        if prev_modifiable ~= nil then
+            vim.bo[previous_bufnr].modifiable = prev_modifiable
+            vim.b[previous_bufnr]._agentic_prev_modifiable = nil
+        end
+    end
+
+    state.preview_bufnr = nil
+    state.preview_winid = nil
+end
+
 --- @param file_path string
 --- @param state agentic.ui.DiffState|nil
 --- @return integer bufnr
@@ -313,6 +373,7 @@ function M.show_diff(opts)
         return
     end
 
+    retire_previous_inline_preview(opts.state, bufnr)
     M.clear_diff(bufnr, nil, opts.state)
 
     for _, block in ipairs(diff_blocks) do
@@ -469,30 +530,7 @@ function M.clear_diff(buf, is_rejection, state)
         local stat = file_path ~= "" and vim.uv.fs_stat(file_path)
 
         if not stat then
-            -- EVERY window, not just the painted one: `nvim_buf_delete(force)`
-            -- closes each window still holding the buffer. `win_findbuf` is
-            -- tab-agnostic on purpose — that window may be in another tabpage.
-            for _, buf_winid in ipairs(vim.fn.win_findbuf(bufnr)) do
-                -- An earlier swap fires autocmds that can close a later window
-                -- in this snapshot; a dead window needs no swap.
-                if BufHelpers.is_win_usable(buf_winid) then
-                    -- The TARGET window's alternate buffer, not the current one's.
-                    local ok, alt = pcall(
-                        vim.api.nvim_win_call,
-                        buf_winid,
-                        function()
-                            return vim.fn.bufnr("#")
-                        end
-                    )
-
-                    local target_buf = (ok and alt ~= -1 and alt ~= bufnr)
-                            and alt
-                        or vim.api.nvim_create_buf(true, true)
-
-                    pcall(vim.api.nvim_win_set_buf, buf_winid, target_buf)
-                end
-            end
-            pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            delete_buffer_without_closing_windows(bufnr)
         end
     end
 end
@@ -634,6 +672,7 @@ function M._show_new_file_diff(opts, new_lines)
         pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
         return
     end
+    retire_previous_inline_preview(opts.state, bufnr)
     if opts.state then
         opts.state.preview_bufnr = bufnr
         opts.state.preview_winid = winid
