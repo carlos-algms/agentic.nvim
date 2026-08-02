@@ -208,13 +208,25 @@ end
 --- @param diff_state agentic.ui.DiffState|nil
 local function navigate_hunk(bufnr, direction, diff_state)
     local split_state = find_split_state_for_buf(bufnr, diff_state)
-    local painted_winid = diff_state
-        and (
-            diff_state.preview_winid
-            or split_state and split_state.original_winid
-        )
+    local painted_winid
+    if diff_state then
+        if split_state then
+            painted_winid = split_state.original_bufnr == bufnr
+                    and split_state.original_winid
+                or split_state.new_winid
+        elseif diff_state.preview_bufnr == bufnr then
+            painted_winid = diff_state.preview_winid
+        else
+            return
+        end
+
+        if not painted_winid then
+            return
+        end
+    end
+
     local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
-    if painted_winid and target_winid ~= painted_winid then
+    if diff_state and target_winid ~= painted_winid then
         return
     end
     if not target_winid then

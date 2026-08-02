@@ -1453,6 +1453,81 @@ describe("agentic.SessionManager", function()
         end)
 
         it(
+            "accepts its new-file suggestion before clearing diff ownership",
+            function()
+                cleanup_suggestion_buffer_stub:revert()
+
+                local DiffCoordinator = require("agentic.ui.diff_coordinator")
+                local file_path = "/tmp/agentic-completed-new-file-"
+                    .. tostring(vim.uv.hrtime())
+                    .. ".lua"
+                local tool_call_id = "tc-new-file"
+                local tracker = {
+                    tool_call_id = tool_call_id,
+                    kind = "edit",
+                    status = "in_progress",
+                    file_path = file_path,
+                    diff = { changed_pairs = {} },
+                }
+                local session = make_session({ [tool_call_id] = tracker })
+                local current_winid = vim.api.nvim_get_current_win()
+                local original_bufnr = vim.api.nvim_get_current_buf()
+                local suggestion_bufnr
+
+                session.diff_coordinator = DiffCoordinator:new(
+                    { buf_nrs = {} } --[[@as agentic.ui.ChatWidget]],
+                    session.message_writer --[[@as agentic.ui.MessageWriter]],
+                    function()
+                        return vim.api.nvim_get_current_tabpage()
+                    end
+                )
+                DiffPreview._show_new_file_diff({
+                    file_path = file_path,
+                    diff = { changed_pairs = {} },
+                    state = session.diff_coordinator.diff_state,
+                    get_winid = function(bufnr)
+                        suggestion_bufnr = bufnr
+                        vim.api.nvim_win_set_buf(current_winid, bufnr)
+                        return current_winid
+                    end,
+                }, { "return true" })
+
+                SessionManager._on_tool_call_update(session, {
+                    tool_call_id = tool_call_id,
+                    status = "completed",
+                })
+
+                local suggestion_is_valid = suggestion_bufnr ~= nil
+                    and vim.api.nvim_buf_is_valid(suggestion_bufnr)
+                local displayed_bufnr = vim.api.nvim_win_get_buf(current_winid)
+                local displayed_name =
+                    vim.api.nvim_buf_get_name(displayed_bufnr)
+
+                pcall(vim.api.nvim_win_set_buf, current_winid, original_bufnr)
+                if suggestion_bufnr then
+                    pcall(
+                        vim.api.nvim_buf_delete,
+                        suggestion_bufnr,
+                        { force = true }
+                    )
+                end
+                if displayed_bufnr ~= original_bufnr then
+                    pcall(
+                        vim.api.nvim_buf_delete,
+                        displayed_bufnr,
+                        { force = true }
+                    )
+                end
+
+                assert.is_false(suggestion_is_valid)
+                assert.equal(
+                    vim.fn.fnamemodify(file_path, ":t"),
+                    vim.fn.fnamemodify(displayed_name, ":t")
+                )
+            end
+        )
+
+        it(
             "removes pending permission on failed and completed tool-call updates",
             function()
                 for _, status in ipairs({ "failed", "completed" }) do

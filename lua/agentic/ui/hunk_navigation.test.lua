@@ -235,6 +235,57 @@ describe("hunk_navigation", function()
         end)
 
         it(
+            "does not navigate a buffer unowned by the provided state",
+            function()
+                add_hunk(test_bufnr, test_ns, 10)
+
+                HunkNavigation.navigate_next(test_bufnr, {})
+
+                assert.equal(1, vim.api.nvim_win_get_cursor(winid)[1])
+            end
+        )
+
+        it("prefers an owned split window over the inline preview", function()
+            local preview_bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_lines(
+                preview_bufnr,
+                0,
+                -1,
+                false,
+                { "preview" }
+            )
+            local preview_winid = vim.api.nvim_open_win(
+                preview_bufnr,
+                false,
+                { split = "right", win = winid }
+            )
+            local win_call_stub = spy_module.stub(vim.api, "nvim_win_call")
+            add_hunk(test_bufnr, test_ns, 10)
+
+            HunkNavigation.navigate_next(test_bufnr, {
+                preview_bufnr = preview_bufnr,
+                preview_winid = preview_winid,
+                split_state = {
+                    ["/tmp/owned-split.lua"] = {
+                        original_bufnr = test_bufnr,
+                        original_winid = winid,
+                        new_bufnr = preview_bufnr,
+                        new_winid = preview_winid,
+                        file_path = "/tmp/owned-split.lua",
+                    },
+                },
+            })
+
+            local called_winid = win_call_stub.calls[1]
+                and win_call_stub.calls[1][1]
+            win_call_stub:revert()
+            pcall(vim.api.nvim_win_close, preview_winid, true)
+            pcall(vim.api.nvim_buf_delete, preview_bufnr, { force = true })
+
+            assert.equal(winid, called_winid)
+        end)
+
+        it(
             "navigates prev to closest hunk when cursor is between hunks",
             function()
                 add_hunk(test_bufnr, test_ns, 1)
