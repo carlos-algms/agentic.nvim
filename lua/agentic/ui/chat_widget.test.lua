@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
@@ -1212,6 +1213,68 @@ describe("agentic.ui.ChatWidget", function()
             assert.is_true(panels.files)
         end)
     end)
+end)
+
+describe("agentic.ui.ChatWidget foreign cached windows (child)", function()
+    local child = Child.new()
+
+    before_each(function()
+        child.setup()
+    end)
+
+    after_each(function()
+        child.stop()
+    end)
+
+    it(
+        "keeps replacement windows open after deferred WinClosed callbacks",
+        function()
+            local replacement_windows = child.lua([[
+            local ChatWidget = require("agentic.ui.chat_widget")
+
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            local widget = ChatWidget:new(owner_tab, function()
+                return true
+            end)
+            widget:show({ focus_prompt = false })
+
+            vim.bo[widget.buf_nrs.code].modifiable = true
+            vim.api.nvim_buf_set_lines(
+                widget.buf_nrs.code,
+                0,
+                -1,
+                false,
+                { "diff" }
+            )
+
+            vim.cmd("tabnew")
+            local foreign_chat = vim.api.nvim_get_current_win()
+            local foreign_code = vim.api.nvim_open_win(
+                vim.api.nvim_create_buf(false, true),
+                false,
+                { split = "right", win = foreign_chat }
+            )
+            vim.api.nvim_open_win(
+                vim.api.nvim_create_buf(false, true),
+                false,
+                { split = "right", win = foreign_code }
+            )
+
+            vim.api.nvim_set_current_tabpage(owner_tab)
+            widget.win_nrs.chat = foreign_chat
+            widget.win_nrs.code = foreign_code
+            widget:show({ focus_prompt = false })
+
+            return { widget.win_nrs.chat, widget.win_nrs.code }
+        ]])
+
+            child.flush()
+
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[1]))
+            assert.is_true(child.api.nvim_win_is_valid(replacement_windows[2]))
+        end
+    )
 end)
 
 describe("agentic.ui.ChatWidget deferred window guards", function()

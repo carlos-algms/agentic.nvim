@@ -181,6 +181,7 @@ local function get_or_create_window(
         if ok and cached_tabpage == tab_page_id then
             return cached_winid
         end
+        win_nrs[panel_name] = nil
         pcall(vim.api.nvim_win_close, cached_winid, true)
     end
 
@@ -223,8 +224,8 @@ local function open_or_resize_dynamic_window(
         local ok, win_tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
         reusable = ok and win_tabpage == tab_page_id
         if not reusable then
-            pcall(vim.api.nvim_win_close, winid, true)
             win_nrs[window_name] = nil
+            pcall(vim.api.nvim_win_close, winid, true)
         end
     end
 
