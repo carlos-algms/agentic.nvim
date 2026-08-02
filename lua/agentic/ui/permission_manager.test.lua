@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible
+--- @diagnostic disable: invisible, missing-fields, param-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local PermissionSection = require("tests.helpers.permission_section")
@@ -20,6 +20,11 @@ describe("agentic.ui.PermissionManager", function()
     local schedule_stub
     --- @type TestSpy|nil
     local cmd_spy
+    local own_win
+    --- @type table<integer, true>
+    local baseline_tabs
+    --- @type agentic.ui.ChatWidget|nil
+    local registered_owner
 
     --- Build a permission request with the given tool_call_id. Defaults to
     --- one allow_once + one reject_once option; pass opts.options to override.
@@ -83,6 +88,13 @@ describe("agentic.ui.PermissionManager", function()
     end
 
     before_each(function()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        own_win = nil
+        registered_owner = nil
+
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(fn)
             fn()
@@ -114,12 +126,85 @@ describe("agentic.ui.PermissionManager", function()
 
         schedule_stub:revert()
 
+        if registered_owner then
+            require("agentic.ui.widget_registry").unregister(registered_owner)
+        end
+
+        if own_win and vim.api.nvim_win_is_valid(own_win) then
+            vim.api.nvim_win_close(own_win, true)
+        end
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
         end
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
+    end)
+
+    describe("registered chat owner", function()
+        it("returns the owning widget's visible chat window", function()
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            own_win = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 20,
+                row = 0,
+                col = 0,
+            })
+            registered_owner = {
+                tab_page_id = owner_tab,
+                buf_nrs = { chat = bufnr },
+                win_nrs = { chat = own_win },
+            }
+            WidgetRegistry.register(registered_owner)
+
+            assert.equal(own_win, pm:_find_visible_chat_winid())
+        end)
+
+        it(
+            "returns nil for a hidden owner with a foreign visible copy",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                registered_owner = {
+                    tab_page_id = vim.api.nvim_get_current_tabpage(),
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = {},
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
+
+        it(
+            "rejects an owner window outside the owner's stored tabpage",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                vim.cmd("tabnew")
+                local owner_tab = vim.api.nvim_get_current_tabpage()
+                vim.cmd("tabprevious")
+                registered_owner = {
+                    tab_page_id = owner_tab,
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = { chat = winid },
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
     end)
 
     describe("concurrent pending map", function()
