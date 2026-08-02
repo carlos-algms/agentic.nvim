@@ -127,6 +127,28 @@ describe("BufferGuard", function()
     local tempfiles
     local saved_options
 
+    --- @param tabpage integer
+    --- @param bufnr integer
+    --- @param winid integer
+    --- @return agentic.ui.ChatWidget widget
+    local function register_foreign_widget(tabpage, bufnr, winid)
+        --- @type any
+        local widget = {
+            tab_page_id = tabpage,
+            buf_nrs = { chat = bufnr },
+            win_nrs = { chat = winid },
+            find_first_non_widget_window = function()
+                return winid
+            end,
+            open_editor_window = function()
+                return nil
+            end,
+        }
+        extra_widgets[#extra_widgets + 1] = widget
+        WidgetRegistry.register(widget)
+        return widget
+    end
+
     before_each(function()
         active_setups = {}
         baseline_tabs = {}
@@ -373,20 +395,8 @@ describe("BufferGuard", function()
         vim.cmd("tabnew")
         local foreign_tab = vim.api.nvim_get_current_tabpage()
         local foreign_win = vim.api.nvim_get_current_win()
-        --- @type any
-        local foreign_widget = {
-            tab_page_id = foreign_tab,
-            buf_nrs = { chat = expected },
-            win_nrs = { chat = foreign_win },
-            find_first_non_widget_window = function()
-                return foreign_win
-            end,
-            open_editor_window = function()
-                return nil
-            end,
-        }
-        extra_widgets[#extra_widgets + 1] = foreign_widget
-        WidgetRegistry.register(foreign_widget)
+        local foreign_widget =
+            register_foreign_widget(foreign_tab, expected, foreign_win)
 
         vim.api.nvim_set_current_tabpage(s.tab)
         vim.api.nvim_set_current_win(s.wins.chat)
@@ -404,20 +414,8 @@ describe("BufferGuard", function()
         vim.cmd("tabnew")
         local foreign_tab = vim.api.nvim_get_current_tabpage()
         local foreign_win = vim.api.nvim_get_current_win()
-        --- @type any
-        local foreign_widget = {
-            tab_page_id = foreign_tab,
-            buf_nrs = { chat = expected },
-            win_nrs = { chat = foreign_win },
-            find_first_non_widget_window = function()
-                return foreign_win
-            end,
-            open_editor_window = function()
-                return nil
-            end,
-        }
-        extra_widgets[#extra_widgets + 1] = foreign_widget
-        WidgetRegistry.register(foreign_widget)
+        local foreign_widget =
+            register_foreign_widget(foreign_tab, expected, foreign_win)
 
         vim.api.nvim_set_current_tabpage(s.tab)
         vim.api.nvim_set_current_win(s.wins.chat)
