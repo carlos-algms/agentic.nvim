@@ -4,6 +4,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local ToolBlockBorder = require("agentic.ui.tool_block_border")
+local BufHelpers = require("agentic.utils.buf_helpers")
 
 describe("WidgetLayout", function()
     local notify_stub
@@ -552,5 +553,101 @@ describe("WidgetLayout", function()
                 end
             )
         end)
+    end)
+end)
+
+describe("WidgetLayout deferred window guards", function()
+    local schedule_stub
+    local scheduled
+    local base_tabs
+
+    --- @return agentic.ui.ChatWidget.BufNrs
+    local function make_buffers()
+        return {
+            chat = vim.api.nvim_create_buf(false, true),
+            input = vim.api.nvim_create_buf(false, true),
+            code = vim.api.nvim_create_buf(false, true),
+            files = vim.api.nvim_create_buf(false, true),
+            diagnostics = vim.api.nvim_create_buf(false, true),
+            todos = vim.api.nvim_create_buf(false, true),
+        }
+    end
+
+    before_each(function()
+        base_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tabs[tabpage] = true
+        end
+        scheduled = nil
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled = callback
+        end)
+    end)
+
+    after_each(function()
+        schedule_stub:revert()
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+    end)
+
+    it("replaces a cached handle owned by another tabpage", function()
+        vim.cmd("tabnew")
+        local foreign_win = vim.api.nvim_get_current_win()
+        vim.cmd("tabnew")
+        local owner_tab = vim.api.nvim_get_current_tabpage()
+        local win_nrs = { chat = foreign_win }
+
+        WidgetLayout.open({
+            tab_page_id = owner_tab,
+            buf_nrs = make_buffers(),
+            win_nrs = win_nrs,
+            position = "right",
+            focus_prompt = false,
+        })
+
+        assert.is_not.equal(foreign_win, win_nrs.chat)
+        assert.equal(owner_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
+    end)
+
+    it("does not focus input after the current tab changes", function()
+        vim.cmd("tabnew")
+        local owner_tab = vim.api.nvim_get_current_tabpage()
+        local win_nrs = {}
+        WidgetLayout.open({
+            tab_page_id = owner_tab,
+            buf_nrs = make_buffers(),
+            win_nrs = win_nrs,
+            position = "right",
+            focus_prompt = true,
+        })
+        assert.equal("function", type(scheduled))
+
+        vim.cmd("tabnew")
+        local foreign_tab = vim.api.nvim_get_current_tabpage()
+        scheduled()
+
+        assert.equal(foreign_tab, vim.api.nvim_get_current_tabpage())
+    end)
+
+    it("gates close through window usability", function()
+        vim.cmd("tabnew")
+        local winid = vim.api.nvim_get_current_win()
+        local usable_stub = spy.stub(BufHelpers, "is_win_usable")
+        usable_stub:returns(false)
+        local close_stub = spy.stub(vim.api, "nvim_win_close")
+
+        WidgetLayout.close({ chat = winid })
+
+        assert.spy(usable_stub).was.called_with(winid)
+        assert.spy(close_stub).was.called(0)
+        usable_stub:revert()
+        close_stub:revert()
     end)
 end)

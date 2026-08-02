@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local spy_module = require("tests.helpers.spy")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local HunkNavigation = require("agentic.ui.hunk_navigation")
 local Theme = require("agentic.theme")
@@ -203,6 +204,36 @@ describe("hunk_navigation", function()
             assert.equal(cursor[2], 0)
         end)
 
+        it("uses the painted window from the provided owner state", function()
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            local owner_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(owner_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(owner_win, { 1, 0 })
+
+            vim.cmd("tabnew")
+            local foreign_tab = vim.api.nvim_get_current_tabpage()
+            local foreign_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(foreign_win, test_bufnr)
+            vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+            add_hunk(test_bufnr, test_ns, 10)
+
+            HunkNavigation.navigate_next(test_bufnr, {
+                preview_bufnr = test_bufnr,
+                preview_winid = owner_win,
+            })
+
+            assert.equal(11, vim.api.nvim_win_get_cursor(owner_win)[1])
+            assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+
+            vim.api.nvim_set_current_tabpage(foreign_tab)
+            vim.cmd("tabclose!")
+            if vim.api.nvim_tabpage_is_valid(owner_tab) then
+                vim.api.nvim_set_current_tabpage(owner_tab)
+                vim.cmd("tabclose!")
+            end
+        end)
+
         it(
             "navigates prev to closest hunk when cursor is between hunks",
             function()
@@ -405,6 +436,135 @@ describe("hunk_navigation", function()
                 assert.equal(after_next.rhs, original_rhs)
             end
             assert.equal(next(after_prev), nil)
+        end)
+
+        it("preserves the original keymap across repeated setup", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'original'<CR>"
+            )
+            local original = get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
+
+            assert.equal(
+                original,
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+        end)
+
+        it("keeps one entry for repeated setup by the same owner", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'original'<CR>"
+            )
+            --- @type agentic.ui.DiffState
+            local state = {}
+
+            HunkNavigation.setup_keymaps(test_bufnr, state)
+            HunkNavigation.setup_keymaps(test_bufnr, state)
+            HunkNavigation.restore_keymaps(test_bufnr, state)
+
+            assert.equal(
+                ":echo 'original'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+        end)
+
+        it("restores noremap silent expr and nowait", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                "v:count",
+                { noremap = true, silent = true, expr = true, nowait = true }
+            )
+
+            HunkNavigation.setup_keymaps(test_bufnr, nil)
+            HunkNavigation.restore_keymaps(test_bufnr, nil)
+
+            local restored = get_keymap_in_buf(test_bufnr, "<leader>hn")
+            assert.equal(1, restored.noremap)
+            assert.equal(1, restored.silent)
+            assert.equal(1, restored.expr)
+            assert.equal(1, restored.nowait)
+        end)
+
+        it(
+            "keeps the newer owner callback when the older owner clears",
+            function()
+                --- @type agentic.ui.DiffState
+                local older = {}
+                --- @type agentic.ui.DiffState
+                local newer = {}
+                local navigate_spy =
+                    spy_module.on(HunkNavigation, "navigate_next")
+
+                HunkNavigation.setup_keymaps(test_bufnr, older)
+                HunkNavigation.setup_keymaps(test_bufnr, newer)
+                HunkNavigation.restore_keymaps(test_bufnr, older)
+
+                local mapping = get_keymap_in_buf(test_bufnr, "<leader>hn")
+                assert.equal("function", type(mapping.callback))
+                mapping.callback()
+                assert.spy(navigate_spy).was.called_with(test_bufnr, newer)
+                navigate_spy:revert()
+            end
+        )
+
+        it(
+            "reinstalls the older owner callback when the newer owner clears",
+            function()
+                --- @type agentic.ui.DiffState
+                local older = {}
+                --- @type agentic.ui.DiffState
+                local newer = {}
+                local navigate_spy =
+                    spy_module.on(HunkNavigation, "navigate_next")
+
+                HunkNavigation.setup_keymaps(test_bufnr, older)
+                HunkNavigation.setup_keymaps(test_bufnr, newer)
+                HunkNavigation.restore_keymaps(test_bufnr, newer)
+
+                local mapping = get_keymap_in_buf(test_bufnr, "<leader>hn")
+                assert.equal("function", type(mapping.callback))
+                mapping.callback()
+                assert.spy(navigate_spy).was.called_with(test_bufnr, older)
+                navigate_spy:revert()
+            end
+        )
+
+        it("restores the user mapping after the final owner clears", function()
+            BufHelpers.keymap_set(
+                test_bufnr,
+                "n",
+                "<leader>hn",
+                ":echo 'user'<CR>"
+            )
+            --- @type agentic.ui.DiffState
+            local first = {}
+            --- @type agentic.ui.DiffState
+            local second = {}
+
+            HunkNavigation.setup_keymaps(test_bufnr, first)
+            HunkNavigation.setup_keymaps(test_bufnr, second)
+            HunkNavigation.restore_keymaps(test_bufnr, first)
+            assert.is_not.equal(
+                ":echo 'user'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
+            HunkNavigation.restore_keymaps(test_bufnr, second)
+
+            assert.equal(
+                ":echo 'user'<CR>",
+                get_keymap_in_buf(test_bufnr, "<leader>hn").rhs
+            )
         end)
 
         it("clears state after restore", function()

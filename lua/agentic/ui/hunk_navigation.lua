@@ -17,6 +17,9 @@ local NS_DIFF = M.NS_DIFF
 --- @class agentic.ui.HunkNavigation.State
 --- @field saved_keymaps { next?: table, prev?: table } Saved keymaps for restoration
 --- @field anchors_cache integer[]|nil Cached hunk anchor positions (0-indexed line numbers)
+--- @field saved_keymaps_captured boolean
+--- @field owners { key: string, state: agentic.ui.DiffState|nil }[]
+--- @field owner_lookup table<string, boolean>
 
 --- Module-level state storage (per-buffer)
 --- @type table<number, agentic.ui.HunkNavigation.State>
@@ -30,6 +33,9 @@ local function get_state(bufnr)
         buffer_state[bufnr] = {
             saved_keymaps = {},
             anchors_cache = nil,
+            saved_keymaps_captured = false,
+            owners = {},
+            owner_lookup = {},
         }
     end
     return buffer_state[bufnr]
@@ -106,15 +112,16 @@ end
 --- Find next/previous hunk position relative to buffer's cursor position
 --- @param bufnr number
 --- @param direction "next"|"prev"
+--- @param preferred_winid integer|nil
 --- @return number|nil target_line 1-indexed line number
-local function find_hunk(bufnr, direction)
+local function find_hunk(bufnr, direction, preferred_winid)
     local anchors = M._get_hunk_anchors(bufnr)
     if #anchors == 0 then
         return nil
     end
 
-    local winid = vim.fn.bufwinid(bufnr)
-    if winid == -1 then
+    local winid = BufHelpers.find_visible_win(bufnr, preferred_winid)
+    if not winid then
         return nil
     end
 
@@ -183,44 +190,57 @@ end
 
 --- Navigate to hunk in specified direction
 --- @param bufnr number
+--- @param diff_state agentic.ui.DiffState|nil
+local function find_split_state_for_buf(bufnr, diff_state)
+    local split_states = diff_state and diff_state.split_state
+    if not split_states then
+        return nil
+    end
+    for _, state in pairs(split_states) do
+        if state.original_bufnr == bufnr or state.new_bufnr == bufnr then
+            return state
+        end
+    end
+    return nil
+end
+
 --- @param direction "next"|"prev"
-local function navigate_hunk(bufnr, direction)
-    local target_winid = vim.fn.bufwinid(bufnr)
-    if target_winid == -1 then
+--- @param diff_state agentic.ui.DiffState|nil
+local function navigate_hunk(bufnr, direction, diff_state)
+    local split_state = find_split_state_for_buf(bufnr, diff_state)
+    local painted_winid = diff_state
+        and (
+            diff_state.preview_winid
+            or split_state and split_state.original_winid
+        )
+    local target_winid = BufHelpers.find_visible_win(bufnr, painted_winid)
+    if painted_winid and target_winid ~= painted_winid then
+        return
+    end
+    if not target_winid then
         Logger.notify("Buffer not visible in any window", vim.log.levels.WARN)
         return
     end
 
-    if Config.diff_preview.layout == "split" then
-        local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
-        if not ok then
-            return
+    if Config.diff_preview.layout == "split" and split_state then
+        local diff_cmd = direction == "next" and "]c" or "[c"
+        local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"
+            or ""
+
+        local nav_ok = pcall(vim.api.nvim_win_call, target_winid, function()
+            vim.cmd("normal! " .. diff_cmd .. center_cmd)
+        end)
+
+        if not nav_ok then
+            Logger.notify(
+                "No more hunks in this direction",
+                vim.log.levels.INFO
+            )
         end
-
-        local DiffSplitView = require("agentic.ui.diff_split_view")
-        local split_state = DiffSplitView.get_split_state(tabpage)
-
-        if split_state then
-            local diff_cmd = direction == "next" and "]c" or "[c"
-            local center_cmd = Config.diff_preview.center_on_navigate_hunks
-                    and "zz"
-                or ""
-
-            local nav_ok = pcall(vim.api.nvim_win_call, target_winid, function()
-                vim.cmd("normal! " .. diff_cmd .. center_cmd)
-            end)
-
-            if not nav_ok then
-                Logger.notify(
-                    "No more hunks in this direction",
-                    vim.log.levels.INFO
-                )
-            end
-            return
-        end
+        return
     end
 
-    local target_line = find_hunk(bufnr, direction)
+    local target_line = find_hunk(bufnr, direction, target_winid)
     if not target_line then
         Logger.notify("No hunks found", vim.log.levels.INFO)
         return
@@ -264,70 +284,115 @@ end
 
 --- Navigate to next hunk
 --- @param bufnr number
-function M.navigate_next(bufnr)
-    navigate_hunk(bufnr, "next")
+--- @param diff_state agentic.ui.DiffState|nil
+function M.navigate_next(bufnr, diff_state)
+    navigate_hunk(bufnr, "next", diff_state)
 end
 
 --- Navigate to previous hunk
 --- @param bufnr number
-function M.navigate_prev(bufnr)
-    navigate_hunk(bufnr, "prev")
+--- @param diff_state agentic.ui.DiffState|nil
+function M.navigate_prev(bufnr, diff_state)
+    navigate_hunk(bufnr, "prev", diff_state)
+end
+
+local LEGACY_OWNER = "legacy"
+
+--- @param diff_state agentic.ui.DiffState|nil
+--- @return string key
+local function owner_key(diff_state)
+    return diff_state and tostring(diff_state) or LEGACY_OWNER
+end
+
+--- @param bufnr number
+--- @param diff_state agentic.ui.DiffState|nil
+local function install_agentic_keymaps(bufnr, diff_state)
+    local keymaps = Config.keymaps.diff_preview
+    BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
+        M.navigate_next(bufnr, diff_state)
+    end, { desc = "Go to next hunk - " .. M.KEYMAP_DESC_SUFFIX })
+
+    BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
+        M.navigate_prev(bufnr, diff_state)
+    end, { desc = "Go to previous hunk - " .. M.KEYMAP_DESC_SUFFIX })
 end
 
 --- Setup hunk navigation keymaps for buffer
 --- @param bufnr number
-function M.setup_keymaps(bufnr)
+--- @param diff_state agentic.ui.DiffState|nil
+function M.setup_keymaps(bufnr, diff_state)
     local keymaps = Config.keymaps.diff_preview
     local state = get_state(bufnr)
-    state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
-    state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
+    if not state.saved_keymaps_captured then
+        state.saved_keymaps.next = save_keymap(bufnr, keymaps.next_hunk)
+        state.saved_keymaps.prev = save_keymap(bufnr, keymaps.prev_hunk)
+        state.saved_keymaps_captured = true
+    end
 
-    BufHelpers.keymap_set(bufnr, "n", keymaps.next_hunk, function()
-        M.navigate_next(bufnr)
-    end, { desc = "Go to next hunk - " .. M.KEYMAP_DESC_SUFFIX })
-
-    BufHelpers.keymap_set(bufnr, "n", keymaps.prev_hunk, function()
-        M.navigate_prev(bufnr)
-    end, { desc = "Go to previous hunk - " .. M.KEYMAP_DESC_SUFFIX })
+    local key = owner_key(diff_state)
+    if state.owner_lookup[key] then
+        for index, owner in ipairs(state.owners) do
+            if owner.key == key then
+                table.remove(state.owners, index)
+                break
+            end
+        end
+    end
+    state.owners[#state.owners + 1] = { key = key, state = diff_state }
+    state.owner_lookup[key] = true
+    install_agentic_keymaps(bufnr, diff_state)
 end
+
+local RESTORED_KEYMAP_FLAGS = { "noremap", "silent", "expr", "nowait" }
 
 --- Restore saved keymaps for buffer
 --- @param bufnr number
-function M.restore_keymaps(bufnr)
-    local keymaps = Config.keymaps.diff_preview
-    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.next_hunk)
-    pcall(vim.api.nvim_buf_del_keymap, bufnr, "n", keymaps.prev_hunk)
-
+--- @param diff_state agentic.ui.DiffState|nil
+function M.restore_keymaps(bufnr, diff_state)
     local state = buffer_state[bufnr]
-    if state and state.saved_keymaps then
-        for _, saved_map in pairs(state.saved_keymaps) do
-            if saved_map and saved_map.lhs then
-                -- No `buffer` key: `BufHelpers.keymap_set` sets the scope itself,
-                -- and on 0.12.1+ both keys together raise "Conflict: 'buf' not
-                -- allowed with 'buffer'", silently swallowed by the pcall below.
-                local opts = {}
-                if saved_map.noremap == 1 then
-                    opts.noremap = true
-                end
-                if saved_map.silent == 1 then
-                    opts.silent = true
-                end
-                if saved_map.expr == 1 then
-                    opts.expr = true
-                end
-                if saved_map.nowait == 1 then
-                    opts.nowait = true
-                end
+    if not state then
+        return
+    end
 
-                pcall(
-                    BufHelpers.keymap_set,
-                    bufnr,
-                    "n",
-                    saved_map.lhs,
-                    saved_map.callback or saved_map.rhs,
-                    opts
-                )
+    local key = owner_key(diff_state)
+    if not state.owner_lookup[key] then
+        return
+    end
+    state.owner_lookup[key] = nil
+    for index, owner in ipairs(state.owners) do
+        if owner.key == key then
+            table.remove(state.owners, index)
+            break
+        end
+    end
+
+    local keymaps = Config.keymaps.diff_preview
+    BufHelpers.keymap_del(bufnr, "n", keymaps.next_hunk)
+    BufHelpers.keymap_del(bufnr, "n", keymaps.prev_hunk)
+
+    local last_owner = state.owners[#state.owners]
+    if last_owner then
+        install_agentic_keymaps(bufnr, last_owner.state)
+        return
+    end
+
+    for _, saved_map in pairs(state.saved_keymaps) do
+        if saved_map and saved_map.lhs then
+            --- @type vim.keymap.set.Opts
+            local opts = {}
+            for _, flag in ipairs(RESTORED_KEYMAP_FLAGS) do
+                if saved_map[flag] == 1 then
+                    opts[flag] = true
+                end
             end
+            pcall(
+                BufHelpers.keymap_set,
+                bufnr,
+                "n",
+                saved_map.lhs,
+                saved_map.callback or saved_map.rhs,
+                opts
+            )
         end
     end
 

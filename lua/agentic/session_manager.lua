@@ -484,7 +484,10 @@ function SessionManager:_on_tool_call_update(tool_call_update)
         then
             vim.cmd.checktime()
 
-            DiffPreview.cleanup_suggestion_buffer(tracker.file_path)
+            DiffPreview.cleanup_suggestion_buffer(
+                tracker.file_path,
+                self.diff_coordinator.diff_state
+            )
 
             -- Skip the hook during restore replay: the provider replays
             -- historical tool calls as "completed" but no write happened now.

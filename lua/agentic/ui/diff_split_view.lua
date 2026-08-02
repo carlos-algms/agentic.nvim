@@ -1,3 +1,4 @@
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
@@ -7,27 +8,13 @@ local ToolCallDiff = require("agentic.ui.tool_call_diff")
 --- @class agentic.ui.DiffSplitView
 local M = {}
 
---- State for split diff view per tabpage
+--- State for one owned split diff.
 --- @class agentic.ui.DiffSplitView.State
 --- @field original_winid number Window ID of original file buffer
 --- @field original_bufnr number Buffer number of original file
 --- @field new_winid number Window ID of scratch buffer window
 --- @field new_bufnr number Buffer number of scratch buffer
 --- @field file_path string Path to file being diffed
-
---- Get split state from tabpage
---- @param tabpage number Tabpage ID
---- @return agentic.ui.DiffSplitView.State|nil state
-local function get_state(tabpage)
-    return vim.t[tabpage]._agentic_diff_split_state
-end
-
---- Set split state for tabpage
---- @param tabpage number Tabpage ID
---- @param state agentic.ui.DiffSplitView.State|nil State to set (nil to clear)
-local function set_state(tabpage, state)
-    vim.t[tabpage]._agentic_diff_split_state = state
-end
 
 --- Reconstruct full modified file from agent's partial diffs
 --- Uses ToolCallDiff.match_or_substring_fallback for matching, which includes
@@ -88,7 +75,9 @@ local function cleanup_stale_suggestion_buf(suggestion_name)
 
     -- Close any windows displaying the stale buffer
     for _, winid in ipairs(vim.fn.win_findbuf(existing)) do
-        pcall(vim.api.nvim_win_close, winid, true)
+        if BufHelpers.is_win_usable(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
+        end
     end
 
     pcall(vim.api.nvim_buf_delete, existing, { force = true })
@@ -99,9 +88,21 @@ end
 --- @param bufnr number
 --- @param target_winid number
 --- @param modified_lines string[]
+--- @param diff_state agentic.ui.DiffState
 --- @return boolean success
-local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
-    local suggestion_name = abs_path .. " (suggestion)"
+local function open_split_view(
+    abs_path,
+    bufnr,
+    target_winid,
+    modified_lines,
+    diff_state
+)
+    local existing_split = diff_state.split_state
+        and diff_state.split_state[abs_path]
+    local is_new_owner = existing_split == nil
+    local identity = tostring(diff_state):gsub("^table: ", "")
+    local suggestion_name =
+        string.format("%s (suggestion %s)", abs_path, identity)
     cleanup_stale_suggestion_buf(suggestion_name)
 
     local scratch_bufnr = vim.api.nvim_create_buf(false, true)
@@ -131,13 +132,17 @@ local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
     if vim.b[bufnr]._agentic_prev_modified == nil then
         vim.b[bufnr]._agentic_prev_modified = vim.bo[bufnr].modified
     end
+    if is_new_owner then
+        local owner_count = vim.b[bufnr]._agentic_diff_split_owner_count or 0
+        vim.b[bufnr]._agentic_diff_split_owner_count = owner_count + 1
+    end
     vim.bo[bufnr].modifiable = false
     vim.bo[bufnr].modified = true
 
     vim.bo[scratch_bufnr].modifiable = false
 
     vim.schedule(function()
-        if not vim.api.nvim_win_is_valid(target_winid) then
+        if not BufHelpers.is_win_usable(target_winid) then
             return
         end
         local center_cmd = Config.diff_preview.center_on_navigate_hunks and "zz"
@@ -147,18 +152,14 @@ local function open_split_view(abs_path, bufnr, target_winid, modified_lines)
         end)
     end)
 
-    local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, target_winid)
-    if not ok then
-        return false
-    end
-
-    set_state(tabpage, {
+    diff_state.split_state = diff_state.split_state or {}
+    diff_state.split_state[abs_path] = {
         original_winid = target_winid,
         original_bufnr = bufnr,
         new_winid = new_winid,
         new_bufnr = scratch_bufnr,
         file_path = abs_path,
-    })
+    }
 
     return true
 end
@@ -170,16 +171,17 @@ end
 --- on the returned window. See session_manager.lua get_winid for reference.
 --- @param abs_path string
 --- @param get_winid fun(bufnr: number): number|nil
+--- @param tabpage integer|nil
 --- @return number|nil bufnr
 --- @return number|nil target_winid
-local function resolve_buf_and_win(abs_path, get_winid)
+local function resolve_buf_and_win(abs_path, get_winid, tabpage)
     local bufnr = vim.fn.bufnr(abs_path)
     if bufnr == -1 then
         bufnr = vim.fn.bufadd(abs_path)
     end
 
-    local winid = vim.fn.bufwinid(bufnr)
-    local target_winid = winid ~= -1 and winid or get_winid(bufnr)
+    local winid = BufHelpers.find_visible_win(bufnr, nil, tabpage)
+    local target_winid = winid or get_winid(bufnr)
     if not target_winid then
         Logger.debug("show_split_diff: no valid window found")
         return nil, nil
@@ -200,6 +202,9 @@ end
 
 --- @param opts agentic.ui.DiffPreview.ShowOpts
 function M.show_split_diff(opts)
+    if not opts.state then
+        return false
+    end
     local old_lines = ToolCallDiff.normalize_to_lines(opts.diff.old)
     local new_lines = ToolCallDiff.normalize_to_lines(opts.diff.new)
 
@@ -226,12 +231,18 @@ function M.show_split_diff(opts)
         end
 
         local bufnr, target_winid =
-            resolve_buf_and_win(abs_path, opts.get_winid)
+            resolve_buf_and_win(abs_path, opts.get_winid, opts.tabpage)
         if not bufnr or not target_winid then
             return false
         end
 
-        return open_split_view(abs_path, bufnr, target_winid, new_lines)
+        return open_split_view(
+            abs_path,
+            bufnr,
+            target_winid,
+            new_lines,
+            opts.state
+        )
     end
 
     local original_lines, err = FileSystem.read_from_buffer_or_disk(abs_path)
@@ -253,37 +264,56 @@ function M.show_split_diff(opts)
         return false
     end
 
-    local bufnr, target_winid = resolve_buf_and_win(abs_path, opts.get_winid)
+    local bufnr, target_winid =
+        resolve_buf_and_win(abs_path, opts.get_winid, opts.tabpage)
     if not bufnr or not target_winid then
         return false
     end
 
-    return open_split_view(abs_path, bufnr, target_winid, modified_lines)
+    return open_split_view(
+        abs_path,
+        bufnr,
+        target_winid,
+        modified_lines,
+        opts.state
+    )
 end
 
---- @param tabpage number|nil Tabpage ID (defaults to current tabpage)
+--- @param diff_state agentic.ui.DiffState
 --- @return agentic.ui.DiffSplitView.State|nil state
-function M.get_split_state(tabpage)
-    local tab = tabpage or vim.api.nvim_get_current_tabpage()
-    return get_state(tab)
+function M.find_split_state(diff_state)
+    local split_states = diff_state.split_state
+    if not split_states then
+        return nil
+    end
+    local current_bufnr = vim.api.nvim_get_current_buf()
+    --- @type agentic.ui.DiffSplitView.State|nil
+    local fallback
+    for _, state in pairs(split_states) do
+        if
+            state.original_bufnr == current_bufnr
+            or state.new_bufnr == current_bufnr
+        then
+            return state
+        end
+        fallback = fallback or state
+    end
+    return fallback
 end
 
---- @param tabpage number|nil Tabpage ID (defaults to current tabpage)
-function M.clear_split_diff(tabpage)
-    local tab = tabpage or vim.api.nvim_get_current_tabpage()
-    local state = get_state(tab)
-
+--- @param state agentic.ui.DiffSplitView.State
+local function teardown_split(state)
     if not state then
         return
     end
 
-    if vim.api.nvim_win_is_valid(state.original_winid) then
+    if BufHelpers.is_win_usable(state.original_winid) then
         vim.api.nvim_win_call(state.original_winid, function()
             vim.cmd("diffoff")
         end)
     end
 
-    if vim.api.nvim_win_is_valid(state.new_winid) then
+    if BufHelpers.is_win_usable(state.new_winid) then
         vim.api.nvim_win_call(state.new_winid, function()
             vim.cmd("diffoff")
         end)
@@ -295,6 +325,14 @@ function M.clear_split_diff(tabpage)
     end
 
     if vim.api.nvim_buf_is_valid(state.original_bufnr) then
+        local owner_count =
+            vim.b[state.original_bufnr]._agentic_diff_split_owner_count
+        if owner_count and owner_count > 1 then
+            vim.b[state.original_bufnr]._agentic_diff_split_owner_count = owner_count
+                - 1
+            return
+        end
+        vim.b[state.original_bufnr]._agentic_diff_split_owner_count = nil
         local prev_modifiable =
             vim.b[state.original_bufnr]._agentic_prev_modifiable
         local prev_modified = vim.b[state.original_bufnr]._agentic_prev_modified
@@ -309,8 +347,36 @@ function M.clear_split_diff(tabpage)
             vim.b[state.original_bufnr]._agentic_prev_modified = nil
         end
     end
+end
 
-    set_state(tab, nil)
+--- @param diff_state agentic.ui.DiffState
+--- @param file_path string|nil
+--- @return boolean cleared
+function M.clear_split_diff(diff_state, file_path)
+    local split_states = diff_state.split_state
+    if not split_states then
+        return false
+    end
+    local cleared = false
+    if file_path then
+        local abs_path = FileSystem.to_absolute_path(file_path)
+        local state = split_states[abs_path]
+        if state then
+            teardown_split(state)
+            split_states[abs_path] = nil
+            cleared = true
+        end
+    else
+        for path, state in pairs(split_states) do
+            teardown_split(state)
+            split_states[path] = nil
+            cleared = true
+        end
+    end
+    if next(split_states) == nil then
+        diff_state.split_state = nil
+    end
+    return cleared
 end
 
 return M

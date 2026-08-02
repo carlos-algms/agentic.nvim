@@ -1380,7 +1380,10 @@ describe("agentic.SessionManager", function()
                 status_animation = { start = function() end },
                 is_generating = true,
                 _start_spinner = SessionManager._start_spinner,
-                diff_coordinator = { clear = function() end },
+                diff_coordinator = {
+                    clear = function() end,
+                    diff_state = {},
+                },
                 _on_tool_call = function() end,
                 chat_history = {
                     update_tool_call = function() end,
@@ -1428,6 +1431,25 @@ describe("agentic.SessionManager", function()
 
                 assert.spy(checktime_stub).was.called(1)
             end
+        end)
+
+        it("cleans up only its coordinator-owned suggestion", function()
+            local session = make_session({
+                ["tc-1"] = {
+                    kind = "edit",
+                    status = "in_progress",
+                    file_path = "/tmp/owned.lua",
+                },
+            })
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-1", status = "completed" }
+            )
+
+            assert
+                .spy(cleanup_suggestion_buffer_stub).was
+                .called_with("/tmp/owned.lua", session.diff_coordinator.diff_state)
         end)
 
         it(

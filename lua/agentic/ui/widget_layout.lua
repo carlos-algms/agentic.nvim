@@ -164,17 +164,24 @@ end
 --- @param bufnr integer
 --- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
+--- @param tab_page_id integer
 --- @return integer
 local function get_or_create_window(
     win_nrs,
     panel_name,
     bufnr,
     open_opts,
-    win_opts
+    win_opts,
+    tab_page_id
 )
     local cached_winid = win_nrs[panel_name]
-    if cached_winid and vim.api.nvim_win_is_valid(cached_winid) then
-        return cached_winid
+    if cached_winid and BufHelpers.is_win_usable(cached_winid) then
+        local ok, cached_tabpage =
+            pcall(vim.api.nvim_win_get_tabpage, cached_winid)
+        if ok and cached_tabpage == tab_page_id then
+            return cached_winid
+        end
+        pcall(vim.api.nvim_win_close, cached_winid, true)
     end
 
     local new_winid =
@@ -190,26 +197,38 @@ end
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
+--- @param tab_page_id integer
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
     window_name,
     open_win_opts,
     max_height,
-    position
+    position,
+    tab_page_id
 )
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
 
     if BufHelpers.is_buffer_empty(bufnr) then
-        if winid and vim.api.nvim_win_is_valid(winid) then
+        if winid and BufHelpers.is_win_usable(winid) then
             pcall(vim.api.nvim_win_close, winid, true)
         end
         win_nrs[window_name] = nil
         return
     end
 
-    if not winid or not vim.api.nvim_win_is_valid(winid) then
+    local reusable = false
+    if winid and BufHelpers.is_win_usable(winid) then
+        local ok, win_tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
+        reusable = ok and win_tabpage == tab_page_id
+        if not reusable then
+            pcall(vim.api.nvim_win_close, winid, true)
+            win_nrs[window_name] = nil
+        end
+    end
+
+    if not reusable then
         -- Open at min height first so we can measure wrapped rows against the
         -- real window width, then resize. ADR 0001 uses the same pattern for
         -- screen-row math (fold sizing). Buffer-line count understates wraps.
@@ -218,6 +237,7 @@ local function open_or_resize_dynamic_window(
         win_nrs[window_name] = winid
     end
 
+    ---@cast winid integer
     local height = calculate_dynamic_height(winid, bufnr, max_height, position)
     vim.api.nvim_win_set_config(winid, { height = height })
 
@@ -255,7 +275,7 @@ local function show_layout(params, position)
         winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
-    })
+    }, params.tab_page_id)
 
     Fold.setup_window(win_nrs.chat, buf_nrs.chat)
 
@@ -274,14 +294,19 @@ local function show_layout(params, position)
         input_opts.height = Config.windows.input.height
     end
 
-    get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
-        winfixheight = not is_bottom,
-    })
+    get_or_create_window(
+        win_nrs,
+        "input",
+        buf_nrs.input,
+        input_opts,
+        { winfixheight = not is_bottom },
+        params.tab_page_id
+    )
 
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
         win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
-    }, Config.windows.code.max_height, position)
+    }, Config.windows.code.max_height, position, params.tab_page_id)
 
     local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -289,7 +314,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.files.max_height, position)
+    }, Config.windows.files.max_height, position, params.tab_page_id)
 
     ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -297,7 +322,7 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.diagnostics.max_height, position)
+    }, Config.windows.diagnostics.max_height, position, params.tab_page_id)
 
     if Config.windows.todos.display then
         ref_win = is_bottom
@@ -307,13 +332,17 @@ local function show_layout(params, position)
         open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
             win = ref_win,
             split = "below",
-        }, Config.windows.todos.max_height, position)
+        }, Config.windows.todos.max_height, position, params.tab_page_id)
     end
 
     if should_focus then
         vim.schedule(function()
             local winid = win_nrs.input
-            if winid and vim.api.nvim_win_is_valid(winid) then
+            if
+                vim.api.nvim_get_current_tabpage() == params.tab_page_id
+                and winid
+                and BufHelpers.is_win_usable(winid)
+            then
                 vim.api.nvim_set_current_win(winid)
                 BufHelpers.start_insert_on_last_char()
             end
@@ -399,16 +428,8 @@ end
 function WidgetLayout.close(win_nrs)
     for name, winid in pairs(win_nrs) do
         win_nrs[name] = nil
-        if vim.api.nvim_win_is_valid(winid) then
-            -- Guard: verify the window's tabpage is still valid.
-            -- On Neovim v0.11.5 Linux, tabclose can leave window
-            -- handles in a partially-freed state where
-            -- nvim_win_is_valid() returns true but nvim_win_close()
-            -- segfaults. Checking the tabpage avoids this.
-            local tab_ok, win_tab = pcall(vim.api.nvim_win_get_tabpage, winid)
-            if tab_ok and vim.api.nvim_tabpage_is_valid(win_tab) then
-                pcall(vim.api.nvim_win_close, winid, true)
-            end
+        if BufHelpers.is_win_usable(winid) then
+            pcall(vim.api.nvim_win_close, winid, true)
         end
     end
 end
@@ -426,12 +447,12 @@ function WidgetLayout.close_optional_window(win_nrs, window_name, position)
     if
         position == "bottom"
         and chat_winid
-        and vim.api.nvim_win_is_valid(chat_winid)
+        and BufHelpers.is_win_usable(chat_winid)
     then
         chat_height = vim.api.nvim_win_get_height(chat_winid)
     end
 
-    if winid and vim.api.nvim_win_is_valid(winid) then
+    if winid and BufHelpers.is_win_usable(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
     end
     win_nrs[window_name] = nil
