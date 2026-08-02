@@ -590,7 +590,7 @@ describe("DiffSplitView", function()
             assert.is_not_nil(diff_state.split_state[second_path])
         end)
 
-        it("isolates same-path scratch buffers for two owners", function()
+        it("keeps a same-path owner active when the other clears", function()
             --- @type agentic.ui.DiffState
             local first_state = new_diff_state()
             --- @type agentic.ui.DiffState
@@ -617,9 +617,25 @@ describe("DiffSplitView", function()
             assert.is_not_nil(second)
             ---@cast first agentic.ui.DiffSplitView.State
             ---@cast second agentic.ui.DiffSplitView.State
+            assert.is_not.equal(first.original_winid, second.original_winid)
             assert.is_not.equal(first.new_bufnr, second.new_bufnr)
             assert.is_true(vim.api.nvim_buf_is_valid(first.new_bufnr))
             assert.is_true(vim.api.nvim_buf_is_valid(second.new_bufnr))
+
+            assert.is_true(DiffSplitView.clear_split_diff(first_state))
+
+            assert.is_true(BufHelpers.is_win_usable(second.original_winid))
+            assert.is_true(BufHelpers.is_win_usable(second.new_winid))
+            assert.equal(
+                second.original_bufnr,
+                vim.api.nvim_win_get_buf(second.original_winid)
+            )
+            assert.equal(
+                second.new_bufnr,
+                vim.api.nvim_win_get_buf(second.new_winid)
+            )
+            assert.is_true(vim.wo[second.original_winid].diff)
+            assert.is_true(vim.wo[second.new_winid].diff)
         end)
 
         it(

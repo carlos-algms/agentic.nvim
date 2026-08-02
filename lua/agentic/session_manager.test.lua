@@ -1359,6 +1359,8 @@ describe("agentic.SessionManager", function()
         local schedule_stub
         --- @type TestStub
         local cleanup_suggestion_buffer_stub
+        --- @type TestSpy|nil
+        local restore_keymaps_spy
 
         --- @param tool_call_blocks table<string, table>
         --- @return agentic.SessionManager
@@ -1403,6 +1405,10 @@ describe("agentic.SessionManager", function()
         end)
 
         after_each(function()
+            if restore_keymaps_spy then
+                restore_keymaps_spy:revert()
+                restore_keymaps_spy = nil
+            end
             checktime_stub:revert()
             schedule_stub:revert()
             cleanup_suggestion_buffer_stub:revert()
@@ -1453,11 +1459,12 @@ describe("agentic.SessionManager", function()
         end)
 
         it(
-            "accepts a permission-cleared new-file suggestion on completion",
+            "clears a refreshed permission-cleared preview before acceptance",
             function()
                 cleanup_suggestion_buffer_stub:revert()
 
                 local DiffCoordinator = require("agentic.ui.diff_coordinator")
+                local HunkNavigation = require("agentic.ui.hunk_navigation")
                 local file_path = "/tmp/agentic-completed-new-file-"
                     .. tostring(vim.uv.hrtime())
                     .. ".lua"
@@ -1491,17 +1498,20 @@ describe("agentic.SessionManager", function()
                     permission_callback = callback
                 end
                 session.status_animation.stop = function() end
-                DiffPreview._show_new_file_diff({
-                    file_path = file_path,
-                    diff = { changed_pairs = {} },
-                    state = session.diff_coordinator.diff_state,
-                    get_winid = function(bufnr)
-                        suggestion_bufnr = bufnr
-                        vim.api.nvim_win_set_buf(current_winid, bufnr)
-                        return current_winid
-                    end,
-                }, { "return true" })
+                local function show_suggestion()
+                    DiffPreview._show_new_file_diff({
+                        file_path = file_path,
+                        diff = { changed_pairs = {} },
+                        state = session.diff_coordinator.diff_state,
+                        get_winid = function(bufnr)
+                            suggestion_bufnr = bufnr
+                            vim.api.nvim_win_set_buf(current_winid, bufnr)
+                            return current_winid
+                        end,
+                    }, { "return true" })
+                end
 
+                show_suggestion()
                 local handlers = SessionManager._build_handlers(session)
                 handlers.on_request_permission({
                     toolCall = { toolCallId = tool_call_id },
@@ -1509,6 +1519,8 @@ describe("agentic.SessionManager", function()
                 }, function() end)
                 assert.is_not_nil(permission_callback)
                 permission_callback("allow_once")
+                show_suggestion()
+                restore_keymaps_spy = spy.on(HunkNavigation, "restore_keymaps")
 
                 SessionManager._on_tool_call_update(session, {
                     tool_call_id = tool_call_id,
@@ -1520,6 +1532,10 @@ describe("agentic.SessionManager", function()
                 local displayed_bufnr = vim.api.nvim_win_get_buf(current_winid)
                 local displayed_name =
                     vim.api.nvim_buf_get_name(displayed_bufnr)
+                local restored_owner = restore_keymaps_spy:called_with(
+                    suggestion_bufnr,
+                    session.diff_coordinator.diff_state
+                )
 
                 pcall(vim.api.nvim_win_set_buf, current_winid, original_bufnr)
                 if suggestion_bufnr then
@@ -1538,6 +1554,9 @@ describe("agentic.SessionManager", function()
                 end
 
                 assert.is_false(suggestion_is_valid)
+                assert.is_true(restored_owner)
+                assert.is_nil(session.diff_coordinator.diff_state.preview_bufnr)
+                assert.is_nil(session.diff_coordinator.diff_state.preview_winid)
                 assert.equal(
                     vim.fn.fnamemodify(file_path, ":t"),
                     vim.fn.fnamemodify(displayed_name, ":t")

@@ -458,6 +458,10 @@ function SessionManager:_on_tool_call_update(tool_call_update)
     local tracker =
         self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
 
+    -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
+    local is_rejection = tool_call_update.status == "failed"
+    self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
+
     if
         tool_call_update.status == "completed"
         and tracker
@@ -469,10 +473,6 @@ function SessionManager:_on_tool_call_update(tool_call_update)
             self.diff_coordinator.diff_state
         )
     end
-
-    -- pre-emptively clear diff preview when tool call update is received, as it's either done or failed
-    local is_rejection = tool_call_update.status == "failed"
-    self.diff_coordinator:clear(tool_call_update.tool_call_id, is_rejection)
 
     -- Remove the permission request when the tool call reaches a terminal status.
     -- `failed` covers user rejection or agent-side error;

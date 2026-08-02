@@ -197,6 +197,18 @@ local function resolve_buf_and_win(abs_path, get_winid, tabpage, diff_state)
         bufnr = vim.fn.bufadd(abs_path)
     end
 
+    local existing_split = diff_state.split_state
+        and diff_state.split_state[abs_path]
+    if
+        existing_split
+        and BufHelpers.is_win_usable(existing_split.original_winid)
+        and vim.api.nvim_win_get_buf(existing_split.original_winid) == bufnr
+    then
+        return bufnr,
+            existing_split.original_winid,
+            existing_split.close_original_win
+    end
+
     local winid = BufHelpers.find_visible_win(bufnr, nil, tabpage)
     local target_winid = winid or get_winid(bufnr)
     if not target_winid then
@@ -249,6 +261,19 @@ local function resolve_buf_and_win(abs_path, get_winid, tabpage, diff_state)
             Logger.debug("resolve_buf_and_win: failed to set buffer:", err)
             return nil, nil, nil
         end
+    end
+
+    local owner_count = vim.b[bufnr]._agentic_diff_split_owner_count or 0
+    if owner_count > 0 then
+        local opened, isolated_winid =
+            pcall(vim.api.nvim_open_win, bufnr, false, {
+                split = "right",
+                win = target_winid,
+            })
+        if not opened then
+            return nil, nil, nil
+        end
+        return bufnr, isolated_winid, true
     end
 
     return bufnr, target_winid, false
