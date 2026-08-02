@@ -675,7 +675,15 @@ function M._show_new_file_diff(opts, new_lines)
     local winid = opts.get_winid(bufnr)
     if not winid then
         if not owned_refresh then
-            pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            local deleted =
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            if deleted then
+                HunkNavigation.clear_state(bufnr)
+                if opts.state and opts.state.preview_bufnr == bufnr then
+                    opts.state.preview_bufnr = nil
+                    opts.state.preview_winid = nil
+                end
+            end
         end
         return
     end

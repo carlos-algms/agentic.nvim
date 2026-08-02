@@ -5,6 +5,7 @@ local Config = require("agentic.config")
 local FileSystem = require("agentic.utils.file_system")
 local Logger = require("agentic.utils.logger")
 local DiffSplitView = require("agentic.ui.diff_split_view")
+local HunkNavigation = require("agentic.ui.hunk_navigation")
 
 --- Closes every tabpage absent from the baseline set. Counting tabpages and
 --- closing the *current* one can shut a baseline tab while a created one lives.
@@ -577,6 +578,7 @@ describe("diff_preview owner isolation", function()
     local saved_layout
     local base_tabs
     local base_bufs
+    local clear_state_spy
 
     before_each(function()
         base_tabs = {}
@@ -584,6 +586,7 @@ describe("diff_preview owner isolation", function()
             base_tabs[tabpage] = true
         end
         base_bufs = {}
+        clear_state_spy = nil
         for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
             base_bufs[bufnr] = true
         end
@@ -599,6 +602,10 @@ describe("diff_preview owner isolation", function()
     end)
 
     after_each(function()
+        if clear_state_spy then
+            clear_state_spy:revert()
+            clear_state_spy = nil
+        end
         read_stub:revert()
         fs_stat_stub:revert()
         schedule_stub:revert()
@@ -754,10 +761,17 @@ describe("diff_preview owner isolation", function()
         assert.is_not_nil(bufnr)
         ---@cast bufnr integer
         vim.b[bufnr]._agentic_inline_diff_owner = "foreign"
+        clear_state_spy = spy_module.on(HunkNavigation, "clear_state")
 
         show_new(path, state, "second", false)
 
+        local navigation_cleared = clear_state_spy:called_with(bufnr)
+        clear_state_spy:revert()
+        clear_state_spy = nil
         assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+        assert.is_nil(state.preview_bufnr)
+        assert.is_nil(state.preview_winid)
+        assert.is_true(navigation_cleared)
     end)
 
     it("deletes a wrong-source suggestion when refresh cannot open", function()
@@ -770,10 +784,17 @@ describe("diff_preview owner isolation", function()
         assert.is_not_nil(bufnr)
         ---@cast bufnr integer
         vim.b[bufnr]._agentic_suggestion_for = path .. ".foreign"
+        clear_state_spy = spy_module.on(HunkNavigation, "clear_state")
 
         show_new(path, state, "second", false)
 
+        local navigation_cleared = clear_state_spy:called_with(bufnr)
+        clear_state_spy:revert()
+        clear_state_spy = nil
         assert.is_false(vim.api.nvim_buf_is_valid(bufnr))
+        assert.is_nil(state.preview_bufnr)
+        assert.is_nil(state.preview_winid)
+        assert.is_true(navigation_cleared)
     end)
 
     it(
