@@ -892,6 +892,10 @@ describe("WidgetLayout deferred window guards", function()
                 end)
             end
         end
+        local remaining_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            remaining_tabs[tabpage] = true
+        end
         for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
             if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
                 pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
@@ -903,6 +907,7 @@ describe("WidgetLayout deferred window guards", function()
                 extra_bufs = extra_bufs + 1
             end
         end
+        assert.same(remaining_tabs, base_tabs)
         assert.equal(0, extra_bufs)
     end)
 
@@ -921,6 +926,7 @@ describe("WidgetLayout deferred window guards", function()
             focus_prompt = false,
         })
 
+        assert.is_false(BufHelpers.is_win_usable(foreign_win))
         assert.is_not.equal(foreign_win, win_nrs.chat)
         assert.equal(owner_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
     end)

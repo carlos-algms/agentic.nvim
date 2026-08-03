@@ -1336,6 +1336,21 @@ describe("agentic.SessionManager", function()
                 .called_with("/tmp/owned.lua", session.diff_coordinator.diff_state)
         end)
 
+        it("keeps the diff preview for in-progress updates", function()
+            local clear_spy = spy.new(function() end)
+            local session = make_session({
+                ["tc-1"] = { kind = "edit", status = "in_progress" },
+            })
+            session.diff_coordinator.clear = clear_spy
+
+            SessionManager._on_tool_call_update(
+                session,
+                { tool_call_id = "tc-1", status = "in_progress" }
+            )
+
+            assert.spy(clear_spy).was.called(0)
+        end)
+
         it(
             "clears a refreshed permission-cleared preview before acceptance",
             function()

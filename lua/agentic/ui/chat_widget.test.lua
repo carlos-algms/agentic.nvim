@@ -1362,9 +1362,9 @@ describe("agentic.ui.ChatWidget", function()
                 local original_unregister = WidgetRegistry.unregister
                 local original_delete = vim.api.nvim_buf_delete
                 find_stub = spy.stub(widget, "find_first_non_widget_window")
-                find_stub:invokes(function(self)
+                find_stub:invokes(function(self, ...)
                     events[#events + 1] = "fallback"
-                    return original_find(self)
+                    return original_find(self, ...)
                 end)
                 unregister_stub = spy.stub(WidgetRegistry, "unregister")
                 unregister_stub:invokes(function(owner)
