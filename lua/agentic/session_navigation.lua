@@ -9,10 +9,7 @@ local function cycle(step)
     end
 
     table.sort(sessions, function(left, right)
-        local left_key = left.session_key --[[@as integer]]
-        local right_key = right.session_key --[[@as integer]]
-
-        return left_key < right_key
+        return left.session_key < right.session_key
     end)
 
     local current = SessionRegistry.current()

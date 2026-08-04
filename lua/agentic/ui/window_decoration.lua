@@ -501,18 +501,14 @@ function WindowDecoration.render_header(
     end)
 end
 
---- Re-derives every registered widget's buffer name, relabelling the survivors of a
---- destroyed session. Propagates a newly-armed `should_suffix` latch; never strips one.
----
---- Bypasses `render_header`, whose no-visible-window early return would skip a hidden
---- survivor — the case that needs this most, since nothing else re-renders it.
+--- Bypasses `render_header`: its no-visible-window early return skips hidden survivors,
+--- which nothing else re-renders.
 ---
 --- MUST run AFTER the destroyed session left `SessionRegistry.sessions` and its widget
 --- was unregistered, or the count still includes it.
 ---
---- Renames are `pcall`ed and validity-gated: a destroy runs concurrently with panel
---- teardown, so `buf_nrs` can list an already-deleted buffer. `nvim_buf_set_name` then
---- raises E95 inside `vim.schedule`, uncaught, aborting every later widget's rename.
+--- `pcall`ed: concurrent panel teardown leaves deleted buffers in `buf_nrs`, and an
+--- uncaught E95 here aborts every later widget's rename.
 function WindowDecoration.refresh_buffer_names()
     vim.schedule(function()
         for bufnr in pairs(WidgetRegistry.all_bufnrs()) do

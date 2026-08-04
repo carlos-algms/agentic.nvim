@@ -61,7 +61,7 @@ function SessionRegistry.create(provider_name)
         end
 
         local SessionManager = require("agentic.session_manager")
-        return SessionManager:new() --[[@as agentic.SessionManager|nil]]
+        return SessionManager:new()
     end)
 
     Config.provider = previous_provider
