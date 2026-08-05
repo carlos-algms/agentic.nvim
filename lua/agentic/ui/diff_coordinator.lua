@@ -2,31 +2,31 @@ local Config = require("agentic.config")
 local DiffPreview = require("agentic.ui.diff_preview")
 local Logger = require("agentic.utils.logger")
 
+--- Mutated in place by the stateless `DiffPreview` / `DiffSplitView` /
+--- `HunkNavigation` modules, which receive it as an argument.
 --- @class agentic.ui.DiffState
 --- @field preview_bufnr? integer
---- @field preview_winid? integer
+--- @field preview_winid? integer Window the diff was painted in
 --- @field split_state? table<string, agentic.ui.DiffSplitView.State>
 
 --- Coordinates edit-diff previews for one session.
 --- @class agentic.ui.DiffCoordinator
 --- @field _widget agentic.ui.ChatWidget
 --- @field _message_writer agentic.ui.MessageWriter
---- @field _get_tab_page_id fun(): integer|nil
 --- @field diff_state agentic.ui.DiffState
 local DiffCoordinator = {}
 DiffCoordinator.__index = DiffCoordinator
 
 --- @param widget agentic.ui.ChatWidget
 --- @param message_writer agentic.ui.MessageWriter
---- @param get_tab_page_id fun(): integer|nil Resolves the session's tabpage live
 --- @return agentic.ui.DiffCoordinator
-function DiffCoordinator:new(widget, message_writer, get_tab_page_id)
+function DiffCoordinator:new(widget, message_writer)
     --- @type agentic.ui.DiffState
     local diff_state = {}
+
     local instance = setmetatable({
         _widget = widget,
         _message_writer = message_writer,
-        _get_tab_page_id = get_tab_page_id,
         diff_state = diff_state,
     }, self)
 
@@ -34,7 +34,6 @@ function DiffCoordinator:new(widget, message_writer, get_tab_page_id)
     return instance
 end
 
---- Resolve the tracker for an edit tool call that carries a renderable diff.
 --- @param tool_call_id string|nil
 --- @return agentic.ui.MessageWriter.ToolCallBlock|nil tracker
 function DiffCoordinator:_edit_tracker(tool_call_id)
@@ -55,13 +54,8 @@ end
 
 --- @param tool_call_id string
 function DiffCoordinator:show(tool_call_id)
-    local tabpage = self._get_tab_page_id()
-    -- Only show diff if enabled by user config,
-    -- and cursor is in the same tabpage as this session to avoid disruption
-    if
-        not Config.diff_preview.enabled
-        or vim.api.nvim_get_current_tabpage() ~= tabpage
-    then
+    local tabpage = self._widget:get_visible_tab_id()
+    if not Config.diff_preview.enabled or not tabpage then
         return
     end
 

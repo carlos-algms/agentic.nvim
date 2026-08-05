@@ -55,6 +55,8 @@ describe("agentic.ui.DiagnosticsList", function()
             col = 0,
         })
         on_change_spy = spy.new(function() end)
+        find_visible_win_stub = nil
+        registered_widget = nil
 
         diagnostics_list =
             DiagnosticsList:new(bufnr, on_change_spy --[[@as function]])
@@ -289,36 +291,77 @@ describe("agentic.ui.DiagnosticsList", function()
     end)
 
     describe("buffer rendering", function()
-        it("scopes lookup to the owning widget's diagnostics window", function()
-            local captured_preferred
-            local captured_tabpage
+        it("uses the owning diagnostics window width", function()
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            vim.api.nvim_win_set_config(winid, { width = 20 })
             --- @type any
             local widget = {
-                tab_page_id = 1357,
                 buf_nrs = { diagnostics = bufnr },
-                win_nrs = { diagnostics = 2468 },
+                win_nrs = { diagnostics = winid },
+                get_visible_tab_id = function()
+                    return owner_tab
+                end,
             }
             registered_widget = widget
             WidgetRegistry.register(widget)
             find_visible_win_stub = spy.stub(BufHelpers, "find_visible_win")
-            find_visible_win_stub:invokes(function(_, preferred, tabpage)
-                captured_preferred = preferred
-                captured_tabpage = tabpage
-                return nil
-            end)
+            find_visible_win_stub:returns(winid)
 
-            diagnostics_list:add(create_diagnostic())
+            diagnostics_list:add(create_diagnostic({
+                file_path = "/short.lua",
+                message = string.rep("long diagnostic ", 20),
+            }))
 
-            assert.equal(2468, captured_preferred)
-            assert.equal(1357, captured_tabpage)
+            assert
+                .stub(find_visible_win_stub).was
+                .called_with(bufnr, winid, owner_tab)
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            assert.is_true(vim.fn.strdisplaywidth(lines[1]) <= 20)
+            assert.equal("...", lines[1]:sub(-3))
+        end)
+
+        it("rejects a foreign diagnostics window width", function()
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            local owner_winid = 2468
+            local foreign_width = 12
+            vim.api.nvim_win_set_config(winid, { width = foreign_width })
+            --- @type any
+            local widget = {
+                buf_nrs = { diagnostics = bufnr },
+                win_nrs = { diagnostics = owner_winid },
+                get_visible_tab_id = function()
+                    return owner_tab
+                end,
+            }
+            registered_widget = widget
+            WidgetRegistry.register(widget)
+            find_visible_win_stub = spy.stub(BufHelpers, "find_visible_win")
+            find_visible_win_stub:returns(winid)
+
+            diagnostics_list:add(create_diagnostic({
+                file_path = "/short.lua",
+                message = string.rep("long diagnostic ", 20),
+            }))
+
+            assert
+                .stub(find_visible_win_stub).was
+                .called_with(bufnr, owner_winid, owner_tab)
+            local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+            local default_width =
+                WidgetLayout.calculate_width(Config.windows.width)
+            assert.is_true(vim.fn.strdisplaywidth(lines[1]) > foreign_width)
+            assert.is_true(vim.fn.strdisplaywidth(lines[1]) <= default_width)
+            assert.equal("...", lines[1]:sub(-3))
         end)
 
         it("keeps default width when the registered owner is hidden", function()
             --- @type any
             local widget = {
-                tab_page_id = vim.api.nvim_get_current_tabpage(),
                 buf_nrs = { diagnostics = bufnr },
                 win_nrs = {},
+                get_visible_tab_id = function()
+                    return nil
+                end,
             }
             registered_widget = widget
             WidgetRegistry.register(widget)

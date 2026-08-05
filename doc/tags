@@ -51,6 +51,7 @@ agentic-render-markdown	agentic.txt	/*agentic-render-markdown*
 agentic-requirements	agentic.txt	/*agentic-requirements*
 agentic-session-restore	agentic.txt	/*agentic-session-restore*
 agentic-session-state	agentic.txt	/*agentic-session-state*
+agentic-sessions	agentic.txt	/*agentic-sessions*
 agentic-slash-commands	agentic.txt	/*agentic-slash-commands*
 agentic-spinner-chars	agentic.txt	/*agentic-spinner-chars*
 agentic-status-icons	agentic.txt	/*agentic-status-icons*
@@ -64,13 +65,17 @@ agentic.add_files_to_context()	agentic.txt	/*agentic.add_files_to_context()*
 agentic.add_selection()	agentic.txt	/*agentic.add_selection()*
 agentic.add_selection_or_file_to_context()	agentic.txt	/*agentic.add_selection_or_file_to_context()*
 agentic.close()	agentic.txt	/*agentic.close()*
+agentic.destroy_session()	agentic.txt	/*agentic.destroy_session()*
 agentic.new_session()	agentic.txt	/*agentic.new_session()*
 agentic.new_session_with_provider()	agentic.txt	/*agentic.new_session_with_provider()*
+agentic.next_session()	agentic.txt	/*agentic.next_session()*
 agentic.nvim	agentic.txt	/*agentic.nvim*
 agentic.open()	agentic.txt	/*agentic.open()*
+agentic.prev_session()	agentic.txt	/*agentic.prev_session()*
 agentic.restore_session()	agentic.txt	/*agentic.restore_session()*
 agentic.restore_session_by_id()	agentic.txt	/*agentic.restore_session_by_id()*
 agentic.rotate_layout()	agentic.txt	/*agentic.rotate_layout()*
+agentic.select_session()	agentic.txt	/*agentic.select_session()*
 agentic.setup()	agentic.txt	/*agentic.setup()*
 agentic.stop_generation()	agentic.txt	/*agentic.stop_generation()*
 agentic.switch_provider()	agentic.txt	/*agentic.switch_provider()*

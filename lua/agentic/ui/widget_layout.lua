@@ -7,11 +7,12 @@ local WindowDecoration = require("agentic.ui.window_decoration")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.ui.WidgetLayout.Params
---- @field tab_page_id integer
 --- @field buf_nrs agentic.ui.ChatWidget.BufNrs
 --- @field win_nrs agentic.ui.ChatWidget.WinNrs
 --- @field focus_prompt? boolean
 --- @field position agentic.UserConfig.Windows.Position
+--- @field size? agentic.ui.ChatWidget.Size Overrides the configured size on this layout's axis
+--- @field with_programmatic_close? fun(fn: fun())
 
 --- @class agentic.ui.WidgetLayout
 local WidgetLayout = {}
@@ -27,7 +28,6 @@ local function calculate_dimension(size, max_dimension, default_percentage)
         local pct = string.sub(size, -1) == "%"
             and tonumber(string.sub(size, 1, -2))
         if not pct then
-            -- Invalid string without % sign, fallback to default percentage
             Logger.notify(
                 "Invalid size string: "
                     .. size
@@ -63,9 +63,7 @@ function WidgetLayout.calculate_height(size)
     return calculate_dimension(size, vim.o.lines, DefaultConfig.windows.height)
 end
 
---- Counts visual screen rows for the buffer shown in `winid`. Wrap on. Falls
---- back to buffer line count when the API rejects the window (e.g. zero
---- width during construction).
+--- Falls back to the buffer line count when the API rejects the window (e.g. zero width during construction).
 --- @param winid integer
 --- @param bufnr integer
 --- @return integer
@@ -85,14 +83,12 @@ end
 local function calculate_dynamic_height(winid, bufnr, max_height, position)
     max_height = math.max(1, max_height)
     local rows = visual_row_count(winid, bufnr)
-    -- Use 2 in bottom layout to prevent the panel from touching the screen edge
+    -- 2 in bottom layout keeps the panel off the screen edge.
     local padding = position == "bottom" and 2 or 1
     return math.min(rows + padding, max_height)
 end
 
--- Make the gutter (where statuscolumn renders) blend into the chat
--- background regardless of colorscheme. Each themable column highlight
--- group is mapped to Normal.
+-- Blends the statuscolumn gutter into the chat background whatever the colorscheme.
 local CHAT_GUTTER_WINHIGHLIGHT = "EndOfBuffer:"
     .. ",LineNr:Normal,CursorLineNr:Normal"
     .. ",SignColumn:Normal,CursorLineSign:Normal"
@@ -119,7 +115,7 @@ local PANEL_WINDOW_OPTS = {
 --- @param window_name agentic.ui.ChatWidget.PanelNames
 --- @param win_opts table<string, any>
 local function apply_panel_window_opts(winid, bufnr, window_name, win_opts)
-    -- Mark this window so BufferGuard knows which buffer belongs here
+    -- Read by BufferGuard to resolve the window's rightful buffer.
     vim.w[winid].agentic_bufnr = bufnr
 
     local window_config = Config.windows[window_name] or {}
@@ -131,6 +127,7 @@ local function apply_panel_window_opts(winid, bufnr, window_name, win_opts)
         winfixheight = true,
     }, PANEL_WINDOW_OPTS, win_opts or {}, config_win_opts)
 
+    -- `[0]` is the `:setlocal` sentinel; without it these leak to buffers that later cohabit the window.
     for name, value in pairs(merged_win_opts) do
         vim.wo[winid][0][name] = value
     end
@@ -159,12 +156,45 @@ local function open_win(bufnr, enter, opts, window_name, win_opts)
     return winid
 end
 
+--- @param winid integer|nil
+--- @param expected_tabpage integer
+--- @return boolean
+local function is_in_tabpage(winid, expected_tabpage)
+    if not BufHelpers.is_win_usable(winid) then
+        return false
+    end
+
+    ---@cast winid integer
+    local ok, tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
+    return ok and tabpage == expected_tabpage
+end
+
+--- @param winid integer|nil
+--- @param with_programmatic_close fun(fn: fun())|nil
+local function close_layout_window(winid, with_programmatic_close)
+    if not BufHelpers.is_win_usable(winid) then
+        return
+    end
+
+    ---@cast winid integer
+    local function close()
+        vim.api.nvim_win_close(winid, true)
+    end
+
+    if with_programmatic_close then
+        with_programmatic_close(close)
+    else
+        pcall(close)
+    end
+end
+
 --- @param win_nrs agentic.ui.ChatWidget.WinNrs
 --- @param panel_name string
 --- @param bufnr integer
 --- @param open_opts vim.api.keyset.win_config
 --- @param win_opts table<string, any>
---- @param tab_page_id integer
+--- @param expected_tabpage integer
+--- @param with_programmatic_close fun(fn: fun())|nil
 --- @return integer
 local function get_or_create_window(
     win_nrs,
@@ -172,18 +202,17 @@ local function get_or_create_window(
     bufnr,
     open_opts,
     win_opts,
-    tab_page_id
+    expected_tabpage,
+    with_programmatic_close
 )
     local cached_winid = win_nrs[panel_name]
-    if cached_winid and BufHelpers.is_win_usable(cached_winid) then
-        local ok, cached_tabpage =
-            pcall(vim.api.nvim_win_get_tabpage, cached_winid)
-        if ok and cached_tabpage == tab_page_id then
-            return cached_winid
-        end
-        win_nrs[panel_name] = nil
-        pcall(vim.api.nvim_win_close, cached_winid, true)
+    if is_in_tabpage(cached_winid, expected_tabpage) then
+        ---@cast cached_winid integer
+        return cached_winid
     end
+
+    win_nrs[panel_name] = nil
+    close_layout_window(cached_winid, with_programmatic_close)
 
     local new_winid =
         open_win(bufnr, false, open_opts, panel_name, win_opts or {})
@@ -198,7 +227,8 @@ end
 --- @param open_win_opts vim.api.keyset.win_config
 --- @param max_height integer
 --- @param position agentic.UserConfig.Windows.Position
---- @param tab_page_id integer
+--- @param expected_tabpage integer
+--- @param with_programmatic_close fun(fn: fun())|nil
 local function open_or_resize_dynamic_window(
     buf_nrs,
     win_nrs,
@@ -206,30 +236,22 @@ local function open_or_resize_dynamic_window(
     open_win_opts,
     max_height,
     position,
-    tab_page_id
+    expected_tabpage,
+    with_programmatic_close
 )
     local bufnr = buf_nrs[window_name]
     local winid = win_nrs[window_name]
 
     if BufHelpers.is_buffer_empty(bufnr) then
-        if winid and BufHelpers.is_win_usable(winid) then
-            pcall(vim.api.nvim_win_close, winid, true)
-        end
         win_nrs[window_name] = nil
+        close_layout_window(winid, with_programmatic_close)
         return
     end
 
-    local reusable = false
-    if winid and BufHelpers.is_win_usable(winid) then
-        local ok, win_tabpage = pcall(vim.api.nvim_win_get_tabpage, winid)
-        reusable = ok and win_tabpage == tab_page_id
-        if not reusable then
-            win_nrs[window_name] = nil
-            pcall(vim.api.nvim_win_close, winid, true)
-        end
-    end
+    if not is_in_tabpage(winid, expected_tabpage) then
+        win_nrs[window_name] = nil
+        close_layout_window(winid, with_programmatic_close)
 
-    if not reusable then
         -- Open at min height first so we can measure wrapped rows against the
         -- real window width, then resize. ADR 0001 uses the same pattern for
         -- screen-row math (fold sizing). Buffer-line count understates wraps.
@@ -251,9 +273,10 @@ local function show_layout(params, position)
     local is_bottom = position == "bottom"
     local win_nrs = params.win_nrs
     local buf_nrs = params.buf_nrs
-    local should_focus = (
-        params.focus_prompt == nil and true or params.focus_prompt
-    ) == true
+    local with_close = params.with_programmatic_close
+    local expected_tabpage = vim.api.nvim_get_current_tabpage()
+    local should_focus = params.focus_prompt == nil
+        or params.focus_prompt == true
 
     local split_direction = is_bottom and "below"
         or (position == "left" and "left" or "right")
@@ -264,10 +287,14 @@ local function show_layout(params, position)
         split = split_direction,
     }
 
+    local size = params.size or {}
+
     if is_bottom then
-        chat_opts.height = WidgetLayout.calculate_height(Config.windows.height)
+        chat_opts.height = size.height
+            or WidgetLayout.calculate_height(Config.windows.height)
     else
-        chat_opts.width = WidgetLayout.calculate_width(Config.windows.width)
+        chat_opts.width = size.width
+            or WidgetLayout.calculate_width(Config.windows.width)
     end
 
     get_or_create_window(win_nrs, "chat", buf_nrs.chat, chat_opts, {
@@ -276,12 +303,10 @@ local function show_layout(params, position)
         winhighlight = CHAT_GUTTER_WINHIGHLIGHT,
         winfixheight = is_bottom,
         winfixwidth = not is_bottom,
-    }, params.tab_page_id)
+    }, expected_tabpage, with_close)
 
     Fold.setup_window(win_nrs.chat, buf_nrs.chat)
 
-    -- Input window: right splits below chat with height, bottom splits right
-    -- of chat with computed stack width
     --- @type vim.api.keyset.win_config
     local input_opts = { win = win_nrs.chat, fixed = true }
     if is_bottom then
@@ -295,19 +320,14 @@ local function show_layout(params, position)
         input_opts.height = Config.windows.input.height
     end
 
-    get_or_create_window(
-        win_nrs,
-        "input",
-        buf_nrs.input,
-        input_opts,
-        { winfixheight = not is_bottom },
-        params.tab_page_id
-    )
+    get_or_create_window(win_nrs, "input", buf_nrs.input, input_opts, {
+        winfixheight = not is_bottom,
+    }, expected_tabpage, with_close)
 
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "code", {
         win = is_bottom and win_nrs.input or win_nrs.chat,
         split = "below",
-    }, Config.windows.code.max_height, position, params.tab_page_id)
+    }, Config.windows.code.max_height, position, expected_tabpage, with_close)
 
     local ref_win = is_bottom and (win_nrs.code or win_nrs.input)
         or win_nrs.input
@@ -315,38 +335,58 @@ local function show_layout(params, position)
     open_or_resize_dynamic_window(buf_nrs, win_nrs, "files", {
         win = ref_win,
         split = is_bottom and "below" or "above",
-    }, Config.windows.files.max_height, position, params.tab_page_id)
+    }, Config.windows.files.max_height, position, expected_tabpage, with_close)
 
     ref_win = is_bottom and (win_nrs.files or win_nrs.code or win_nrs.input)
         or win_nrs.input
 
-    open_or_resize_dynamic_window(buf_nrs, win_nrs, "diagnostics", {
-        win = ref_win,
-        split = is_bottom and "below" or "above",
-    }, Config.windows.diagnostics.max_height, position, params.tab_page_id)
+    open_or_resize_dynamic_window(
+        buf_nrs,
+        win_nrs,
+        "diagnostics",
+        {
+            win = ref_win,
+            split = is_bottom and "below" or "above",
+        },
+        Config.windows.diagnostics.max_height,
+        position,
+        expected_tabpage,
+        with_close
+    )
 
     if Config.windows.todos.display then
         ref_win = is_bottom
                 and (win_nrs.diagnostics or win_nrs.files or win_nrs.code or win_nrs.input)
             or win_nrs.chat
 
-        open_or_resize_dynamic_window(buf_nrs, win_nrs, "todos", {
-            win = ref_win,
-            split = "below",
-        }, Config.windows.todos.max_height, position, params.tab_page_id)
+        open_or_resize_dynamic_window(
+            buf_nrs,
+            win_nrs,
+            "todos",
+            {
+                win = ref_win,
+                split = "below",
+            },
+            Config.windows.todos.max_height,
+            position,
+            expected_tabpage,
+            with_close
+        )
     end
 
     if should_focus then
         vim.schedule(function()
             local winid = win_nrs.input
             if
-                vim.api.nvim_get_current_tabpage() == params.tab_page_id
-                and winid
-                and BufHelpers.is_win_usable(winid)
+                vim.api.nvim_get_current_tabpage() ~= expected_tabpage
+                or not is_in_tabpage(winid, expected_tabpage)
             then
-                vim.api.nvim_set_current_win(winid)
-                BufHelpers.start_insert_on_last_char()
+                return
             end
+
+            ---@cast winid integer
+            vim.api.nvim_set_current_win(winid)
+            BufHelpers.start_insert_on_last_char()
         end)
     end
 end
@@ -354,7 +394,8 @@ end
 --- @param bufnr integer Chat buffer
 --- @return integer|nil winid nil on failure (graceful degradation)
 function WidgetLayout.open_hidden_chat_window(bufnr)
-    -- Width must match the visible chat so nvim_win_text_height agrees. ADR 0001.
+    -- The CONFIGURED width, not the visible chat's real one, so
+    -- `nvim_win_text_height` has a stable basis while hidden (ADR 0001).
     local width = WidgetLayout.calculate_width(Config.windows.width)
 
     local ok, winid = pcall(vim.api.nvim_open_win, bufnr, false, {
@@ -386,18 +427,6 @@ end
 
 --- @param params agentic.ui.WidgetLayout.Params
 function WidgetLayout.open(params)
-    if
-        not params.tab_page_id
-        or not vim.api.nvim_tabpage_is_valid(params.tab_page_id)
-    then
-        Logger.notify(
-            "Invalid tab_page_id in WidgetLayout.open: "
-                .. tostring(params.tab_page_id),
-            vim.log.levels.ERROR
-        )
-        return
-    end
-
     local position = params.position
 
     if position ~= "right" and position ~= "left" and position ~= "bottom" then
@@ -415,9 +444,8 @@ function WidgetLayout.open(params)
     if not ok then
         Logger.notify(
             string.format(
-                "Failed to show %s layout (tab: %d): %s",
+                "Failed to show %s layout: %s",
                 position,
-                params.tab_page_id,
                 tostring(err)
             ),
             vim.log.levels.ERROR
@@ -429,6 +457,8 @@ end
 function WidgetLayout.close(win_nrs)
     for name, winid in pairs(win_nrs) do
         win_nrs[name] = nil
+        -- `is_win_usable`, not bare validity: on 0.11.5 Linux tabclose leaves
+        -- handles that answer valid but segfault in `nvim_win_close`.
         if BufHelpers.is_win_usable(winid) then
             pcall(vim.api.nvim_win_close, winid, true)
         end
@@ -441,26 +471,21 @@ end
 function WidgetLayout.close_optional_window(win_nrs, window_name, position)
     local winid = win_nrs[window_name]
 
-    -- Capture chat height before closing so we can restore it.
-    -- In bottom layout, Neovim redistributes freed height to siblings.
+    -- In bottom layout Neovim redistributes the freed height to siblings.
     local chat_winid = win_nrs.chat
     local chat_height = nil
-    if
-        position == "bottom"
-        and chat_winid
-        and BufHelpers.is_win_usable(chat_winid)
-    then
+    if position == "bottom" and BufHelpers.is_win_usable(chat_winid) then
+        ---@cast chat_winid integer
         chat_height = vim.api.nvim_win_get_height(chat_winid)
     end
 
-    if winid and BufHelpers.is_win_usable(winid) then
+    if BufHelpers.is_win_usable(winid) then
         pcall(vim.api.nvim_win_close, winid, true)
     end
     win_nrs[window_name] = nil
 
-    -- Restore chat height when in bottom layout, since closing a sibling window redistributes height.
     if chat_height then
-        ---@cast chat_winid integer if we have height, then chat_winid must be valid integer
+        ---@cast chat_winid integer
         vim.api.nvim_win_set_config(chat_winid, { height = chat_height })
     end
 end

@@ -218,14 +218,14 @@ function DiagnosticsList:_render()
     local owner = WidgetRegistry.get(self._bufnr)
     local winid
     if owner then
+        local owner_tab = owner:get_visible_tab_id()
         local owner_winid = owner.win_nrs.diagnostics
-        local candidate = BufHelpers.find_visible_win(
-            self._bufnr,
-            owner_winid,
-            owner.tab_page_id
-        )
-        if candidate == owner_winid then
-            winid = candidate
+        if owner_tab and vim.api.nvim_tabpage_is_valid(owner_tab) then
+            local candidate =
+                BufHelpers.find_visible_win(self._bufnr, owner_winid, owner_tab)
+            if candidate == owner_winid then
+                winid = candidate
+            end
         end
     else
         winid = BufHelpers.find_visible_win(self._bufnr, nil)

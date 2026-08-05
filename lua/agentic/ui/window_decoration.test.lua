@@ -139,11 +139,11 @@ describe("WindowDecoration._build_default_header", function()
         WindowDecoration = require("agentic.ui.window_decoration")
     end)
 
-    --- Stub session_state exposing only the getters the header consumes.
+    --- Stub session_state: only the getters the header consumes.
     --- @param cost_raw number|nil Cumulative cost; nil/0 omits the cost segment
     --- @param currency string|nil Cost currency
     --- @param context { used: string|nil, size: string|nil }|nil Overrides the
-    ---   human-readable context getters; defaults to "1K"/"200K"
+    ---   context getters; defaults to "1K"/"200K"
     --- @return agentic.acp.SessionState
     local function fake_session_state(cost_raw, currency, context)
         --- @type string|nil, string|nil
@@ -183,8 +183,8 @@ describe("WindowDecoration._build_default_header", function()
     end
 
     it("builds rich chat header without any key-hint suffix", function()
-        -- suffix is present but the chat panel must ignore it; the hints
-        -- belong on the input header.
+        -- Suffix present but the chat panel ignores it; hints belong on the
+        -- input header.
         local parts =
             { title = "Agentic Chat", suffix = "change mode: <S-Tab>" }
 
@@ -418,9 +418,8 @@ describe("WindowDecoration.render_header", function()
         child.stop()
     end)
 
-    --- Build a buffer displayed in a window, install header + buffer_name
-    --- function configs that record their 2nd arg, then render_header with a
-    --- session_state carrying a unique marker. Returns recorded markers.
+    --- Buffer in a window, header + buffer_name configs recording their 2nd
+    --- arg, then render_header with a marker-carrying session_state.
     --- @param window_name string
     --- @return integer bufnr the buffer rendered into; recorded markers are read via _G globals
     local function render_with_session_state(window_name)
@@ -481,6 +480,45 @@ describe("WindowDecoration.render_header", function()
         assert.equal("SS_MARKER", child.lua_get("_G.recorded_header_marker"))
     end)
 
+    it("uses the owning widget session_state when none is passed", function()
+        child.lua([[
+            local Config = require("agentic.config")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+
+            Config.headers = Config.headers or {}
+            Config.headers.chat = function(parts, session_state)
+                _G.recorded_header_marker =
+                    session_state and session_state.marker or nil
+                return parts.title
+            end
+            Config.windows.chat.buffer_name = function(parts, session_state)
+                _G.recorded_buffer_name_marker =
+                    session_state and session_state.marker or nil
+                return parts.title
+            end
+
+            WidgetRegistry.register({
+                buf_nrs = { chat = bufnr },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+                session_state = { marker = "OWNER_MARKER" },
+            })
+
+            WindowDecoration.render_header(bufnr, "chat")
+        ]])
+        child.flush()
+
+        assert.equal("OWNER_MARKER", child.lua_get("_G.recorded_header_marker"))
+        assert.equal(
+            "OWNER_MARKER",
+            child.lua_get("_G.recorded_buffer_name_marker")
+        )
+    end)
+
     it(
         "passes session_state as 2nd arg to input buffer_name function",
         function()
@@ -506,6 +544,241 @@ describe("WindowDecoration.render_header", function()
         child.flush()
 
         assert.is_true(child.lua_get("_G.recorded_buffer_name_marker == nil"))
+    end)
+
+    it("sets the winbar for a buffer shown only in another tab", function()
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, bufnr)
+            _G.target_win = vim.api.nvim_get_current_win()
+
+            -- Buffer's only window now lives in a non-current tabpage.
+            vim.cmd("tabnew")
+
+            WindowDecoration.render_header(bufnr, "chat", nil, nil)
+        ]])
+        child.flush()
+
+        local winbar = child.lua_get([[vim.wo[_G.target_win].winbar]])
+        assert.is_true(winbar:find("Agentic Chat", 1, true) ~= nil)
+    end)
+
+    it("skips a non-focusable window when resolving the target", function()
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+
+            local bufnr = vim.api.nvim_create_buf(false, true)
+            -- Only `focusable = false`. The real hidden chat float is also
+            -- `hide = true`, but setting both passes whichever axis the lookup
+            -- filters on; this isolates focusable.
+            _G.target_win = vim.api.nvim_open_win(bufnr, false, {
+                relative = "editor",
+                row = 0,
+                col = 0,
+                width = 10,
+                height = 5,
+                focusable = false,
+            })
+
+            WindowDecoration.render_header(bufnr, "chat", nil, nil)
+        ]])
+        child.flush()
+
+        assert.equal("", child.lua_get([[vim.wo[_G.target_win].winbar]]))
+    end)
+
+    it("stores the context when the widget has no focusable window", function()
+        -- `_set_mode_to_chat_header` -> `render_header("chat", "Mode: X")` runs
+        -- from the provider `current_mode_update` handler and from session
+        -- restore, neither followed by a synchronous `show()`. Dropping the
+        -- context loses `Mode: X` from a background session's winbar until the
+        -- next mode change: `WidgetLayout.open` and `_render_dynamic_headers`
+        -- both re-render with no context argument.
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+
+            -- No window at all: mirrors a hidden widget, chat buffer held only
+            -- by the non-focusable hidden float.
+            _G.bufnr = vim.api.nvim_create_buf(false, true)
+            -- `win_nrs` is mandatory: the render path indexes it before the
+            -- no-window early return, so omitting it makes the scheduled
+            -- callback raise and later assertions read pre-render state.
+            WidgetRegistry.register({
+                buf_nrs = { chat = _G.bufnr },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+            })
+
+            WindowDecoration.render_header(_G.bufnr, "chat", "Mode: X", nil)
+        ]])
+        child.flush()
+
+        assert.equal(
+            "Mode: X",
+            child.lua_get(
+                [[require("agentic.ui.window_decoration").get_headers_state(_G.bufnr).chat.context]]
+            )
+        )
+
+        -- The context above is written BEFORE the window lookup, so it alone
+        -- passes even when the scheduled body then raises. `pcall` cannot see
+        -- that raise either: it happens on the event loop, after the call
+        -- returned. Only the child's message log proves the callback completed.
+        assert.is_nil(
+            child.cmd_capture("messages"):find("vim.schedule callback", 1, true)
+        )
+    end)
+
+    it("keeps the session suffix once one session is gone", function()
+        -- The suffix is STICKY: a widget that ever coexisted with a second
+        -- session keeps " (N)" permanently. Reverting to the bare title would
+        -- relabel a buffer the user already identifies, and would collide with
+        -- the `-old-N` rename path on the next reopen.
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local SessionRegistry = require("agentic.session_registry")
+
+            _G.survivor_buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, _G.survivor_buf)
+
+            local doomed_buf = vim.api.nvim_create_buf(false, true)
+
+            local survivor = {
+                buf_nrs = { chat = _G.survivor_buf },
+                win_nrs = { chat = vim.api.nvim_get_current_win() },
+                headers = WindowDecoration.default_headers(),
+                session_key = 1,
+            }
+            local doomed = {
+                buf_nrs = { chat = doomed_buf },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+                session_key = 2,
+            }
+
+            WidgetRegistry.register(survivor)
+            WidgetRegistry.register(doomed)
+            SessionRegistry.sessions = { [1] = survivor, [2] = doomed }
+
+            WindowDecoration.render_header(_G.survivor_buf, "chat")
+        ]])
+        child.flush()
+
+        local suffixed = child.lua_get(
+            [[vim.fn.fnamemodify(vim.api.nvim_buf_get_name(_G.survivor_buf), ":t")]]
+        )
+        assert.equal("󰻞 Agentic Chat (1)", suffixed)
+
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local SessionRegistry = require("agentic.session_registry")
+
+            -- Destroy session 2: out of the registry AND unregistered, the
+            -- ordering `refresh_buffer_names` documents.
+            local doomed = SessionRegistry.sessions[2]
+            SessionRegistry.sessions[2] = nil
+            WidgetRegistry.unregister(doomed)
+
+            WindowDecoration.refresh_buffer_names()
+        ]])
+        child.flush()
+
+        local refreshed = child.lua_get(
+            [[vim.fn.fnamemodify(vim.api.nvim_buf_get_name(_G.survivor_buf), ":t")]]
+        )
+        assert.equal("󰻞 Agentic Chat (1)", refreshed)
+    end)
+
+    it("leaves a never-coexisted single session unsuffixed", function()
+        -- The sticky rule must ARM, not default on.
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local SessionRegistry = require("agentic.session_registry")
+
+            _G.only_buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_win_set_buf(0, _G.only_buf)
+
+            local only = {
+                buf_nrs = { chat = _G.only_buf },
+                win_nrs = { chat = vim.api.nvim_get_current_win() },
+                headers = WindowDecoration.default_headers(),
+                session_key = 1,
+            }
+
+            WidgetRegistry.register(only)
+            SessionRegistry.sessions = { [1] = only }
+
+            WindowDecoration.render_header(_G.only_buf, "chat")
+        ]])
+        child.flush()
+
+        assert.equal(
+            "󰻞 Agentic Chat",
+            child.lua_get(
+                [[vim.fn.fnamemodify(vim.api.nvim_buf_get_name(_G.only_buf), ":t")]]
+            )
+        )
+
+        child.lua(
+            [[require("agentic.ui.window_decoration").refresh_buffer_names()]]
+        )
+        child.flush()
+
+        assert.equal(
+            "󰻞 Agentic Chat",
+            child.lua_get(
+                [[vim.fn.fnamemodify(vim.api.nvim_buf_get_name(_G.only_buf), ":t")]]
+            )
+        )
+    end)
+
+    it("renames a hidden survivor that has no visible window", function()
+        -- Why `refresh_buffer_names` calls the naming helper directly instead of
+        -- `render_header`: the latter early-returns on a widget with no visible
+        -- window, and a HIDDEN survivor is the case nothing else re-renders.
+        child.lua([[
+            local WindowDecoration = require("agentic.ui.window_decoration")
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            local SessionRegistry = require("agentic.session_registry")
+
+            -- No window anywhere: mirrors a hidden widget, chat buffer held only
+            -- by the non-focusable hidden float.
+            _G.hidden_buf = vim.api.nvim_create_buf(false, true)
+            local other_buf = vim.api.nvim_create_buf(false, true)
+
+            local hidden = {
+                buf_nrs = { chat = _G.hidden_buf },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+                session_key = 1,
+            }
+            local other = {
+                buf_nrs = { chat = other_buf },
+                win_nrs = {},
+                headers = WindowDecoration.default_headers(),
+                session_key = 2,
+            }
+
+            WidgetRegistry.register(hidden)
+            WidgetRegistry.register(other)
+            SessionRegistry.sessions = { [1] = hidden, [2] = other }
+
+            WindowDecoration.refresh_buffer_names()
+        ]])
+        child.flush()
+
+        assert.equal(
+            "󰻞 Agentic Chat (1)",
+            child.lua_get(
+                [[vim.fn.fnamemodify(vim.api.nvim_buf_get_name(_G.hidden_buf), ":t")]]
+            )
+        )
     end)
 
     it("legacy single-arg header fn still works", function()

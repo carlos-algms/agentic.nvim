@@ -56,7 +56,7 @@ describe("Tool block borders", function()
             },
         }
 
-        widget = ChatWidget:new(tabpage, function()
+        widget = ChatWidget:new(function()
             return true
         end)
         widget:show({ focus_prompt = false })

@@ -2,360 +2,316 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local BufferGuard = require("agentic.ui.buffer_guard")
+local ChatWidget = require("agentic.ui.chat_widget")
 local WidgetLayout = require("agentic.ui.widget_layout")
-local BufHelpers = require("agentic.utils.buf_helpers")
 local WidgetRegistry = require("agentic.ui.widget_registry")
 
-local active_setups = {}
+--- Real widgets, not stubs: the guard resolves the owner per event through
+--- `WidgetRegistry`, so a fake owner bypasses the lookup under test.
+--- @return agentic.ui.ChatWidget
+local function new_widget()
+    return ChatWidget:new(spy.new(function() end) --[[@as function]])
+end
 
---- Helper: create a minimal widget-like setup in a fresh tab
---- @return table state { tab, bufs, wins, augroup, cleanup }
-local function create_widget_setup()
-    vim.cmd("tabnew")
-    local tab = vim.api.nvim_get_current_tabpage()
+--- Unnamed, empty, `nofile`: how a panel buffer is created. `:edit` reuses it,
+--- clearing buftype and setting a name — the repurpose the guard undoes.
+--- @param bufnr integer
+local function make_repurposable(bufnr)
+    pcall(vim.api.nvim_buf_set_name, bufnr, "")
+    vim.bo[bufnr].buftype = "nofile"
+    vim.bo[bufnr].modifiable = true
+    vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {})
+end
 
-    -- Create widget buffers
-    local chat_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[chat_buf].buftype = "nofile"
-    vim.bo[chat_buf].filetype = "AgenticChat"
-
-    local input_buf = vim.api.nvim_create_buf(false, true)
-    vim.bo[input_buf].buftype = "nofile"
-    vim.bo[input_buf].filetype = "AgenticInput"
-
-    --- @type {chat: integer, input: integer}
-    local buf_nrs = { chat = chat_buf, input = input_buf }
-
-    -- Create widget windows
-    local chat_win = vim.api.nvim_open_win(chat_buf, false, {
-        split = "right",
-        win = -1,
+--- @return integer id Autocmd id of the single shared BufEnter guard
+local function guard_autocmd_id()
+    local autocmds = vim.api.nvim_get_autocmds({
+        group = "AgenticBufferGuard",
+        event = "BufEnter",
     })
-    local input_win = vim.api.nvim_open_win(input_buf, false, {
-        split = "below",
-        win = chat_win,
-    })
+    assert.equal(1, #autocmds)
 
-    --- @type agentic.ui.ChatWidget.WinNrs
-    local win_nrs = { chat = chat_win, input = input_win }
+    return autocmds[1].id
+end
 
-    -- The original (non-widget) window is the first one
-    local all_wins = vim.api.nvim_tabpage_list_wins(tab)
-    local editor_win = nil
-    for _, w in ipairs(all_wins) do
-        if w ~= chat_win and w ~= input_win then
-            editor_win = w
-            break
+--- Asserts the buffer left the widget's windows for a window of its own.
+--- @param widget agentic.ui.ChatWidget
+--- @param bufnr integer
+local function assert_redirected_out(widget, bufnr)
+    local wins = vim.fn.win_findbuf(bufnr)
+    assert.is_true(#wins > 0)
+
+    for _, winid in ipairs(wins) do
+        for _, widget_win in pairs(widget.win_nrs) do
+            assert.is_not.equal(widget_win, winid)
         end
     end
+end
 
-    -- Mark widget windows with their expected buffer
-    vim.w[chat_win].agentic_bufnr = chat_buf
-    vim.w[input_win].agentic_bufnr = input_buf
-
-    local target_win = editor_win
-    --- @type any
-    local widget = {
-        tab_page_id = tab,
-        buf_nrs = buf_nrs,
-        win_nrs = win_nrs,
-        find_first_non_widget_window = function()
-            if target_win and BufHelpers.is_win_usable(target_win) then
-                return target_win
-            end
-            return nil
-        end,
-        open_editor_window = function()
-            return nil
-        end,
-    }
-    WidgetRegistry.register(widget)
-
-    --- @type agentic.ui.BufferGuard.Callbacks
-    local callbacks = {
-        tab_page_id = tab,
-    }
-
-    local augroup = BufferGuard.attach(callbacks)
-
-    local cleaned = false
-    local setup = {
-        tab = tab,
-        bufs = buf_nrs,
-        wins = win_nrs,
-        editor_win = editor_win,
-        widget = widget,
-        augroup = augroup,
-        set_target = function(winid)
-            target_win = winid
-        end,
-        cleanup = function()
-            if cleaned then
-                return
-            end
-            cleaned = true
-            BufferGuard.detach(augroup)
-            WidgetRegistry.unregister(widget)
-            pcall(function()
-                if vim.api.nvim_tabpage_is_valid(tab) then
-                    vim.api.nvim_set_current_tabpage(tab)
-                    vim.cmd("tabclose!")
-                end
-            end)
-        end,
-    }
-    active_setups[#active_setups + 1] = setup
-    return setup
+--- @return string path
+local function write_tmpfile()
+    local path = vim.fn.tempname() .. ".lua"
+    vim.fn.writefile({ "-- test" }, path)
+    return path
 end
 
 describe("BufferGuard", function()
+    local widget
+    local widget2
+    local tmpfiles
+    --- @type table<integer, boolean>
+    local baseline_tabs
+    --- @type integer[]
+    local cleanup_buffers
+    --- @type agentic.ui.ChatWidget[]
+    local foreign_owners
     --- @type TestStub|nil
     local schedule_stub
-    --- @type TestStub|nil
-    local usable_stub
     --- @type TestSpy|nil
     local focus_spy
-    --- @type table<integer, true>
-    local baseline_tabs
-    --- @type table<integer, true>
-    local baseline_buffers
-    --- @type agentic.ui.ChatWidget[]
-    local extra_widgets
-    --- @type integer[]
-    local extra_augroups
-    --- @type string[]
-    local tempfiles
     local saved_options
 
-    --- @param tabpage integer
-    --- @param bufnr integer
-    --- @param winid integer
-    --- @return agentic.ui.ChatWidget widget
-    local function register_foreign_widget(tabpage, bufnr, winid)
-        --- @type any
-        local widget = {
-            tab_page_id = tabpage,
-            buf_nrs = { chat = bufnr },
-            win_nrs = { chat = winid },
-            find_first_non_widget_window = function()
-                return winid
-            end,
-            open_editor_window = function()
-                return nil
-            end,
-        }
-        extra_widgets[#extra_widgets + 1] = widget
-        WidgetRegistry.register(widget)
-        return widget
-    end
-
     before_each(function()
-        active_setups = {}
+        tmpfiles = {}
         baseline_tabs = {}
         for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
             baseline_tabs[tabpage] = true
         end
-        baseline_buffers = {}
-        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-            baseline_buffers[bufnr] = true
-        end
-        extra_widgets = {}
-        extra_augroups = {}
-        tempfiles = {}
+        cleanup_buffers = {}
+        foreign_owners = {}
+        schedule_stub = nil
+        focus_spy = nil
         saved_options = {
             number = vim.o.number,
             signcolumn = vim.o.signcolumn,
             cursorline = vim.o.cursorline,
             list = vim.o.list,
         }
-        schedule_stub = nil
-        usable_stub = nil
-        focus_spy = nil
+        vim.cmd("tabnew")
+        widget = new_widget()
     end)
 
     after_each(function()
         if focus_spy then
             focus_spy:revert()
         end
-        if usable_stub then
-            usable_stub:revert()
-        end
         if schedule_stub then
             schedule_stub:revert()
         end
-        for _, setup in ipairs(active_setups) do
-            setup.cleanup()
+        for _, owner in ipairs(foreign_owners) do
+            WidgetRegistry.unregister(owner)
         end
-        for _, augroup in ipairs(extra_augroups) do
-            BufferGuard.detach(augroup)
+        for _, w in ipairs({ widget, widget2 }) do
+            pcall(function()
+                w:destroy()
+            end)
         end
-        for _, widget in ipairs(extra_widgets) do
-            WidgetRegistry.unregister(widget)
-        end
-        for _, path in ipairs(tempfiles) do
+        widget = nil
+        widget2 = nil
+
+        for _, path in ipairs(tmpfiles) do
             os.remove(path)
         end
-        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
-            if not baseline_tabs[tabpage] then
-                pcall(function()
-                    vim.api.nvim_set_current_tabpage(tabpage)
-                    vim.cmd("tabclose!")
-                end)
-            end
-        end
-        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-            if
-                not baseline_buffers[bufnr] and vim.api.nvim_buf_is_valid(bufnr)
-            then
-                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
-            end
-        end
+
         vim.o.number = saved_options.number
         vim.o.signcolumn = saved_options.signcolumn
         vim.o.cursorline = saved_options.cursorline
         vim.o.list = saved_options.list
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.cmd(
+                    "tabclose! " .. vim.api.nvim_tabpage_get_number(tabpage)
+                )
+            end
+        end
+
+        for _, bufnr in ipairs(cleanup_buffers) do
+            if vim.api.nvim_buf_is_valid(bufnr) then
+                vim.api.nvim_buf_delete(bufnr, { force = true })
+            end
+        end
     end)
 
     it(
-        "restores widget buffer when foreign buffer enters " .. "widget window",
+        "restores the widget buffer when a foreign buffer enters its window",
         function()
-            local s = create_widget_setup()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_set_current_win(widget.win_nrs.chat)
 
-            -- Focus the chat widget window
-            vim.api.nvim_set_current_win(s.wins.chat)
-
-            -- Create a foreign buffer and force it into the
-            -- widget window via API
             local foreign = vim.api.nvim_create_buf(true, false)
-            vim.api.nvim_win_set_buf(s.wins.chat, foreign)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
+            vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
-            -- The guard fires on BufEnter and should have
-            -- swapped back synchronously
-            local buf_in_chat = vim.api.nvim_win_get_buf(s.wins.chat)
-            assert.equal(s.bufs.chat, buf_in_chat)
-
-            s.cleanup()
+            assert.equal(
+                widget.buf_nrs.chat,
+                vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+            )
         end
     )
 
-    it("redirects the foreign buffer to the editor window", function()
-        local s = create_widget_setup()
-        local old_chat_buf = s.bufs.chat
+    it(
+        "does not redirect when the widget buffer enters its own window",
+        function()
+            widget:show({ focus_prompt = false })
+            vim.api.nvim_set_current_win(widget.win_nrs.chat)
 
-        vim.api.nvim_set_current_win(s.wins.chat)
+            vim.api.nvim_win_set_buf(widget.win_nrs.chat, widget.buf_nrs.chat)
 
-        -- Write a temp file so the foreign buffer has a name
-        local tmpfile = vim.fn.tempname() .. ".lua"
-        vim.fn.writefile({ "-- test" }, tmpfile)
-        tempfiles[#tempfiles + 1] = tmpfile
+            assert.equal(
+                widget.buf_nrs.chat,
+                vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+            )
+        end
+    )
 
-        vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
+    it("redirects using the owning widget's target window", function()
+        widget:show({ focus_prompt = false })
 
-        -- Editor window should now display the file.
-        -- Resolve symlinks before comparing (macOS: /var ->
-        -- /private/var); nvim_buf_get_name returns the real path.
-        local editor_buf = vim.api.nvim_win_get_buf(s.editor_win)
-        local editor_name = vim.api.nvim_buf_get_name(editor_buf)
-        local resolved_tmpfile = vim.fn.resolve(tmpfile)
-        assert.equal(resolved_tmpfile, editor_name)
+        vim.cmd("tabnew")
+        local tab_b = vim.api.nvim_get_current_tabpage()
+        widget2 = new_widget()
+        widget2:show({ focus_prompt = false })
 
-        -- Widget window should now hold a fresh replacement buffer
-        local buf_in_chat = vim.api.nvim_win_get_buf(s.wins.chat)
-        assert.are_not.equal(old_chat_buf, buf_in_chat)
-        assert.equal(buf_in_chat, s.widget.buf_nrs.chat)
-        assert.equal(buf_in_chat, vim.w[s.wins.chat].agentic_bufnr)
-        assert.is_nil(WidgetRegistry.get(old_chat_buf))
-        assert.equal(s.widget, WidgetRegistry.get(buf_in_chat))
-
-        s.cleanup()
-    end)
-
-    it("redirects a later foreign buffer after ownership transfer", function()
-        local s = create_widget_setup()
-        local old_chat_buf = s.bufs.chat
-        vim.api.nvim_set_current_win(s.wins.chat)
-
-        local tmpfile = vim.fn.tempname() .. ".lua"
-        vim.fn.writefile({ "-- test" }, tmpfile)
-        tempfiles[#tempfiles + 1] = tmpfile
-        vim.cmd("edit " .. vim.fn.fnameescape(tmpfile))
-
-        local replacement = s.widget.buf_nrs.chat
-        assert.are_not.equal(old_chat_buf, replacement)
-        assert.equal(s.widget, WidgetRegistry.get(replacement))
-
-        vim.api.nvim_set_current_win(s.wins.chat)
-        local later_foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, later_foreign)
-
-        assert.equal(replacement, vim.api.nvim_win_get_buf(s.wins.chat))
-        assert.equal(later_foreign, vim.api.nvim_win_get_buf(s.editor_win))
-    end)
-
-    it("re-resolves the deferred destination", function()
-        local s = create_widget_setup()
-        vim.api.nvim_set_current_win(s.wins.chat)
-
-        local scheduled
-        schedule_stub = spy.stub(vim, "schedule")
-        schedule_stub:invokes(function(callback)
-            scheduled = callback
-        end)
-
+        vim.api.nvim_set_current_win(widget2.win_nrs.chat)
         local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
+        vim.api.nvim_win_set_buf(widget2.win_nrs.chat, foreign)
 
-        local later_win = vim.api.nvim_open_win(
-            vim.api.nvim_create_buf(false, true),
-            false,
-            { split = "left", win = s.editor_win }
+        -- Owner from the first registered widget instead of `vim.w.agentic_bufnr`
+        -- lands the buffer in the OTHER tab.
+        local wins = vim.fn.win_findbuf(foreign)
+        assert.is_true(#wins > 0)
+        for _, winid in ipairs(wins) do
+            assert.equal(tab_b, vim.api.nvim_win_get_tabpage(winid))
+        end
+
+        assert.equal(
+            widget2.buf_nrs.chat,
+            vim.api.nvim_win_get_buf(widget2.win_nrs.chat)
         )
-        s.set_target(later_win)
-        assert.is_not_nil(scheduled)
-        scheduled()
-
-        assert.equal(foreign, vim.api.nvim_win_get_buf(later_win))
-        assert.equal(later_win, vim.api.nvim_get_current_win())
-
-        schedule_stub:revert()
-        schedule_stub = nil
-        s.cleanup()
     end)
 
-    it("rejects a deferred destination that is no longer usable", function()
-        local s = create_widget_setup()
-        vim.api.nvim_set_current_win(s.wins.chat)
+    it(
+        "creates a split when the widget's tab holds no editor window",
+        function()
+            widget:show({ focus_prompt = false })
 
-        local scheduled
-        schedule_stub = spy.stub(vim, "schedule")
-        schedule_stub:invokes(function(callback)
-            scheduled = callback
-        end)
+            local editor_win = widget:find_first_non_widget_window()
+            assert.is_not_nil(editor_win)
+            ---@cast editor_win integer
+            vim.api.nvim_win_close(editor_win, true)
 
-        local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
-        assert.is_not_nil(scheduled)
+            vim.api.nvim_set_current_win(widget.win_nrs.chat)
+            local before =
+                #vim.api.nvim_tabpage_list_wins(widget:get_visible_tab_id())
 
-        usable_stub = spy.stub(BufHelpers, "is_win_usable")
-        usable_stub:returns(false)
-        focus_spy = spy.on(vim.api, "nvim_set_current_win")
+            local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
+            vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
-        scheduled()
+            assert.equal(
+                widget.buf_nrs.chat,
+                vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+            )
+            assert.is_true(
+                #vim.api.nvim_tabpage_list_wins(widget:get_visible_tab_id())
+                    > before
+            )
+            assert.is_true(#vim.fn.win_findbuf(foreign) > 0)
+        end
+    )
 
-        assert.spy(focus_spy).was.called(0)
+    it("does not re-create the shared guard on later calls", function()
+        BufferGuard.ensure()
+        local first_id = guard_autocmd_id()
 
-        focus_spy:revert()
-        focus_spy = nil
-        usable_stub:revert()
-        usable_stub = nil
-        schedule_stub:revert()
-        schedule_stub = nil
-        s.cleanup()
+        BufferGuard.ensure()
+        widget2 = new_widget()
+
+        -- Counting autocmds cannot detect a re-create:
+        -- `nvim_create_augroup(name, { clear = true })` returns the same id and
+        -- wipes the previous autocmd, so the count stays 1 either way. Only the
+        -- autocmd id changes when `ensure` is not a no-op.
+        assert.equal(first_id, guard_autocmd_id())
+    end)
+
+    it("swaps a repurposed widget buffer for a fresh scratch buffer", function()
+        widget:show({ focus_prompt = false })
+        make_repurposable(widget.buf_nrs.chat)
+
+        local path = write_tmpfile()
+        tmpfiles[#tmpfiles + 1] = path
+
+        local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        vim.cmd("edit " .. vim.fn.fnameescape(path))
+
+        local replacement = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+        assert.is_not.equal(old_chat, replacement)
+        assert.equal("nofile", vim.bo[replacement].buftype)
+        assert.equal(replacement, vim.w[widget.win_nrs.chat].agentic_bufnr)
+
+        local file_wins = vim.fn.win_findbuf(old_chat)
+        for _, winid in ipairs(file_wins) do
+            assert.is_not.equal(widget.win_nrs.chat, winid)
+        end
+    end)
+
+    it("transfers registry ownership to the replacement buffer", function()
+        widget:show({ focus_prompt = false })
+        make_repurposable(widget.buf_nrs.chat)
+
+        local path = write_tmpfile()
+        tmpfiles[#tmpfiles + 1] = path
+
+        local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        vim.cmd("edit " .. vim.fn.fnameescape(path))
+
+        local replacement = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+        assert.equal(replacement, widget.buf_nrs.chat)
+        assert.equal(widget, WidgetRegistry.get(replacement))
+        assert.is_nil(WidgetRegistry.get(old_chat))
+    end)
+
+    it("redirects two consecutive edits in the same panel", function()
+        widget:show({ focus_prompt = false })
+        make_repurposable(widget.buf_nrs.chat)
+
+        local first = write_tmpfile()
+        local second = write_tmpfile()
+        tmpfiles[#tmpfiles + 1] = first
+        tmpfiles[#tmpfiles + 1] = second
+
+        local old_chat = widget.buf_nrs.chat
+        cleanup_buffers[#cleanup_buffers + 1] = old_chat
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        vim.cmd("edit " .. vim.fn.fnameescape(first))
+
+        assert_redirected_out(widget, old_chat)
+
+        -- Without the ownership transfer above, the replacement has no owner and
+        -- this second edit cannot resolve a target window.
+        local replacement = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+        cleanup_buffers[#cleanup_buffers + 1] = replacement
+        make_repurposable(replacement)
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        vim.cmd("edit " .. vim.fn.fnameescape(second))
+
+        local final_buf = vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+        assert.is_not.equal(replacement, final_buf)
+        assert.equal(final_buf, widget.buf_nrs.chat)
+        assert.equal(widget, WidgetRegistry.get(final_buf))
+
+        assert_redirected_out(widget, replacement)
     end)
 
     it("rejects a different widget that claims the owner buffer", function()
-        local s = create_widget_setup()
-        vim.api.nvim_set_current_win(s.wins.chat)
+        widget:show({ focus_prompt = false })
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
 
         local scheduled
         schedule_stub = spy.stub(vim, "schedule")
@@ -364,23 +320,20 @@ describe("BufferGuard", function()
         end)
 
         local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
+        vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
         assert.is_not_nil(scheduled)
 
         --- @type any
-        local replacement = {
-            tab_page_id = s.tab,
-            buf_nrs = { chat = s.widget.buf_nrs.chat },
+        local replacement_owner = {
+            buf_nrs = { chat = widget.buf_nrs.chat },
             win_nrs = {},
-            find_first_non_widget_window = function()
-                return s.editor_win
-            end,
-            open_editor_window = function()
-                return nil
+            get_visible_tab_id = function()
+                return widget:get_visible_tab_id()
             end,
         }
-        extra_widgets[#extra_widgets + 1] = replacement
-        WidgetRegistry.register(replacement)
+        foreign_owners[#foreign_owners + 1] = replacement_owner
+        WidgetRegistry.register(replacement_owner)
         focus_spy = spy.on(vim.api, "nvim_set_current_win")
 
         scheduled()
@@ -389,218 +342,79 @@ describe("BufferGuard", function()
     end)
 
     it("ignores a foreign-buffer event claimed by another tab", function()
-        local s = create_widget_setup()
-        local expected = s.widget.buf_nrs.chat
+        widget:show({ focus_prompt = false })
+        local expected = widget.buf_nrs.chat
 
         vim.cmd("tabnew")
         local foreign_tab = vim.api.nvim_get_current_tabpage()
-        local foreign_win = vim.api.nvim_get_current_win()
-        local foreign_widget =
-            register_foreign_widget(foreign_tab, expected, foreign_win)
+        --- @type any
+        local foreign_owner = {
+            buf_nrs = { chat = expected },
+            win_nrs = {},
+            get_visible_tab_id = function()
+                return foreign_tab
+            end,
+        }
+        foreign_owners[#foreign_owners + 1] = foreign_owner
+        WidgetRegistry.register(foreign_owner)
 
-        vim.api.nvim_set_current_tabpage(s.tab)
-        vim.api.nvim_set_current_win(s.wins.chat)
-        local foreign_buf = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign_buf)
+        local widget_tab = widget:get_visible_tab_id()
+        vim.api.nvim_set_current_tabpage(widget_tab)
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
+        local foreign = vim.api.nvim_create_buf(true, false)
+        cleanup_buffers[#cleanup_buffers + 1] = foreign
+        vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
-        assert.equal(foreign_buf, vim.api.nvim_win_get_buf(s.wins.chat))
-        assert.equal(expected, foreign_widget.buf_nrs.chat)
+        assert.equal(foreign, vim.api.nvim_win_get_buf(widget.win_nrs.chat))
     end)
 
     it("ignores a repurposed-buffer event claimed by another tab", function()
-        local s = create_widget_setup()
-        local expected = s.widget.buf_nrs.chat
+        widget:show({ focus_prompt = false })
+        local expected = widget.buf_nrs.chat
 
         vim.cmd("tabnew")
         local foreign_tab = vim.api.nvim_get_current_tabpage()
-        local foreign_win = vim.api.nvim_get_current_win()
-        local foreign_widget =
-            register_foreign_widget(foreign_tab, expected, foreign_win)
+        --- @type any
+        local foreign_owner = {
+            buf_nrs = { chat = expected },
+            win_nrs = {},
+            get_visible_tab_id = function()
+                return foreign_tab
+            end,
+        }
+        foreign_owners[#foreign_owners + 1] = foreign_owner
+        WidgetRegistry.register(foreign_owner)
 
-        vim.api.nvim_set_current_tabpage(s.tab)
-        vim.api.nvim_set_current_win(s.wins.chat)
+        local widget_tab = widget:get_visible_tab_id()
+        vim.api.nvim_set_current_tabpage(widget_tab)
+        vim.api.nvim_set_current_win(widget.win_nrs.chat)
         vim.api.nvim_buf_set_name(expected, vim.fn.tempname() .. ".lua")
         vim.bo[expected].buftype = ""
         vim.api.nvim_exec_autocmds("BufEnter", { buffer = expected })
 
-        assert.equal(expected, vim.api.nvim_win_get_buf(s.wins.chat))
-        assert.equal(expected, foreign_widget.buf_nrs.chat)
-    end)
-
-    it("rejects a destination outside the owner's stored tabpage", function()
-        local s = create_widget_setup()
-
-        vim.cmd("tabnew")
-        local foreign_tab = vim.api.nvim_get_current_tabpage()
-        local foreign_win = vim.api.nvim_get_current_win()
-        local original_foreign_buf = vim.api.nvim_win_get_buf(foreign_win)
-        s.set_target(foreign_win)
-
-        vim.api.nvim_set_current_tabpage(s.tab)
-        vim.api.nvim_set_current_win(s.wins.chat)
-        local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
-
-        assert.equal(
-            s.widget.buf_nrs.chat,
-            vim.api.nvim_win_get_buf(s.wins.chat)
-        )
-        assert.equal(
-            original_foreign_buf,
-            vim.api.nvim_win_get_buf(foreign_win)
-        )
-        assert.equal(foreign_tab, vim.api.nvim_win_get_tabpage(foreign_win))
-
-        s.cleanup()
-    end)
-
-    it(
-        "does not redirect when widget buffer enters its own " .. "window",
-        function()
-            local s = create_widget_setup()
-
-            vim.api.nvim_set_current_win(s.wins.chat)
-            vim.api.nvim_win_set_buf(s.wins.chat, s.bufs.chat)
-
-            local buf_in_chat = vim.api.nvim_win_get_buf(s.wins.chat)
-            assert.equal(s.bufs.chat, buf_in_chat)
-
-            s.cleanup()
-        end
-    )
-
-    it("creates a new split when no editor window exists", function()
-        vim.cmd("tabnew")
-        local tab = vim.api.nvim_get_current_tabpage()
-
-        local chat_buf = vim.api.nvim_create_buf(false, true)
-        vim.bo[chat_buf].buftype = "nofile"
-
-        -- Only one window — make it the widget window
-        local chat_win = vim.api.nvim_get_current_win()
-        vim.api.nvim_win_set_buf(chat_win, chat_buf)
-
-        -- Mark the widget window
-        vim.w[chat_win].agentic_bufnr = chat_buf
-
-        local augroup = BufferGuard.attach({
-            tab_page_id = tab,
-        })
-        extra_augroups[#extra_augroups + 1] = augroup
-
-        --- @type any
-        local widget = {
-            tab_page_id = tab,
-            buf_nrs = { chat = chat_buf },
-            win_nrs = { chat = chat_win },
-            find_first_non_widget_window = function()
-                return nil
-            end,
-            open_editor_window = function()
-                local new_buf = vim.api.nvim_create_buf(false, true)
-                local ok, winid = pcall(
-                    vim.api.nvim_open_win,
-                    new_buf,
-                    true,
-                    { split = "left", win = -1 }
-                )
-                if ok then
-                    return winid
-                end
-                return nil
-            end,
-        }
-        extra_widgets[#extra_widgets + 1] = widget
-        WidgetRegistry.register(widget)
-
-        -- Force a foreign buffer in
-        local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(chat_win, foreign)
-
-        -- Widget buffer should be restored
-        local buf_in_chat = vim.api.nvim_win_get_buf(chat_win)
-        assert.equal(chat_buf, buf_in_chat)
-
-        -- A new window should have been created
-        local all_wins = vim.api.nvim_tabpage_list_wins(tab)
-        assert.is_true(#all_wins > 1)
-
-        BufferGuard.detach(augroup)
-        WidgetRegistry.unregister(widget)
-        pcall(function()
-            vim.cmd("tabclose!")
-        end)
-    end)
-
-    it("detach removes the autocmd group", function()
-        local s = create_widget_setup()
-
-        BufferGuard.detach(s.augroup)
-
-        -- After detach, forcing a foreign buffer should NOT
-        -- be intercepted
-        vim.api.nvim_set_current_win(s.wins.chat)
-        local foreign = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_win_set_buf(s.wins.chat, foreign)
-
-        -- The foreign buffer should stay (no guard active)
-        local buf_in_chat = vim.api.nvim_win_get_buf(s.wins.chat)
-        assert.equal(foreign, buf_in_chat)
-
-        WidgetRegistry.unregister(s.widget)
-
-        pcall(function()
-            vim.cmd("tabclose!")
-        end)
+        assert.equal(expected, vim.api.nvim_win_get_buf(widget.win_nrs.chat))
+        assert.equal(expected, widget.buf_nrs.chat)
     end)
 
     it(
         "does not leak widget window options to the editor window after redirect",
         function()
-            -- Widget windows hold panel-styled options (no number column,
-            -- no signcolumn, custom winhighlight, etc.). When a foreign
-            -- buffer briefly cohabits a widget window before being
-            -- redirected, those window-local options must not follow the
-            -- buffer to its target window.
+            -- Widget windows hold panel-styled window-local options. A foreign
+            -- buffer briefly cohabiting a widget window must not carry them to
+            -- its target window — what the `vim.wo[winid][0]` `:setlocal`
+            -- sentinel prevents.
             --
-            -- Forces non-default global options so a leak from PANEL
-            -- defaults is observable as a divergence on the editor window.
-            local saved = {
-                number = vim.o.number,
-                signcolumn = vim.o.signcolumn,
-                cursorline = vim.o.cursorline,
-                list = vim.o.list,
-            }
+            -- Non-default globals below make a leak from PANEL defaults
+            -- observable as a divergence on the editor window.
             vim.o.number = true
             vim.o.signcolumn = "yes"
             vim.o.cursorline = true
             vim.o.list = true
 
-            vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-
-            local win_nrs = {}
-            local buf_nrs = {
-                chat = vim.api.nvim_create_buf(false, true),
-                input = vim.api.nvim_create_buf(false, true),
-                code = vim.api.nvim_create_buf(false, true),
-                files = vim.api.nvim_create_buf(false, true),
-                diagnostics = vim.api.nvim_create_buf(false, true),
-                todos = vim.api.nvim_create_buf(false, true),
-            }
-
-            -- Editor window in this tab is the one created by :tabnew
             local editor_win = vim.api.nvim_get_current_win()
+            widget:show({ focus_prompt = false })
 
-            WidgetLayout.open({
-                tab_page_id = tab_page_id,
-                buf_nrs = buf_nrs,
-                win_nrs = win_nrs,
-                position = "right",
-                focus_prompt = false,
-            })
-
-            -- Snapshot editor window options BEFORE any cohabit cycle
+            -- Snapshot BEFORE any cohabit cycle
             local editor_before = {
                 number = vim.wo[editor_win].number,
                 signcolumn = vim.wo[editor_win].signcolumn,
@@ -613,36 +427,15 @@ describe("BufferGuard", function()
                 foldcolumn = vim.wo[editor_win].foldcolumn,
             }
 
-            local augroup = BufferGuard.attach({
-                tab_page_id = tab_page_id,
-            })
-            extra_augroups[#extra_augroups + 1] = augroup
-
-            --- @type any
-            local widget = {
-                tab_page_id = tab_page_id,
-                buf_nrs = buf_nrs,
-                win_nrs = win_nrs,
-                find_first_non_widget_window = function()
-                    return editor_win
-                end,
-                open_editor_window = function()
-                    return nil
-                end,
-            }
-            extra_widgets[#extra_widgets + 1] = widget
-            WidgetRegistry.register(widget)
-
-            -- Force a foreign buffer into the chat widget window. This
-            -- triggers BufEnter inside the widget and, in turn, a
-            -- redirect to the editor window via BufferGuard.
-            vim.api.nvim_set_current_win(win_nrs.chat)
+            -- Triggers BufEnter inside the widget, hence a BufferGuard redirect
+            -- to the editor window.
+            vim.api.nvim_set_current_win(widget.win_nrs.chat)
             local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
             vim.api.nvim_buf_set_name(foreign, vim.fn.tempname() .. "_leak.txt")
-            vim.api.nvim_win_set_buf(win_nrs.chat, foreign)
+            vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
 
-            -- Editor window should now hold the foreign buffer with its
-            -- ORIGINAL options intact, not panel-styled.
+            -- Foreign buffer lands with ORIGINAL options, not panel-styled.
             assert.equal(foreign, vim.api.nvim_win_get_buf(editor_win))
             assert.equal(editor_before.number, vim.wo[editor_win].number)
             assert.equal(
@@ -669,78 +462,34 @@ describe("BufferGuard", function()
                 vim.wo[editor_win].foldcolumn
             )
 
-            BufferGuard.detach(augroup)
-            WidgetRegistry.unregister(widget)
-            WidgetLayout.close(win_nrs)
-            pcall(function()
-                vim.cmd("tabclose!")
-            end)
-
-            vim.o.number = saved.number
-            vim.o.signcolumn = saved.signcolumn
-            vim.o.cursorline = saved.cursorline
-            vim.o.list = saved.list
+            WidgetLayout.close(widget.win_nrs)
         end
     )
 end)
 
--- Child process tests for cursor-follow behavior.
--- vim.schedule callbacks require event loop processing that
--- can't be safely done in same-process mini.test (vim.wait
--- escapes pcall, causing silent test skips). Child process
--- tests use RPC round-trips to flush the event loop.
+-- Child process: cursor-follow runs in `vim.schedule`, and flushing the event
+-- loop in-process needs `vim.wait`, which escapes pcall and silently skips
+-- tests. RPC round-trips flush it instead.
 local Child = require("tests.helpers.child")
 
 describe("BufferGuard cursor follow (child)", function()
     local child = Child.new()
 
-    --- Set up widget layout in child: editor_win | chat_win.
-    --- Attaches BufferGuard and focuses the chat window.
+    --- Real widget in the child, chat window focused.
     --- @return integer editor_win
     --- @return integer chat_win
     local function setup_widget_in_child()
-        local editor_win = child.api.nvim_get_current_win()
+        local wins = child.lua_get([[(function()
+            local ChatWidget = require("agentic.ui.chat_widget")
+            local editor_win = vim.api.nvim_get_current_win()
+            _G.widget = ChatWidget:new(function() return true end)
+            _G.widget:show({ focus_prompt = false })
+            return { editor_win, _G.widget.win_nrs.chat }
+        end)()]])
 
-        local chat_buf = child.api.nvim_create_buf(false, true)
-        child.bo[chat_buf].buftype = "nofile"
+        child.api.nvim_set_current_win(wins[2])
 
-        local chat_win = child.api.nvim_open_win(chat_buf, true, {
-            split = "right",
-            win = -1,
-        })
-
-        -- vim.w[winid] assignment and BG.attach can't cross the RPC boundary.
-        child.lua(
-            [[
-            local BG = require("agentic.ui.buffer_guard")
-            local WidgetRegistry = require("agentic.ui.widget_registry")
-            local editor_win, chat_win, chat_buf = ...
-
-            vim.w[chat_win].agentic_bufnr = chat_buf
-
-            local widget = {
-                tab_page_id = vim.api.nvim_get_current_tabpage(),
-                buf_nrs = { chat = chat_buf },
-                win_nrs = { chat = chat_win },
-                find_first_non_widget_window = function()
-                    return editor_win
-                end,
-                open_editor_window = function()
-                    return nil
-                end,
-            }
-            WidgetRegistry.register(widget)
-
-            BG.attach({
-                tab_page_id = vim.api.nvim_get_current_tabpage(),
-            })
-        ]],
-            { editor_win, chat_win, chat_buf }
-        )
-
-        child.api.nvim_set_current_win(chat_win)
-
-        return editor_win, chat_win
+        return wins[1], wins[2]
     end
 
     before_each(function()
@@ -754,7 +503,6 @@ describe("BufferGuard cursor follow (child)", function()
     it("moves cursor to editor window after foreign buffer redirect", function()
         local editor_win, chat_win = setup_widget_in_child()
 
-        -- Force a foreign buffer into the widget window
         local foreign = child.api.nvim_create_buf(true, false)
         child.api.nvim_win_set_buf(chat_win, foreign)
 
@@ -762,34 +510,91 @@ describe("BufferGuard cursor follow (child)", function()
         child.flush()
         vim.uv.sleep(50)
 
-        -- Cursor should have followed the foreign buffer
         assert.equal(editor_win, child.api.nvim_get_current_win())
-
-        -- Editor window should have the foreign buffer
         assert.equal(foreign, child.api.nvim_win_get_buf(editor_win))
     end)
 
     it("moves cursor to editor window after :edit in widget window", function()
-        local tmpfile = vim.fn.tempname() .. ".lua"
-        vim.fn.writefile({ "-- test" }, tmpfile)
+        local tmpfile = write_tmpfile()
 
         local editor_win = setup_widget_in_child()
 
-        -- :edit a file while in the widget window
         child.cmd("edit " .. child.fn.fnameescape(tmpfile))
 
         -- Flush scheduled cursor-follow callback
         child.flush()
         vim.uv.sleep(50)
 
-        -- Cursor should be in the editor window
         assert.equal(editor_win, child.api.nvim_get_current_win())
 
-        -- Editor window should display the file
         local editor_buf = child.api.nvim_win_get_buf(editor_win)
         local editor_name = child.api.nvim_buf_get_name(editor_buf)
         assert.equal(vim.fn.resolve(tmpfile), editor_name)
 
         os.remove(tmpfile)
+    end)
+
+    it(
+        "does not use a closed redirect window after the schedule boundary",
+        function()
+            local editor_win, chat_win = setup_widget_in_child()
+
+            local result = child.lua_get(
+                [[(function(editor, chat)
+            local original_schedule = vim.schedule
+            vim.schedule = function(callback)
+                _G.buffer_guard_follow = callback
+            end
+
+            local foreign = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_win_set_buf(chat, foreign)
+            vim.schedule = original_schedule
+            vim.api.nvim_win_close(editor, true)
+
+            local ok = pcall(_G.buffer_guard_follow)
+            return { ok, vim.api.nvim_get_current_win() }
+        end)(...)]],
+                { editor_win, chat_win }
+            )
+
+            assert.is_true(result[1])
+            assert.is_not.equal(editor_win, result[2])
+        end
+    )
+
+    it("follows the widget's destination after it moves tabpages", function()
+        local old_editor, chat_win = setup_widget_in_child()
+
+        local result = child.lua_get(
+            [[(function(old_target, chat)
+            local original_schedule = vim.schedule
+            vim.schedule = function(callback)
+                _G.buffer_guard_follow = callback
+            end
+
+            local foreign = vim.api.nvim_create_buf(true, false)
+            vim.api.nvim_win_set_buf(chat, foreign)
+            vim.schedule = original_schedule
+
+            _G.widget:hide()
+            vim.cmd("tabnew")
+            local new_target = vim.api.nvim_get_current_win()
+            _G.widget:show({ focus_prompt = false })
+            _G.buffer_guard_follow()
+
+            return {
+                old_target,
+                new_target,
+                vim.api.nvim_get_current_win(),
+                vim.api.nvim_win_get_buf(new_target),
+                foreign,
+            }
+        end)(...)]],
+            { old_editor, chat_win }
+        )
+
+        assert.equal(result[2], result[3])
+        assert.equal(result[5], result[4])
+        assert.is_not.equal(result[1], result[3])
     end)
 end)

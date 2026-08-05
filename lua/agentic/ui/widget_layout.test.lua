@@ -1,24 +1,92 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local WidgetLayout = require("agentic.ui.widget_layout")
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local ToolBlockBorder = require("agentic.ui.tool_block_border")
-local BufHelpers = require("agentic.utils.buf_helpers")
 
 describe("WidgetLayout", function()
     local notify_stub
     local saved_chat_win_opts
+    --- Baseline tabpage handles, not just a count: `tabclose!` closes whichever
+    --- tabpage is current, so a case that ends on a baseline tab while an extra
+    --- one is still open would otherwise have the baseline closed instead and
+    --- leak the test tab with the count back at baseline.
+    local base_tab_set
+    --- @type table<integer, boolean>
+    local base_buf_set
+    --- @type table<integer, boolean>
+    local base_win_set
+    --- Stubs on `vim.api` reverted by teardown. Reverting only after the call
+    --- under test leaks them to the rest of the run when that call raises, and
+    --- these cases stub `nvim_win_is_valid` itself, so the leak breaks teardown
+    --- and every later case rather than just this one.
+    local api_stubs
+
+    --- @param name string `vim.api` function to stub
+    --- @return table stub
+    local function stub_api(name)
+        local stub = spy.stub(vim.api, name)
+        table.insert(api_stubs, stub)
+        return stub
+    end
 
     before_each(function()
         notify_stub = spy.stub(Logger, "notify")
         saved_chat_win_opts = nil
+        api_stubs = {}
+
+        base_tab_set = {}
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            base_tab_set[tab] = true
+        end
+
+        base_buf_set = {}
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            base_buf_set[bufnr] = true
+        end
+
+        base_win_set = {}
+        for _, winid in ipairs(vim.api.nvim_list_wins()) do
+            base_win_set[winid] = true
+        end
     end)
 
     after_each(function()
+        -- Before the tab cleanup below, which calls the stubbed APIs.
+        for _, stub in ipairs(api_stubs) do
+            stub:revert()
+        end
+        api_stubs = {}
+
         notify_stub:revert()
         if saved_chat_win_opts then
             Config.windows.chat.win_opts = saved_chat_win_opts
+        end
+
+        for _, winid in ipairs(vim.api.nvim_list_wins()) do
+            if not base_win_set[winid] and BufHelpers.is_win_usable(winid) then
+                pcall(vim.api.nvim_win_close, winid, true)
+            end
+        end
+
+        -- Nearly every case here opens a tabpage. Closing them only at the end
+        -- of each `it` leaks them to the rest of the run whenever an assertion
+        -- goes red, so teardown is the backstop.
+        for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
+            if not base_tab_set[tab] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tab)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+
+        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+            if not base_buf_set[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
+                pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
+            end
         end
     end)
 
@@ -170,6 +238,27 @@ describe("WidgetLayout", function()
             assert.is_nil(win_nrs.code)
         end)
 
+        -- On 0.11.x `tabclose` leaves handles that answer `nvim_win_is_valid`
+        -- but segfault in `nvim_win_close`. A panel close driven by an async
+        -- content update after the user closed the tab hits exactly such a
+        -- handle, so the tabpage must be consulted too.
+        it("skips a valid handle whose tabpage is gone", function()
+            vim.cmd("tabnew")
+            local winid = vim.api.nvim_get_current_win()
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+
+            stub_api("nvim_win_is_valid"):returns(true)
+            stub_api("nvim_win_get_tabpage"):returns(dead_tab)
+            local close_stub = stub_api("nvim_win_close")
+
+            local win_nrs = { code = winid }
+            WidgetLayout.close_optional_window(win_nrs, "code", "right")
+
+            assert.equal(0, close_stub.call_count)
+            assert.is_nil(win_nrs.code)
+        end)
+
         it("should restore chat height in bottom layout", function()
             local chat_buf = vim.api.nvim_create_buf(false, true)
             local code_buf = vim.api.nvim_create_buf(false, true)
@@ -197,34 +286,237 @@ describe("WidgetLayout", function()
     end)
 
     describe("open", function()
-        it("should not error with invalid tabpage", function()
-            assert.has_no_errors(function()
+        it(
+            "skips deferred input focus when its tabpage is no longer current",
+            function()
+                local schedule_stub = spy.stub(vim, "schedule")
+                api_stubs[#api_stubs + 1] = schedule_stub
+                local insert_stub =
+                    spy.stub(BufHelpers, "start_insert_on_last_char")
+                api_stubs[#api_stubs + 1] = insert_stub
+
+                vim.cmd("tabnew")
+                local target_tab = vim.api.nvim_get_current_tabpage()
+
+                local win_nrs = {}
+                local buf_nrs = {
+                    chat = vim.api.nvim_create_buf(false, true),
+                    input = vim.api.nvim_create_buf(false, true),
+                    code = vim.api.nvim_create_buf(false, true),
+                    files = vim.api.nvim_create_buf(false, true),
+                    diagnostics = vim.api.nvim_create_buf(false, true),
+                    todos = vim.api.nvim_create_buf(false, true),
+                }
+
                 WidgetLayout.open({
-                    tab_page_id = 99999,
-                    buf_nrs = {},
-                    win_nrs = {},
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
                     position = "right",
                 })
+
+                local input_win = win_nrs.input
+                assert.is_not_nil(input_win)
+                local focus_callback =
+                    schedule_stub.calls[schedule_stub.call_count][1]
+
+                vim.cmd("tabnew")
+                local current_tab = vim.api.nvim_get_current_tabpage()
+                assert.is_not.equal(target_tab, current_tab)
+
+                local set_current_stub = stub_api("nvim_set_current_win")
+
+                focus_callback()
+
+                assert.equal(0, set_current_stub.call_count)
+                assert.equal(0, insert_stub.call_count)
+                assert.equal(current_tab, vim.api.nvim_get_current_tabpage())
+            end
+        )
+
+        it(
+            "creates a fresh chat window when the cached one is in another tab",
+            function()
+                vim.cmd("tabnew")
+
+                local win_nrs = {}
+                local files_buf = vim.api.nvim_create_buf(false, true)
+                -- Non-empty, else `open_or_resize_dynamic_window` takes the
+                -- close-and-forget branch and never reaches the reuse check.
+                vim.api.nvim_buf_set_lines(
+                    files_buf,
+                    0,
+                    -1,
+                    false,
+                    { "- some/file.lua" }
+                )
+
+                local buf_nrs = {
+                    chat = vim.api.nvim_create_buf(false, true),
+                    input = vim.api.nvim_create_buf(false, true),
+                    code = vim.api.nvim_create_buf(false, true),
+                    files = files_buf,
+                    diagnostics = vim.api.nvim_create_buf(false, true),
+                    todos = vim.api.nvim_create_buf(false, true),
+                }
+
+                WidgetLayout.open({
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
+                    position = "right",
+                    focus_prompt = false,
+                })
+
+                local first_chat = win_nrs.chat
+                local first_files = win_nrs.files
+                assert.is_not_nil(first_chat)
+                assert.is_not_nil(first_files)
+
+                vim.cmd("tabnew")
+                local second_tab = vim.api.nvim_get_current_tabpage()
+
+                WidgetLayout.open({
+                    buf_nrs = buf_nrs,
+                    win_nrs = win_nrs,
+                    position = "right",
+                    focus_prompt = false,
+                })
+
+                -- A valid handle from another tab renders nothing where the user
+                -- is looking, so it must not be reused.
+                assert.is_not.equal(first_chat, win_nrs.chat)
+                assert.equal(
+                    second_tab,
+                    vim.api.nvim_win_get_tabpage(win_nrs.chat)
+                )
+                assert.equal(
+                    second_tab,
+                    vim.api.nvim_win_get_tabpage(win_nrs.input)
+                )
+
+                -- Dynamic panels gained the same ownership only in this fix:
+                -- reusing the foreign handle split one widget's topology across
+                -- two tabs, leaving an untracked panel behind.
+                assert.is_not.equal(first_files, win_nrs.files)
+                assert.equal(
+                    second_tab,
+                    vim.api.nvim_win_get_tabpage(win_nrs.files)
+                )
+                assert.is_false(vim.api.nvim_win_is_valid(first_files))
+
+                assert.equal(0, notify_stub.call_count)
+
+                WidgetLayout.close(win_nrs)
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+                pcall(function()
+                    vim.cmd("tabclose")
+                end)
+            end
+        )
+
+        -- A background session emptying a panel is an async content update, so
+        -- the cached handle can belong to a tab the user has since closed. On
+        -- 0.11.x such a handle still answers `nvim_win_is_valid` and segfaults
+        -- in `nvim_win_close`; the cursor must also stay in the user's tab.
+        it("clears an empty panel whose tabpage is gone", function()
+            vim.cmd("tabnew")
+            local dead_tab = vim.api.nvim_get_current_tabpage()
+            vim.cmd("tabclose!")
+            local live_tab = vim.api.nvim_get_current_tabpage()
+
+            -- A handle no window ever had, forced stale-valid: the tabpage is the
+            -- only axis left that can reject it.
+            local dead_win = 99999
+            local real_is_valid = vim.api.nvim_win_is_valid
+            stub_api("nvim_win_is_valid"):invokes(function(win)
+                return win == dead_win or real_is_valid(win)
             end)
-            assert.equal(1, notify_stub.call_count)
+            local real_get_tabpage = vim.api.nvim_win_get_tabpage
+            stub_api("nvim_win_get_tabpage"):invokes(function(win)
+                if win == dead_win then
+                    return dead_tab
+                end
+                return real_get_tabpage(win)
+            end)
+            local close_stub = stub_api("nvim_win_close")
+
+            local win_nrs = { files = dead_win }
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            assert.is_nil(win_nrs.files)
+            assert.is_false(close_stub:called_with(dead_win, true))
+            assert.equal(live_tab, vim.api.nvim_get_current_tabpage())
+            assert.equal(0, notify_stub.call_count)
+
+            WidgetLayout.close(win_nrs)
+            pcall(function()
+                vim.cmd("tabclose")
+            end)
         end)
 
-        it("should not error with nil tabpage", function()
-            assert.has_no_errors(function()
-                WidgetLayout.open({
-                    ---@diagnostic disable-next-line: assign-type-mismatch
-                    tab_page_id = nil,
-                    buf_nrs = {},
-                    win_nrs = {},
-                    position = "right",
-                })
-            end)
-            assert.equal(1, notify_stub.call_count)
+        -- A session moved to another tab reopens its panels there. The handles
+        -- cached from the previous tab are still valid and still hold the same
+        -- buffers, so leaving them open shows a second copy of the widget in the
+        -- tab the user left, untracked by `win_nrs`.
+        it("closes cached panel windows left in another tabpage", function()
+            local buf_nrs = {
+                chat = vim.api.nvim_create_buf(false, true),
+                input = vim.api.nvim_create_buf(false, true),
+                code = vim.api.nvim_create_buf(false, true),
+                files = vim.api.nvim_create_buf(false, true),
+                diagnostics = vim.api.nvim_create_buf(false, true),
+                todos = vim.api.nvim_create_buf(false, true),
+            }
+            local win_nrs = {}
+
+            vim.cmd("tabnew")
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            local old_chat = win_nrs.chat
+            local old_input = win_nrs.input
+            assert.is_true(vim.api.nvim_win_is_valid(old_chat))
+            assert.is_true(vim.api.nvim_win_is_valid(old_input))
+
+            vim.cmd("tabnew")
+            local second_tab = vim.api.nvim_get_current_tabpage()
+
+            WidgetLayout.open({
+                buf_nrs = buf_nrs,
+                win_nrs = win_nrs,
+                position = "right",
+                focus_prompt = false,
+            })
+
+            assert.is_false(vim.api.nvim_win_is_valid(old_chat))
+            assert.is_false(vim.api.nvim_win_is_valid(old_input))
+            assert.equal(second_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
+
+            WidgetLayout.close(win_nrs)
         end)
 
         it("should fall back to right for invalid position", function()
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local win_nrs = {}
             local buf_nrs = {
@@ -238,7 +530,6 @@ describe("WidgetLayout", function()
 
             assert.has_no_errors(function()
                 WidgetLayout.open({
-                    tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
                     --- @diagnostic disable-next-line: assign-type-mismatch
@@ -246,10 +537,8 @@ describe("WidgetLayout", function()
                 })
             end)
 
-            -- Should have created windows via "right" fallback
             assert.is_not_nil(win_nrs.chat)
             assert.is_not_nil(win_nrs.input)
-            -- Should have notified about invalid position
             assert.equal(1, notify_stub.call_count)
 
             WidgetLayout.close(win_nrs)
@@ -269,7 +558,6 @@ describe("WidgetLayout", function()
             }
 
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local chat_buf = vim.api.nvim_create_buf(false, true)
             vim.bo[chat_buf].buftype = "nofile"
@@ -293,7 +581,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -313,7 +600,6 @@ describe("WidgetLayout", function()
             WidgetLayout.close(win_nrs)
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -339,7 +625,6 @@ describe("WidgetLayout", function()
             "applies the tool block statuscolumn only to the chat window",
             function()
                 vim.cmd("tabnew")
-                local tab_page_id = vim.api.nvim_get_current_tabpage()
 
                 local win_nrs = {}
                 local buf_nrs = {
@@ -352,7 +637,6 @@ describe("WidgetLayout", function()
                 }
 
                 WidgetLayout.open({
-                    tab_page_id = tab_page_id,
                     buf_nrs = buf_nrs,
                     win_nrs = win_nrs,
                     position = "right",
@@ -383,7 +667,6 @@ describe("WidgetLayout", function()
 
         it("sizes panel to visual rows when content wraps", function()
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local files_buf = vim.api.nvim_create_buf(false, true)
             local long = string.rep("a/very/long/path/segment/", 20)
@@ -406,7 +689,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -437,7 +719,6 @@ describe("WidgetLayout", function()
                 })
 
             vim.cmd("tabnew")
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
 
             local win_nrs = {}
             local buf_nrs = {
@@ -450,7 +731,6 @@ describe("WidgetLayout", function()
             }
 
             WidgetLayout.open({
-                tab_page_id = tab_page_id,
                 buf_nrs = buf_nrs,
                 win_nrs = win_nrs,
                 position = "right",
@@ -612,6 +892,10 @@ describe("WidgetLayout deferred window guards", function()
                 end)
             end
         end
+        local remaining_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            remaining_tabs[tabpage] = true
+        end
         for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
             if not base_bufs[bufnr] and vim.api.nvim_buf_is_valid(bufnr) then
                 pcall(vim.api.nvim_buf_delete, bufnr, { force = true })
@@ -623,6 +907,7 @@ describe("WidgetLayout deferred window guards", function()
                 extra_bufs = extra_bufs + 1
             end
         end
+        assert.same(remaining_tabs, base_tabs)
         assert.equal(0, extra_bufs)
     end)
 
@@ -641,6 +926,7 @@ describe("WidgetLayout deferred window guards", function()
             focus_prompt = false,
         })
 
+        assert.is_false(BufHelpers.is_win_usable(foreign_win))
         assert.is_not.equal(foreign_win, win_nrs.chat)
         assert.equal(owner_tab, vim.api.nvim_win_get_tabpage(win_nrs.chat))
     end)

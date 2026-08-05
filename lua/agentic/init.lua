@@ -2,74 +2,93 @@ local Config = require("agentic.config")
 local AgentInstance = require("agentic.acp.agent_instance")
 local Theme = require("agentic.theme")
 local SessionRegistry = require("agentic.session_registry")
+local SessionNavigation = require("agentic.session_navigation")
 local SessionRestore = require("agentic.session_restore")
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Object = require("agentic.utils.object")
 local Logger = require("agentic.utils.logger")
 
 --- @class agentic.Agentic
 local Agentic = {}
 
---- Opens the chat widget for the current tab page
---- Safe to call multiple times
+--- @class agentic.DestroySessionOpts
+--- @field session? integer Session key to destroy; defaults to the resolved session
+
+--- @param session agentic.SessionManager
+--- @param opts agentic.ui.ChatWidget.ShowOpts|agentic.ui.ChatWidget.AddToContextOpts|nil
+local function show_session(session, opts)
+    local session_key = session.session_key
+
+    if session_key then
+        SessionRegistry.show_session(session_key, opts)
+    end
+end
+
+--- Opens the chat widget in the current tab page
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.open(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
 
-        session.widget:show(opts)
+        show_session(session, opts)
     end)
 end
 
---- Closes the chat widget for the current tab page
---- Safe to call multiple times
+--- Hides the session visible in the current tab page
 function Agentic.close()
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    local session = SessionRegistry.visible_here()
+
+    if session then
         session.widget:hide()
-    end)
+    end
 end
 
---- Toggles the chat widget for the current tab page
---- Safe to call multiple times
+--- Toggles the chat widget in the current tab page
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.toggle(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
-        if session.widget:is_open() then
+    SessionRegistry.resolve_or_create(function(session)
+        if
+            session.widget:get_visible_tab_id()
+            == vim.api.nvim_get_current_tabpage()
+        then
             session.widget:hide()
         else
             if not opts or opts.auto_add_to_context ~= false then
                 session:add_selection_or_file_to_session()
             end
 
-            session.widget:show(opts)
+            show_session(session, opts)
         end
     end)
 end
 
---- Rotates through predefined window layouts for the chat widget
+--- Rotates the layout of the session visible in the current tab page
 --- @param layouts agentic.UserConfig.Windows.Position[]|nil
 function Agentic.rotate_layout(layouts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    local session = SessionRegistry.visible_here()
+
+    if session then
         session.widget:rotate_layout(layouts)
-    end)
+    end
 end
 
 --- Add the current visual selection to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_selection_to_session()
-        session.widget:show(opts)
+        show_session(session, opts)
     end)
 end
 
 --- Add the current file to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_file(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_file_to_session()
-        session.widget:show(opts)
+        show_session(session, opts)
     end)
 end
 
@@ -77,7 +96,7 @@ end
 --- You can add 1 or more in a single call
 --- @param opts agentic.ui.ChatWidget.AddFilesToContextOpts
 function Agentic.add_files_to_context(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local files = opts.files
 
         if files and type(files) == "table" then
@@ -91,16 +110,16 @@ function Agentic.add_files_to_context(opts)
             )
         end
 
-        session.widget:show(opts)
+        show_session(session, opts)
     end)
 end
 
 --- Add either the current visual selection or the current file to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_selection_or_file_to_context(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         session:add_selection_or_file_to_session()
-        session.widget:show(opts)
+        show_session(session, opts)
     end)
 end
 
@@ -110,10 +129,10 @@ end
 --- Add diagnostics at the current cursor line to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_current_line_diagnostics(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local count = session:add_current_line_diagnostics_to_context()
         if count > 0 then
-            session.widget:show(opts)
+            show_session(session, opts)
         else
             Logger.notify(
                 "No diagnostics found on the current line",
@@ -126,10 +145,10 @@ end
 --- Add all diagnostics from the current buffer to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
 function Agentic.add_buffer_diagnostics(opts)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         local count = session:add_buffer_diagnostics_to_context()
         if count > 0 then
-            session.widget:show(opts)
+            show_session(session, opts)
         else
             Logger.notify(
                 "No diagnostics found in the current buffer",
@@ -139,20 +158,45 @@ function Agentic.add_buffer_diagnostics(opts)
     end)
 end
 
---- Destroys the current Chat session and starts a new one
+--- Creates an additional Chat session after resolving the current one's lifecycle.
 --- @param opts agentic.ui.NewSessionOpts|nil
 function Agentic.new_session(opts)
-    if opts and opts.provider then
-        Config.provider = opts.provider
-    end
+    local provider = opts and opts.provider
 
-    local session = SessionRegistry.new_session()
-    if session then
+    SessionRegistry.create_with_current_session_guard(function(session)
         if not opts or opts.auto_add_to_context ~= false then
             session:add_selection_or_file_to_session()
         end
-        session.widget:show(opts)
+        show_session(session, opts)
+    end, provider)
+end
+
+--- Destroys a Chat session and its widget
+--- @param opts agentic.DestroySessionOpts|nil
+function Agentic.destroy_session(opts)
+    local target = opts and opts.session
+
+    if target then
+        SessionRegistry.destroy(target)
+        return
     end
+
+    SessionRegistry.destroy_current()
+end
+
+--- Shows a picker over every live session and opens the chosen one
+function Agentic.select_session()
+    SessionNavigation.select()
+end
+
+--- Opens the session with the next higher key, wrapping at the end
+function Agentic.next_session()
+    SessionNavigation.next()
+end
+
+--- Opens the session with the next lower key, wrapping at the start
+function Agentic.prev_session()
+    SessionNavigation.previous()
 end
 
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
@@ -176,8 +220,7 @@ local function apply_provider_switch(provider_name)
     Logger.debug(
         "apply_provider_switch: starting for provider " .. provider_name
     )
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
-        -- Guard: reject if session is being created or generating
+    SessionRegistry.resolve_or_create(function(session)
         if not session.session_id then
             Logger.notify(
                 "Cannot switch provider: session is initializing. Please wait.",
@@ -194,43 +237,11 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        -- Save state before destroying
-        Logger.debug(
-            "apply_provider_switch: saving "
-                .. tostring(#session.chat_history.messages)
-                .. " messages"
-        )
-        local saved_messages = session.chat_history.messages
-        local saved_files = session.file_list:get_files()
-        local saved_selections = session.code_selection:get_selections()
-        local widget_was_open = session.widget:is_open()
-        local tab_page_id = session.tab_page_id
+        local source_session_id = session.session_id --[[@as string]]
+        local session_key = session.session_key
 
-        -- Validate new provider exists BEFORE destroying old session
-        local ok, new_agent = pcall(
-            AgentInstance.get_instance,
-            provider_name,
-            function() end
-        )
-        if not ok or not new_agent then
-            Logger.notify(
-                "Provider '" .. provider_name .. "' not available.",
-                vim.log.levels.ERROR
-            )
-            return
-        end
-
-        -- Destroy old session
-        Logger.debug("apply_provider_switch: destroying old session")
-        SessionRegistry.destroy_session(tab_page_id)
-
-        -- Update config for new session
-        Config.provider = provider_name
-
-        -- Create new session via registry
         Logger.debug("apply_provider_switch: creating new session")
-        local new_session =
-            SessionRegistry.get_session_for_tab_page(tab_page_id)
+        local new_session = SessionRegistry.create(provider_name)
         if not new_session then
             Logger.notify(
                 "Failed to create session for provider '"
@@ -241,45 +252,121 @@ local function apply_provider_switch(provider_name)
             return
         end
 
-        Logger.debug(
-            "apply_provider_switch: new_session created, session_id="
-                .. tostring(new_session.session_id)
-        )
-        -- Restore files and code selections immediately (don't wait for session ready)
-        for _, file_path in ipairs(saved_files) do
-            new_session.file_list:add(file_path)
-        end
-        for _, selection in ipairs(saved_selections) do
-            new_session.code_selection:add(selection)
+        local new_key = new_session.session_key
+
+        if not new_key then
+            return
         end
 
-        -- Register callback for when session is ready
-        -- This waits for: agent ready -> session created -> welcome banner written
+        -- The old session stays registered until the replacement ACP session is
+        -- ready. A subprocess-level failure must not discard the user's transcript.
         new_session:on_session_ready(function(ready_session)
+            if
+                not session_key
+                or SessionRegistry.sessions[session_key] ~= session
+            then
+                SessionRegistry.destroy(new_key)
+                return
+            end
+
+            if not session:owns_ready_acp_session(source_session_id) then
+                SessionRegistry.destroy(new_key)
+                Logger.notify(
+                    "Cannot switch provider: the source session changed. Try again.",
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            if session.is_generating then
+                SessionRegistry.destroy(new_key)
+                Logger.notify(
+                    "Cannot switch provider while generating. Stop generation first.",
+                    vim.log.levels.WARN
+                )
+                return
+            end
+
+            local saved_messages = session.chat_history.messages
+            local saved_title = session.chat_history.title
+            local saved_files = session.file_list:get_files()
+            local saved_selections = session.code_selection:get_selections()
+            local widget_was_open = session.widget:is_open()
+            local widget_tab = widget_was_open
+                    and session.widget:get_visible_tab_id()
+                or nil
+
+            Logger.debug(
+                "apply_provider_switch: saving "
+                    .. tostring(#saved_messages)
+                    .. " messages"
+            )
+            Logger.debug("apply_provider_switch: destroying old session")
+            SessionRegistry.destroy(session_key)
+            Config.provider = provider_name
+
+            for _, file_path in ipairs(saved_files) do
+                ready_session.file_list:add(file_path)
+            end
+            for _, selection in ipairs(saved_selections) do
+                ready_session.code_selection:add(selection)
+            end
+
             Logger.debug(
                 "Replaying "
                     .. tostring(#saved_messages)
                     .. " messages after provider switch"
             )
 
-            -- Restore chat history and history_to_send for persistence
-            -- Must be set here (not before) because new_session() clears history_to_send
             ready_session.chat_history.messages = saved_messages
+            ready_session.chat_history.title = saved_title
             ready_session.history_to_send = saved_messages
 
-            -- Replay messages visually in the chat buffer (after welcome header is written)
             ready_session.message_writer:replay_history_messages(saved_messages)
-        end)
 
-        -- Open widget immediately if it was open before
-        if widget_was_open then
-            new_session.widget:show()
-        end
+            if not widget_was_open then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
+
+            -- Only the tab identity crosses the async create and teardown boundary.
+            -- Resolve a live editor window again before rebuilding the widget.
+            if
+                not widget_tab or not vim.api.nvim_tabpage_is_valid(widget_tab)
+            then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
+
+            local live_anchor =
+                session.widget:find_first_non_widget_window(widget_tab)
+
+            if not live_anchor or not BufHelpers.is_win_usable(live_anchor) then
+                SessionRegistry.set_most_recent(new_key)
+                return
+            end
+
+            -- `focus_prompt = false`: the focus hop is scheduled inside `show_layout`
+            -- and would drag the cursor into the anchor's tabpage.
+            vim.api.nvim_win_call(live_anchor, function()
+                SessionRegistry.show_session(new_key, { focus_prompt = false })
+            end)
+        end, function()
+            if SessionRegistry.sessions[new_key] == new_session then
+                SessionRegistry.destroy(new_key)
+            end
+
+            Logger.notify(
+                "Failed to create session for provider '"
+                    .. provider_name
+                    .. "'.",
+                vim.log.levels.ERROR
+            )
+        end)
     end)
 end
 
---- Switch to a different provider while preserving chat UI and history.
---- If opts.provider is set, switches directly. Otherwise shows a picker.
+--- Switch provider while preserving chat UI and history. No `opts.provider` shows a picker.
 --- @param opts agentic.ui.SwitchProviderOpts|nil
 function Agentic.switch_provider(opts)
     if opts and opts.provider then
@@ -294,23 +381,26 @@ function Agentic.switch_provider(opts)
     end)
 end
 
---- Stops the agent's current generation or tool execution
---- The session remains active and ready for the next prompt
---- Safe to call multiple times or when no generation is active
+--- Stops the agent's current generation or tool execution, keeping the session alive
 function Agentic.stop_generation()
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
-        if session.is_generating and session.session_id then
-            session.agent:stop_generation(session.session_id)
-        end
-        session.permission_manager:clear()
-        session.is_generating = false
-        session.status_animation:stop()
-    end)
+    local session = SessionRegistry.current()
+
+    if not session then
+        return
+    end
+
+    if session.is_generating and session.session_id then
+        session.agent:stop_generation(session.session_id)
+    end
+
+    session.permission_manager:clear()
+    session.is_generating = false
+    session.status_animation:stop()
 end
 
 --- show a selector to restore a previous session
 function Agentic.restore_session()
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         SessionRestore.show_picker(session)
     end)
 end
@@ -318,22 +408,21 @@ end
 --- Restore a session by its ID.
 --- @param session_id string
 function Agentic.restore_session_by_id(session_id)
-    SessionRegistry.get_session_for_tab_page(nil, function(session)
+    SessionRegistry.resolve_or_create(function(session)
         SessionRestore.restore_by_id(session, session_id)
     end)
 end
 
---- Used to make sure we don't set multiple signal handlers or autocmds, if the user calls setup multiple times
+--- Guards signal handlers and autocmds against a repeated `setup` call
 local traps_set = false
 local cleanup_group = vim.api.nvim_create_augroup("AgenticCleanup", {
     clear = true,
 })
 
---- Merges the current user configuration with the default configuration
---- This method should be safe to be called multiple times
+--- Merges the user configuration with the defaults. Safe to call multiple times.
 --- @param opts agentic.PartialUserConfig
 function Agentic.setup(opts)
-    -- make sure invalid user config doesn't crash setup and leave things half-initialized
+    -- An invalid user config must not leave setup half-initialized.
     local ok, err = pcall(function()
         Object.merge_config(Config, opts or {})
     end)
@@ -356,9 +445,7 @@ function Agentic.setup(opts)
 
     Theme.setup()
 
-    -- Force-reload buffers when files change on disk (e.g., agent edits files directly).
-    -- Suppresses the "file changed" prompt so modified buffers reload silently,
-    -- matching Cursor/Zed behavior where agent changes always win.
+    -- Agent edits always win: reload silently instead of prompting, as Cursor/Zed do.
     vim.api.nvim_create_autocmd("FileChangedShell", {
         group = cleanup_group,
         pattern = "*",
@@ -375,21 +462,16 @@ function Agentic.setup(opts)
         desc = "Cleanup Agentic processes on exit",
     })
 
-    -- Cleanup specific tab instance when tab is closed
-    -- TabClosed ev.match is a tab number (position), not a tabpage handle.
-    -- Scan the registry for sessions whose handle is no longer valid.
-    vim.api.nvim_create_autocmd("TabClosed", {
-        group = cleanup_group,
-        callback = function()
-            SessionRegistry.destroy_closed_sessions()
-        end,
-        desc = "Cleanup Agentic processes on tab close",
-    })
-
     if Config.image_paste.enabled then
+        local WidgetRegistry = require("agentic.ui.widget_registry")
+
+        --- Never `resolve_or_create`: this runs on EVERY `vim.paste`.
+        --- @return agentic.SessionManager|nil
         local function get_current_session()
-            local tab_page_id = vim.api.nvim_get_current_tabpage()
-            return SessionRegistry.sessions[tab_page_id]
+            local widget = WidgetRegistry.get(vim.api.nvim_get_current_buf())
+            local session_key = widget and widget.session_key
+
+            return session_key and SessionRegistry.sessions[session_key] or nil
         end
 
         local Clipboard = require("agentic.ui.clipboard")
@@ -419,20 +501,15 @@ function Agentic.setup(opts)
         })
     end
 
-    -- Setup signal handlers for graceful shutdown
-    local sigterm_handler = vim.uv.new_signal()
-    if sigterm_handler then
-        vim.uv.signal_start(sigterm_handler, "sigterm", function(_sigName)
-            AgentInstance:cleanup_all()
-        end)
-    end
+    -- sigint may not trigger in raw terminal mode.
+    for _, signal in ipairs({ "sigterm", "sigint" }) do
+        local handler = vim.uv.new_signal()
 
-    -- SIGINT handler (Ctrl-C) - note: may not trigger in raw terminal mode
-    local sigint_handler = vim.uv.new_signal()
-    if sigint_handler then
-        vim.uv.signal_start(sigint_handler, "sigint", function(_sigName)
-            AgentInstance:cleanup_all()
-        end)
+        if handler then
+            vim.uv.signal_start(handler, signal, function(_sigName)
+                AgentInstance:cleanup_all()
+            end)
+        end
     end
 end
 
