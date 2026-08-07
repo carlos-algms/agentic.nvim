@@ -1084,6 +1084,13 @@ function SessionManager:reconnect()
     self.agent:reconnect()
 
     self.agent:when_ready(function()
+        -- The agent outlives this session and `destroy` cannot unregister a
+        -- ready listener, so liveness is re-checked here at run time rather
+        -- than captured when the callback was queued.
+        if self._destroyed then
+            return
+        end
+
         -- Re-read the session at ready-time rather than capturing it earlier:
         -- re-initialization is async, so the current session may have changed
         -- meanwhile and a captured id could be stale. Reloading whatever is

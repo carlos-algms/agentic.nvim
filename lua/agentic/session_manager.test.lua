@@ -3178,19 +3178,29 @@ describe("agentic.SessionManager", function()
         --- @param overrides table
         --- @return agentic.SessionManager session, table calls
         local function make_session(overrides)
-            local calls =
-                { reconnected = false, loaded_with = nil, new = false }
+            local calls = {
+                reconnected = false,
+                loaded_with = nil,
+                new = false,
+                ready_cb = nil,
+            }
             local session = {
                 session_id = overrides.session_id,
                 is_generating = true,
+                _destroyed = false,
                 status_animation = { stop = function() end },
                 agent = {
                     reconnect = function()
                         calls.reconnected = true
                     end,
-                    -- Fire the ready callback synchronously.
+                    -- Synchronous unless the case needs to act in the window
+                    -- between the respawn and the agent reaching ready.
                     when_ready = function(_self, cb)
-                        cb()
+                        if overrides.defer then
+                            calls.ready_cb = cb
+                        else
+                            cb()
+                        end
                     end,
                     agent_capabilities = overrides.caps,
                 },
@@ -3230,6 +3240,22 @@ describe("agentic.SessionManager", function()
             assert.is_true(calls.reconnected)
             assert.is_nil(calls.loaded_with)
             assert.is_true(calls.new)
+        end)
+
+        it("does not reload a session destroyed while reconnecting", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            -- `destroy` runs while the respawned agent is still initializing.
+            session._destroyed = true
+            calls.ready_cb()
+
+            assert.is_nil(calls.loaded_with)
+            assert.is_false(calls.new)
         end)
 
         it(
