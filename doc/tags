@@ -72,6 +72,7 @@ agentic.next_session()	agentic.txt	/*agentic.next_session()*
 agentic.nvim	agentic.txt	/*agentic.nvim*
 agentic.open()	agentic.txt	/*agentic.open()*
 agentic.prev_session()	agentic.txt	/*agentic.prev_session()*
+agentic.reconnect()	agentic.txt	/*agentic.reconnect()*
 agentic.restore_session()	agentic.txt	/*agentic.restore_session()*
 agentic.restore_session_by_id()	agentic.txt	/*agentic.restore_session_by_id()*
 agentic.rotate_layout()	agentic.txt	/*agentic.rotate_layout()*

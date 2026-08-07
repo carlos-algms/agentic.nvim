@@ -16,8 +16,10 @@ local WATCHDOG_CHECK_INTERVAL_MS = 5000
 
 --- Methods the silence watchdog must NOT govern. `session/prompt` can run for
 --- minutes while a tool executes, producing no traffic, so silence is not a
---- death signal there; it is guarded separately by the liveness probe. All
---- other (control) RPCs are expected to answer within seconds.
+--- death signal there and no timeout distinguishes a working agent from a dead
+--- one. A prompt that hangs is therefore NOT detected automatically; the way
+--- out is `Agentic.reconnect()`, which respawns the child on demand. All other
+--- (control) RPCs are expected to answer within seconds.
 local UNWATCHED_METHODS = {
     ["session/prompt"] = true,
 }
@@ -314,8 +316,9 @@ end
 
 --- Surface a stalled connection: reject the in-flight control requests with a
 --- timeout error so their UI resets instead of hanging. Any in-flight
---- session/prompt is deliberately left untouched; a long silent tool run is
---- not a death signal and is guarded by the liveness probe.
+--- session/prompt is deliberately left untouched, since a long silent tool run
+--- is indistinguishable from a dead one and cancelling real work is worse than
+--- waiting. Recovering from a hung prompt is manual, see `UNWATCHED_METHODS`.
 --- @protected
 --- @param timeout number
 function ACPClient:_on_request_stall(timeout)
@@ -402,7 +405,8 @@ function ACPClient:_send_request(method, params, callback)
     Logger.debug_to_file("request: ", message)
 
     -- Arm the silence watchdog for control requests only. session/prompt is
-    -- excluded: it can run silently for minutes and is guarded separately.
+    -- excluded because it can run silently for minutes; silence does not
+    -- distinguish real work from a dead prompt, so recovery is manual.
     if not UNWATCHED_METHODS[method] then
         self._watched_pending[id] = true
         self._last_activity = uv.now()
