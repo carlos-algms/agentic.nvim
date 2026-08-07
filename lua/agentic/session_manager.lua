@@ -35,6 +35,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
+--- @field _reconnecting boolean Set while a respawn is in flight, so retries do not stack ready listeners
 --- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
 --- @field _session_creation_failed boolean
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
@@ -78,6 +79,7 @@ function SessionManager:new()
         is_generating = false,
         _is_restoring_session = false,
         _connection_error = false,
+        _reconnecting = false,
         _destroyed = false,
         _session_creation_failed = false,
         history_to_send = nil,
@@ -1074,6 +1076,17 @@ end
 --- Note: the agent process is shared per provider, so this also resets other
 --- tabs' sessions on the same provider; they re-establish on their next use.
 function SessionManager:reconnect()
+    -- Every call queues another ready listener that reloads the session, so a
+    -- user hammering the key while nothing visibly happens would stack reloads
+    -- on the respawned agent. The flag clears when the agent reports ready; if
+    -- the respawn itself never gets there, the child is unrecoverable in-place
+    -- and further retries would not help either.
+    if self._reconnecting then
+        return
+    end
+
+    self._reconnecting = true
+
     -- Reset the local UI immediately. The respawn also drains the dead request
     -- callbacks, but don't make the user wait for that to see the spinner stop.
     self.is_generating = false
@@ -1084,6 +1097,8 @@ function SessionManager:reconnect()
     self.agent:reconnect()
 
     self.agent:when_ready(function()
+        self._reconnecting = false
+
         -- The agent outlives this session and `destroy` cannot unregister a
         -- ready listener, so liveness is re-checked here at run time rather
         -- than captured when the callback was queued.

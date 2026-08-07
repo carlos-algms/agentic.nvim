@@ -3180,6 +3180,8 @@ describe("agentic.SessionManager", function()
         local function make_session(overrides)
             local calls = {
                 reconnected = false,
+                reconnect_count = 0,
+                ready_registrations = 0,
                 loaded_with = nil,
                 new = false,
                 ready_cb = nil,
@@ -3192,10 +3194,13 @@ describe("agentic.SessionManager", function()
                 agent = {
                     reconnect = function()
                         calls.reconnected = true
+                        calls.reconnect_count = calls.reconnect_count + 1
                     end,
                     -- Synchronous unless the case needs to act in the window
                     -- between the respawn and the agent reaching ready.
                     when_ready = function(_self, cb)
+                        calls.ready_registrations = calls.ready_registrations
+                            + 1
                         if overrides.defer then
                             calls.ready_cb = cb
                         else
@@ -3240,6 +3245,34 @@ describe("agentic.SessionManager", function()
             assert.is_true(calls.reconnected)
             assert.is_nil(calls.loaded_with)
             assert.is_true(calls.new)
+        end)
+
+        it("ignores a second reconnect while one is in flight", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            session:reconnect()
+
+            assert.equal(1, calls.reconnect_count)
+            assert.equal(1, calls.ready_registrations)
+        end)
+
+        it("reconnects again once the agent has come back ready", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            calls.ready_cb()
+            session:reconnect()
+
+            assert.equal(2, calls.reconnect_count)
         end)
 
         it("does not reload a session destroyed while reconnecting", function()
