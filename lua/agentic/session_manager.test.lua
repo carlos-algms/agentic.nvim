@@ -3247,6 +3247,34 @@ describe("agentic.SessionManager", function()
             assert.is_true(calls.new)
         end)
 
+        it("clears the connection error once the agent is back", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+            })
+            session._connection_error = true
+            session._session_creation_failed = true
+
+            session:reconnect()
+
+            assert.is_false(session._connection_error)
+            assert.is_false(session._session_creation_failed)
+            assert.equal("sess-1", calls.loaded_with)
+        end)
+
+        it("keeps the connection error when the respawn never lands", function()
+            local session = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+            session._connection_error = true
+
+            session:reconnect()
+
+            assert.is_true(session._connection_error)
+        end)
+
         it("ignores a second reconnect while one is in flight", function()
             local session, calls = make_session({
                 session_id = "sess-1",

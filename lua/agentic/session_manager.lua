@@ -1106,6 +1106,13 @@ function SessionManager:reconnect()
             return
         end
 
+        -- The agent answered, so the failure these flags record is over.
+        -- Leaving them set would keep `can_submit_prompt` refusing prompts and
+        -- `on_session_ready` taking its failure branch on a healthy session,
+        -- telling the user to start a new one right after recovery worked.
+        self._connection_error = false
+        self._session_creation_failed = false
+
         -- Re-read the session at ready-time rather than capturing it earlier:
         -- re-initialization is async, so the current session may have changed
         -- meanwhile and a captured id could be stale. Reloading whatever is
