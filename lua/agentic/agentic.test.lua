@@ -940,6 +940,29 @@ describe("agentic: switch_provider", function()
         assert.spy(switch_stub).was.called_with(opts)
     end)
 
+    it("reconnects the resolved session without creating one", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        local reconnect_stub = track_stub(session, "reconnect")
+        local create_stub = track_stub(SessionRegistry, "create")
+
+        Agentic.reconnect()
+
+        assert.spy(reconnect_stub).was.called(1)
+        assert.spy(create_stub).was.called(0)
+    end)
+
+    it("creates no session when reconnecting with none open", function()
+        local Agentic = require("agentic")
+        local create_stub = track_stub(SessionRegistry, "create")
+
+        assert.has_no_errors(function()
+            Agentic.reconnect()
+        end)
+
+        assert.spy(create_stub).was.called(0)
+    end)
+
     it("does not clear prompt buffer when session cannot submit", function()
         -- No flush: `session_id` stays nil, so submit must be blocked
         local session = SessionRegistry.create() --[[@as agentic.SessionManager]]
