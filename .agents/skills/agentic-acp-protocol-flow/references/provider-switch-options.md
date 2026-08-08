@@ -2,7 +2,7 @@
 
 ## Provider switch
 
-`init.lua::apply_provider_switch`:
+`provider_switcher.lua::apply_provider_switch`:
 
 1. Destroys the current `SessionManager`.
 2. Swaps `Config.provider`.
