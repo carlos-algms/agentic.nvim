@@ -13,6 +13,12 @@ local function apply_provider_switch(provider_name)
     Logger.debug(
         "apply_provider_switch: starting for provider " .. provider_name
     )
+
+    if not SessionRegistry.current() then
+        require("agentic").new_session({ provider = provider_name })
+        return
+    end
+
     SessionRegistry.resolve_or_create(function(session)
         local source_session_id = session.session_id
 

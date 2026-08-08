@@ -166,6 +166,50 @@ describe("agentic: switch_provider", function()
         assert.equal(session, SessionRegistry.sessions[session.session_key])
     end)
 
+    it(
+        "creates only the requested provider when the registry is empty",
+        function()
+            local provider_names = {}
+            local ready_callbacks = {}
+
+            get_instance_stub:invokes(function(provider_name, callback)
+                provider_names[#provider_names + 1] = provider_name
+                ready_callbacks[provider_name] = callback
+
+                local fake_agent = {
+                    state = "connecting",
+                    provider_config = {
+                        name = provider_name,
+                        initial_model = nil,
+                        default_mode = nil,
+                    },
+                    agent_info = {},
+                }
+
+                function fake_agent:cancel_session() end
+
+                return fake_agent
+            end)
+
+            Config.provider = "OldProvider"
+
+            local Agentic = require("agentic")
+            Agentic.switch_provider({ provider = "RequestedProvider" })
+
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            local session = SessionRegistry.list()[1]
+            assert.is_not_nil(session)
+            assert.equal(
+                "RequestedProvider",
+                session.agent.provider_config.name
+            )
+            assert.same({ "RequestedProvider" }, provider_names)
+            assert.is_not_nil(ready_callbacks.RequestedProvider)
+            assert.is_nil(ready_callbacks.OldProvider)
+            assert.equal("RequestedProvider", Config.provider)
+        end
+    )
+
     it("restores chat history messages after switching provider", function()
         local session = create_session()
         assert.is_not_nil(session)
