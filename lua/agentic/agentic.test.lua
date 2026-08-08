@@ -859,11 +859,30 @@ describe("agentic: switch_provider", function()
 
     it("delegates explicit session destruction to the registry", function()
         local Agentic = require("agentic")
+        local live_session = {}
+        local get_stub = track_stub(SessionRegistry, "get")
+        get_stub:returns(live_session)
         local destroy_stub = track_stub(SessionRegistry, "destroy")
 
         Agentic.destroy_session({ session = 7 })
 
+        assert.spy(get_stub).was.called_with(7)
         assert.spy(destroy_stub).was.called_with(7)
+        assert.spy(logger_notify_stub).was.called(0)
+    end)
+
+    it("reports an unknown explicit session without destroying it", function()
+        local Agentic = require("agentic")
+        local get_stub = track_stub(SessionRegistry, "get")
+        get_stub:returns(nil)
+        local destroy_stub = track_stub(SessionRegistry, "destroy")
+
+        Agentic.destroy_session({ session = 9999 })
+
+        assert.spy(get_stub).was.called_with(9999)
+        assert.spy(logger_notify_stub).was.called(1)
+        assert.truthy(tostring(logger_notify_stub.calls[1][1]):find("9999"))
+        assert.spy(destroy_stub).was.called(0)
     end)
 
     it("delegates default session destruction to the registry", function()

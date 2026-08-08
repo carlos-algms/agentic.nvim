@@ -177,6 +177,11 @@ function Agentic.destroy_session(opts)
     local target = opts and opts.session
 
     if target then
+        if not SessionRegistry.get(target) then
+            Logger.notify("Session not found: " .. target)
+            return
+        end
+
         SessionRegistry.destroy(target)
         return
     end
@@ -308,7 +313,7 @@ function Agentic.setup(opts)
             local widget = WidgetRegistry.get(vim.api.nvim_get_current_buf())
             local session_key = widget and widget.session_key
 
-            return session_key and SessionRegistry.sessions[session_key] or nil
+            return session_key and SessionRegistry.get(session_key) or nil
         end
 
         local Clipboard = require("agentic.ui.clipboard")

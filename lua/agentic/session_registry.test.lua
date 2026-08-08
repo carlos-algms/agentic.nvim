@@ -192,6 +192,43 @@ describe("agentic.SessionRegistry", function()
         end
     end)
 
+    describe("get", function()
+        it(
+            "returns the registered session without changing recency or placement",
+            function()
+                local current_tab = vim.api.nvim_get_current_tabpage()
+                local target = create_mock_session(current_tab)
+                local most_recent = create_mock_session()
+                local previous_most_recent = create_mock_session()
+                target.session_key = 7
+                SessionRegistry.sessions[7] = target
+                SessionRegistry._most_recent = most_recent
+                SessionRegistry._previous_most_recent = previous_most_recent
+                local visible_tab = target.widget:get_visible_tab_id()
+
+                local resolved = SessionRegistry.get(7)
+
+                assert.equal(target, resolved)
+                assert.equal(most_recent, SessionRegistry._most_recent)
+                assert.equal(
+                    previous_most_recent,
+                    SessionRegistry._previous_most_recent
+                )
+                assert.equal(visible_tab, target.widget:get_visible_tab_id())
+            end
+        )
+
+        it(
+            "returns nil for an unknown key without creating a session",
+            function()
+                create_session_stub = spy.stub(SessionRegistry, "create")
+
+                assert.is_nil(SessionRegistry.get(9999))
+                assert.spy(create_session_stub).was.called(0)
+            end
+        )
+    end)
+
     describe("create", function()
         it("assigns incrementing session keys", function()
             local first = SessionRegistry.create()

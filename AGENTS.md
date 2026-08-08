@@ -111,8 +111,12 @@ Two consequences bite every runtime change:
 
 ### Resolving a session
 
-Three entry points on `SessionRegistry`. Only one creates:
+Four entry points on `SessionRegistry`. Only one creates:
 
+- `get(session_key)` — exact registered session for a known key, else `nil`.
+  Never creates and changes neither placement nor recency. Regressions:
+  `lua/agentic/session_registry.test.lua::"returns the registered session without changing recency or placement"`
+  and `::"returns nil for an unknown key without creating a session"`.
 - `visible_here()` — session visible in the current tabpage, else `nil`.
 - `current()` — `visible_here()`, falling back to the registered most-recent
   session. Never creates. **This is the default choice.**
@@ -123,14 +127,17 @@ Three entry points on `SessionRegistry`. Only one creates:
 
 ```mermaid
 flowchart TD
-    Q{"May this entry point<br/>CREATE a session?"}
+    K{"Do you have a known<br/>session key?"}
+    K -->|"yes"| G["get(session_key)<br/>exact registered session"]
+    K -->|"no"| Q{"May this entry point<br/>CREATE a session?"}
     Q -->|"yes"| ROC["resolve_or_create()<br/>may spawn provider work"]
     Q -->|"no"| T{"Must it be in the<br/>CURRENT tabpage?"}
 
     T -->|"yes — placement matters"| VH["visible_here()"]
     T -->|"no"| C["current()<br/>DEFAULT CHOICE"]
 
-    VH --> N["nil-check: all three<br/>can return nil"]
+    G --> N["nil-check: all four<br/>can return nil"]
+    VH --> N
     C --> N
     ROC --> N
 ```
@@ -142,10 +149,11 @@ Worked examples:
 - `Agentic.destroy_session`, `SessionNavigation.next`,
   `SessionNavigation.previous` — `current`; they act on a session, not a
   placement.
-- Clipboard paste closure — resolves through `WidgetRegistry` from the buffer
-  under the cursor. Runs on every `vim.paste` and must not create anything.
+- Clipboard paste closure — resolves a widget through `WidgetRegistry`, then
+  uses `get(session_key)`. Runs on every `vim.paste` and must not create
+  anything.
 
-All three return `SessionManager|nil`, `resolve_or_create` included:
+All four return `SessionManager|nil`, `resolve_or_create` included:
 `SessionRegistry.create` returns `nil` when
 `ACPHealth.check_configured_provider()` fails, so an unconfigured user gets `nil`
 from the creating entry point too. Nil-check every bare return.
