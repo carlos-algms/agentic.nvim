@@ -204,7 +204,6 @@ describe("agentic.SessionRegistry", function()
                 SessionRegistry.sessions[7] = target
                 SessionRegistry._most_recent = most_recent
                 SessionRegistry._previous_most_recent = previous_most_recent
-                local visible_tab = target.widget:get_visible_tab_id()
 
                 local resolved = SessionRegistry.get(7)
 
@@ -214,7 +213,7 @@ describe("agentic.SessionRegistry", function()
                     previous_most_recent,
                     SessionRegistry._previous_most_recent
                 )
-                assert.equal(visible_tab, target.widget:get_visible_tab_id())
+                assert.same({}, widget_events)
             end
         )
 
