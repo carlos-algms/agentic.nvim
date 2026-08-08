@@ -6,6 +6,7 @@ local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
 local SessionNavigation = require("agentic.session_navigation")
+local ProviderSwitcher = require("agentic.provider_switcher")
 local AgentInstance = require("agentic.acp.agent_instance")
 local ACPHealth = require("agentic.acp.acp_health")
 
@@ -856,6 +857,16 @@ describe("agentic: switch_provider", function()
         Agentic.prev_session()
 
         assert.spy(previous_stub).was.called(1)
+    end)
+
+    it("delegates provider switching to ProviderSwitcher", function()
+        local Agentic = require("agentic")
+        local switch_stub = track_stub(ProviderSwitcher, "switch")
+        local opts = { provider = "TestProvider" }
+
+        Agentic.switch_provider(opts)
+
+        assert.spy(switch_stub).was.called_with(opts)
     end)
 
     it("does not clear prompt buffer when session cannot submit", function()

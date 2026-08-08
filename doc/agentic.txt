@@ -580,8 +580,8 @@ agentic.new_session_with_provider({opts})
 
                                              *agentic.switch_provider()*
 agentic.switch_provider({opts})
-  Switch to a different ACP provider mid-session. Chat history
-  and context are preserved.
+  Switch to a different ACP provider in a fresh session. Chat history,
+  staged files, and code selections are preserved.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
