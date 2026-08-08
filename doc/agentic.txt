@@ -825,9 +825,10 @@ Identify a session by `data.session_key`, not by `data.tab_page_id`.
 `session_key` is the session's key (see |agentic-sessions|) and never
 changes. `tab_page_id` only says which tab the session shows in right
 now, and is `nil` for a session running in the background -- hidden, or
-in a closed tab. `on_session_update` and `on_response_complete` fire
-for background sessions, so guard `tab_page_id` before passing it to
-any `nvim_tabpage_*` function; those raise on `nil`.
+in a closed tab. `on_session_update` fires for background sessions.
+Skipped during session restore. `on_response_complete` also fires for
+background sessions. Guard `tab_page_id` before passing it to any
+`nvim_tabpage_*` function; those raise on `nil`.
 >lua
   -- Token usage per session, keyed by session_key. A plain Lua table,
   -- because a session may be running in no tab at all.

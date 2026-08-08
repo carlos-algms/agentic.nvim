@@ -1083,6 +1083,7 @@ return {
 
       -- Called when the session is updated.
       -- Fires for background sessions too, so key everything off session_key.
+      -- Skipped during session restore.
       on_session_update = function(data)
         -- data.session_id: string - The ACP session ID
         -- data.session_key: integer - Stable session identity
