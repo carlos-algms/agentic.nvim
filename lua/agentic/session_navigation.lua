@@ -1,4 +1,5 @@
 local SessionRegistry = require("agentic.session_registry")
+local Logger = require("agentic.utils.logger")
 
 --- @param step 1|-1
 local function cycle(step)
@@ -38,6 +39,12 @@ local SessionNavigation = {}
 --- Shows a picker over every live session and opens the chosen one.
 function SessionNavigation.select()
     local sessions = SessionRegistry.list()
+
+    if #sessions == 0 then
+        Logger.notify("No sessions available")
+        return
+    end
+
     local current_tab = vim.api.nvim_get_current_tabpage()
 
     vim.ui.select(sessions, {

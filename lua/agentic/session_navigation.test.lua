@@ -1,10 +1,12 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
+local Logger = require("agentic.utils.logger")
 
 describe("agentic.SessionNavigation", function()
     local SessionNavigation
     local sessions
     local current_session
+    local logger_notify_stub
     local registry_mock
     local ui_select_stub
 
@@ -32,6 +34,7 @@ describe("agentic.SessionNavigation", function()
     before_each(function()
         sessions = {}
         current_session = nil
+        logger_notify_stub = spy.stub(Logger, "notify")
         registry_mock = {
             list = spy.new(function()
                 return sessions
@@ -49,9 +52,18 @@ describe("agentic.SessionNavigation", function()
     end)
 
     after_each(function()
+        logger_notify_stub:revert()
         ui_select_stub:revert()
         package.loaded["agentic.session_registry"] = original_registry
         package.loaded["agentic.session_navigation"] = original_navigation
+    end)
+
+    it("reports when no sessions are available", function()
+        SessionNavigation.select()
+
+        assert.spy(logger_notify_stub).was.called(1)
+        assert.spy(logger_notify_stub).was.called_with("No sessions available")
+        assert.spy(ui_select_stub).was.called(0)
     end)
 
     it("lists live sessions and opens the selected one", function()
