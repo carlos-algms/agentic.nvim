@@ -208,7 +208,7 @@ describe("agentic.SessionRegistry", function()
 
                 local resolved = SessionRegistry.get(7)
 
-                assert.equal(target, resolved)
+                assert.is_true(resolved == target)
                 assert.equal(most_recent, SessionRegistry._most_recent)
                 assert.equal(
                     previous_most_recent,

@@ -867,6 +867,7 @@ describe("agentic: switch_provider", function()
         Agentic.destroy_session({ session = 7 })
 
         assert.spy(get_stub).was.called_with(7)
+        assert.spy(destroy_stub).was.called(1)
         assert.spy(destroy_stub).was.called_with(7)
         assert.spy(logger_notify_stub).was.called(0)
     end)
