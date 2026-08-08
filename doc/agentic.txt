@@ -446,8 +446,9 @@ small integer assigned at creation and stable for its whole life.
   - Use |agentic.destroy_session()| to end a session directly.
 
 |agentic.destroy_session()| takes a `session` field naming the key to
-destroy. Without it, it destroys the session visible in the current
-tab, falling back to the most recently opened one.
+destroy. An unknown key reports that no matching session exists.
+Without a key, it destroys the session visible in the current tab,
+falling back to the most recently opened one.
 >lua
   -- Destroy session 2 without opening it
   require("agentic").destroy_session({ session = 2 })
@@ -550,6 +551,8 @@ agentic.new_session({opts})
                                              *agentic.destroy_session()*
 agentic.destroy_session({opts})
   Destroy a session and its widget. Hiding keeps it running.
+  An unknown explicit session key reports that no matching session
+  exists and leaves all sessions unchanged.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -561,7 +564,8 @@ agentic.destroy_session({opts})
 agentic.select_session()
   Show a picker listing every live session and open the chosen one
   in the current tab. Entries are labelled with the session title,
-  and the session visible in the current tab is marked.
+  and the session visible in the current tab is marked. When no
+  sessions exist, report that state without opening the picker.
 
                                                 *agentic.next_session()*
 agentic.next_session()
