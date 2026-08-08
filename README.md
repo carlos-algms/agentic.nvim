@@ -2,6 +2,10 @@
 
 ![PR Checks](https://github.com/carlos-algms/agentic.nvim/actions/workflows/pr-check.yml/badge.svg)
 
+<p align="center">
+  <img src=".github/assets/images/agentic-logo.svg" width="96" alt="Agentic.nvim logo">
+</p>
+
 > ⚡ A Chat interface for AI agents in Neovim that works with any provider
 > supporting the [Agent Client Protocol (ACP)](https://agentclientprotocol.com)
 > — including Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot, Auggie,
