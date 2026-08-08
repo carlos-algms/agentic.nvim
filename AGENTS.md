@@ -54,7 +54,8 @@ not a trigger.
 
 `grill-with-docs` skill ships a minimal ADR template. Path + 4-digit numbering
 match this repo; the template does NOT. Use `docs/adr/README.md` verbatim. Keep
-the `Rejected / superseded alternatives` table and `Changelog`.
+the `Rejected / superseded alternatives` table and `Changelog`. Changelog rows
+contain only the date and change summary.
 
 `CONTEXT.md`: glossary only, no implementation. Populate incrementally as
 overloaded terms surface. Not a spec, scratchpad, or design doc.

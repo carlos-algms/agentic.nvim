@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-07-30
-- Commits:
 - Related: PR #283, PR #261, issue #282
 
 ## Context
@@ -155,10 +154,10 @@ prompt to label `select_session` rows.
 
 ## Changelog
 
-| Date       | Commit | Change                                                                                       |
-| ---------- | ------ | -------------------------------------------------------------------------------------------- |
-| 2026-07-25 |        | Initial decision: ownership keyed by session, placement derived from the widget.             |
-| 2026-07-30 |        | Clarified that the buffer-name key suffix is published per header render, not retroactively. |
+| Date       | Change                                                                                       |
+| ---------- | -------------------------------------------------------------------------------------------- |
+| 2026-07-25 | Initial decision: ownership keyed by session, placement derived from the widget.             |
+| 2026-07-30 | Clarified that the buffer-name key suffix is published per header render, not retroactively. |
 
 ## Sources
 

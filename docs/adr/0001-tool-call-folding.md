@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-07-29
-- Commits: dc33d56, 28cb6ff
 - Related: PR #197, PR #210, discussion #212
 
 ## Context
@@ -97,7 +96,7 @@ anchor pads as provider output, so it counts toward `Fold.should_fold`.
 
 | Option                                                                             | Reason rejected                                                                                               |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `foldmethod=expr` (initial impl, dc33d56)                                          | Lazy cache + `zb` race produced viewport flicker on every body that crossed the threshold.                    |
+| `foldmethod=expr` (initial implementation)                                         | Lazy cache + `zb` race produced viewport flicker on every body that crossed the threshold.                    |
 | `foldexpr` + `zX` to force recompute                                               | Only synchronous recompute. O(N) per transition; resets `foldlevel=0` and closes user-opened folds elsewhere. |
 | `vim.fn.foldlevel(L)` / `foldclosed(L)`                                            | Passive cache reads. Do not trigger eval. Verified empirically.                                               |
 | Self-reassign `foldexpr` to invalidate cache (`vim.wo.foldexpr = vim.wo.foldexpr`) | Invalidates cached entries only; new uncached lines stay unfolded.                                            |
@@ -120,14 +119,14 @@ Our case (live transitions on growing blocks) is the harder variant.
 
 ## Changelog
 
-| Date       | Commit  | Change                                         |
-| ---------- | ------- | ---------------------------------------------- |
-| 2026-04-18 | dc33d56 | Initial: foldexpr + threshold + foldtext.      |
-| 2026-04-29 | 28cb6ff | Manual folds + anchor pads + sync scroll.      |
-| 2026-04-29 | 28cb6ff | Hidden chat float preserves fold state.        |
-| 2026-05-03 | -       | Screen-row folding; sync dimensions/wrap.      |
-| 2026-05-15 | -       | Long-title body counts inside body fold range. |
-| 2026-07-29 |         | Document configured-versus-visible widths.     |
+| Date       | Change                                         |
+| ---------- | ---------------------------------------------- |
+| 2026-04-18 | Initial: foldexpr + threshold + foldtext.      |
+| 2026-04-29 | Manual folds + anchor pads + sync scroll.      |
+| 2026-04-29 | Hidden chat float preserves fold state.        |
+| 2026-05-03 | Screen-row folding; sync dimensions/wrap.      |
+| 2026-05-15 | Long-title body counts inside body fold range. |
+| 2026-07-29 | Document configured-versus-visible widths.     |
 
 ## Sources
 
