@@ -227,7 +227,8 @@ carries the **Session key**. Six hooks today:
 - `on_create_session_response` — fires after `session/new` returns.
 - `on_prompt_submit` — fires when user submits a prompt.
 - `on_response_complete` — fires when the agent finishes a turn.
-- `on_session_update` — fires for every live `session/update` notification.
+- `on_session_update` — fires for live non-tool-call `session/update`
+  notifications.
   Skipped during session restore.
 - `on_file_edit` — fires when a file-mutating **Tool Call** completes (kinds:
   `edit`, `create`, `write`, `delete`, `move`). Skipped during session restore.
