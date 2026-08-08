@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-07-25
-- Commits:
 - Related:
 
 > The decision below still holds. Its **per-tab framing is superseded by ADR
@@ -55,7 +54,7 @@ The **SessionRegistry** owns **SessionManager** instances, keyed by session key
 
 ## Changelog
 
-| Date       | Commit | Change                                                                 |
-| ---------- | ------ | ---------------------------------------------------------------------- |
-| 2026-05-16 |        | Initial decision recorded.                                             |
-| 2026-07-25 |        | Per-tab framing superseded by ADR 0008; subprocess decision unchanged. |
+| Date       | Change                                                                 |
+| ---------- | ---------------------------------------------------------------------- |
+| 2026-05-16 | Initial decision recorded.                                             |
+| 2026-07-25 | Per-tab framing superseded by ADR 0008; subprocess decision unchanged. |

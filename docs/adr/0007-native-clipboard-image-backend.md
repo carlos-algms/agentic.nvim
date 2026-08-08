@@ -2,7 +2,6 @@
 
 - Status: accepted
 - Last updated: 2026-05-28
-- Commits: 7473096, 364185d
 - Related: -
 
 ## Context
@@ -72,10 +71,10 @@ a remote filesystem for SSH sessions.
 
 ## Changelog
 
-| Date       | Commit  | Change                                 |
-| ---------- | ------- | -------------------------------------- |
-| 2026-05-28 | 7473096 | Initial native clipboard backend.      |
-| 2026-05-28 | 364185d | Refine WSL and SSH clipboard handling. |
+| Date       | Change                                 |
+| ---------- | -------------------------------------- |
+| 2026-05-28 | Initial native clipboard backend.      |
+| 2026-05-28 | Refine WSL and SSH clipboard handling. |
 
 ## Sources
 
