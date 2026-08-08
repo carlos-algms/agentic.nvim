@@ -210,12 +210,14 @@ tests.
 - Reopening the hidden chat float without closing the previous one
   - Overwrites the stored winid and leaks the prior window.
 - `:edit` on a widget buffer
-  - Buffer keeps its ID but gains a name and `buftype != "nofile"`.
-    `BufferGuard` detects this on `BufEnter` and swaps a fresh scratch buffer
-    into the widget window, redirecting the named buffer out. The replacement
-    buffer takes over the panel's `buf_nrs` entry and is re-registered, so the
-    single shared augroup can still resolve the window's owner on the next
-    event. Re-grep `BufferGuard` for the exact entry point before refactoring.
+  - Normal `:edit` allocates a separate foreign buffer. The widget buffer keeps
+    its identity and `nofile` type. `BufferGuard.on_buf_enter` takes the
+    `cur_buf ~= expected` path, restores the widget buffer in its window, and
+    `redirect_foreign` moves the foreign buffer to a non-widget window in the
+    same tabpage and focuses that destination.
+  - The named non-`nofile` in-place replacement branch in
+    `BufferGuard.on_buf_enter` still exists, but normal widget operations do not
+    reach it.
 - Writing header state back after reading it
   - `WindowDecoration`'s header-state getter hands back the owning widget's own
     `ChatWidget.headers` table, so an in-place mutation is already visible to the
