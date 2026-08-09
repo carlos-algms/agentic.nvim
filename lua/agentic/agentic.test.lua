@@ -265,7 +265,9 @@ describe("agentic: switch_provider", function()
             assert.same({ "RequestedProvider" }, provider_names)
             assert.is_not_nil(ready_callbacks.RequestedProvider)
             assert.is_nil(ready_callbacks.OldProvider)
-            assert.equal("RequestedProvider", Config.provider)
+            -- Provider selection commits only after the target becomes ready and
+            -- registry placement succeeds.
+            assert.equal("OldProvider", Config.provider)
         end
     )
 
@@ -326,12 +328,19 @@ describe("agentic: switch_provider", function()
         local Agentic = require("agentic")
         local session = create_session()
         session.session_id = "old-session-id" --[[@as string]]
-        local create_stub = track_stub(SessionRegistry, "create")
-        create_stub:returns(nil)
+        local replace_stub = track_stub(SessionRegistry, "replace")
+        replace_stub:returns(nil)
 
         Agentic.switch_provider({ provider = "MissingProvider" })
 
-        assert.spy(create_stub).was.called_with("MissingProvider")
+        assert
+            .spy(replace_stub).was
+            .called_with(
+                session,
+                "MissingProvider",
+                { kind = "new" },
+                replace_stub.calls[1][4]
+            )
         assert.equal(original_provider, Config.provider)
         assert.equal(session, SessionRegistry.sessions[session.session_key])
         assert.spy(logger_notify_stub).was.called(1)
@@ -787,49 +796,46 @@ describe("agentic: switch_provider", function()
         end
     )
 
-    it(
-        "rejects an ineligible live anchor after old-session teardown",
-        function()
-            local Agentic = require("agentic")
-            local session = create_session()
-            session.session_id = "old-session-id" --[[@as string]]
+    it("places the replacement before old-session teardown", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        session.session_id = "old-session-id" --[[@as string]]
 
-            vim.cmd("tabnew")
-            SessionRegistry.show_session(session.session_key)
-            flush_schedule()
-            local stale_anchor = session.widget:find_first_non_widget_window()
-            assert.is_not_nil(stale_anchor)
-            vim.api.nvim_set_current_tabpage(initial_tab_id)
+        vim.cmd("tabnew")
+        SessionRegistry.show_session(session.session_key)
+        flush_schedule()
+        local stale_anchor = session.widget:find_first_non_widget_window()
+        assert.is_not_nil(stale_anchor)
+        vim.api.nvim_set_current_tabpage(initial_tab_id)
 
-            local eligible_anchor
-            local original_destroy = SessionRegistry.destroy
-            local destroy_stub = track_stub(SessionRegistry, "destroy")
-            destroy_stub:invokes(function(session_key)
-                original_destroy(session_key)
-                vim.api.nvim_win_call(stale_anchor, function()
-                    vim.cmd("new")
-                    eligible_anchor = vim.api.nvim_get_current_win()
-                end)
-                vim.bo[vim.api.nvim_win_get_buf(stale_anchor)].filetype =
-                    "TelescopePrompt"
+        local eligible_anchor
+        local original_destroy = SessionRegistry.destroy
+        local destroy_stub = track_stub(SessionRegistry, "destroy")
+        destroy_stub:invokes(function(session_key)
+            original_destroy(session_key)
+            vim.api.nvim_win_call(stale_anchor, function()
+                vim.cmd("new")
+                eligible_anchor = vim.api.nvim_get_current_win()
             end)
+            vim.bo[vim.api.nvim_win_get_buf(stale_anchor)].filetype =
+                "TelescopePrompt"
+        end)
 
-            local placement_anchor
-            local original_show = SessionRegistry.show_session
-            local show_stub = track_stub(SessionRegistry, "show_session")
-            show_stub:invokes(function(...)
-                placement_anchor = vim.api.nvim_get_current_win()
-                original_show(...)
-            end)
+        local placement_anchor
+        local original_show = SessionRegistry.show_session
+        local show_stub = track_stub(SessionRegistry, "show_session")
+        show_stub:invokes(function(...)
+            placement_anchor = vim.api.nvim_get_current_win()
+            original_show(...)
+        end)
 
-            Agentic.switch_provider({ provider = "EligibleAnchorProvider" })
-            flush_schedule()
+        Agentic.switch_provider({ provider = "EligibleAnchorProvider" })
+        flush_schedule()
 
-            assert.is_not_nil(eligible_anchor)
-            assert.equal(eligible_anchor, placement_anchor)
-            assert.are_not.equal(stale_anchor, placement_anchor)
-        end
-    )
+        assert.is_not_nil(eligible_anchor)
+        assert.equal(stale_anchor, placement_anchor)
+        assert.are_not.equal(eligible_anchor, placement_anchor)
+    end)
 
     it("stop_generation resets is_generating and stops animation", function()
         local Agentic = require("agentic")
