@@ -695,7 +695,7 @@ describe("ACPClient", function()
         end)
 
         it(
-            "drains an initializing listener through success exactly once",
+            "fails a queued ready listener when the provider disconnects",
             function()
                 local client = create_ready_client()
                 client.state = "initializing"
@@ -715,8 +715,8 @@ describe("ACPClient", function()
                 client:_set_state("error")
                 assert.equal(1, #queue)
                 drain(queue)
-                assert.equal(1, ready_count)
-                assert.equal(0, failure_count)
+                assert.equal(0, ready_count)
+                assert.equal(1, failure_count)
             end
         )
 

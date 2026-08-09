@@ -981,14 +981,13 @@ If you know the session ID, call
 session directly. This skips listing sessions, so it also works with providers
 that don't support session listing.
 
-**Restoring never overwrites a conversation.**
+Restoration is transactional. The current session stays live until the selected
+target is ready. Success shows the target, preserves the visible widget size,
+then destroys the previous manager and all of its state. Failure or picker
+cancellation leaves the current session unchanged.
 
-A restore always creates an additional session and shows it, leaving the session
-you were on alive and reachable through `require("agentic").select_session()`.
-
-One exception: a completely empty session — no messages, no attached files, no
-code selections, no diagnostics, nothing typed in the prompt — is reclaimed rather
-than left behind as an empty shell.
+With no current session, selecting a restore creates only the load target. The
+picker and session listing do not create a placeholder session.
 
 ### System Information
 

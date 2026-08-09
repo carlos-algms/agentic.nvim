@@ -93,18 +93,39 @@ end
 
 --- @param on_ready fun(client: agentic.acp.ACPClient)
 --- @param on_failure fun(err: agentic.acp.ACPError)|nil
+--- @param err agentic.acp.ACPError|nil
+function ACPClient:_schedule_ready_listener(on_ready, on_failure, err)
+    vim.schedule(function()
+        if err then
+            if on_failure then
+                on_failure(err)
+            end
+            return
+        end
+
+        if self.state == "ready" then
+            on_ready(self)
+        elseif on_failure then
+            on_failure(
+                self:__create_error(
+                    self.ERROR_CODES.TRANSPORT_ERROR,
+                    self.state
+                )
+            )
+        end
+    end)
+end
+
+--- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @param on_failure fun(err: agentic.acp.ACPError)|nil
 function ACPClient:when_ready(on_ready, on_failure)
     if self.state == "ready" then
-        vim.schedule(function()
-            on_ready(self)
-        end)
+        self:_schedule_ready_listener(on_ready, on_failure, nil)
     elseif self.state == "error" or self.state == "disconnected" then
         local err =
             self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, self.state)
         if on_failure then
-            vim.schedule(function()
-                on_failure(err)
-            end)
+            self:_schedule_ready_listener(on_ready, on_failure, err)
         end
     else
         self.ready_listeners[#self.ready_listeners + 1] = {
@@ -228,15 +249,17 @@ function ACPClient:_drain_ready_listeners(failure_reason)
 
     for _, listener in ipairs(listeners) do
         if err and listener.on_failure then
-            local on_failure = listener.on_failure
-            vim.schedule(function()
-                on_failure(err)
-            end)
+            self:_schedule_ready_listener(
+                listener.on_ready,
+                listener.on_failure,
+                err
+            )
         elseif not err then
-            local on_ready = listener.on_ready
-            vim.schedule(function()
-                on_ready(self)
-            end)
+            self:_schedule_ready_listener(
+                listener.on_ready,
+                listener.on_failure,
+                nil
+            )
         end
     end
 end
