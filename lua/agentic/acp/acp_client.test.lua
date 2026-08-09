@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
 
 describe("ACPClient", function()
@@ -218,6 +219,148 @@ describe("ACPClient", function()
 
             local encoded = vim.json.encode(captured_initialize_params)
             assert.is_not_nil(encoded:find('"boolean":{}', 1, true))
+        end)
+    end)
+
+    describe("mock response delivery", function()
+        local child = Child.new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        it("delivers responses synchronously by default", function()
+            child.lua([[
+                local ACPClient = require("agentic.acp.acp_client")
+                local client = ACPClient:new({ command = "test-agent" }, function() end)
+                local callback_called = false
+
+                _G.p5_direct_delivery = {}
+
+                client:create_session({
+                    on_session_update = function() end,
+                    on_request_permission = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                }, function(result, err)
+                    callback_called = true
+                    _G.p5_direct_delivery.callback_fast = vim.in_fast_event()
+                    _G.p5_direct_delivery.result = result
+                    _G.p5_direct_delivery.err = err
+                end)
+
+                client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = client.id_counter,
+                    result = { sessionId = "direct-session" },
+                })
+
+                _G.p5_direct_delivery.completed_before_return = callback_called
+            ]])
+
+            local result = child.lua_get("_G.p5_direct_delivery")
+            assert.is_true(result.completed_before_return)
+            assert.is_false(result.callback_fast)
+            assert.equal("direct-session", result.result.sessionId)
+            assert.is_nil(result.err)
+        end)
+
+        it("delivers ACP errors from a libuv fast event", function()
+            child.lua([[
+                local ACPClient = require("agentic.acp.acp_client")
+                local client = ACPClient:new({ command = "test-agent" }, function() end)
+
+                _G.p5_fast_delivery = { messages = {}, callbacks = {} }
+
+                local original_on_message = client.transport.callbacks.on_message
+                client.transport.callbacks.on_message = function(message)
+                    local delivered = {
+                        fast = vim.in_fast_event(),
+                    }
+                    local ok, err = pcall(original_on_message, message)
+                    delivered.ok = ok
+                    delivered.err = err
+                    _G.p5_fast_delivery.messages[#_G.p5_fast_delivery.messages + 1] = delivered
+                end
+
+                local handlers = {
+                    on_session_update = function() end,
+                    on_request_permission = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                }
+
+                local function create_request(index)
+                    client:create_session(handlers, function(result, err)
+                        _G.p5_fast_delivery.callbacks[index] = {
+                            fast = vim.in_fast_event(),
+                            result = result,
+                            err = err,
+                        }
+                    end)
+                    return client.id_counter
+                end
+
+                local first_id = create_request(1)
+                local second_id = create_request(2)
+
+                local first_timer = client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = first_id,
+                    error = { code = -32000, message = "first fast delivery failed" },
+                }, "fast_event")
+                local second_timer = client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = second_id,
+                    error = { code = -32001, message = "second fast delivery failed" },
+                }, "fast_event")
+
+                _G.p5_fast_timers = { first_timer, second_timer }
+                _G.p5_fast_delivery.distinct_timers = first_timer ~= second_timer
+            ]])
+
+            vim.uv.sleep(50)
+            child.api.nvim_eval("1")
+            child.lua([[
+                _G.p5_fast_delivery.first_timer_closed =
+                    _G.p5_fast_timers[1]:is_closing()
+                _G.p5_fast_delivery.second_timer_closed =
+                    _G.p5_fast_timers[2]:is_closing()
+            ]])
+
+            local result = child.lua_get("_G.p5_fast_delivery")
+            assert.is_true(result.distinct_timers)
+            assert.is_true(result.first_timer_closed)
+            assert.is_true(result.second_timer_closed)
+            assert.equal(2, #result.messages)
+            assert.equal(2, #result.callbacks)
+
+            for _, delivered in ipairs(result.messages) do
+                assert.is_true(delivered.fast)
+                assert.is_true(delivered.ok)
+                assert.is_nil(delivered.err)
+            end
+
+            assert.is_true(result.callbacks[1].fast)
+            assert.is_nil(result.callbacks[1].result)
+            assert.equal(-32000, result.callbacks[1].err.code)
+            assert.equal(
+                "first fast delivery failed",
+                result.callbacks[1].err.message
+            )
+            assert.is_true(result.callbacks[2].fast)
+            assert.is_nil(result.callbacks[2].result)
+            assert.equal(-32001, result.callbacks[2].err.code)
+            assert.equal(
+                "second fast delivery failed",
+                result.callbacks[2].err.message
+            )
         end)
     end)
 
