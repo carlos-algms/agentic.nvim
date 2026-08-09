@@ -161,6 +161,11 @@ function SessionRestore.show_picker(current_session)
                         and s.updatedAt:sub(1, 16):gsub("T", " ")
                     or "unknown date"
                 local title = s.title or "(no title)"
+                title = title
+                    :gsub("\r\n", " ")
+                    :gsub("\r", " ")
+                    :gsub("\n", " ")
+                    :sub(1, 80)
                 table.insert(items, {
                     display = string.format("%s - %s", date, title),
                     session_id = s.sessionId,

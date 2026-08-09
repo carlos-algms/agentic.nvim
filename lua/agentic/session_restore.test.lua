@@ -346,6 +346,40 @@ describe("SessionRestore", function()
             assert.truthy(items[2].display:match("ACP Second"))
         end)
 
+        it(
+            "sanitizes CR/LF in title for display but keeps original title",
+            function()
+                local session = create_acp_session({
+                    sessions = {
+                        {
+                            sessionId = "acp-crlf",
+                            title = "Line one\r\nLine two\nLine three",
+                            updatedAt = "2026-03-20T14:30:00Z",
+                        },
+                    },
+                })
+
+                SessionRestore.show_picker(
+                    session --[[@as agentic.SessionManager]]
+                )
+
+                local items = vim_ui_select_stub.calls[1][1]
+                assert.equal(1, #items)
+                assert.is_nil(items[1].display:find("\r"))
+                assert.is_nil(items[1].display:find("\n"))
+                assert.truthy(
+                    items[1].display:match("Line one Line two Line three")
+                )
+                assert.equal("Line one\r\nLine two\nLine three", items[1].title)
+
+                local callback = select_session(1)
+                callback(items[1])
+
+                local call_args = session.load_acp_session.calls[1]
+                assert.equal("Line one\r\nLine two\nLine three", call_args[3])
+            end
+        )
+
         it("notifies error on ACP error", function()
             local session = create_acp_session({
                 error = { message = "Provider error" },
