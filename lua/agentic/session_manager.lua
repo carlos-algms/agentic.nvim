@@ -32,11 +32,11 @@ local Hooks = require("agentic.utils.hooks")
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
---- @field _starter agentic.SessionStarter
 --- @field _connection_error boolean
 --- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
 --- @field _session_creation_failed boolean
---- @field _start_called boolean
+--- @field _start_prepared boolean
+--- @field _on_new_session fun(session: agentic.SessionManager)
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
 --- @field _pending_replacement_sources? table<any, boolean>
 local SessionManager = {}
@@ -45,12 +45,10 @@ SessionManager.__index = SessionManager
 --- Codepoints, not display cells
 local TITLE_MAX_CHARS = 60
 
---- @param session agentic.SessionManager
---- @return boolean replaying
-local function is_replaying(session)
-    --- @diagnostic disable-next-line: invisible
-    return session._starter ~= nil and session._starter:is_replaying()
-end
+local ALREADY_STARTED_ERROR = {
+    code = -32600,
+    message = "Session manager can only be started once",
+}
 
 --- @param prompt string
 --- @return string title
@@ -67,7 +65,8 @@ end
 
 --- @param agent agentic.acp.ACPClient
 --- @param provider_name agentic.UserConfig.ProviderName
-function SessionManager:new(agent, provider_name)
+--- @param on_new_session fun(session: agentic.SessionManager)
+function SessionManager:new(agent, provider_name, on_new_session)
     local ChatWidget = require("agentic.ui.chat_widget")
     local CodeSelection = require("agentic.ui.code_selection")
     local FileList = require("agentic.ui.file_list")
@@ -78,7 +77,6 @@ function SessionManager:new(agent, provider_name)
     local TodoList = require("agentic.ui.todo_list")
     local AgentConfigOptions = require("agentic.acp.agent_config_options")
     local DiffCoordinator = require("agentic.ui.diff_coordinator")
-    local SessionStarter = require("agentic.session_starter")
 
     self = setmetatable({
         session_id = nil,
@@ -88,13 +86,13 @@ function SessionManager:new(agent, provider_name)
         _connection_error = false,
         _destroyed = false,
         _session_creation_failed = false,
-        _start_called = false,
+        _start_prepared = false,
+        _on_new_session = on_new_session,
         history_to_send = nil,
         _session_ready_callbacks = {},
     }, self)
 
     self.agent = agent
-    self._starter = SessionStarter:new(agent)
 
     self.chat_history = ChatHistory:new()
 
@@ -275,18 +273,9 @@ function SessionManager:on_session_ready(callback, on_failure)
 end
 
 --- @param acp_session_id string
---- @return boolean owns_id
-function SessionManager:has_acp_session_id(acp_session_id)
-    return self.session_id == acp_session_id
-        or (self._starter and self._starter:has_session_id(acp_session_id))
-end
-
---- @param acp_session_id string
 --- @return boolean owns_ready_id
 function SessionManager:owns_ready_acp_session(acp_session_id)
-    return not self._destroyed
-        and not is_replaying(self)
-        and self.session_id == acp_session_id
+    return not self._destroyed and self.session_id == acp_session_id
 end
 
 --- Notifies the user with the reason when it answers false.
@@ -312,9 +301,10 @@ function SessionManager:can_submit_prompt()
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
-function SessionManager:_on_session_update(update)
+--- @param replaying boolean|nil
+function SessionManager:_on_session_update(update, replaying)
     if update.sessionUpdate == "user_message_chunk" then
-        if is_replaying(self) then
+        if replaying then
             local text = update.content
                 and update.content.type == "text"
                 and update.content.text
@@ -392,7 +382,7 @@ function SessionManager:_on_session_update(update)
     end
 
     -- Hooks reflect live activity only; a restore replays historical updates.
-    if is_replaying(self) then
+    if replaying then
         return
     end
 
@@ -407,10 +397,11 @@ function SessionManager:_on_session_update(update)
 end
 
 --- @param tool_call agentic.ui.MessageWriter.ToolCallBlock
-function SessionManager:_on_tool_call(tool_call)
+--- @param replaying boolean|nil
+function SessionManager:_on_tool_call(tool_call, replaying)
     if self.message_writer.tool_call_blocks[tool_call.tool_call_id] then
         -- Some providers (Mistral) send several `tool_call` for one id.
-        self:_on_tool_call_update(tool_call)
+        self:_on_tool_call_update(tool_call, replaying)
         return
     end
 
@@ -426,11 +417,12 @@ function SessionManager:_on_tool_call(tool_call)
 end
 
 --- @param tool_call_update agentic.ui.MessageWriter.ToolCallBlock
-function SessionManager:_on_tool_call_update(tool_call_update)
+--- @param replaying boolean|nil
+function SessionManager:_on_tool_call_update(tool_call_update, replaying)
     if
         not self.message_writer.tool_call_blocks[tool_call_update.tool_call_id]
     then
-        self:_on_tool_call(tool_call_update)
+        self:_on_tool_call(tool_call_update, replaying)
     else
         self.message_writer:update_tool_call_block(tool_call_update)
 
@@ -490,7 +482,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
             -- Skip the hook during restore replay: the provider replays
             -- historical tool calls as "completed" but no write happened now.
             if
-                not is_replaying(self)
+                not replaying
                 and type(tracker.file_path) == "string"
                 and tracker.file_path ~= ""
             then
@@ -537,12 +529,7 @@ end
 function SessionManager:_handle_input_submit(input_text)
     -- BEFORE the submit guard, so `/new` escapes a stuck session.
     if input_text:match("^/new%s") or input_text:match("^/new$") then
-        require("agentic.session_registry").replace(
-            self,
-            self.provider_name,
-            { kind = "new" },
-            { agent = self.agent }
-        )
+        self._on_new_session(self)
         return true
     end
 
@@ -669,8 +656,13 @@ end
 
 --- Every handler re-checks `_destroyed` at RUN time: `__with_subscriber` schedules
 --- the call, so dropping the subscriber cannot un-queue an already-queued callback.
+--- @param is_replaying (fun(): boolean)|nil
 --- @return agentic.acp.ClientHandlers handlers
-function SessionManager:_build_handlers()
+function SessionManager:_build_handlers(is_replaying)
+    is_replaying = is_replaying or function()
+        return false
+    end
+
     --- @type agentic.acp.ClientHandlers
     local handlers = {
         on_error = function(err)
@@ -694,7 +686,7 @@ function SessionManager:_build_handlers()
                 return
             end
 
-            self:_on_session_update(update)
+            self:_on_session_update(update, is_replaying())
         end,
 
         on_tool_call = function(tool_call)
@@ -702,7 +694,7 @@ function SessionManager:_build_handlers()
                 return
             end
 
-            self:_on_tool_call(tool_call)
+            self:_on_tool_call(tool_call, is_replaying())
         end,
 
         on_tool_call_update = function(tool_call_update)
@@ -710,7 +702,7 @@ function SessionManager:_build_handlers()
                 return
             end
 
-            self:_on_tool_call_update(tool_call_update)
+            self:_on_tool_call_update(tool_call_update, is_replaying())
         end,
 
         on_request_permission = function(request, callback)
@@ -794,22 +786,17 @@ function SessionManager:_apply_initial_options()
     end
 end
 
+--- Prepares manager-owned UI and handlers for one external startup attempt.
 --- @param spec agentic.SessionStartSpec
---- @param callback fun(session: agentic.SessionManager, err: agentic.acp.ACPError|nil)|nil
-function SessionManager:start(spec, callback)
-    if self._start_called then
-        if callback then
-            vim.schedule(function()
-                callback(self, {
-                    code = -32600,
-                    message = "Session manager can only be started once",
-                })
-            end)
-        end
-        return
+--- @param is_replaying fun(): boolean
+--- @return agentic.acp.ClientHandlers|nil handlers
+--- @return agentic.acp.ACPError|nil err
+function SessionManager:prepare_start(spec, is_replaying)
+    if self._start_prepared then
+        return nil, ALREADY_STARTED_ERROR
     end
 
-    self._start_called = true
+    self._start_prepared = true
     self._session_creation_failed = false
     self.status_animation:start("busy")
 
@@ -826,99 +813,106 @@ function SessionManager:start(spec, callback)
         )
     end
 
-    self._starter:start(spec, self:_build_handlers(), function(result, err)
-        if self._destroyed then
-            if result then
-                self.agent:cancel_session(result.session_id)
-            end
-            if callback then
-                callback(self, err)
-            end
-            return
+    return self:_build_handlers(is_replaying), nil
+end
+
+--- Adopts or rejects the result of the manager's external startup attempt.
+--- @param spec agentic.SessionStartSpec
+--- @param result agentic.SessionStartResult|nil
+--- @param err agentic.acp.ACPError|nil
+--- @param callback fun(session: agentic.SessionManager, err: agentic.acp.ACPError|nil)|nil
+function SessionManager:complete_start(spec, result, err, callback)
+    if self._destroyed then
+        if result then
+            self.agent:cancel_session(result.session_id)
         end
-
-        self.status_animation:stop()
-
-        if err or not result then
-            self.session_id = nil
-            self._session_creation_failed = true
-            if spec.kind == "new" then
-                --- @type agentic.UserConfig.CreateSessionResponseData
-                local hook_data = {
-                    session_id = nil,
-                    session_key = self.session_key,
-                    tab_page_id = self.widget:get_visible_tab_id(),
-                    response = nil,
-                    err = err,
-                }
-                Hooks.invoke("on_create_session_response", hook_data)
-            else
-                Logger.notify(
-                    "Failed to load session: "
-                        .. (err and err.message or "unknown error"),
-                    vim.log.levels.ERROR
-                )
-            end
-            SessionManager._resolve_session_ready_callbacks(self, false)
-            if callback then
-                callback(self, err)
-            end
-            return
+        if callback then
+            callback(self, err)
         end
+        return
+    end
 
-        self.session_id = result.session_id
-        self.chat_history.session_id = result.session_id
-        self.chat_history.timestamp = os.time()
-        self:_apply_start_metadata(result.response)
+    self.status_animation:stop()
 
-        if result.kind == "new" then
-            self._is_first_message = true
-            self:_apply_initial_options()
-        else
-            self._is_first_message = false
-            self.chat_history.title = spec.title or ""
-        end
-
-        local agent_info = self.agent.agent_info
-        if result.kind == "new" then
-            local welcome_message = self.message_writer:generate_welcome_header(
-                self.agent.provider_config.name,
-                result.session_id,
-                agent_info and agent_info.version,
-                spec.timestamp
-            )
-            self.message_writer:write_structural_message(
-                ACPPayloads.generate_user_message(welcome_message)
-            )
-        else
-            local finish_message = string.format(
-                "\n### %s Session restored - %s\n-----",
-                Config.message_icons.finished,
-                os.date("%Y-%m-%d %H:%M:%S")
-            )
-            self.message_writer:write_message(
-                ACPPayloads.generate_agent_message(finish_message)
-            )
-        end
-
-        if result.kind == "new" then
+    if err or not result then
+        self.session_id = nil
+        self._session_creation_failed = true
+        if spec.kind == "new" then
             --- @type agentic.UserConfig.CreateSessionResponseData
             local hook_data = {
-                session_id = result.session_id,
+                session_id = nil,
                 session_key = self.session_key,
                 tab_page_id = self.widget:get_visible_tab_id(),
-                --- @diagnostic disable-next-line: assign-type-mismatch
-                response = result.response,
-                err = nil,
+                response = nil,
+                err = err,
             }
             Hooks.invoke("on_create_session_response", hook_data)
+        else
+            Logger.notify(
+                "Failed to load session: "
+                    .. (err and err.message or "unknown error"),
+                vim.log.levels.ERROR
+            )
         end
-
-        SessionManager._resolve_session_ready_callbacks(self, true)
+        SessionManager._resolve_session_ready_callbacks(self, false)
         if callback then
-            callback(self, nil)
+            callback(self, err)
         end
-    end)
+        return
+    end
+
+    self.session_id = result.session_id
+    self.chat_history.session_id = result.session_id
+    self.chat_history.timestamp = os.time()
+    self:_apply_start_metadata(result.response)
+
+    if result.kind == "new" then
+        self._is_first_message = true
+        self:_apply_initial_options()
+    else
+        self._is_first_message = false
+        self.chat_history.title = spec.title or ""
+    end
+
+    local agent_info = self.agent.agent_info
+    if result.kind == "new" then
+        local welcome_message = self.message_writer:generate_welcome_header(
+            self.agent.provider_config.name,
+            result.session_id,
+            agent_info and agent_info.version,
+            spec.timestamp
+        )
+        self.message_writer:write_structural_message(
+            ACPPayloads.generate_user_message(welcome_message)
+        )
+    else
+        local finish_message = string.format(
+            "\n### %s Session restored - %s\n-----",
+            Config.message_icons.finished,
+            os.date("%Y-%m-%d %H:%M:%S")
+        )
+        self.message_writer:write_message(
+            ACPPayloads.generate_agent_message(finish_message)
+        )
+    end
+
+    if result.kind == "new" then
+        --- @type agentic.UserConfig.CreateSessionResponseData
+        local hook_data = {
+            session_id = result.session_id,
+            session_key = self.session_key,
+            tab_page_id = self.widget:get_visible_tab_id(),
+            --- @diagnostic disable-next-line: assign-type-mismatch
+            response = result.response,
+            err = nil,
+        }
+        Hooks.invoke("on_create_session_response", hook_data)
+    end
+
+    SessionManager._resolve_session_ready_callbacks(self, true)
+    if callback then
+        callback(self, nil)
+    end
 end
 
 --- @param state agentic.Theme.SpinnerState
@@ -988,9 +982,6 @@ function SessionManager:destroy()
     end
 
     self._destroyed = true
-    if self._starter then
-        self._starter:cancel()
-    end
     if self.session_id and self.agent and self.agent.cancel_session then
         self.agent:cancel_session(self.session_id)
         self.session_id = nil

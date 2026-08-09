@@ -601,12 +601,12 @@ agentic.stop_generation()
 agentic.restore_session()
   Show the provider's session picker to restore a previous
   session. Sessions are interchangeable between Neovim and the
-  terminal. A successful restore replaces the current session.
+  terminal. After restoration succeeds, the previous chat closes.
 
                                              *agentic.restore_session_by_id()*
 agentic.restore_session_by_id({session_id})
-  Restore a previous session by its ID. A successful restore replaces
-  the current session.
+  Restore a previous session by its ID. After it succeeds, the
+  previous chat closes.
 
   Parameters: ~
     {session_id}  (string)  Session ID to restore.
@@ -812,12 +812,8 @@ Sessions are interchangeable between Neovim and the terminal. Call
 |agentic.restore_session()| to see previous sessions from your
 provider.
 
-A successful restore creates a fresh local session manager and replaces
-the current session. The old manager and all of its state are destroyed;
-only the widget size is preserved during the visible handoff. A failed
-or cancelled restore leaves the current session unchanged. If no current
-session exists, the restore starts directly without creating a
-placeholder session.
+The current chat stays open while restoration runs. It closes after a
+successful restore. A failed or cancelled restore leaves it unchanged.
 
 System information ~
                                              *agentic-system-context*

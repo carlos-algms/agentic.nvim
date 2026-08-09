@@ -3,6 +3,7 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 local session_manager_mock
+local session_starter_mock
 local agent_instance_mock
 local lifecycle_session_registry
 
@@ -63,7 +64,12 @@ describe("agentic.SessionRegistry", function()
                 end,
             },
             destroy = function() end,
-            start = function() end,
+            prepare_start = function(self, spec)
+                self.start_spec = spec
+                self.key_during_start = self.session_key
+                return {}
+            end,
+            complete_start = function() end,
             on_session_ready = function(self, on_ready, on_failure)
                 self._ready_callback = on_ready
                 self._failure_callback = on_failure
@@ -71,17 +77,40 @@ describe("agentic.SessionRegistry", function()
             is_mock = true,
         }
 
-        function session:has_acp_session_id(acp_session_id)
-            return self.session_id == acp_session_id
-                or self._restoring_session_id == acp_session_id
-        end
-
         return session
     end
 
     session_manager_mock = {
         new = function()
             return create_mock_session()
+        end,
+    }
+
+    session_starter_mock = {
+        start = function(_agent, spec, prepare_handlers, callback)
+            prepare_handlers(function()
+                return spec.kind == "load"
+            end)
+            local attempt = {
+                spec = spec,
+                callback = callback,
+                cancelled = false,
+            }
+
+            function attempt:has_session_id(session_id)
+                return self.spec.kind == "load"
+                    and self.spec.session_id == session_id
+            end
+
+            function attempt:is_replaying()
+                return self.spec.kind == "load"
+            end
+
+            function attempt:cancel()
+                self.cancelled = true
+            end
+
+            return attempt
         end,
     }
 
@@ -130,6 +159,7 @@ describe("agentic.SessionRegistry", function()
         ["agentic.acp.agent_instance"] = package.loaded["agentic.acp.agent_instance"],
         ["agentic.utils.logger"] = package.loaded["agentic.utils.logger"],
         ["agentic.session_manager"] = package.loaded["agentic.session_manager"],
+        ["agentic.session_starter"] = package.loaded["agentic.session_starter"],
         ["agentic.session_registry"] = package.loaded["agentic.session_registry"],
     }
 
@@ -139,6 +169,7 @@ describe("agentic.SessionRegistry", function()
     package.loaded["agentic.acp.agent_instance"] = agent_instance_mock
     package.loaded["agentic.utils.logger"] = logger_stub
     package.loaded["agentic.session_manager"] = session_manager_mock
+    package.loaded["agentic.session_starter"] = session_starter_mock
     package.loaded["agentic.session_registry"] = nil
 
     SessionRegistry = require("agentic.session_registry")
@@ -153,6 +184,7 @@ describe("agentic.SessionRegistry", function()
         show_opts = {}
         create_session_stub = nil
         package.loaded["agentic.session_manager"] = session_manager_mock
+        package.loaded["agentic.session_starter"] = session_starter_mock
 
         acp_health_mock.check_configured_provider = function()
             return true
@@ -193,10 +225,13 @@ describe("agentic.SessionRegistry", function()
             SessionRegistry._next_id = 0
             SessionRegistry._most_recent = nil
             SessionRegistry._previous_most_recent = nil
+            SessionRegistry._start_attempts = {}
         end
 
         package.loaded["agentic.session_manager"] =
             original_loaded["agentic.session_manager"]
+        package.loaded["agentic.session_starter"] =
+            original_loaded["agentic.session_starter"]
         package.loaded["agentic.config"] = original_loaded["agentic.config"]
         package.loaded["agentic.config_default"] =
             original_loaded["agentic.config_default"]
@@ -561,9 +596,13 @@ describe("agentic.SessionRegistry", function()
             local agent = {}
             local session = create_mock_session()
             session.session_key = 1
-            session._restoring_session_id = "acp-1"
             session.agent = agent
             SessionRegistry.sessions[1] = session
+            SessionRegistry._start_attempts[session] = {
+                has_session_id = function(_, session_id)
+                    return session_id == "acp-1"
+                end,
+            }
 
             assert.equal(
                 session,
@@ -1489,21 +1528,20 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
             end,
         }
 
-        function session:start(spec)
+        function session:prepare_start(spec)
             self.start_spec = spec
             self.key_during_start = self.session_key
             events[#events + 1] = label .. ":start"
+            return {}
         end
+
+        function session:complete_start() end
 
         function session:on_session_ready(on_ready, on_failure)
             self.ready_callbacks = self.ready_callbacks or {}
             self.ready_callbacks[#self.ready_callbacks + 1] = on_ready
             self.ready_callback = on_ready
             self.failure_callback = on_failure
-        end
-
-        function session:has_acp_session_id(session_id)
-            return self.session_id == session_id
         end
 
         function session:owns_ready_acp_session(session_id)
@@ -1521,6 +1559,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         SessionRegistry._next_id = 0
         SessionRegistry._most_recent = nil
         SessionRegistry._previous_most_recent = nil
+        SessionRegistry._start_attempts = {}
         sessions = {}
         events = {}
         get_instance_stub = spy.stub(AgentInstance, "get_instance")
@@ -1541,6 +1580,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         SessionRegistry._next_id = 0
         SessionRegistry._most_recent = nil
         SessionRegistry._previous_most_recent = nil
+        SessionRegistry._start_attempts = {}
         new_stub:revert()
         get_instance_stub:revert()
     end)
@@ -1561,6 +1601,20 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         assert.equal(target.session_key, target.key_during_start)
         assert.equal("load", target.start_spec.kind)
     end)
+
+    it(
+        "cancels the registry-owned start attempt before manager teardown",
+        function()
+            local target =
+                SessionRegistry.create("claude-acp", { kind = "new" })
+            local attempt = SessionRegistry._start_attempts[target]
+
+            SessionRegistry.destroy(target.session_key)
+
+            assert.is_true(attempt.cancelled)
+            assert.same({ "target:start", "target:destroy" }, events)
+        end
+    )
 
     it("resolves before allocating and returns nil on failure", function()
         get_instance_stub:returns(nil)

@@ -14,6 +14,14 @@ describe("SessionStarter", function()
         on_tool_call_update = function() end,
     }
 
+    --- @param handlers agentic.acp.ClientHandlers
+    --- @return fun(): agentic.acp.ClientHandlers prepare_handlers
+    local function prepare(handlers)
+        return function()
+            return handlers
+        end
+    end
+
     local function drain()
         while #queue > 0 do
             local fn = table.remove(queue, 1)
@@ -75,13 +83,18 @@ describe("SessionStarter", function()
         schedule_stub:revert()
     end)
 
-    it("constructs without sending a request", function()
+    it("returns an attempt without sending before readiness", function()
         local agent = new_agent()
         local AgentInstance = require("agentic.acp.agent_instance")
         local get_instance_stub = spy.stub(AgentInstance, "get_instance")
-        local starter = SessionStarter:new(agent)
+        local attempt = SessionStarter.start(
+            agent,
+            { kind = "new" },
+            prepare(NOOP_HANDLERS),
+            function() end
+        )
 
-        assert.is_not_nil(starter)
+        assert.is_not_nil(attempt)
         assert.equal(0, agent.create_calls)
         assert.equal(0, agent.load_calls)
         assert.spy(get_instance_stub).was.called(0)
@@ -94,12 +107,16 @@ describe("SessionStarter", function()
     }) do
         it("waits for readiness and starts only " .. case.kind, function()
             local agent = new_agent()
-            local starter = SessionStarter:new(agent)
             local result
 
-            starter:start(case, NOOP_HANDLERS, function(value)
-                result = value
-            end)
+            SessionStarter.start(
+                agent,
+                case,
+                prepare(NOOP_HANDLERS),
+                function(value)
+                    result = value
+                end
+            )
 
             assert.equal(0, agent.create_calls)
             assert.equal(0, agent.load_calls)
@@ -130,16 +147,16 @@ describe("SessionStarter", function()
             "cancels queued " .. case.kind .. " success before adoption",
             function()
                 local agent = new_agent()
-                local starter = SessionStarter:new(agent)
                 local adopted
 
-                starter:start(
+                local attempt = SessionStarter.start(
+                    agent,
                     {
                         kind = case.kind,
                         session_id = case.kind == "load" and case.session_id
                             or nil,
                     },
-                    NOOP_HANDLERS,
+                    prepare(NOOP_HANDLERS),
                     function(result)
                         adopted = result
                     end
@@ -151,7 +168,7 @@ describe("SessionStarter", function()
                     agent.load_callback({}, nil)
                 end
 
-                starter:cancel()
+                attempt:cancel()
                 drain()
 
                 assert.is_nil(adopted)
@@ -161,33 +178,22 @@ describe("SessionStarter", function()
         )
     end
 
-    it("rejects a second start", function()
-        local agent = new_agent()
-        local starter = SessionStarter:new(agent)
-        local second_err
-
-        starter:start({ kind = "new" }, NOOP_HANDLERS, function() end)
-        starter:start({ kind = "new" }, NOOP_HANDLERS, function(_, err)
-            second_err = err
-        end)
-
-        drain()
-        assert.is_not_nil(second_err)
-        assert.equal(0, agent.create_calls)
-    end)
-
     it("cancels before readiness without sending a request", function()
         local agent = new_agent()
-        local starter = SessionStarter:new(agent)
         local callback_count = 0
         local received_err
 
-        starter:start({ kind = "new" }, NOOP_HANDLERS, function(_, err)
-            callback_count = callback_count + 1
-            received_err = err
-        end)
-        starter:cancel()
-        starter:cancel()
+        local attempt = SessionStarter.start(
+            agent,
+            { kind = "new" },
+            prepare(NOOP_HANDLERS),
+            function(_, err)
+                callback_count = callback_count + 1
+                received_err = err
+            end
+        )
+        attempt:cancel()
+        attempt:cancel()
         agent.ready_callback(agent)
         drain()
 
@@ -205,22 +211,22 @@ describe("SessionStarter", function()
             "cancels a late " .. case.kind .. " result without adopting it",
             function()
                 local agent = new_agent()
-                local starter = SessionStarter:new(agent)
                 local adopted
 
-                starter:start(
+                local attempt = SessionStarter.start(
+                    agent,
                     {
                         kind = case.kind,
                         session_id = case.kind == "load" and case.session_id
                             or nil,
                     },
-                    NOOP_HANDLERS,
+                    prepare(NOOP_HANDLERS),
                     function(result)
                         adopted = result
                     end
                 )
                 agent.ready_callback(agent)
-                starter:cancel()
+                attempt:cancel()
 
                 if case.kind == "new" then
                     assert.equal(1, agent.create_calls)
@@ -240,14 +246,18 @@ describe("SessionStarter", function()
 
     it("completes readiness and request failures once", function()
         local agent = new_agent()
-        local starter = SessionStarter:new(agent)
         local callback_count = 0
         local received_err
 
-        starter:start({ kind = "new" }, NOOP_HANDLERS, function(_, err)
-            callback_count = callback_count + 1
-            received_err = err
-        end)
+        SessionStarter.start(
+            agent,
+            { kind = "new" },
+            prepare(NOOP_HANDLERS),
+            function(_, err)
+                callback_count = callback_count + 1
+                received_err = err
+            end
+        )
         agent.failure_callback({ code = -32000, message = "failed" })
         agent.failure_callback({ code = -32000, message = "again" })
         drain()
@@ -258,14 +268,18 @@ describe("SessionStarter", function()
 
     it("completes request failure once", function()
         local agent = new_agent()
-        local starter = SessionStarter:new(agent)
         local callback_count = 0
         local received_err
 
-        starter:start({ kind = "new" }, NOOP_HANDLERS, function(_, err)
-            callback_count = callback_count + 1
-            received_err = err
-        end)
+        SessionStarter.start(
+            agent,
+            { kind = "new" },
+            prepare(NOOP_HANDLERS),
+            function(_, err)
+                callback_count = callback_count + 1
+                received_err = err
+            end
+        )
         agent.ready_callback(agent)
         agent.create_callback(
             nil,
@@ -279,12 +293,12 @@ describe("SessionStarter", function()
 
     it("does not cancel a load whose failure is awaiting delivery", function()
         local agent = new_agent()
-        local starter = SessionStarter:new(agent)
         local received_err
 
-        starter:start(
+        local attempt = SessionStarter.start(
+            agent,
             { kind = "load", session_id = "failed-load" },
-            NOOP_HANDLERS,
+            prepare(NOOP_HANDLERS),
             function(_, err)
                 received_err = err
             end
@@ -292,7 +306,7 @@ describe("SessionStarter", function()
         agent.ready_callback(agent)
         agent.load_callback(nil, { code = -32001, message = "load failed" })
 
-        starter:cancel()
+        attempt:cancel()
         drain()
 
         assert.is_not_nil(received_err)
@@ -316,43 +330,49 @@ describe("SessionStarter", function()
             end)
             callback({}, nil)
         end
-        local starter = SessionStarter:new(agent)
         local order = {}
         local handlers = vim.deepcopy(NOOP_HANDLERS)
+        local attempt
+        --- @type fun(): boolean
+        local is_replaying
         handlers.on_session_update = function()
-            assert.is_true(starter:is_replaying())
+            assert.is_true(is_replaying())
             order[#order + 1] = "replay"
         end
 
-        starter:start(
+        attempt = SessionStarter.start(
+            agent,
             { kind = "load", session_id = "load-id" },
-            handlers,
+            function(replay_predicate)
+                is_replaying = replay_predicate
+                return handlers
+            end,
             function()
                 order[#order + 1] = "complete"
             end
         )
         agent.ready_callback(agent)
 
-        assert.is_true(starter:has_session_id("load-id"))
+        assert.is_true(attempt:has_session_id("load-id"))
         drain()
         assert.same({ "replay", "complete" }, order)
-        assert.is_false(starter:is_replaying())
+        assert.is_false(attempt:is_replaying())
     end)
 
     it("keeps starter state independent", function()
         local first_agent = new_agent()
         local second_agent = new_agent()
-        local first = SessionStarter:new(first_agent)
-        local second = SessionStarter:new(second_agent)
 
-        first:start(
+        local first = SessionStarter.start(
+            first_agent,
             { kind = "load", session_id = "one" },
-            NOOP_HANDLERS,
+            prepare(NOOP_HANDLERS),
             function() end
         )
-        second:start(
+        local second = SessionStarter.start(
+            second_agent,
             { kind = "load", session_id = "two" },
-            NOOP_HANDLERS,
+            prepare(NOOP_HANDLERS),
             function() end
         )
 

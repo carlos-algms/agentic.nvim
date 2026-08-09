@@ -50,11 +50,10 @@ conversation for its whole lifetime; starting or loading another conversation
 requires another SessionManager. The isolation unit for this plugin. _Avoid_:
 "the session" — say SessionManager.
 
-**SessionStarter**: The one-shot startup owner inside a **SessionManager**. It
-selects one start kind, waits for the injected **ACPClient**, and sends at most
-one `session/new` or `session/load` request after readiness. Cancellation or
-readiness failure can send none. It owns startup cancellation and late-response
-cleanup, but does not resolve providers, create UI, or place sessions.
+**SessionStarter**: Static factory for a one-shot startup attempt. It waits for
+the injected **ACPClient**, sends one `session/new` or `session/load`, and owns
+cancellation and late-response cleanup. **SessionRegistry** owns the returned
+attempt; **SessionManager** does not depend on SessionStarter.
 
 **Session key**: The integer **SessionRegistry** key, assigned at creation and
 stable for the **SessionManager**'s whole life. The only stable identity a
@@ -69,12 +68,14 @@ entries. _Avoid_: bare "title" — say Session title, or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
 **SessionManager** and the owner of manager registration, placement, and
-replacement. For restore, `init.lua` uses the source manager's injected
-**ACPClient** when present, otherwise resolves one through **AgentInstance**, and
-passes the client separately from the optional source to `SessionRestore`.
-`show_session` is the single path that moves a **SessionManager** into a
-**Tabpage**; `replace` owns transactional replacement. Three in-place re-render
-sites call `ChatWidget:show` directly. See ADR 0008.
+replacement. It composes SessionStarter with the inert manager and owns the
+startup attempt. `show_session` is the single path that moves a
+**SessionManager** into a **Tabpage**; `replace` owns transactional replacement.
+Three in-place re-render sites call `ChatWidget:show` directly. See ADR 0008.
+
+**SessionRestore**: Resolves the current manager and its injected **ACPClient**,
+or asks **AgentInstance** directly when no manager exists. It lists provider
+sessions and delegates the selected replacement to **SessionRegistry**.
 
 ### Tabpage scope
 
@@ -271,8 +272,9 @@ enabled by default.
 ## Relationships
 
 - A **SessionRegistry** maps each **Session key** to one **SessionManager**.
-- A **SessionManager** owns one **ChatWidget**, one **SessionStarter**, and one
-  pending or ready **ACP Session** on its injected **ACPClient** for life.
+- A **SessionRegistry** owns each pending **SessionStarter** attempt.
+- A **SessionManager** owns one **ChatWidget** and one ready **ACP Session** on
+  its injected **ACPClient** for life.
 - A **ChatWidget** is visible in at most one **Tabpage**, and a **Tabpage**
   shows at most one **ChatWidget**. Both may be zero.
 - The singleton **AgentInstance** caches one shared **ACPClient** per

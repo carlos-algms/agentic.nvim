@@ -1040,55 +1040,24 @@ describe("agentic: restore entry points", function()
         restore_stub:revert()
     end)
 
-    it(
-        "lists with a directly resolved client when no session exists",
-        function()
-            local agent = { provider_config = { name = "Test" } }
-            current_stub:returns(nil)
-            get_instance_stub:returns(agent)
-
-            Agentic.restore_session()
-
-            assert.equal(1, current_stub.call_count)
-            assert.equal(1, get_instance_stub.call_count)
-            assert.spy(get_instance_stub).was.called_with(Config.provider)
-            assert.spy(resolve_stub).was.called(0)
-            assert.spy(picker_stub).was.called_with({
-                agent = agent,
-                provider_name = Config.provider,
-            })
-        end
-    )
-
-    it("passes the current source and its injected client", function()
-        local agent = { provider_config = { name = "Test" } }
-        local source = {
-            agent = agent,
-            provider_name = "claude-acp",
-        }
-        current_stub:returns(source)
-
-        Agentic.restore_session_by_id("saved-id")
-
-        assert.spy(get_instance_stub).was.called(0)
-        assert.spy(resolve_stub).was.called(0)
-        assert.spy(restore_stub).was.called_with({
-            agent = agent,
-            provider_name = "claude-acp",
-            source = source,
-        }, "saved-id")
-    end)
-
-    it("creates no placeholder when provider resolution fails", function()
-        current_stub:returns(nil)
-        get_instance_stub:returns(nil)
-
+    it("delegates picker context resolution to SessionRestore", function()
         Agentic.restore_session()
 
-        assert.equal(1, current_stub.call_count)
-        assert.equal(1, get_instance_stub.call_count)
+        assert.spy(current_stub).was.called(0)
+        assert.spy(get_instance_stub).was.called(0)
         assert.spy(resolve_stub).was.called(0)
-        assert.spy(picker_stub).was.called(0)
-        assert.spy(restore_stub).was.called(0)
+        assert.spy(picker_stub).was.called_with()
     end)
+
+    it(
+        "delegates restore-by-id context resolution to SessionRestore",
+        function()
+            Agentic.restore_session_by_id("saved-id")
+
+            assert.spy(current_stub).was.called(0)
+            assert.spy(get_instance_stub).was.called(0)
+            assert.spy(resolve_stub).was.called(0)
+            assert.spy(restore_stub).was.called_with("saved-id")
+        end
+    )
 end)

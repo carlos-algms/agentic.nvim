@@ -1,4 +1,6 @@
 local Logger = require("agentic.utils.logger")
+local Config = require("agentic.config")
+local AgentInstance = require("agentic.acp.agent_instance")
 local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestoreContext
@@ -8,6 +10,28 @@ local SessionRegistry = require("agentic.session_registry")
 
 --- @class agentic.SessionRestore
 local SessionRestore = {}
+
+--- @return agentic.SessionRestoreContext|nil context
+local function resolve_context()
+    local source = SessionRegistry.current()
+    if source then
+        return {
+            agent = source.agent,
+            provider_name = source.provider_name,
+            source = source,
+        }
+    end
+
+    local agent = AgentInstance.get_instance(Config.provider)
+    if not agent then
+        return nil
+    end
+
+    return {
+        agent = agent,
+        provider_name = Config.provider,
+    }
+end
 
 --- @param err agentic.acp.ACPError
 local function notify_readiness_failure(err)
@@ -59,8 +83,12 @@ local function restore(context, session_id, title, timestamp)
     )
 end
 
---- @param context agentic.SessionRestoreContext
-function SessionRestore.show_picker(context)
+function SessionRestore.show_picker()
+    local context = resolve_context()
+    if not context then
+        return
+    end
+
     local cwd = vim.fn.getcwd()
     context.agent:when_ready(function()
         context.agent:list_sessions(cwd, function(result, err)
@@ -116,9 +144,13 @@ function SessionRestore.show_picker(context)
     end, notify_readiness_failure)
 end
 
---- @param context agentic.SessionRestoreContext
 --- @param session_id string
-function SessionRestore.restore_by_id(context, session_id)
+function SessionRestore.restore_by_id(session_id)
+    local context = resolve_context()
+    if not context then
+        return
+    end
+
     context.agent:when_ready(function()
         restore(context, session_id, nil, nil)
     end, notify_readiness_failure)

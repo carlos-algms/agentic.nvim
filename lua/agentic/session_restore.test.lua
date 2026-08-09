@@ -4,6 +4,7 @@ local spy = require("tests.helpers.spy")
 describe("SessionRestore", function()
     local SessionRestore
     local SessionRegistry
+    local AgentInstance
     local Logger
     local replace_stub
     local find_stub
@@ -11,6 +12,8 @@ describe("SessionRestore", function()
     local notify_stub
     local select_stub
     local schedule_stub
+    local current_stub
+    local get_instance_stub
     local extra_stubs
 
     local function new_agent()
@@ -35,17 +38,19 @@ describe("SessionRestore", function()
         return agent
     end
 
-    local function context(agent, source)
-        return {
-            agent = agent,
-            provider_name = "claude-acp",
-            source = source,
-        }
+    local function use_context(agent, source)
+        current_stub:returns(source)
+        get_instance_stub:returns(agent)
+        if source then
+            source.agent = agent
+            source.provider_name = "claude-acp"
+        end
     end
 
     before_each(function()
         extra_stubs = {}
         SessionRegistry = require("agentic.session_registry")
+        AgentInstance = require("agentic.acp.agent_instance")
         Logger = require("agentic.utils.logger")
         replace_stub = spy.stub(SessionRegistry, "replace")
         find_stub = spy.stub(SessionRegistry, "find_by_acp_session_id")
@@ -56,6 +61,8 @@ describe("SessionRestore", function()
         schedule_stub:invokes(function(callback)
             callback()
         end)
+        current_stub = spy.stub(SessionRegistry, "current")
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
 
         package.loaded["agentic.session_restore"] = nil
         SessionRestore = require("agentic.session_restore")
@@ -71,6 +78,8 @@ describe("SessionRestore", function()
         notify_stub:revert()
         select_stub:revert()
         schedule_stub:revert()
+        current_stub:revert()
+        get_instance_stub:revert()
         package.loaded["agentic.session_restore"] = nil
     end)
 
@@ -82,7 +91,8 @@ describe("SessionRestore", function()
             },
         }
 
-        SessionRestore.show_picker(context(agent, nil))
+        use_context(agent, nil)
+        SessionRestore.show_picker()
         assert.equal(0, agent.list_calls)
         agent.ready_callback(agent)
 
@@ -103,7 +113,8 @@ describe("SessionRestore", function()
             on_choice = callback
         end)
 
-        SessionRestore.show_picker(context(agent, nil))
+        use_context(agent, nil)
+        SessionRestore.show_picker()
         agent.ready_callback(agent)
         assert.spy(replace_stub).was.called(0)
         on_choice({
@@ -128,7 +139,8 @@ describe("SessionRestore", function()
             on_choice = callback
         end)
 
-        SessionRestore.show_picker(context(agent, nil))
+        use_context(agent, nil)
+        SessionRestore.show_picker()
         agent.ready_callback(agent)
         on_choice(nil)
 
@@ -138,7 +150,8 @@ describe("SessionRestore", function()
     it("waits for readiness and lists exactly once", function()
         local agent = new_agent()
 
-        SessionRestore.show_picker(context(agent, nil))
+        use_context(agent, nil)
+        SessionRestore.show_picker()
         assert.equal(0, agent.list_calls)
         agent.ready_callback(agent)
         assert.equal(1, agent.list_calls)
@@ -147,7 +160,8 @@ describe("SessionRestore", function()
     it("creates nothing when readiness fails", function()
         local agent = new_agent()
 
-        SessionRestore.show_picker(context(agent, nil))
+        use_context(agent, nil)
+        SessionRestore.show_picker()
         agent.failure_callback({ code = -32000, message = "offline" })
 
         assert.equal(0, agent.list_calls)
@@ -157,10 +171,22 @@ describe("SessionRestore", function()
             .called_with("Failed to list sessions: offline", vim.log.levels.WARN)
     end)
 
+    it("creates no placeholder when provider resolution fails", function()
+        current_stub:returns(nil)
+        get_instance_stub:returns(nil)
+
+        SessionRestore.show_picker()
+
+        assert.spy(get_instance_stub).was.called(1)
+        assert.spy(replace_stub).was.called(0)
+        assert.spy(select_stub).was.called(0)
+    end)
+
     it("passes nil source with no prepare callback", function()
         local agent = new_agent()
 
-        SessionRestore.restore_by_id(context(agent, nil), "one")
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.spy(replace_stub).was.called(1)
@@ -185,7 +211,8 @@ describe("SessionRestore", function()
         extra_stubs[#extra_stubs + 1] = destroy_stub
         SessionRegistry.sessions[22] = target
 
-        SessionRestore.restore_by_id(context(agent, nil), "one")
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
         target.failure_callback(target)
 
@@ -233,7 +260,8 @@ describe("SessionRestore", function()
         SessionRegistry.sessions[21] = source
         SessionRegistry.sessions[22] = target
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
         target.ready_callback(target)
 
@@ -261,7 +289,8 @@ describe("SessionRestore", function()
         SessionRegistry.sessions[21] = source
         SessionRegistry.sessions[22] = target
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
         target.failure_callback(target)
 
@@ -277,7 +306,8 @@ describe("SessionRestore", function()
             local agent = new_agent()
             local source = { session_key = 1 }
 
-            SessionRestore.restore_by_id(context(agent, source), "one")
+            use_context(agent, source)
+            SessionRestore.restore_by_id("one")
             agent.ready_callback(agent)
 
             assert.spy(replace_stub).was.called_with(
@@ -294,7 +324,8 @@ describe("SessionRestore", function()
         local source = { session_key = 1 }
         find_stub:returns({ session_key = 2 })
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.spy(replace_stub).was.called_with(
@@ -311,7 +342,8 @@ describe("SessionRestore", function()
         local source = { session_key = 1 }
         find_stub:returns(source)
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.spy(commit_stub).was.called(0)
@@ -324,7 +356,8 @@ describe("SessionRestore", function()
         local source = { session_key = 1 }
         find_stub:returns({ session_key = 2 })
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.spy(replace_stub).was.called(1)
@@ -345,9 +378,11 @@ describe("SessionRestore", function()
         find_stub:returns(target)
         replace_stub:revert()
 
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
-        SessionRestore.restore_by_id(context(agent, source), "one")
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.equal(1, target.ready_callback_count)
@@ -357,7 +392,8 @@ describe("SessionRestore", function()
         local agent = new_agent()
         agent.agent_capabilities.loadSession = false
 
-        SessionRestore.restore_by_id(context(agent, nil), "one")
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
         agent.ready_callback(agent)
 
         assert.spy(replace_stub).was.called(0)
@@ -388,7 +424,8 @@ describe("SessionRestore", function()
             on_choice = callback
         end)
 
-        SessionRestore.show_picker(context(agent, source))
+        use_context(agent, source)
+        SessionRestore.show_picker()
         agent.ready_callback(agent)
         on_choice(items[1])
 

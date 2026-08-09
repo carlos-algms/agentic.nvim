@@ -1,6 +1,5 @@
---- @class agentic.SessionStarter
+--- @class agentic.SessionStartAttempt
 --- @field _agent agentic.acp.ACPClient
---- @field _started boolean
 --- @field _completed boolean
 --- @field _completion_queued boolean
 --- @field _cancelled boolean
@@ -9,17 +8,15 @@
 --- @field _claimed_session_id? string
 --- @field _cancelled_session_ids table<string, boolean>
 --- @field _callback? fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
+local SessionStartAttempt = {}
+SessionStartAttempt.__index = SessionStartAttempt
+
+--- @class agentic.SessionStarter
 local SessionStarter = {}
-SessionStarter.__index = SessionStarter
 
 local CANCELLED_ERROR = {
     code = -32800,
     message = "Session startup cancelled",
-}
-
-local ALREADY_STARTED_ERROR = {
-    code = -32600,
-    message = "Session starter can only be started once",
 }
 
 local INVALID_SPEC_ERROR = {
@@ -28,11 +25,10 @@ local INVALID_SPEC_ERROR = {
 }
 
 --- @param agent agentic.acp.ACPClient
---- @return agentic.SessionStarter starter
-function SessionStarter:new(agent)
+--- @return agentic.SessionStartAttempt attempt
+local function new_attempt(agent)
     return setmetatable({
         _agent = agent,
-        _started = false,
         _completed = false,
         _completion_queued = false,
         _cancelled = false,
@@ -41,12 +37,12 @@ function SessionStarter:new(agent)
         _claimed_session_id = nil,
         _cancelled_session_ids = {},
         _callback = nil,
-    }, self)
+    }, SessionStartAttempt)
 end
 
 --- @param result agentic.SessionStartResult|nil
 --- @param err agentic.acp.ACPError|nil
-function SessionStarter:_complete(result, err)
+function SessionStartAttempt:_complete(result, err)
     if self._completed or self._completion_queued then
         return
     end
@@ -76,7 +72,7 @@ function SessionStarter:_complete(result, err)
 end
 
 --- @param session_id string|nil
-function SessionStarter:_cancel_provider_session(session_id)
+function SessionStartAttempt:_cancel_provider_session(session_id)
     if not session_id or self._cancelled_session_ids[session_id] then
         return
     end
@@ -88,15 +84,7 @@ end
 --- @param spec agentic.SessionStartSpec
 --- @param handlers agentic.acp.ClientHandlers
 --- @param callback fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
-function SessionStarter:start(spec, handlers, callback)
-    if self._started then
-        vim.schedule(function()
-            callback(nil, ALREADY_STARTED_ERROR)
-        end)
-        return
-    end
-
-    self._started = true
+function SessionStartAttempt:_start(spec, handlers, callback)
     self._callback = callback
 
     if spec.kind == "load" then
@@ -172,16 +160,16 @@ end
 
 --- @param session_id string
 --- @return boolean owns_id
-function SessionStarter:has_session_id(session_id)
+function SessionStartAttempt:has_session_id(session_id)
     return self._claimed_session_id == session_id
 end
 
 --- @return boolean replaying
-function SessionStarter:is_replaying()
+function SessionStartAttempt:is_replaying()
     return self._replaying
 end
 
-function SessionStarter:cancel()
+function SessionStartAttempt:cancel()
     if self._cancelled or self._completed then
         return
     end
@@ -193,6 +181,30 @@ function SessionStarter:cancel()
     if not self._completion_queued then
         self:_complete(nil, CANCELLED_ERROR)
     end
+end
+
+--- Starts one ACP conversation and returns its cancellation/query handle.
+--- @param agent agentic.acp.ACPClient
+--- @param spec agentic.SessionStartSpec
+--- @param prepare_handlers fun(is_replaying: fun(): boolean): agentic.acp.ClientHandlers|nil, agentic.acp.ACPError|nil
+--- @param callback fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
+--- @return agentic.SessionStartAttempt attempt
+function SessionStarter.start(agent, spec, prepare_handlers, callback)
+    local attempt = new_attempt(agent)
+    local handlers, err = prepare_handlers(function()
+        return attempt:is_replaying()
+    end)
+    if not handlers then
+        --- @diagnostic disable-next-line: invisible
+        attempt._callback = callback
+        --- @diagnostic disable-next-line: invisible
+        attempt:_complete(nil, err or INVALID_SPEC_ERROR)
+        return attempt
+    end
+
+    --- @diagnostic disable-next-line: invisible
+    attempt:_start(spec, handlers, callback)
+    return attempt
 end
 
 return SessionStarter

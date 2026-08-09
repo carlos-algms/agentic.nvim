@@ -5,13 +5,28 @@ local spy = require("tests.helpers.spy")
 local AgentModes = require("agentic.acp.agent_modes")
 local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
+local SessionStarter = require("agentic.session_starter")
 
 --- @return agentic.SessionManager manager
 local function new_test_manager()
     local Config = require("agentic.config")
     local AgentInstance = require("agentic.acp.agent_instance")
     local agent = AgentInstance.get_instance(Config.provider)
-    return SessionManager:new(agent, Config.provider)
+    return SessionManager:new(agent, Config.provider, function() end)
+end
+
+--- @param manager agentic.SessionManager
+--- @param spec agentic.SessionStartSpec
+--- @param callback fun(session: agentic.SessionManager, err: agentic.acp.ACPError|nil)|nil
+--- @return agentic.SessionStartAttempt|nil attempt
+local function start_test_manager(manager, spec, callback)
+    local attempt
+    attempt = SessionStarter.start(manager.agent, spec, function(is_replaying)
+        return manager:prepare_start(spec, is_replaying)
+    end, function(result, start_err)
+        manager:complete_start(spec, result, start_err, callback)
+    end)
+    return attempt
 end
 
 --- @param mode_id string
@@ -471,7 +486,7 @@ describe("agentic.SessionManager", function()
             local failure_spy = spy.new(function() end)
 
             session:on_session_ready(ready_spy, failure_spy)
-            session:start({ kind = "new" })
+            start_test_manager(session, { kind = "new" })
             flush_schedule()
 
             assert.spy(ready_spy).was.called(0)
@@ -800,16 +815,10 @@ describe("agentic.SessionManager", function()
             end
 
             local session = make_session()
-            session._starter = {
-                is_replaying = function()
-                    return true
-                end,
-            }
-
             session:_on_session_update({
                 sessionUpdate = "agent_message_chunk",
                 content = { type = "text", text = "replayed" },
-            })
+            }, true)
 
             assert.spy(hook_spy).was.called(0)
         end)
@@ -1063,31 +1072,22 @@ describe("agentic.SessionManager", function()
             assert.spy(write_restoring_message_spy).was.called(0)
         end)
 
-        it(
-            "renders as formatted message when _is_restoring_session is true",
-            function()
-                session._starter = {
-                    is_replaying = function()
-                        return true
-                    end,
-                }
+        it("renders replay chunks as formatted messages", function()
+            session:_on_session_update({
+                sessionUpdate = "user_message_chunk",
+                content = { type = "text", text = "hello" },
+            }, true)
 
-                session:_on_session_update({
-                    sessionUpdate = "user_message_chunk",
-                    content = { type = "text", text = "hello" },
-                })
+            assert.spy(write_restoring_message_spy).was.called(1)
+            assert.spy(write_message_spy).was.called(0)
+            local message = write_restoring_message_spy.calls[1][2]
+            assert.truthy(message.content.text:match("hello"))
 
-                assert.spy(write_restoring_message_spy).was.called(1)
-                assert.spy(write_message_spy).was.called(0)
-                local message = write_restoring_message_spy.calls[1][2]
-                assert.truthy(message.content.text:match("hello"))
-
-                assert.spy(session.chat_history.add_message).was.called(1)
-                local added = session.chat_history.add_message.calls[1][2] --- @diagnostic disable-line: undefined-field
-                assert.equal("user", added.type)
-                assert.equal("hello", added.text)
-            end
-        )
+            assert.spy(session.chat_history.add_message).was.called(1)
+            local added = session.chat_history.add_message.calls[1][2] --- @diagnostic disable-line: undefined-field
+            assert.equal("user", added.type)
+            assert.equal("hello", added.text)
+        end)
     end)
 
     describe("on_tool_call_update: buffer reload", function()
@@ -1536,15 +1536,10 @@ describe("agentic.SessionManager", function()
                         file_path = "/tmp/restore-replay.lua",
                     },
                 })
-                session._starter = {
-                    is_replaying = function()
-                        return true
-                    end,
-                }
-
                 SessionManager._on_tool_call_update(
                     session,
-                    { tool_call_id = "tc-1", status = "completed" }
+                    { tool_call_id = "tc-1", status = "completed" },
+                    true
                 )
 
                 assert.spy(hook_spy).was.called(0)
@@ -1627,6 +1622,14 @@ describe("agentic.SessionManager", function()
                 todo_list = { close_if_all_completed = close_todos_spy },
                 provider_name = "claude-acp",
                 agent = {},
+                _on_new_session = function(current)
+                    SessionRegistry.replace(
+                        current,
+                        current.provider_name,
+                        { kind = "new" },
+                        { agent = current.agent }
+                    )
+                end,
                 _handle_input_submit = SessionManager._handle_input_submit,
             } --[[@as agentic.SessionManager]]
 
@@ -1827,7 +1830,7 @@ describe("agentic.SessionManager", function()
             "applies default_thought_level when no model change is triggered",
             function()
                 local session = new_test_manager()
-                session:start({ kind = "new" })
+                start_test_manager(session, { kind = "new" })
                 flush_schedule()
 
                 assert.equal(1, set_initial_thought_level_stub.call_count)
@@ -1998,16 +2001,14 @@ describe("agentic.SessionManager", function()
     end)
 
     describe("destroy", function()
-        it("is idempotent and marks destroyed before cancellation", function()
+        it("is idempotent and marks destroyed before UI teardown", function()
             local session
-            local cancel_spy = spy.new(function()
+            local widget_destroy_spy = spy.new(function()
                 assert.is_true(session._destroyed)
             end)
-            local widget_destroy_spy = spy.new(function() end)
             local writer_destroy_spy = spy.new(function() end)
             session = {
                 _destroyed = false,
-                _starter = { cancel = cancel_spy },
                 is_generating = false,
                 widget = { destroy = widget_destroy_spy },
                 message_writer = { destroy = writer_destroy_spy },
@@ -2017,7 +2018,6 @@ describe("agentic.SessionManager", function()
             session:destroy()
             session:destroy()
 
-            assert.spy(cancel_spy).was.called(1)
             assert.spy(widget_destroy_spy).was.called(1)
             assert.spy(writer_destroy_spy).was.called(1)
         end)
@@ -2554,9 +2554,13 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         return agent
     end
 
-    local function make_manager(agent)
+    local function make_manager(agent, on_new_session)
         get_instance_stub:returns(agent)
-        local manager = SessionManager:new(agent, "claude-acp")
+        local manager = SessionManager:new(
+            agent,
+            "claude-acp",
+            on_new_session or function() end
+        )
         managers[#managers + 1] = manager
         return manager
     end
@@ -2601,7 +2605,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             local callback_manager
             local callback_err
 
-            manager:start({
+            start_test_manager(manager, {
                 kind = case.kind,
                 session_id = case.kind == "load" and case.session_id or nil,
             }, function(value, err)
@@ -2641,7 +2645,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local models_stub =
             spy.stub(manager.config_options, "set_legacy_models")
 
-        manager:start({ kind = "load", session_id = "load-id" })
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
         assert.is_not_nil(agent.ready_callback)
         agent.ready_callback(agent)
         flush_until(function()
@@ -2670,7 +2674,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local models_stub =
             spy.stub(manager.config_options, "set_legacy_models")
 
-        manager:start({ kind = "load", session_id = "load-id" })
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
         assert.is_not_nil(agent.ready_callback)
         agent.ready_callback(agent)
         flush_until(function()
@@ -2701,7 +2705,10 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             local thought_default_stub =
                 spy.stub(manager.config_options, "set_initial_thought_level")
 
-            manager:start({ kind = "load", session_id = "load-id" })
+            start_test_manager(manager, {
+                kind = "load",
+                session_id = "load-id",
+            })
             agent.ready_callback(agent)
             flush_until(function()
                 return manager.session_id ~= nil
@@ -2727,7 +2734,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         agent.load_error = { code = -32000, message = "load failed" }
         local manager = make_manager(agent)
 
-        manager:start({ kind = "load", session_id = "load-id" })
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
         agent.ready_callback(agent)
         flush_until(function()
             return notify_stub.call_count > 0
@@ -2745,20 +2752,22 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local manager = make_manager(agent)
         local second_err
 
-        manager:start({ kind = "new" })
+        start_test_manager(manager, { kind = "new" })
         agent.ready_callback(agent)
         flush_until(function()
             return manager.session_id ~= nil
         end)
-        manager:start({ kind = "new" }, function(_, err)
-            second_err = err
-        end)
-        flush_until(function()
-            return second_err ~= nil
-        end)
+        local handlers
+        handlers, second_err = manager:prepare_start(
+            { kind = "new" },
+            function()
+                return false
+            end
+        )
 
         assert.equal("new-id", manager.session_id)
         assert.equal(1, agent.create_calls)
+        assert.is_nil(handlers)
         assert.is_not_nil(second_err)
     end)
 
@@ -2771,7 +2780,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             hook_spy(data)
         end
 
-        manager:start({ kind = "new" })
+        start_test_manager(manager, { kind = "new" })
         agent.ready_callback(agent)
         flush_until(function()
             return hook_spy.call_count > 0
@@ -2815,7 +2824,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
 
             local session = {
                 _destroyed = false,
-                _start_called = false,
+                _start_prepared = false,
                 _session_creation_failed = false,
                 _session_ready_callbacks = {},
                 session_key = 3,
@@ -2836,14 +2845,24 @@ describe("agentic.SessionManager one-shot lifecycle", function()
                 _build_handlers = function()
                     return {}
                 end,
-                start = SessionManager.start,
+                prepare_start = SessionManager.prepare_start,
+                complete_start = SessionManager.complete_start,
             }
-            session._starter = SessionStarter:new(agent)
             Config.hooks.on_create_session_response = function(data)
                 _G.t.hook_data = data
             end
 
-            session:start({ kind = "new" })
+            local spec = { kind = "new" }
+            SessionStarter.start(
+                agent,
+                spec,
+                function(is_replaying)
+                    return session:prepare_start(spec, is_replaying)
+                end,
+                function(result, err)
+                    session:complete_start(spec, result, err)
+                end
+            )
             vim.wait(2000, function()
                 return _G.t.widget_fast ~= nil
             end)
@@ -2861,51 +2880,46 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         assert.is_false(widget_fast)
     end)
 
-    it("delegates slash-new to registry replacement", function()
+    it("delegates slash-new without depending on the registry", function()
         local agent = new_agent()
-        local manager = make_manager(agent)
+        local on_new_session = spy.new(function() end)
+        local manager = make_manager(agent, on_new_session)
         local replace_stub = spy.stub(SessionRegistry, "replace")
 
         assert.is_true(manager:_handle_input_submit("/new"))
 
-        assert
-            .spy(replace_stub).was
-            .called_with(manager, "claude-acp", { kind = "new" }, { agent = agent })
+        assert.spy(on_new_session).was.called_with(manager)
+        assert.spy(replace_stub).was.called(0)
         replace_stub:revert()
     end)
 
-    it("reports an in-flight load claim", function()
+    it("does not own startup orchestration", function()
         local agent = new_agent()
         local manager = make_manager(agent)
 
-        manager:start({ kind = "load", session_id = "load-id" })
-
-        assert.is_true(manager:has_acp_session_id("load-id"))
+        assert.is_nil(rawget(manager, "_starter"))
+        assert.is_nil(rawget(SessionManager, "start"))
     end)
 
     it("cancels adopted ownership once before destroying UI", function()
         local agent = new_agent()
         local manager = make_manager(agent)
         manager.session_id = "owned-id"
-        assert.is_not_nil(manager._starter)
-        local starter_cancel_stub = spy.stub(manager._starter, "cancel")
         local widget_destroy_stub = spy.stub(manager.widget, "destroy")
 
         manager:destroy()
         manager:destroy()
 
-        assert.spy(starter_cancel_stub).was.called(1)
         assert.same({ "owned-id" }, agent.cancelled)
         assert.spy(widget_destroy_stub).was.called(1)
-        starter_cancel_stub:revert()
         widget_destroy_stub:revert()
     end)
 
-    it("cancels pending startup and tears down owners exactly once", function()
+    it("tears down owners without owning pending startup", function()
         local agent = new_agent()
         local manager = make_manager(agent)
-        manager:start({ kind = "new" })
-        local starter_cancel_stub = spy.stub(manager._starter, "cancel")
+        local attempt = start_test_manager(manager, { kind = "new" })
+        local attempt_cancel_stub = spy.stub(attempt, "cancel")
         local status_stop_stub = spy.on(manager.status_animation, "stop")
         local permission_clear_stub =
             spy.on(manager.permission_manager, "clear")
@@ -2940,7 +2954,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         manager:destroy()
         manager:destroy()
 
-        assert.spy(starter_cancel_stub).was.called(1)
+        assert.spy(attempt_cancel_stub).was.called(0)
         assert.spy(status_stop_stub).was.called(1)
         assert.spy(permission_clear_stub).was.called(1)
         assert.spy(file_clear_stub).was.called(1)
@@ -2970,7 +2984,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         assert.is_nil(manager.message_writer._provider_name)
         assert.is_false(manager.message_writer._is_restoring)
         assert.is_nil(manager.message_writer._thinking_extmark_id)
-        starter_cancel_stub:revert()
+        attempt_cancel_stub:revert()
         status_stop_stub:revert()
         permission_clear_stub:revert()
         file_clear_stub:revert()

@@ -5,6 +5,7 @@ local ACPHealth = require("agentic.acp.acp_health")
 local AgentInstance = require("agentic.acp.agent_instance")
 local BufHelpers = require("agentic.utils.buf_helpers")
 local SessionManager = require("agentic.session_manager")
+local SessionStarter = require("agentic.session_starter")
 
 local KEEP_CURRENT_SESSION = "Keep current session in the background"
 local DESTROY_CURRENT_SESSION = "Destroy current session"
@@ -15,11 +16,13 @@ local NIL_REPLACEMENT_SOURCE = {}
 --- @field _next_id integer Last assigned session key
 --- @field _most_recent? agentic.SessionManager
 --- @field _previous_most_recent? agentic.SessionManager The one `_most_recent` displaced
+--- @field _start_attempts table<agentic.SessionManager, agentic.SessionStartAttempt>
 local SessionRegistry = {
     sessions = {},
     _next_id = 0,
     _most_recent = nil,
     _previous_most_recent = nil,
+    _start_attempts = {},
 }
 
 --- The recency cursors can outlive a destroyed session.
@@ -61,7 +64,14 @@ function SessionRegistry.create(provider_name, start_spec, agent)
     end
 
     local ok, session = pcall(function()
-        return SessionManager:new(agent, provider_name)
+        return SessionManager:new(agent, provider_name, function(current)
+            SessionRegistry.replace(
+                current,
+                current.provider_name,
+                { kind = "new" },
+                { agent = current.agent }
+            )
+        end)
     end)
 
     if not ok then
@@ -84,7 +94,17 @@ function SessionRegistry.create(provider_name, start_spec, agent)
             SessionRegistry.destroy(session_key)
         end
     end)
-    session:start(start_spec or { kind = "new" })
+    local attempt
+    local spec = start_spec or { kind = "new" }
+    attempt = SessionStarter.start(agent, spec, function(is_replaying)
+        return session:prepare_start(spec, is_replaying)
+    end, function(result, err)
+        if SessionRegistry._start_attempts[session] == attempt then
+            SessionRegistry._start_attempts[session] = nil
+        end
+        session:complete_start(spec, result, err)
+    end)
+    SessionRegistry._start_attempts[session] = attempt
 
     return session
 end
@@ -309,9 +329,13 @@ end
 --- @return agentic.SessionManager|nil
 function SessionRegistry.find_by_acp_session_id(acp_session_id, agent)
     for _, session in pairs(SessionRegistry.sessions) do
+        local attempt = SessionRegistry._start_attempts[session]
         if
             session.agent == agent
-            and session:has_acp_session_id(acp_session_id)
+            and (
+                session.session_id == acp_session_id
+                or (attempt and attempt:has_session_id(acp_session_id))
+            )
         then
             return session
         end
@@ -419,6 +443,12 @@ function SessionRegistry.destroy(session_key)
     -- AFTER the repoint above, which can demote `session` into this cursor.
     if SessionRegistry._previous_most_recent == session then
         SessionRegistry._previous_most_recent = nil
+    end
+
+    local attempt = SessionRegistry._start_attempts[session]
+    SessionRegistry._start_attempts[session] = nil
+    if attempt then
+        attempt:cancel()
     end
 
     local ok, err = pcall(session.destroy, session)
