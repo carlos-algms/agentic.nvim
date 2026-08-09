@@ -360,7 +360,7 @@
 --- @field command? string Command to spawn agent (for stdio)
 --- @field args? string[] Arguments for agent command
 --- @field env? table<string, string|nil> Environment variables
---- @field timeout? number Request timeout in milliseconds
+--- @field timeout? number Inactivity silence timeout for the watchdog (ms); rejects stalled control requests after this duration
 --- @field reconnect? boolean Enable auto-reconnect
 --- @field max_reconnect_attempts? number Maximum reconnection attempts
 --- @field auth_method? string Authentication method

@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch
+--- @diagnostic disable: invisible, missing-fields, assign-type-mismatch, cast-local-type, param-type-mismatch, return-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
@@ -3159,6 +3159,197 @@ describe("agentic.SessionManager", function()
                 local prompt = submitted_prompt or {}
                 assert.equal("User: old msg", prompt[1].text)
                 assert.equal("  new   question  ", prompt[2].text)
+            end
+        )
+    end)
+
+    describe("reconnect", function()
+        --- @type TestStub
+        local notify_stub
+
+        before_each(function()
+            notify_stub = spy.stub(Logger, "notify")
+        end)
+
+        after_each(function()
+            notify_stub:revert()
+        end)
+
+        --- @param overrides table
+        --- @return agentic.SessionManager session, table calls
+        local function make_session(overrides)
+            local calls = {
+                reconnected = false,
+                reconnect_count = 0,
+                ready_registrations = 0,
+                loaded_with = nil,
+                new = false,
+                ready_cb = nil,
+            }
+            local session = {
+                session_id = overrides.session_id,
+                is_generating = true,
+                _destroyed = false,
+                status_animation = { stop = function() end },
+                agent = {
+                    reconnect = function()
+                        calls.reconnected = true
+                        calls.reconnect_count = calls.reconnect_count + 1
+                    end,
+                    -- Synchronous unless the case needs to act in the window
+                    -- between the respawn and the agent reaching ready.
+                    when_ready = function(_self, cb)
+                        calls.ready_registrations = calls.ready_registrations
+                            + 1
+                        if overrides.defer then
+                            calls.ready_cb = cb
+                        else
+                            cb()
+                        end
+                    end,
+                    agent_capabilities = overrides.caps,
+                },
+                reconnect = SessionManager.reconnect,
+                load_acp_session = function(_self, id)
+                    calls.loaded_with = id
+                end,
+                new_session = function()
+                    calls.new = true
+                end,
+            } --[[@as agentic.SessionManager]]
+            return session, calls
+        end
+
+        it("respawns the agent and reloads the current session", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+            })
+
+            session:reconnect()
+
+            assert.is_true(calls.reconnected)
+            assert.is_false(session.is_generating)
+            assert.equal("sess-1", calls.loaded_with)
+            assert.is_false(calls.new)
+        end)
+
+        it("starts a fresh session when there is none to reload", function()
+            local session, calls = make_session({
+                session_id = nil,
+                caps = { loadSession = true },
+            })
+
+            session:reconnect()
+
+            assert.is_true(calls.reconnected)
+            assert.is_nil(calls.loaded_with)
+            assert.is_true(calls.new)
+        end)
+
+        it("clears the connection error once the agent is back", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+            })
+            session._connection_error = true
+            session._session_creation_failed = true
+
+            session:reconnect()
+
+            assert.is_false(session._connection_error)
+            assert.is_false(session._session_creation_failed)
+            assert.equal("sess-1", calls.loaded_with)
+        end)
+
+        it("keeps the connection error when the respawn never lands", function()
+            local session = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+            session._connection_error = true
+
+            session:reconnect()
+
+            assert.is_true(session._connection_error)
+        end)
+
+        it("ignores a second reconnect while one is in flight", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            session:reconnect()
+
+            assert.equal(1, calls.reconnect_count)
+            assert.equal(1, calls.ready_registrations)
+        end)
+
+        it("reconnects again once the agent has come back ready", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            calls.ready_cb()
+            session:reconnect()
+
+            assert.equal(2, calls.reconnect_count)
+        end)
+
+        it("does not reload a session destroyed while reconnecting", function()
+            local session, calls = make_session({
+                session_id = "sess-1",
+                caps = { loadSession = true },
+                defer = true,
+            })
+
+            session:reconnect()
+            -- `destroy` runs while the respawned agent is still initializing.
+            session._destroyed = true
+            calls.ready_cb()
+
+            assert.is_nil(calls.loaded_with)
+            assert.is_false(calls.new)
+        end)
+
+        it(
+            "reloads the current session, not a stale one, when ready fires late",
+            function()
+                local calls = { loaded_with = nil }
+                local ready_cb
+                local session = {
+                    session_id = "sess-old",
+                    is_generating = true,
+                    status_animation = { stop = function() end },
+                    agent = {
+                        reconnect = function() end,
+                        -- Defer the ready callback so the session can change
+                        -- before re-initialization completes.
+                        when_ready = function(_self, cb)
+                            ready_cb = cb
+                        end,
+                        agent_capabilities = { loadSession = true },
+                    },
+                    reconnect = SessionManager.reconnect,
+                    load_acp_session = function(_self, id)
+                        calls.loaded_with = id
+                    end,
+                    new_session = function() end,
+                } --[[@as agentic.SessionManager]]
+
+                session:reconnect()
+                -- The session is swapped while the agent is still re-initializing.
+                session.session_id = "sess-new"
+                ready_cb()
+
+                assert.equal("sess-new", calls.loaded_with)
             end
         )
     end)

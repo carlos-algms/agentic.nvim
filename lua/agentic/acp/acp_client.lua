@@ -1,6 +1,28 @@
 local Logger = require("agentic.utils.logger")
 local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
+local uv = vim.uv or vim.loop
+
+--- Default time with no inbound activity before an in-flight request is
+--- treated as stalled. A suspended/hung agent child keeps its stdio pipes
+--- open and never exits, so the process-exit path never fires; this watchdog
+--- is the only thing that surfaces such a dead connection.
+local DEFAULT_REQUEST_TIMEOUT_MS = 60000
+
+--- How often the watchdog checks for inactivity while a request is pending.
+--- Coarse on purpose: the cost is one subtraction per tick, and the timer is
+--- only armed while at least one request is in flight.
+local WATCHDOG_CHECK_INTERVAL_MS = 5000
+
+--- Methods the silence watchdog must NOT govern. `session/prompt` can run for
+--- minutes while a tool executes, producing no traffic, so silence is not a
+--- death signal there and no timeout distinguishes a working agent from a dead
+--- one. A prompt that hangs is therefore NOT detected automatically; the way
+--- out is `Agentic.reconnect()`, which respawns the child on demand. All other
+--- (control) RPCs are expected to answer within seconds.
+local UNWATCHED_METHODS = {
+    ["session/prompt"] = true,
+}
 
 local KNOWN_ACP_KINDS = {
     read = true,
@@ -32,6 +54,9 @@ local KNOWN_ACP_KINDS = {
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field ready_listeners fun(client: agentic.acp.ACPClient)[]
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
+--- @field _last_activity number `uv.now()` of the last inbound message; the watchdog measures silence against it.
+--- @field _watchdog_timer? uv.uv_timer_t Repeating inactivity timer, armed only while a watched request is pending.
+--- @field _watched_pending table<number, true> Ids of in-flight control requests the silence watchdog governs (excludes session/prompt).
 
 --- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
@@ -81,6 +106,9 @@ function ACPClient:new(config, on_ready)
         transport = nil,
         state = "disconnected",
         reconnect_count = 0,
+        _last_activity = 0,
+        _watchdog_timer = nil,
+        _watched_pending = {},
     }
 
     local client = setmetatable(instance, self) --[[@as agentic.acp.ACPClient]]
@@ -209,16 +237,133 @@ end
 
 --- @protected
 --- @param reason string
-function ACPClient:_drain_pending_callbacks(reason)
+--- @param code? number Error code to reject with; defaults to TRANSPORT_ERROR.
+function ACPClient:_drain_pending_callbacks(reason, code)
     local pending = self.callbacks
     self.callbacks = {}
+    self._watched_pending = {}
+    self:_disarm_watchdog()
 
-    local err = self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, reason)
+    local err =
+        self:__create_error(code or self.ERROR_CODES.TRANSPORT_ERROR, reason)
 
     for _, callback in pairs(pending) do
         vim.schedule(function()
             pcall(callback, nil, err)
         end)
+    end
+end
+
+--- Start the inactivity watchdog if it is not already running. Idempotent;
+--- safe to call on every request. The timer disarms itself once no requests
+--- are pending, so there is no idle cost.
+--- @protected
+function ACPClient:_arm_watchdog()
+    if self._watchdog_timer then
+        return
+    end
+
+    local timer = uv.new_timer()
+    if not timer then
+        return
+    end
+
+    self._watchdog_timer = timer
+    timer:start(
+        WATCHDOG_CHECK_INTERVAL_MS,
+        WATCHDOG_CHECK_INTERVAL_MS,
+        function()
+            self:_check_watchdog()
+        end
+    )
+end
+
+--- Stop and release the watchdog timer.
+--- @protected
+function ACPClient:_disarm_watchdog()
+    local timer = self._watchdog_timer
+    if not timer then
+        return
+    end
+
+    self._watchdog_timer = nil
+    timer:stop()
+    if not timer:is_closing() then
+        timer:close()
+    end
+end
+
+--- Watchdog tick: runs in libuv fast context, so it only reads `uv.now()`
+--- and touches plain Lua state, deferring the actual handling to the main loop.
+--- @protected
+function ACPClient:_check_watchdog()
+    if not next(self._watched_pending) then
+        self:_disarm_watchdog()
+        return
+    end
+
+    local timeout = self.provider_config.timeout or DEFAULT_REQUEST_TIMEOUT_MS
+
+    if uv.now() - self._last_activity >= timeout then
+        -- Disarm here (still cheap, fast-context-safe) so a slow main loop
+        -- can't queue several stall handlers before the first one runs.
+        self:_disarm_watchdog()
+        vim.schedule(function()
+            self:_on_request_stall(timeout)
+        end)
+    end
+end
+
+--- Surface a stalled connection: reject the in-flight control requests with a
+--- timeout error so their UI resets instead of hanging. Any in-flight
+--- session/prompt is deliberately left untouched, since a long silent tool run
+--- is indistinguishable from a dead one and cancelling real work is worse than
+--- waiting. Recovering from a hung prompt is manual, see `UNWATCHED_METHODS`.
+--- @protected
+--- @param timeout number
+function ACPClient:_on_request_stall(timeout)
+    if not next(self._watched_pending) then
+        return
+    end
+
+    -- Re-check: a response may have arrived in the gap between the watchdog
+    -- disarming and this handler running via vim.schedule.
+    if uv.now() - self._last_activity < timeout then
+        return
+    end
+
+    Logger.notify(
+        string.format(
+            "Agent control request timed out after %ds.",
+            math.floor(timeout / 1000)
+        ),
+        vim.log.levels.WARN
+    )
+
+    self:_reject_watched("Request timed out", self.ERROR_CODES.TIMEOUT_ERROR)
+end
+
+--- Reject only the watched (control) requests, leaving session/prompt and any
+--- other unwatched callback in place.
+--- @protected
+--- @param reason string
+--- @param code? number
+function ACPClient:_reject_watched(reason, code)
+    local watched = self._watched_pending
+    self._watched_pending = {}
+    self:_disarm_watchdog()
+
+    local err =
+        self:__create_error(code or self.ERROR_CODES.TRANSPORT_ERROR, reason)
+
+    for id in pairs(watched) do
+        local callback = self.callbacks[id]
+        self.callbacks[id] = nil
+        if callback then
+            vim.schedule(function()
+                pcall(callback, nil, err)
+            end)
+        end
     end
 end
 
@@ -259,7 +404,34 @@ function ACPClient:_send_request(method, params, callback)
 
     Logger.debug_to_file("request: ", message)
 
-    self.transport:send(data)
+    -- Arm the silence watchdog for control requests only. session/prompt is
+    -- excluded because it can run silently for minutes; silence does not
+    -- distinguish real work from a dead prompt, so recovery is manual.
+    if not UNWATCHED_METHODS[method] then
+        self._watched_pending[id] = true
+        self._last_activity = uv.now()
+        self:_arm_watchdog()
+    end
+
+    if self.transport:send(data) == false then
+        -- The pipe is already closing; reject now rather than wait, since no
+        -- response can ever arrive. Only an explicit false counts as failure;
+        -- an ambiguous return falls back to the watchdog. Applies to every
+        -- method, including session/prompt, since the send genuinely failed.
+        self.callbacks[id] = nil
+        self._watched_pending[id] = nil
+        if not next(self._watched_pending) then
+            self:_disarm_watchdog()
+        end
+
+        local err = self:__create_error(
+            self.ERROR_CODES.TRANSPORT_ERROR,
+            "Failed to send request: transport not writable"
+        )
+        vim.schedule(function()
+            pcall(callback, nil, err)
+        end)
+    end
 end
 
 --- @param method string
@@ -292,6 +464,10 @@ end
 
 --- @param message agentic.acp.ResponseRaw
 function ACPClient:_handle_message(message)
+    -- Any inbound message (response or streamed update) counts as activity and
+    -- keeps the watchdog from tripping during a legitimately long generation.
+    self._last_activity = uv.now()
+
     -- Chunks are not logged: they would flood the log file.
     if
         not (
@@ -313,6 +489,10 @@ function ACPClient:_handle_message(message)
         local callback = self.callbacks[message.id]
         if callback then
             self.callbacks[message.id] = nil
+            self._watched_pending[message.id] = nil
+            if not next(self._watched_pending) then
+                self:_disarm_watchdog()
+            end
             callback(message.result, message.error)
         else
             Logger.notify(
@@ -614,6 +794,17 @@ end
 
 function ACPClient:stop()
     self.transport:stop()
+end
+
+--- Force a fresh agent process in place: kill the current (possibly hung)
+--- child, then respawn and re-initialize. `stop()` drains every pending
+--- callback and moves the state to "disconnected", which `_connect()` requires.
+--- Sessions are not restored here; the caller re-establishes them once the
+--- client reaches "ready" again (via `when_ready`).
+function ACPClient:reconnect()
+    self.transport:stop()
+    self.reconnect_count = 0
+    self:_connect()
 end
 
 function ACPClient:_connect()

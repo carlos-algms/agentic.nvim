@@ -610,6 +610,20 @@ agentic.restore_session_by_id({session_id})
   Parameters: ~
     {session_id}  (string)  Session ID to restore.
 
+                                             *agentic.reconnect()*
+agentic.reconnect()
+  Respawn the agent process and reload the current session in
+  place, without quitting Neovim. Use it when the agent stops
+  responding, typically after the machine resumes from suspend.
+
+  The watchdog surfaces a stalled control request on its own, but
+  a prompt can run silently for minutes while a tool works, so a
+  hang during generation is not detected automatically. This is
+  the manual way out of that state.
+
+  The agent process is shared per provider, so every session on
+  that provider re-establishes; they do so on their next use.
+
                                               *agentic.rotate_layout()*
 agentic.rotate_layout({layouts})
   Rotate through window positions (right -> bottom -> left).

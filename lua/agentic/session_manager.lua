@@ -35,6 +35,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
 --- @field _is_restoring_session boolean
 --- @field _connection_error boolean
+--- @field _reconnecting boolean Set while a respawn is in flight, so retries do not stack ready listeners
 --- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
 --- @field _session_creation_failed boolean
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
@@ -78,6 +79,7 @@ function SessionManager:new()
         is_generating = false,
         _is_restoring_session = false,
         _connection_error = false,
+        _reconnecting = false,
         _destroyed = false,
         _session_creation_failed = false,
         history_to_send = nil,
@@ -1065,6 +1067,67 @@ function SessionManager:destroy()
     end
 end
 
+--- Recover from an unresponsive agent without quitting Neovim: kill and
+--- respawn the agent process, then reload the current session so the
+--- conversation continues. This is the in-place equivalent of quitting Neovim
+--- and restoring the session, the only recovery available when the child is
+--- hung (e.g. after the machine resumes from suspend with a dead connection).
+---
+--- Note: the agent process is shared per provider, so this also resets other
+--- tabs' sessions on the same provider; they re-establish on their next use.
+function SessionManager:reconnect()
+    -- Every call queues another ready listener that reloads the session, so a
+    -- user hammering the key while nothing visibly happens would stack reloads
+    -- on the respawned agent. The flag clears when the agent reports ready; if
+    -- the respawn itself never gets there, the child is unrecoverable in-place
+    -- and further retries would not help either.
+    if self._reconnecting then
+        return
+    end
+
+    self._reconnecting = true
+
+    -- Reset the local UI immediately. The respawn also drains the dead request
+    -- callbacks, but don't make the user wait for that to see the spinner stop.
+    self.is_generating = false
+    self.status_animation:stop()
+
+    Logger.notify("Reconnecting to agent…", vim.log.levels.INFO)
+
+    self.agent:reconnect()
+
+    self.agent:when_ready(function()
+        self._reconnecting = false
+
+        -- The agent outlives this session and `destroy` cannot unregister a
+        -- ready listener, so liveness is re-checked here at run time rather
+        -- than captured when the callback was queued.
+        if self._destroyed then
+            return
+        end
+
+        -- The agent answered, so the failure these flags record is over.
+        -- Leaving them set would keep `can_submit_prompt` refusing prompts and
+        -- `on_session_ready` taking its failure branch on a healthy session,
+        -- telling the user to start a new one right after recovery worked.
+        self._connection_error = false
+        self._session_creation_failed = false
+
+        -- Re-read the session at ready-time rather than capturing it earlier:
+        -- re-initialization is async, so the current session may have changed
+        -- meanwhile and a captured id could be stale. Reloading whatever is
+        -- current avoids clobbering a newer session.
+        local session_id = self.session_id
+        local caps = self.agent.agent_capabilities
+        if session_id and caps and caps.loadSession then
+            self:load_acp_session(session_id)
+        else
+            self:new_session()
+        end
+    end)
+end
+
+--- Load an existing ACP session by ID, subscribing to its updates
 --- @param session_id string
 --- @param title string|nil
 --- @param timestamp string|integer|nil Banner timestamp; defaults to now

@@ -662,6 +662,7 @@ Negative values are clamped to 0. Diff tool calls keep full header-only titles.
 | `:lua require("agentic").stop_generation()`                  | Stop current generation or tool execution (session stays active)  |
 | `:lua require("agentic").restore_session()`                  | Show provider's session picker to restore a previous session      |
 | `:lua require("agentic").restore_session_by_id(session_id)`  | Restore a session by its ID                                       |
+| `:lua require("agentic").reconnect()`                        | Respawn a hung agent and reload the session in place              |
 | `:lua require("agentic").switch_provider()`                  | Switch ACP provider mid-session (shows picker, preserves history) |
 | `:lua require("agentic").rotate_layout()`                    | Rotate window position through layouts (right → bottom → left)    |
 
