@@ -88,11 +88,12 @@ no continuity copy or size donor, and failure leaves no manager or widget.
 
 **Restore does not require a placeholder manager.** Restore entry points
 resolve a provider client through `AgentInstance` and pass a context containing
-that client to `SessionRestore`. Selection creates no manager. Choosing an ACP
-session creates exactly one load target. When the same client already has a
-manager claiming that ACP session id, it becomes the target without another
-`session/load`; choosing the source manager is a no-op. Provider list title and
-timestamp are optional restore metadata, not provider-facing startup state.
+that client to `SessionRestore`. Opening and listing the restore picker creates
+no manager. Choosing an ACP session creates exactly one load target. When the
+same client already has a manager claiming that ACP session id, it becomes the
+target without another `session/load`; choosing the source manager is a no-op.
+Provider list title and timestamp are optional restore metadata, not
+provider-facing startup state.
 
 **State lives public on its owning instance.** `ChatWidget.headers` and
 `DiffCoordinator.diff_state` are mutated in place. `.luarc.json` sets
@@ -174,6 +175,7 @@ prompt to label `select_session` rows.
 | Store the tabpage on the session or widget                       | A stored handle diverges from reality the moment a widget is hidden, moved, or its tab closes. `get_visible_tab_id()` cannot go stale.                                                     |
 | Keep `vim.t` for diff and header state                           | Returns copies, so nested mutation silently did not persist, and tab-scoped storage cannot follow a session that moves or runs in none.                                                    |
 | Weak-valued `sessions` table                                     | Once `cancel_session` drops the subscriber the registry is the only strong reference, so a wanted background session would be collected.                                                   |
+| Additive restore with optional empty-source reclamation          | A populated source survived restore, and reset/reuse paths retained manager-owned state. Replacement now destroys the source only after the load target is ready.                          |
 | Reuse widget, buffers or `config_options` on provider switch     | Providers announce different option sets; inheriting leaks state the new provider never declared. Fresh session with replayed messages is honest.                                          |
 | Reuse a `SessionManager` for `session/new` or `session/load`     | Manager-owned UI and state survive reset paths, so the new conversation retains traces of the old one. A fresh manager and widget make ownership enforceable.                              |
 | Destroy the source before its replacement is ready               | Provider startup can fail. Early destruction loses the working conversation and removes the live widget-size donor.                                                                        |
