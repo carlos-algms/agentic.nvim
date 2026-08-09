@@ -852,14 +852,25 @@ describe("ACPClient", function()
             local client = create_ready_client()
             local sent = capture_sent()
             local queue = queue_schedules()
+            --- @type { event: string, tool_call_id: string }[]
+            local events = {}
 
             --- @type agentic.acp.ClientHandlers
             local handlers = {
                 on_session_update = function() end,
                 on_error = function() end,
                 on_tool_call = function() end,
-                on_tool_call_update = function() end,
-                on_request_permission = function(_request, callback)
+                on_tool_call_update = function(message)
+                    events[#events + 1] = {
+                        event = "update",
+                        tool_call_id = message.tool_call_id,
+                    }
+                end,
+                on_request_permission = function(request, callback)
+                    events[#events + 1] = {
+                        event = "request",
+                        tool_call_id = request.toolCall.toolCallId,
+                    }
                     callback("allow_once")
                 end,
             }
@@ -870,6 +881,10 @@ describe("ACPClient", function()
 
             drain(queue)
 
+            assert.same({
+                { event = "update", tool_call_id = "tc-1" },
+                { event = "request", tool_call_id = "tc-1" },
+            }, events)
             assert.equal(1, #sent)
             assert.same({
                 outcome = { outcome = "selected", optionId = "allow_once" },
