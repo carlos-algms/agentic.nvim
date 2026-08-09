@@ -104,12 +104,13 @@ ends.
 
 **Replace**: Start or select a distinct target **SessionManager** and keep the
 source intact until the target is ready. When the source is visible, show the
-target before destroying the source; a hidden source produces a hidden target.
-A newly started target has a new **Session key**, **ChatWidget**, and state
-containers. If the requested **ACP Session** is already owned by another manager
-on the same **ACPClient**, that existing manager is the target and no second
-`session/load` is sent. A failed target is destroyed while the source stays
-intact. Distinct from **Evict**, which only hides the displaced manager.
+target before destroying the source so its recorded widget size transfers to
+the target without flicker; a hidden source produces a hidden target. A newly
+started target has a new **Session key**, **ChatWidget**, and state containers.
+If the requested **ACP Session** is already owned by another manager on the same
+**ACPClient**, that existing manager is the target and no second `session/load`
+is sent. A failed target is destroyed while the source stays intact. Distinct
+from **Evict**, which only hides the displaced manager.
 
 ### UI surface
 
@@ -221,11 +222,11 @@ the `user` sender.
 ### Provider features (per session, keymap-driven)
 
 **AgentConfigOptions**: Per-**SessionManager** orchestrator for provider-side
-toggles (mode, model, thought level). Reads
-`SessionCreationResponse.configOptions` (new path) or
-`response.modes`/`response.models` (legacy path) at session creation. No public
-`init.lua` entry — selectors open from configurable keymaps (`change_mode`,
-`switch_model`, `change_thought_level`).
+toggles (mode, model, thought level). For both `session/new` and `session/load`,
+reads `response.configOptions` when present; otherwise reads legacy
+`response.modes` and `response.models` independently. No public `init.lua` entry
+— selectors open from configurable keymaps (`change_mode`, `switch_model`,
+`change_thought_level`).
 
 **AgentModes** / **AgentModels**: Legacy-path holders inside
 `AgentConfigOptions`. Used when a provider sends `modes`/`models` instead of
