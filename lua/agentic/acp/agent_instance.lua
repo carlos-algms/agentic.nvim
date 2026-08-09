@@ -7,6 +7,7 @@
 local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local ACPClient = require("agentic.acp.acp_client")
+local ACPHealth = require("agentic.acp.acp_health")
 
 --- @class agentic.acp.AgentInstance
 local AgentInstance = {}
@@ -17,7 +18,8 @@ local AgentInstance = {}
 AgentInstance._instances = {}
 
 --- @param provider_name agentic.UserConfig.ProviderName
---- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @param on_ready fun(client: agentic.acp.ACPClient)|nil
+--- @return agentic.acp.ACPClient|nil client
 function AgentInstance.get_instance(provider_name, on_ready)
     local client = AgentInstance._instances[provider_name]
 
@@ -28,10 +30,13 @@ function AgentInstance.get_instance(provider_name, on_ready)
         return client
     end
 
+    if not ACPHealth.check_configured_provider(provider_name) then
+        return nil
+    end
+
     local config = Config.acp_providers[provider_name]
 
     if not config then
-        error("No ACP provider configuration found for: " .. provider_name)
         return nil
     end
 
@@ -39,7 +44,7 @@ function AgentInstance.get_instance(provider_name, on_ready)
         "Creating new ACP agent instance for provider: " .. provider_name
     )
 
-    client = ACPClient:new(config, on_ready)
+    client = ACPClient:new(config, on_ready or function() end)
     AgentInstance._instances[provider_name] = client
 
     return client
