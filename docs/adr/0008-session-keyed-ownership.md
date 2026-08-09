@@ -71,9 +71,9 @@ can break the invariant; a fourth needs the same proof.
 
 **Sessions outlive tabpages.** No `TabClosed` autocmd. A session whose tabpage
 closed reports `get_visible_tab_id()` nil and keeps generating. Destruction
-occurs only through a destructive user action or after a replacement commits.
-`SessionRegistry.destroy` removes the key before `session:destroy()` and
-repoints `_most_recent`.
+occurs through a destructive user action, rollback of a failed replacement
+target, or source teardown after a replacement commits. `SessionRegistry.destroy`
+removes the key before `session:destroy()` and repoints `_most_recent`.
 
 **Conversation changes are transactional replacements.** `SessionRegistry`
 owns the transaction used by the `/new` prompt command, provider switch, and
