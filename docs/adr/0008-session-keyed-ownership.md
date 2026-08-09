@@ -84,16 +84,17 @@ continuity is prepared on fresh target-owned containers. For a visible source,
 size donor, calls `show_session` so hide records the outgoing widget size and
 show applies it to the target, then destroys the source. A hidden source stays
 hidden during commit. No source is also valid: the ready target is shown with
-no continuity copy or size donor, and failure leaves no manager or widget.
+no continuity copy or size donor, and failure leaves no target manager or
+widget while preserving unrelated registered sessions.
 
 **Restore does not require a placeholder manager.** Restore entry points
 resolve a provider client through `AgentInstance` and pass a context containing
 that client to `SessionRestore`. Opening and listing the restore picker creates
-no manager. Choosing an ACP session creates exactly one load target. When the
-same client already has a manager claiming that ACP session id, it becomes the
-target without another `session/load`; choosing the source manager is a no-op.
-Provider list title and timestamp are optional restore metadata, not
-provider-facing startup state.
+no manager. Choosing an ACP session resolves exactly one target and creates a
+load target only when no manager on that client already claims the id. An
+existing claimant becomes the target without another `session/load`; choosing
+the source manager is a no-op. Provider list title and timestamp are optional
+restore metadata, not provider-facing startup state.
 
 **State lives public on its owning instance.** `ChatWidget.headers` and
 `DiffCoordinator.diff_state` are mutated in place. `.luarc.json` sets

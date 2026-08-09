@@ -93,9 +93,10 @@ Four distinct operations. "Close" named two of them.
 session**. Reversible. _Avoid_: "close", "destroy".
 
 **Destroy**: Remove a **SessionManager** from the **SessionRegistry**, cancel
-its **ACP Session**, delete its **ChatWidget buffers**. Irreversible, and only
-ever the result of explicit user intent. _Avoid_: "close"; a **Hide** is not a
-step toward this.
+its **ACP Session**, delete its **ChatWidget buffers**. Irreversible. It follows
+explicit user intent, rolls back a failed replacement target, or tears down the
+source after replacement commits. _Avoid_: "close"; a **Hide** is not a step
+toward this.
 
 **Evict**: **Hide** whichever **ChatWidget** occupies a **Tabpage** so another
 can take it. The displaced **SessionManager** keeps running as a **Background
