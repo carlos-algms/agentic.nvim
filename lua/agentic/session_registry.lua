@@ -163,7 +163,7 @@ end
 
 --- @class agentic.SessionReplacementOpts
 --- @field agent? agentic.acp.ACPClient
---- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager)
+--- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager): boolean?
 --- @field show_opts? agentic.ui.ChatWidget.ShowOpts
 
 --- @param source agentic.SessionManager|nil
@@ -243,11 +243,14 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
     end
 
     if opts.prepare then
-        local ok, err = pcall(opts.prepare, source, target)
+        local ok, prepared = pcall(opts.prepare, source, target)
         if not ok then
             Logger.notify(
-                "Session replacement prepare error: " .. vim.inspect(err)
+                "Session replacement prepare error: " .. vim.inspect(prepared)
             )
+            rollback_target()
+            return false
+        elseif prepared == false then
             rollback_target()
             return false
         end

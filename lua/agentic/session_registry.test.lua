@@ -1697,6 +1697,31 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         end
     )
 
+    it("rolls back when replacement preparation is rejected", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            {
+                agent = new_agent("Injected"),
+                prepare = function()
+                    return false
+                end,
+            }
+        )
+        assert.is_not_nil(target)
+        target.ready_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
     it("rolls back only the target when startup fails", function()
         local source = new_session("source")
         source.session_key = 40

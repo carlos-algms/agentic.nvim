@@ -117,15 +117,17 @@ local function apply_provider_switch(provider_name)
                 not source_session_id
                 or not live_source:owns_ready_acp_session(source_session_id)
             then
-                error(
+                Logger.notify(
                     "Cannot switch provider: the source session changed. Try again."
                 )
+                return false
             end
 
             if live_source.is_generating then
-                error(
+                Logger.notify(
                     "Cannot switch provider while generating. Stop generation first."
                 )
+                return false
             end
 
             copy_continuity(live_source, target)

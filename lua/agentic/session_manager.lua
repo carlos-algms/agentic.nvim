@@ -748,19 +748,19 @@ end
 --- @param response agentic.acp.SessionCreationResponse|agentic.acp.LoadSessionResponse
 function SessionManager:_apply_start_metadata(response)
     if response.configOptions then
-        Logger.debug("Provider announce configOptions")
+        Logger.debug(self.provider_name, "announced configOptions")
         self:_handle_new_config_options(response.configOptions)
         return
     end
 
     if response.modes then
-        Logger.debug("Provider announce legacy mode")
+        Logger.debug(self.provider_name, "announced legacy mode")
         self.config_options:set_legacy_modes(response.modes)
         self:_set_mode_to_chat_header(response.modes.currentModeId)
     end
 
     if response.models then
-        Logger.debug("Provider announce legacy models")
+        Logger.debug(self.provider_name, "announced legacy models")
         self.config_options:set_legacy_models(response.models)
     end
 end

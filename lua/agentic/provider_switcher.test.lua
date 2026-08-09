@@ -265,6 +265,28 @@ describe("agentic.ProviderSwitcher", function()
         assert.equal("claude-agent-acp", Config.provider)
     end)
 
+    it("rejects continuity when the source ACP session changed", function()
+        switch_provider()
+        source.session_id = "changed-session"
+
+        local prepared = replacement_opts.prepare(source, target)
+
+        assert.is_false(prepared)
+        assert.spy(notify_stub).was.called(1)
+        assert.same({}, target.chat_history.messages)
+    end)
+
+    it("rejects continuity while the source is generating", function()
+        switch_provider()
+        source.is_generating = true
+
+        local prepared = replacement_opts.prepare(source, target)
+
+        assert.is_false(prepared)
+        assert.spy(notify_stub).was.called(1)
+        assert.same({}, target.chat_history.messages)
+    end)
+
     it("copies allowed continuity into independent containers", function()
         switch_provider()
         replacement_opts.prepare(source, target)
