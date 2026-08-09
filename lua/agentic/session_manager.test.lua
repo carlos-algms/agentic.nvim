@@ -2919,15 +2919,23 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local writer_destroy_stub = spy.on(manager.message_writer, "destroy")
         manager.chat_history.session_id = "pending-id"
         manager.chat_history.title = "pending title"
+        manager.chat_history.timestamp = 123
         manager.chat_history.messages = { { type = "agent", text = "old" } }
         manager.history_to_send = {}
         manager._session_ready_callbacks = { function() end }
+        manager._pending_replacement_sources = { [{}] = true }
         manager.file_list._files = { "old" }
         manager.code_selection._selections = { { lines = { "old" } } }
         manager.diagnostics_list._diagnostics = { { message = "old" } }
         manager.todo_list.total_count = 1
         manager.config_options.options = { { id = "old" } }
         manager.session_state._usage = { used = 1, size = 2 }
+        manager.message_writer.tool_call_blocks = { old = {} }
+        manager.message_writer._last_sender = "agent"
+        manager.message_writer._last_message_type = "agent_message_chunk"
+        manager.message_writer._provider_name = "old-provider"
+        manager.message_writer._is_restoring = true
+        manager.message_writer._thinking_extmark_id = 1
 
         manager:destroy()
         manager:destroy()
@@ -2945,15 +2953,23 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         assert.spy(writer_destroy_stub).was.called(1)
         assert.is_nil(manager.chat_history.session_id)
         assert.equal("", manager.chat_history.title)
+        assert.equal(0, manager.chat_history.timestamp)
         assert.equal(0, #manager.chat_history.messages)
         assert.is_nil(manager.history_to_send)
         assert.equal(0, #manager._session_ready_callbacks)
+        assert.is_nil(manager._pending_replacement_sources)
         assert.is_true(manager.file_list:is_empty())
         assert.is_true(manager.code_selection:is_empty())
         assert.is_true(manager.diagnostics_list:is_empty())
         assert.is_true(manager.todo_list:is_empty())
         assert.equal(0, #manager.config_options.options)
         assert.is_nil(manager.session_state:get_context_used())
+        assert.same({}, manager.message_writer.tool_call_blocks)
+        assert.is_nil(manager.message_writer._last_sender)
+        assert.is_nil(manager.message_writer._last_message_type)
+        assert.is_nil(manager.message_writer._provider_name)
+        assert.is_false(manager.message_writer._is_restoring)
+        assert.is_nil(manager.message_writer._thinking_extmark_id)
         starter_cancel_stub:revert()
         status_stop_stub:revert()
         permission_clear_stub:revert()

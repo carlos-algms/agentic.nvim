@@ -1003,10 +1003,12 @@ function SessionManager:destroy()
         self.permission_manager:clear()
     end
     self._session_ready_callbacks = {}
+    self._pending_replacement_sources = nil
     self.history_to_send = nil
     if self.chat_history then
         self.chat_history.session_id = nil
         self.chat_history.title = ""
+        self.chat_history.timestamp = 0
         self.chat_history.messages = {}
     end
     if self.file_list then

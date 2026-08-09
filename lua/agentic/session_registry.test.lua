@@ -1911,4 +1911,46 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
             }, events)
         end
     )
+
+    it(
+        "deduplicates replacement after target readiness but before commit",
+        function()
+            local agent = new_agent("Injected")
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            SessionRegistry.sessions[40] = source
+            local target = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            target.agent = agent
+            target.session_id = "load-id"
+
+            local duplicate = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            assert.equal(target, duplicate)
+            assert.same({ "target:start" }, events)
+
+            for _, callback in ipairs(target.ready_callbacks) do
+                callback(target)
+            end
+
+            assert.equal(target, SessionRegistry.get(target.session_key))
+            assert.is_nil(SessionRegistry.get(40))
+            assert.same({
+                "target:start",
+                "source:hide",
+                "target:show",
+                "source:destroy",
+            }, events)
+        end
+    )
 end)

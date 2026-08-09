@@ -122,6 +122,16 @@ local function await_replacement(source, target, opts)
     end)
 end
 
+--- @param source agentic.SessionManager|nil
+--- @param target agentic.SessionManager
+--- @return boolean
+local function replacement_is_pending(source, target)
+    local source_token = source or NIL_REPLACEMENT_SOURCE
+    --- @diagnostic disable-next-line: invisible
+    local pending = target._pending_replacement_sources
+    return pending ~= nil and pending[source_token] == true
+end
+
 --- @class agentic.SessionReplacementOpts
 --- @field agent? agentic.acp.ACPClient
 --- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager)
@@ -148,7 +158,9 @@ function SessionRegistry.replace(source, provider_name, start_spec, opts)
                 return existing
             end
 
-            if existing:owns_ready_acp_session(start_spec.session_id) then
+            if replacement_is_pending(source, existing) then
+                return existing
+            elseif existing:owns_ready_acp_session(start_spec.session_id) then
                 SessionRegistry.commit_replacement(source, existing, opts)
             else
                 await_replacement(source, existing, opts)

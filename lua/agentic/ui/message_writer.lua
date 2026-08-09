@@ -1584,6 +1584,15 @@ function MessageWriter:write_finish_message(response, err)
     self:write_message(ACPPayloads.generate_agent_message(finish_message))
 end
 
-function MessageWriter:destroy() end
+function MessageWriter:destroy()
+    self.tool_call_blocks = {}
+    self._last_message_type = nil
+    self._should_auto_scroll = nil
+    self._scroll_scheduled = false
+    self._last_sender = nil
+    self._provider_name = nil
+    self._is_restoring = false
+    self:_clear_thinking_state()
+end
 
 return MessageWriter
