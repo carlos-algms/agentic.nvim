@@ -57,6 +57,17 @@ describe("agentic.ProviderSwitcher", function()
                 tool_call_id = "tool-1",
                 status = "completed",
                 body = { "result" },
+                diff = { old = { "before" }, new = { "after" } },
+                extmark_id = 41,
+                has_fold = true,
+                permission = {
+                    sorted_options = {
+                        { optionId = "allow_once", kind = "allow_once" },
+                    },
+                    is_focused = true,
+                    focused_button_index = 1,
+                },
+                _rendered_button_count = 2,
                 metadata = { nested = "tool" },
             },
         }
@@ -261,7 +272,14 @@ describe("agentic.ProviderSwitcher", function()
         switch_provider()
         replacement_opts.prepare(source, target)
 
-        assert.same(source.chat_history.messages, target.chat_history.messages)
+        assert.equal(
+            #source.chat_history.messages,
+            #target.chat_history.messages
+        )
+        assert.same(
+            source.chat_history.messages[1],
+            target.chat_history.messages[1]
+        )
         assert.is_false(
             rawequal(source.chat_history.messages, target.chat_history.messages)
         )
@@ -287,6 +305,16 @@ describe("agentic.ProviderSwitcher", function()
             "diagnostic",
             target.diagnostics_list._diagnostics[1].user_data.nested
         )
+        local stored_tool_call = target.chat_history.messages[2]
+        assert.same({ "result" }, stored_tool_call.body)
+        assert.same(
+            { old = { "before" }, new = { "after" } },
+            stored_tool_call.diff
+        )
+        assert.is_nil(stored_tool_call.extmark_id)
+        assert.is_nil(stored_tool_call.has_fold)
+        assert.is_nil(stored_tool_call.permission)
+        assert.is_nil(stored_tool_call._rendered_button_count)
 
         local target_input = vim.api.nvim_buf_get_lines(
             target.widget.buf_nrs.input,
@@ -336,6 +364,10 @@ describe("agentic.ProviderSwitcher", function()
         assert.is_false(rawequal(prompt, rendered))
         assert.is_false(rawequal(stored[1].metadata, prompt[1].metadata))
         assert.is_false(rawequal(stored[1].metadata, rendered[1].metadata))
+        assert.is_nil(prompt[2].extmark_id)
+        assert.is_nil(prompt[2].permission)
+        assert.is_nil(rendered[2].has_fold)
+        assert.is_nil(rendered[2]._rendered_button_count)
         assert.same(stored, prompt)
         assert.same(stored, rendered)
     end)

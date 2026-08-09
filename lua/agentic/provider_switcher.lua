@@ -34,10 +34,28 @@ local function get_nonblank_input(source)
     return nil
 end
 
+--- @param messages agentic.ui.ChatHistory.Message[]
+--- @return agentic.ui.ChatHistory.Message[] transcript
+local function copy_transcript(messages)
+    local transcript = vim.deepcopy(messages)
+
+    for _, message in ipairs(transcript) do
+        if message.type == "tool_call" then
+            message.extmark_id = nil
+            message.has_fold = nil
+            message.permission = nil
+            --- @diagnostic disable-next-line: invisible
+            message._rendered_button_count = nil
+        end
+    end
+
+    return transcript
+end
+
 --- @param source agentic.SessionManager
 --- @param target agentic.SessionManager
 local function copy_continuity(source, target)
-    local messages = vim.deepcopy(source.chat_history.messages)
+    local messages = copy_transcript(source.chat_history.messages)
     target.chat_history.messages = messages
     target.chat_history.title = source.chat_history.title
     target.history_to_send = vim.deepcopy(messages)
