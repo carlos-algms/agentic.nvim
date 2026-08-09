@@ -275,46 +275,92 @@ describe("ACPClient", function()
                 local ACPClient = require("agentic.acp.acp_client")
                 local client = ACPClient:new({ command = "test-agent" }, function() end)
 
-                _G.p5_fast_delivery = {}
+                _G.p5_fast_delivery = { messages = {}, callbacks = {} }
 
                 local original_on_message = client.transport.callbacks.on_message
                 client.transport.callbacks.on_message = function(message)
-                    _G.p5_fast_delivery.on_message_fast = vim.in_fast_event()
+                    local delivered = {
+                        fast = vim.in_fast_event(),
+                    }
                     local ok, err = pcall(original_on_message, message)
-                    _G.p5_fast_delivery.on_message_ok = ok
-                    _G.p5_fast_delivery.on_message_err = err
+                    delivered.ok = ok
+                    delivered.err = err
+                    _G.p5_fast_delivery.messages[#_G.p5_fast_delivery.messages + 1] = delivered
                 end
 
-                client:create_session({
+                local handlers = {
                     on_session_update = function() end,
                     on_request_permission = function() end,
                     on_error = function() end,
                     on_tool_call = function() end,
                     on_tool_call_update = function() end,
-                }, function(result, err)
-                    _G.p5_fast_delivery.callback_fast = vim.in_fast_event()
-                    _G.p5_fast_delivery.result = result
-                    _G.p5_fast_delivery.callback_err = err
-                end)
+                }
 
-                client.transport:deliver({
+                local function create_request(index)
+                    client:create_session(handlers, function(result, err)
+                        _G.p5_fast_delivery.callbacks[index] = {
+                            fast = vim.in_fast_event(),
+                            result = result,
+                            err = err,
+                        }
+                    end)
+                    return client.id_counter
+                end
+
+                local first_id = create_request(1)
+                local second_id = create_request(2)
+
+                local first_timer = client.transport:deliver({
                     jsonrpc = "2.0",
-                    id = client.id_counter,
-                    error = { code = -32000, message = "fast delivery failed" },
+                    id = first_id,
+                    error = { code = -32000, message = "first fast delivery failed" },
                 }, "fast_event")
+                local second_timer = client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = second_id,
+                    error = { code = -32001, message = "second fast delivery failed" },
+                }, "fast_event")
+
+                _G.p5_fast_timers = { first_timer, second_timer }
+                _G.p5_fast_delivery.distinct_timers = first_timer ~= second_timer
             ]])
 
             vim.uv.sleep(50)
             child.api.nvim_eval("1")
+            child.lua([[
+                _G.p5_fast_delivery.first_timer_closed =
+                    _G.p5_fast_timers[1]:is_closing()
+                _G.p5_fast_delivery.second_timer_closed =
+                    _G.p5_fast_timers[2]:is_closing()
+            ]])
 
             local result = child.lua_get("_G.p5_fast_delivery")
-            assert.is_true(result.on_message_fast)
-            assert.is_true(result.callback_fast)
-            assert.is_true(result.on_message_ok)
-            assert.is_nil(result.on_message_err)
-            assert.is_nil(result.result)
-            assert.equal(-32000, result.callback_err.code)
-            assert.equal("fast delivery failed", result.callback_err.message)
+            assert.is_true(result.distinct_timers)
+            assert.is_true(result.first_timer_closed)
+            assert.is_true(result.second_timer_closed)
+            assert.equal(2, #result.messages)
+            assert.equal(2, #result.callbacks)
+
+            for _, delivered in ipairs(result.messages) do
+                assert.is_true(delivered.fast)
+                assert.is_true(delivered.ok)
+                assert.is_nil(delivered.err)
+            end
+
+            assert.is_true(result.callbacks[1].fast)
+            assert.is_nil(result.callbacks[1].result)
+            assert.equal(-32000, result.callbacks[1].err.code)
+            assert.equal(
+                "first fast delivery failed",
+                result.callbacks[1].err.message
+            )
+            assert.is_true(result.callbacks[2].fast)
+            assert.is_nil(result.callbacks[2].result)
+            assert.equal(-32001, result.callbacks[2].err.code)
+            assert.equal(
+                "second fast delivery failed",
+                result.callbacks[2].err.message
+            )
         end)
     end)
 

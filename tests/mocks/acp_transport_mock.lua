@@ -43,6 +43,7 @@ function M.create_stdio_transport(config, callbacks)
 
     --- @param message agentic.acp.ResponseRaw
     --- @param mode tests.mocks.ACPTransportDeliveryMode|nil
+    --- @return uv.uv_timer_t|nil timer
     function transport:deliver(message, mode)
         if mode == "fast_event" then
             local timer = assert(vim.uv.new_timer())
@@ -50,6 +51,7 @@ function M.create_stdio_transport(config, callbacks)
                 timer:close()
                 self._callbacks.on_message(message)
             end)
+            return timer
         else
             self._callbacks.on_message(message)
         end
