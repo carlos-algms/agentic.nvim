@@ -15,8 +15,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @class agentic.SessionManager
 --- @field session_id? string
 --- @field session_key? integer Registry key, assigned by SessionRegistry.create
---- @field _restoring_session_id? string ACP session ID claimed by an in-flight restore
---- @field _restoring_session_token? table Identity of the in-flight restore attempt
+--- @field provider_name agentic.UserConfig.ProviderName
 --- @field _is_first_message boolean
 --- @field is_generating boolean
 --- @field widget agentic.ui.ChatWidget
@@ -33,16 +32,24 @@ local Hooks = require("agentic.utils.hooks")
 --- @field todo_list agentic.ui.TodoList
 --- @field chat_history agentic.ui.ChatHistory
 --- @field history_to_send agentic.ui.ChatHistory.Message[]|nil
---- @field _is_restoring_session boolean
+--- @field _starter agentic.SessionStarter
 --- @field _connection_error boolean
 --- @field _destroyed boolean Async callbacks must re-check this at RUN time, not capture it
 --- @field _session_creation_failed boolean
+--- @field _start_called boolean
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
 --- Codepoints, not display cells
 local TITLE_MAX_CHARS = 60
+
+--- @param session agentic.SessionManager
+--- @return boolean replaying
+local function is_replaying(session)
+    --- @diagnostic disable-next-line: invisible
+    return session._starter ~= nil and session._starter:is_replaying()
+end
 
 --- @param prompt string
 --- @return string title
@@ -57,8 +64,9 @@ local function title_from_prompt(prompt)
     return title
 end
 
-function SessionManager:new()
-    local AgentInstance = require("agentic.acp.agent_instance")
+--- @param agent agentic.acp.ACPClient
+--- @param provider_name agentic.UserConfig.ProviderName
+function SessionManager:new(agent, provider_name)
     local ChatWidget = require("agentic.ui.chat_widget")
     local CodeSelection = require("agentic.ui.code_selection")
     local FileList = require("agentic.ui.file_list")
@@ -69,45 +77,23 @@ function SessionManager:new()
     local TodoList = require("agentic.ui.todo_list")
     local AgentConfigOptions = require("agentic.acp.agent_config_options")
     local DiffCoordinator = require("agentic.ui.diff_coordinator")
+    local SessionStarter = require("agentic.session_starter")
 
     self = setmetatable({
         session_id = nil,
-        _restoring_session_id = nil,
-        _restoring_session_token = nil,
+        provider_name = provider_name,
         _is_first_message = true,
         is_generating = false,
-        _is_restoring_session = false,
         _connection_error = false,
         _destroyed = false,
         _session_creation_failed = false,
+        _start_called = false,
         history_to_send = nil,
         _session_ready_callbacks = {},
     }, self)
 
-    local agent = AgentInstance.get_instance(Config.provider, function(_client)
-        vim.schedule(function()
-            if self._destroyed then
-                return
-            end
-
-            -- A cached client may already be dead.
-            if
-                self.agent.state == "error"
-                or self.agent.state == "disconnected"
-            then
-                self:_handle_connection_error()
-                return
-            end
-            self:_bootstrap_session()
-        end)
-    end)
-
-    if not agent then
-        -- no log, it was already logged in AgentInstance
-        return
-    end
-
     self.agent = agent
+    self._starter = SessionStarter:new(agent)
 
     self.chat_history = ChatHistory:new()
 
@@ -118,24 +104,6 @@ function SessionManager:new()
     self.message_writer = MessageWriter:new(self.widget.buf_nrs.chat)
     self.message_writer:set_provider_name(self.agent.provider_config.name)
     self.status_animation = StatusAnimation:new(self.widget.buf_nrs.chat)
-    self.status_animation:start("busy")
-
-    -- Sync failure during ACPClient construction; `_connection_error` stops a
-    -- double-fire when the async callback above already ran.
-    if
-        not self._connection_error
-        and (self.agent.state == "error" or self.agent.state == "disconnected")
-    then
-        vim.schedule(function()
-            if self._destroyed then
-                return
-            end
-
-            if not self._connection_error then
-                self:_handle_connection_error()
-            end
-        end)
-    end
 
     self.permission_manager = PermissionManager:new(self.message_writer)
 
@@ -309,14 +277,14 @@ end
 --- @return boolean owns_id
 function SessionManager:has_acp_session_id(acp_session_id)
     return self.session_id == acp_session_id
-        or self._restoring_session_id == acp_session_id
+        or (self._starter and self._starter:has_session_id(acp_session_id))
 end
 
 --- @param acp_session_id string
 --- @return boolean owns_ready_id
 function SessionManager:owns_ready_acp_session(acp_session_id)
     return not self._destroyed
-        and not self._is_restoring_session
+        and not is_replaying(self)
         and self.session_id == acp_session_id
 end
 
@@ -339,21 +307,13 @@ function SessionManager:can_submit_prompt()
         return false
     end
 
-    if self._is_restoring_session then
-        Logger.notify(
-            "Session is restoring. Please wait...",
-            vim.log.levels.WARN
-        )
-        return false
-    end
-
     return true
 end
 
 --- @param update agentic.acp.SessionUpdateMessage
 function SessionManager:_on_session_update(update)
     if update.sessionUpdate == "user_message_chunk" then
-        if self._is_restoring_session then
+        if is_replaying(self) then
             local text = update.content
                 and update.content.type == "text"
                 and update.content.text
@@ -431,7 +391,7 @@ function SessionManager:_on_session_update(update)
     end
 
     -- Hooks reflect live activity only; a restore replays historical updates.
-    if self._is_restoring_session then
+    if is_replaying(self) then
         return
     end
 
@@ -529,7 +489,7 @@ function SessionManager:_on_tool_call_update(tool_call_update)
             -- Skip the hook during restore replay: the provider replays
             -- historical tool calls as "completed" but no write happened now.
             if
-                not self._is_restoring_session
+                not is_replaying(self)
                 and type(tracker.file_path) == "string"
                 and tracker.file_path ~= ""
             then
@@ -578,7 +538,12 @@ function SessionManager:_handle_input_submit(input_text)
 
     -- BEFORE the submit guard, so `/new` escapes a stuck session.
     if input_text:match("^/new%s") or input_text:match("^/new$") then
-        self:new_session()
+        require("agentic.session_registry").replace(
+            self,
+            self.provider_name,
+            { kind = "new" },
+            { agent = self.agent }
+        )
         return true
     end
 
@@ -787,167 +752,165 @@ function SessionManager:_build_handlers()
     return handlers
 end
 
---- The first `session/new`, one tick after construction. Guarded HERE and not in
---- `new_session`, which stays usable as the chat input's `/new`.
-function SessionManager:_bootstrap_session()
-    if self._destroyed or self._is_restoring_session then
+--- @param response agentic.acp.SessionCreationResponse|agentic.acp.LoadSessionResponse
+function SessionManager:_apply_start_metadata(response)
+    if response.configOptions then
+        Logger.debug("Provider announce configOptions")
+        self:_handle_new_config_options(response.configOptions)
         return
     end
 
-    self:new_session()
-end
-
---- @param opts {restore_mode?: boolean, on_created?: fun(), timestamp?: string|integer}|nil
-function SessionManager:new_session(opts)
-    opts = opts or {}
-    local restore_mode = opts.restore_mode or false
-    local on_created = opts.on_created
-    self._session_creation_failed = false
-    if not restore_mode then
-        self:_cancel_session()
+    if response.modes then
+        Logger.debug("Provider announce legacy mode")
+        self.config_options:set_legacy_modes(response.modes)
+        self:_set_mode_to_chat_header(response.modes.currentModeId)
     end
 
+    if response.models then
+        Logger.debug("Provider announce legacy models")
+        self.config_options:set_legacy_models(response.models)
+    end
+end
+
+function SessionManager:_apply_initial_options()
+    local function apply_initial_thought_level()
+        self.config_options:set_initial_thought_level(
+            self.agent.provider_config.default_thought_level
+        )
+    end
+
+    local will_change_model = self.config_options:set_initial_model(
+        self.agent.provider_config.initial_model,
+        apply_initial_thought_level
+    )
+
+    self.config_options:set_initial_mode(
+        self.agent.provider_config.default_mode
+    )
+
+    if not will_change_model then
+        apply_initial_thought_level()
+    end
+end
+
+--- @param spec agentic.SessionStartSpec
+--- @param callback fun(session: agentic.SessionManager, err: agentic.acp.ACPError|nil)|nil
+function SessionManager:start(spec, callback)
+    if self._start_called then
+        if callback then
+            vim.schedule(function()
+                callback(self, {
+                    code = -32600,
+                    message = "Session manager can only be started once",
+                })
+            end)
+        end
+        return
+    end
+
+    self._start_called = true
+    self._session_creation_failed = false
     self.status_animation:start("busy")
 
-    local handlers = self:_build_handlers()
+    if spec.kind == "load" then
+        local agent_info = self.agent.agent_info
+        local welcome_message = self.message_writer:generate_welcome_header(
+            self.agent.provider_config.name,
+            spec.session_id,
+            agent_info and agent_info.version,
+            spec.timestamp
+        )
+        self.message_writer:write_structural_message(
+            ACPPayloads.generate_user_message(welcome_message)
+        )
+    end
 
-    self.agent:create_session(handlers, function(response, err)
-        -- Destroyed in flight: the provider created the session anyway.
+    self._starter:start(spec, self:_build_handlers(), function(result, err)
         if self._destroyed then
-            if response and response.sessionId then
-                self.agent:cancel_session(response.sessionId)
+            if result then
+                self.agent:cancel_session(result.session_id)
             end
-
-            return
-        end
-
-        -- Fast event context here; `Hooks.invoke` defers delivery, NOT the payload build.
-        vim.schedule(function()
-            if self._destroyed then
-                return
-            end
-
-            self.status_animation:stop()
-
-            --- @type agentic.UserConfig.CreateSessionResponseData
-            local hook_data = {
-                session_id = response and response.sessionId,
-                session_key = self.session_key,
-                tab_page_id = self.widget:get_visible_tab_id(),
-                response = response,
-                err = err,
-            }
-
-            Hooks.invoke("on_create_session_response", hook_data)
-        end)
-
-        -- A restore claimed this manager: either still in flight, or already done.
-        -- Checked before the error branch so a stale failure cannot wipe restored state.
-        if self._is_restoring_session or self.session_id ~= nil then
-            if response then
-                -- On a restore-first path this response is the only source of these.
-                if response.configOptions then
-                    self.config_options:set_options(response.configOptions)
-                else
-                    if response.modes then
-                        self.config_options:set_legacy_modes(response.modes)
-                    end
-                    if response.models then
-                        self.config_options:set_legacy_models(response.models)
-                    end
-                end
-
-                if response.sessionId then
-                    self.agent:cancel_session(response.sessionId)
-                end
+            if callback then
+                callback(self, err)
             end
             return
         end
 
-        if err or not response then
-            -- Already logged in `create_session`.
+        self.status_animation:stop()
+
+        if err or not result then
             self.session_id = nil
             self._session_creation_failed = true
+            if spec.kind == "new" then
+                --- @type agentic.UserConfig.CreateSessionResponseData
+                local hook_data = {
+                    session_id = nil,
+                    session_key = self.session_key,
+                    tab_page_id = self.widget:get_visible_tab_id(),
+                    response = nil,
+                    err = err,
+                }
+                Hooks.invoke("on_create_session_response", hook_data)
+            end
             SessionManager._resolve_session_ready_callbacks(self, false)
+            if callback then
+                callback(self, err)
+            end
             return
         end
 
-        self.session_id = response.sessionId
-        self.chat_history.session_id = response.sessionId
+        self.session_id = result.session_id
+        self.chat_history.session_id = result.session_id
         self.chat_history.timestamp = os.time()
+        self:_apply_start_metadata(result.response)
 
-        if response.configOptions then
-            Logger.debug("Provider announce configOptions")
-            self:_handle_new_config_options(response.configOptions)
-        else
-            if response.modes then
-                Logger.debug("Provider announce legacy mode")
-                self.config_options:set_legacy_modes(response.modes)
-                self:_set_mode_to_chat_header(response.modes.currentModeId)
-            end
-
-            if response.models then
-                Logger.debug("Provider announce legacy models")
-                self.config_options:set_legacy_models(response.models)
-            end
-        end
-
-        local function apply_initial_thought_level()
-            self.config_options:set_initial_thought_level(
-                self.agent.provider_config.default_thought_level
-            )
-        end
-
-        -- A model change rebuilds the thought-level options server-side, so it has
-        -- to be applied after that response rather than now.
-        local will_change_model = self.config_options:set_initial_model(
-            self.agent.provider_config.initial_model,
-            apply_initial_thought_level
-        )
-
-        self.config_options:set_initial_mode(
-            self.agent.provider_config.default_mode
-        )
-
-        if not will_change_model then
-            apply_initial_thought_level()
-        end
-
-        if not restore_mode then
+        if result.kind == "new" then
             self._is_first_message = true
+            self:_apply_initial_options()
+        else
+            self._is_first_message = false
+            self.chat_history.title = spec.title or ""
         end
 
-        vim.schedule(function()
-            -- Re-checked: a destroy can land in this extra one-tick window.
-            if self._destroyed then
-                return
-            end
-
-            local agent_info = self.agent.agent_info
+        local agent_info = self.agent.agent_info
+        if result.kind == "new" then
             local welcome_message = self.message_writer:generate_welcome_header(
                 self.agent.provider_config.name,
-                self.session_id,
+                result.session_id,
                 agent_info and agent_info.version,
-                opts.timestamp
+                spec.timestamp
             )
-
             self.message_writer:write_structural_message(
                 ACPPayloads.generate_user_message(welcome_message)
             )
+        else
+            local finish_message = string.format(
+                "\n### %s Session restored - %s\n-----",
+                Config.message_icons.finished,
+                os.date("%Y-%m-%d %H:%M:%S")
+            )
+            self.message_writer:write_message(
+                ACPPayloads.generate_agent_message(finish_message)
+            )
+        end
 
-            if on_created then
-                on_created()
-            end
+        if result.kind == "new" then
+            --- @type agentic.UserConfig.CreateSessionResponseData
+            local hook_data = {
+                session_id = result.session_id,
+                session_key = self.session_key,
+                tab_page_id = self.widget:get_visible_tab_id(),
+                --- @diagnostic disable-next-line: assign-type-mismatch
+                response = result.response,
+                err = nil,
+            }
+            Hooks.invoke("on_create_session_response", hook_data)
+        end
 
-            if #self._session_ready_callbacks > 0 then
-                Logger.debug(
-                    "Firing "
-                        .. tostring(#self._session_ready_callbacks)
-                        .. " session ready callbacks"
-                )
-            end
-            SessionManager._resolve_session_ready_callbacks(self, true)
-        end)
+        SessionManager._resolve_session_ready_callbacks(self, true)
+        if callback then
+            callback(self, nil)
+        end
     end)
 end
 
@@ -956,45 +919,6 @@ function SessionManager:_start_spinner(state)
     if self.is_generating then
         self.status_animation:start(state)
     end
-end
-
-function SessionManager:_cancel_session()
-    local session_id = self.session_id
-    local restoring_session_id = self._restoring_session_id
-
-    self._is_restoring_session = false
-    self.is_generating = false
-    self.status_animation:stop()
-
-    if session_id then
-        self.agent:cancel_session(session_id)
-    end
-    if restoring_session_id and restoring_session_id ~= session_id then
-        self.agent:cancel_session(restoring_session_id)
-    end
-
-    if session_id or restoring_session_id then
-        -- Guarded: an unconditional clear would wipe the files and selections
-        -- staged before the first session exists.
-        self.widget:clear()
-        self.todo_list:clear()
-        self.file_list:clear()
-        self.code_selection:clear()
-        self.diagnostics_list:clear()
-        self.config_options:clear()
-        self.session_state:clear()
-    end
-
-    self.session_id = nil
-    self._restoring_session_id = nil
-    self._restoring_session_token = nil
-    self.permission_manager:clear()
-    SlashCommands.setCommands(self.widget.buf_nrs.input, {})
-
-    self.chat_history = ChatHistory:new()
-    self.history_to_send = nil
-    self.message_writer:reset_sender_tracking()
-    self.message_writer.tool_call_blocks = {}
 end
 
 function SessionManager:add_selection_or_file_to_session()
@@ -1057,119 +981,27 @@ function SessionManager:destroy()
     end
 
     self._destroyed = true
-
-    self:_cancel_session()
+    if self._starter then
+        self._starter:cancel()
+    end
+    if self.session_id and self.agent and self.agent.cancel_session then
+        self.agent:cancel_session(self.session_id)
+        self.session_id = nil
+    end
+    self.is_generating = false
+    if self.status_animation then
+        self.status_animation:stop()
+    end
+    if self.permission_manager then
+        self.permission_manager:clear()
+    end
+    if self.widget.buf_nrs and self.widget.buf_nrs.input then
+        SlashCommands.setCommands(self.widget.buf_nrs.input, {})
+    end
     self.widget:destroy()
     if self.message_writer then
         self.message_writer:destroy()
     end
-end
-
---- @param session_id string
---- @param title string|nil
---- @param timestamp string|integer|nil Banner timestamp; defaults to now
-function SessionManager:load_acp_session(session_id, title, timestamp)
-    local caps = self.agent.agent_capabilities
-    if not caps or not caps.loadSession then
-        Logger.notify(
-            "Agent does not support loading sessions",
-            vim.log.levels.WARN
-        )
-        return
-    end
-
-    -- `session/load` does not re-send mode/model, so they must survive the cancel.
-    local saved_config = self.config_options:snapshot()
-
-    self:_cancel_session()
-
-    self.config_options:restore_snapshot(saved_config)
-
-    self._is_restoring_session = true
-    self._restoring_session_id = session_id
-    local restoring_session_token = {}
-    self._restoring_session_token = restoring_session_token
-    self.status_animation:start("busy")
-
-    -- Before loading, so it lands at the top of the cleared buffer.
-    local agent_info = self.agent.agent_info
-    local welcome_message = self.message_writer:generate_welcome_header(
-        self.agent.provider_config.name,
-        session_id,
-        agent_info and agent_info.version,
-        timestamp
-    )
-    self.message_writer:write_structural_message(
-        ACPPayloads.generate_user_message(welcome_message)
-    )
-
-    local handlers = self:_build_handlers()
-    local cwd = vim.fn.getcwd()
-
-    self.agent:load_session(session_id, cwd, {}, handlers, function(err)
-        -- Scheduled to run AFTER the session updates `__with_subscriber` deferred.
-        vim.schedule(function()
-            if self._restoring_session_token ~= restoring_session_token then
-                return
-            end
-
-            if self._destroyed then
-                if not err then
-                    self.agent:cancel_session(session_id)
-                end
-                self._restoring_session_id = nil
-                self._restoring_session_token = nil
-
-                return
-            end
-
-            self._is_restoring_session = false
-            self._restoring_session_id = nil
-            self._restoring_session_token = nil
-            self.status_animation:stop()
-
-            -- A new session was created while the load was in flight.
-            if self.session_id ~= nil then
-                return
-            end
-
-            if err then
-                local error_text = err.message or "unknown error"
-                Logger.notify(
-                    "Failed to load session: " .. error_text,
-                    vim.log.levels.ERROR
-                )
-                self.widget:clear()
-                self.message_writer:write_message(
-                    ACPPayloads.generate_agent_message(
-                        "### ❌ Failed to restore session\n\n" .. error_text
-                    )
-                )
-                return
-            end
-
-            self.session_id = session_id
-            self.chat_history.session_id = session_id
-            self.chat_history.title = title or ""
-            self.chat_history.timestamp = os.time()
-            self._is_first_message = false
-
-            local current_mode = self.config_options:get_mode_id()
-            if current_mode then
-                self:_set_mode_to_chat_header(current_mode)
-            end
-
-            local finish_message = string.format(
-                "\n### %s Session restored - %s\n-----",
-                Config.message_icons.finished,
-                os.date("%Y-%m-%d %H:%M:%S")
-            )
-
-            self.message_writer:write_message(
-                ACPPayloads.generate_agent_message(finish_message)
-            )
-        end)
-    end)
 end
 
 return SessionManager

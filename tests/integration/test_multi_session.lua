@@ -76,23 +76,60 @@ end)()
     --- so every client in this child inherits it.
     local function stub_restore()
         child.lua([[
-            require("agentic.acp.acp_client").when_ready = function(_self, cb)
-                cb()
+            local ACPClient = require("agentic.acp.acp_client")
+            ACPClient.when_ready = function(self, on_ready, _on_failure)
+                on_ready(self)
             end
 
-            require("agentic.acp.acp_client").agent_capabilities = {
+            ACPClient.agent_capabilities = {
                 loadSession = true,
             }
 
-            local SessionManager = require("agentic.session_manager")
-            SessionManager.load_acp_session = function(self, session_id, title)
-                self.session_id = session_id
-                self.chat_history.title = title or ""
+            _G.load_calls = 0
+            _G.subscribe_calls = {}
+            local original_subscribe = ACPClient._subscribe
+            ACPClient._subscribe = function(self, session_id, handlers)
+                _G.subscribe_calls[session_id] =
+                    (_G.subscribe_calls[session_id] or 0) + 1
+                return original_subscribe(self, session_id, handlers)
+            end
+            ACPClient.load_session = function(
+                self,
+                session_id,
+                _cwd,
+                _servers,
+                handlers,
+                callback
+            )
+                _G.load_calls = _G.load_calls + 1
+                self:_subscribe(session_id, handlers)
+                handlers.on_session_update({
+                    sessionUpdate = "user_message_chunk",
+                    content = { type = "text", text = "restored message" },
+                })
+                callback({}, nil)
             end
 
             _G.selects = 0
             vim.ui.select = function()
                 _G.selects = _G.selects + 1
+            end
+        ]])
+    end
+
+    local function stub_new_sessions()
+        child.lua([[
+            local ACPClient = require("agentic.acp.acp_client")
+            ACPClient.when_ready = function(self, on_ready, _on_failure)
+                on_ready(self)
+            end
+
+            local next_session = 0
+            ACPClient.create_session = function(self, handlers, callback)
+                next_session = next_session + 1
+                local session_id = "new-session-" .. next_session
+                self:_subscribe(session_id, handlers)
+                callback({ sessionId = session_id }, nil)
             end
         ]])
     end
@@ -285,6 +322,41 @@ end)()
         ]]))
     end)
 
+    it("slash-new replaces the manager, widget, buffers, and state", function()
+        stub_new_sessions()
+        child.lua([[ require("agentic").open() ]])
+        child.flush()
+        child.lua([[
+            local source = require("agentic.session_registry").sessions[1]
+            _G.old_manager = tostring(source)
+            _G.old_widget = tostring(source.widget)
+            _G.old_chat = source.widget.buf_nrs.chat
+            source.chat_history.title = "old title"
+            source.chat_history:add_message({
+                type = "user",
+                text = "old message",
+                timestamp = 0,
+                provider_name = "test",
+            })
+            source:_handle_input_submit("/new")
+        ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.is_true(child.lua_get([[
+            (function()
+                local target = require("agentic.session_registry").sessions[2]
+                return target ~= nil
+                    and tostring(target) ~= _G.old_manager
+                    and tostring(target.widget) ~= _G.old_widget
+                    and target.widget.buf_nrs.chat ~= _G.old_chat
+                    and target.chat_history.title == ""
+                    and #target.chat_history.messages == 0
+                    and not vim.api.nvim_buf_is_valid(_G.old_chat)
+            end)()
+        ]]))
+    end)
+
     it("keeps a session registered after its tab is closed", function()
         child.cmd("tabnew")
         child.lua([[ require("agentic").open() ]])
@@ -298,6 +370,7 @@ end)()
     end)
 
     it("inherits the resized width of the session it replaces", function()
+        stub_new_sessions()
         child.lua([[ require("agentic").open() ]])
         child.flush()
 
@@ -307,9 +380,13 @@ end)()
                 .win_set_width(session.widget.win_nrs.chat, 50)
         ]])
 
-        child.lua([[ require("agentic").new_session() ]])
+        child.lua([[
+            require("agentic.session_registry").sessions[1]
+                :_handle_input_submit("/new")
+        ]])
         child.flush()
 
+        assert.equal(1, session_count())
         assert.equal(
             50,
             child.lua_get([[
@@ -508,24 +585,18 @@ end)()
         assert.equal(0, session_count())
     end)
 
-    it("destroys the empty session it was resolved into", function()
+    it("creates one restore target without a placeholder", function()
         stub_restore()
 
-        -- `Agentic.restore_session_by_id` resolves through the registry, which
-        -- creates a session just to reach `.agent`. Restoring into a fresh one
-        -- would strand that empty session forever.
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
 
         assert.equal(1, session_count())
-        assert.equal(2, visible_key())
+        assert.equal(1, visible_key())
+        assert.equal(1, child.lua_get([[_G.load_calls]]))
         assert.equal(0, child.lua_get([[_G.selects]]))
     end)
 
-    -- `_inherited_size` reads the donor at `show` time and `ChatWidget:destroy`
-    -- captures no size. Destroying the resolved session before showing the
-    -- restored one drops the only donor in the single-session case, so a user who
-    -- resized the sidebar gets the default back after every restore.
     it("inherits the resized width of the session it restores over", function()
         stub_restore()
         child.lua(
@@ -537,12 +608,44 @@ end)()
             local session = require("agentic.session_registry").sessions[1]
             require("agentic.utils.buf_helpers")
                 .win_set_width(session.widget.win_nrs.chat, 50)
+            _G.old_manager = tostring(session)
+            _G.old_widget = tostring(session.widget)
+            _G.old_chat = session.widget.buf_nrs.chat
+            session.chat_history.title = "source title"
+            session.chat_history:add_message({
+                type = "user",
+                text = "source-only message",
+                timestamp = 0,
+                provider_name = "test",
+            })
+            session.source_only_property = "must not transfer"
         ]])
 
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
 
         assert.equal(1, session_count())
+        assert.equal(1, child.lua_get([[_G.load_calls]]))
+        assert.is_true(child.lua_get([[
+            (function()
+                local target = require("agentic.session_registry").sessions[2]
+                return target ~= nil
+                    and tostring(target) ~= _G.old_manager
+                    and tostring(target.widget) ~= _G.old_widget
+                    and target.widget.buf_nrs.chat ~= _G.old_chat
+                    and not vim.api.nvim_buf_is_valid(_G.old_chat)
+                    and target.chat_history.title == ""
+                    and target.source_only_property == nil
+                    and #target.chat_history.messages == 1
+            end)()
+        ]]))
+        assert.equal(
+            "restored message",
+            child.lua_get([[
+                require("agentic.session_registry").sessions[2]
+                    .chat_history.messages[1].text
+            ]])
+        )
         assert.equal(
             50,
             child.lua_get([[
@@ -553,87 +656,34 @@ end)()
         )
     end)
 
-    -- Five inputs, not one: an implementation checking only messages passes that
-    -- case while silently destroying staged files, selections, diagnostics, or a
-    -- half-typed prompt — user work only explicit intent may discard. A typed
-    -- paragraph is the one input no single keystroke can re-add.
-    for _, seed in ipairs({
-        {
-            name = "messages",
-            lua = [[
-                session.chat_history:add_message({
-                    type = "user",
-                    text = "keep me",
-                    timestamp = 0,
-                    provider_name = "test",
-                })
-            ]],
-        },
-        {
-            name = "files",
-            lua = [[
-                session.file_list:add(vim.fn.fnamemodify("README.md", ":p"))
-            ]],
-        },
-        {
-            name = "code selections",
-            lua = [[
-                session.code_selection:add({
-                    lines = { "local x = 1" },
-                    start_line = 1,
-                    end_line = 1,
-                    file_path = "init.lua",
-                    file_type = "lua",
-                })
-            ]],
-        },
-        {
-            name = "diagnostics",
-            lua = [[
-                session.diagnostics_list:add_many({
-                    {
-                        bufnr = vim.api.nvim_get_current_buf(),
-                        lnum = 0,
-                        col = 0,
-                        severity = vim.diagnostic.severity.ERROR,
-                        message = "boom",
-                        file_path = "init.lua",
-                    },
-                })
-            ]],
-        },
-        {
-            name = "unsent input text",
-            lua = [[
-                vim.api.nvim_buf_set_lines(
-                    session.widget.buf_nrs.input,
-                    0,
-                    -1,
-                    false,
-                    { "", "a paragraph the user is still typing", "" }
-                )
-            ]],
-        },
-    }) do
-        it("keeps a session holding only " .. seed.name, function()
-            stub_restore()
-            child.lua([[ require("agentic").open() ]])
-            child.flush()
+    it("shows an existing loaded target without loading twice", function()
+        stub_restore()
+        child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+        child.flush()
+        child.lua([[
+            local target = require("agentic.session_registry").sessions[1]
+            _G.loaded_manager = tostring(target)
+            _G.loaded_subscriber = tostring(target.agent.subscribers["sid-1"])
+        ]])
+        child.lua([[ require("agentic").new_session() ]])
+        child.flush()
 
-            child.lua(([[
-                local session = require("agentic.session_registry").sessions[1]
-                %s
-            ]]):format(seed.lua))
-            child.flush()
+        child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+        child.flush()
 
-            child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
-            child.flush()
-
-            assert.equal(2, session_count())
-            assert.equal(2, visible_key())
-            assert.equal(0, child.lua_get([[_G.selects]]))
-        end)
-    end
+        assert.equal(1, session_count())
+        assert.equal(1, visible_key())
+        assert.equal(1, child.lua_get([[_G.load_calls]]))
+        assert.equal(1, child.lua_get([=[_G.subscribe_calls["sid-1"]]=]))
+        assert.is_true(child.lua_get([[
+            (function()
+                local target = require("agentic.session_registry").sessions[1]
+                return tostring(target) == _G.loaded_manager
+                    and tostring(target.agent.subscribers["sid-1"])
+                        == _G.loaded_subscriber
+            end)()
+        ]]))
+    end)
 
     it("leaves a single session in place when cycling", function()
         child.lua([[ require("agentic").open() ]])

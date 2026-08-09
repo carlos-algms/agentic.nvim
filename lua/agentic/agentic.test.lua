@@ -24,6 +24,7 @@ describe("agentic: switch_provider", function()
     local original_provider
     local initial_tab_id
     local deferred_create_callback
+    local create_session_calls
     --- @type table<integer, boolean>
     local initial_tabs
 
@@ -56,6 +57,7 @@ describe("agentic: switch_provider", function()
         end
         transient_stubs = {}
         deferred_create_callback = nil
+        create_session_calls = 0
         logger_notify_stub = spy.stub(Logger, "notify")
 
         -- Queue callbacks so they run after synchronous code completes
@@ -84,8 +86,15 @@ describe("agentic: switch_provider", function()
             }
             fake_agent.agent_info = {}
 
+            function fake_agent:when_ready(on_ready, _on_failure)
+                vim.schedule(function()
+                    on_ready(fake_agent)
+                end)
+            end
+
             -- Synchronous: mini.test has no event loop to pump
             function fake_agent:create_session(_handlers, callback)
+                create_session_calls = create_session_calls + 1
                 if agent_name == "DeferredProvider" then
                     deferred_create_callback = callback
                     return
@@ -111,6 +120,53 @@ describe("agentic: switch_provider", function()
             end
             return fake_agent
         end)
+    end)
+
+    it(
+        "open creates one manager and one ACP session with no current session",
+        function()
+            local Agentic = require("agentic")
+
+            Agentic.open({ auto_add_to_context = false })
+            flush_schedule()
+
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            assert.equal(1, get_instance_stub.call_count)
+            assert.equal(1, create_session_calls)
+            assert.is_not_nil(SessionRegistry.sessions[1].session_id)
+        end
+    )
+
+    it(
+        "explicit new creates one manager and one ACP session with no current session",
+        function()
+            local Agentic = require("agentic")
+
+            Agentic.new_session({ auto_add_to_context = false })
+            flush_schedule()
+
+            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            assert.equal(1, get_instance_stub.call_count)
+            assert.equal(1, create_session_calls)
+            assert.is_not_nil(SessionRegistry.sessions[1].session_id)
+        end
+    )
+
+    it("open creates no target when provider resolution fails", function()
+        local Agentic = require("agentic")
+        local FloatingMessage = require("agentic.ui.floating_message")
+        local show_warning_stub = track_stub(FloatingMessage, "show")
+        health_check_stub:revert()
+        get_instance_stub:revert()
+        Config.provider = "missing-provider"
+
+        Agentic.open({ auto_add_to_context = false })
+        flush_schedule()
+
+        assert.equal(0, vim.tbl_count(SessionRegistry.sessions))
+        assert.equal(0, get_instance_stub.call_count)
+        assert.equal(0, create_session_calls)
+        assert.spy(show_warning_stub).was.called(1)
     end)
 
     --- Creates a registered, fully initialized session and makes it the one
@@ -187,6 +243,9 @@ describe("agentic: switch_provider", function()
                 }
 
                 function fake_agent:cancel_session() end
+                function fake_agent:when_ready(on_ready, _on_failure)
+                    ready_callbacks[provider_name] = on_ready
+                end
 
                 return fake_agent
             end)
@@ -331,61 +390,6 @@ describe("agentic: switch_provider", function()
         flush_schedule()
 
         assert.equal(session, SessionRegistry.sessions[session.session_key])
-        assert.equal(original_provider, Config.provider)
-        assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        assert.spy(logger_notify_stub).was.called()
-    end)
-
-    it("aborts a deferred provider switch after source /new", function()
-        local Agentic = require("agentic")
-        local session = create_session()
-        session.session_id = "old-session-id" --[[@as string]]
-
-        Agentic.switch_provider({ provider = "DeferredProvider" })
-        flush_schedule()
-
-        session:new_session()
-        flush_schedule()
-        local new_source_id = session.session_id
-        assert.is_not_nil(new_source_id)
-        assert.are_not.equal("old-session-id", new_source_id)
-
-        deferred_create_callback({
-            sessionId = "deferred-session",
-            configOptions = nil,
-            modes = nil,
-            models = nil,
-        })
-        flush_schedule()
-
-        assert.equal(session, SessionRegistry.sessions[session.session_key])
-        assert.equal(new_source_id, session.session_id)
-        assert.equal(original_provider, Config.provider)
-        assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        assert.spy(logger_notify_stub).was.called()
-    end)
-
-    it("aborts a deferred provider switch during source restore", function()
-        local Agentic = require("agentic")
-        local session = create_session()
-        session.session_id = "old-session-id" --[[@as string]]
-
-        Agentic.switch_provider({ provider = "DeferredProvider" })
-        flush_schedule()
-        session._is_restoring_session = true
-        session._restoring_session_id = "restoring-session-id"
-
-        deferred_create_callback({
-            sessionId = "deferred-session",
-            configOptions = nil,
-            modes = nil,
-            models = nil,
-        })
-        flush_schedule()
-
-        assert.equal(session, SessionRegistry.sessions[session.session_key])
-        assert.equal("old-session-id", session.session_id)
-        assert.equal("restoring-session-id", session._restoring_session_id)
         assert.equal(original_provider, Config.provider)
         assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
         assert.spy(logger_notify_stub).was.called()
@@ -1002,5 +1006,83 @@ describe("agentic: switch_provider", function()
         assert.spy(get_stub).was.called_with(9999)
         assert.spy(create_stub).was.called(0)
         assert.spy(resolve_stub).was.called(0)
+    end)
+end)
+
+describe("agentic: restore entry points", function()
+    local Agentic = require("agentic")
+    local SessionRestore = require("agentic.session_restore")
+    local current_stub
+    local resolve_stub
+    local get_instance_stub
+    local picker_stub
+    local restore_stub
+
+    before_each(function()
+        current_stub = spy.stub(SessionRegistry, "current")
+        resolve_stub = spy.stub(SessionRegistry, "resolve_or_create")
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
+        picker_stub = spy.stub(SessionRestore, "show_picker")
+        restore_stub = spy.stub(SessionRestore, "restore_by_id")
+    end)
+
+    after_each(function()
+        current_stub:revert()
+        resolve_stub:revert()
+        get_instance_stub:revert()
+        picker_stub:revert()
+        restore_stub:revert()
+    end)
+
+    it(
+        "lists with a directly resolved client when no session exists",
+        function()
+            local agent = { provider_config = { name = "Test" } }
+            current_stub:returns(nil)
+            get_instance_stub:returns(agent)
+
+            Agentic.restore_session()
+
+            assert.equal(1, current_stub.call_count)
+            assert.equal(1, get_instance_stub.call_count)
+            assert.spy(get_instance_stub).was.called_with(Config.provider)
+            assert.spy(resolve_stub).was.called(0)
+            assert.spy(picker_stub).was.called_with({
+                agent = agent,
+                provider_name = Config.provider,
+            })
+        end
+    )
+
+    it("passes the current source and its injected client", function()
+        local agent = { provider_config = { name = "Test" } }
+        local source = {
+            agent = agent,
+            provider_name = "claude-acp",
+        }
+        current_stub:returns(source)
+
+        Agentic.restore_session_by_id("saved-id")
+
+        assert.spy(get_instance_stub).was.called(0)
+        assert.spy(resolve_stub).was.called(0)
+        assert.spy(restore_stub).was.called_with({
+            agent = agent,
+            provider_name = "claude-acp",
+            source = source,
+        }, "saved-id")
+    end)
+
+    it("creates no placeholder when provider resolution fails", function()
+        current_stub:returns(nil)
+        get_instance_stub:returns(nil)
+
+        Agentic.restore_session()
+
+        assert.equal(1, current_stub.call_count)
+        assert.equal(1, get_instance_stub.call_count)
+        assert.spy(resolve_stub).was.called(0)
+        assert.spy(picker_stub).was.called(0)
+        assert.spy(restore_stub).was.called(0)
     end)
 end)

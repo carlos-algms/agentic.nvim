@@ -2,6 +2,9 @@ local Logger = require("agentic.utils.logger")
 local Config = require("agentic.config")
 local DefaultConfig = require("agentic.config_default")
 local ACPHealth = require("agentic.acp.acp_health")
+local AgentInstance = require("agentic.acp.agent_instance")
+local BufHelpers = require("agentic.utils.buf_helpers")
+local SessionManager = require("agentic.session_manager")
 
 local KEEP_CURRENT_SESSION = "Keep current session in the background"
 local DESTROY_CURRENT_SESSION = "Destroy current session"
@@ -42,37 +45,23 @@ local function remember_most_recent(session)
 end
 
 --- @param provider_name agentic.UserConfig.ProviderName|nil Defaults to `Config.provider`
+--- @param start_spec agentic.SessionStartSpec|nil Defaults to a new session
+--- @param agent agentic.acp.ACPClient|nil
 --- @return agentic.SessionManager|nil
-function SessionRegistry.create(provider_name)
-    -- `SessionManager:new` resolves its agent from `Config.provider` synchronously, so a
-    -- caller needing a specific provider borrows the global for that call only. The wrong
-    -- provider sends a restored ACP session ID to an agent that never issued it.
-    local previous_provider = Config.provider
-
-    if provider_name then
-        Config.provider = provider_name
-    end
-
-    local provider_available = false
-    local ok, session = pcall(function()
-        provider_available = ACPHealth.check_configured_provider()
-        if not provider_available then
-            return nil
-        end
-
-        local SessionManager = require("agentic.session_manager")
-        return SessionManager:new()
-    end)
-
-    Config.provider = previous_provider
-
-    if not ok then
-        Logger.debug("Session creation failed:", session)
+function SessionRegistry.create(provider_name, start_spec, agent)
+    provider_name = provider_name or Config.provider
+    agent = agent or AgentInstance.get_instance(provider_name)
+    if not agent then
+        Logger.debug("Session creation aborted: No configured ACP provider")
         return nil
     end
 
-    if not provider_available then
-        Logger.debug("Session creation aborted: No configured ACP provider")
+    local ok, session = pcall(function()
+        return SessionManager:new(agent, provider_name)
+    end)
+
+    if not ok then
+        Logger.debug("Session creation failed:", session)
         return nil
     end
 
@@ -80,14 +69,149 @@ function SessionRegistry.create(provider_name)
         return nil
     end
 
-    -- Key assigned only after `new` returns: the widget's first `show` reads the
-    -- previous session's stored size from the registry.
     SessionRegistry._next_id = SessionRegistry._next_id + 1
     session.session_key = SessionRegistry._next_id
     SessionRegistry.sessions[session.session_key] = session
     session.widget.session_key = session.session_key
 
+    local session_key = session.session_key --[[@as integer]]
+    session:on_session_ready(function() end, function()
+        if SessionRegistry.sessions[session_key] == session then
+            SessionRegistry.destroy(session_key)
+        end
+    end)
+    session:start(start_spec or { kind = "new" })
+
     return session
+end
+
+--- @class agentic.SessionReplacementOpts
+--- @field agent? agentic.acp.ACPClient
+--- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager)
+--- @field on_commit? fun(target: agentic.SessionManager, source: agentic.SessionManager|nil)
+--- @field show_opts? agentic.ui.ChatWidget.ShowOpts
+
+--- @param source agentic.SessionManager|nil
+--- @param provider_name agentic.UserConfig.ProviderName
+--- @param start_spec agentic.SessionStartSpec
+--- @param opts agentic.SessionReplacementOpts|nil
+--- @return agentic.SessionManager|nil target
+function SessionRegistry.replace(source, provider_name, start_spec, opts)
+    opts = opts or {}
+    local agent = opts.agent or AgentInstance.get_instance(provider_name)
+    if not agent then
+        return nil
+    end
+
+    if start_spec.kind == "load" then
+        local existing =
+            SessionRegistry.find_by_acp_session_id(start_spec.session_id, agent)
+        if existing then
+            if existing == source then
+                return existing
+            end
+
+            if existing:owns_ready_acp_session(start_spec.session_id) then
+                SessionRegistry.commit_replacement(source, existing, opts)
+            else
+                existing:on_session_ready(function()
+                    SessionRegistry.commit_replacement(source, existing, opts)
+                end)
+            end
+            return existing
+        end
+    end
+
+    local target = SessionRegistry.create(provider_name, start_spec, agent)
+    if not target then
+        return nil
+    end
+
+    target:on_session_ready(function()
+        SessionRegistry.commit_replacement(source, target, opts)
+    end, function()
+        local target_key = target.session_key
+        if target_key and SessionRegistry.sessions[target_key] == target then
+            SessionRegistry.destroy(target_key)
+        end
+    end)
+
+    return target
+end
+
+--- @param source agentic.SessionManager|nil
+--- @param target agentic.SessionManager
+--- @param opts agentic.SessionReplacementOpts|nil
+--- @return boolean committed
+function SessionRegistry.commit_replacement(source, target, opts)
+    opts = opts or {}
+    local target_key = target.session_key
+    if not target_key or SessionRegistry.sessions[target_key] ~= target then
+        return false
+    end
+
+    if source == target then
+        return true
+    end
+
+    if not source then
+        -- A source-less start has no continuity donor, even if unrelated hidden
+        -- sessions remain registered.
+        --- @diagnostic disable-next-line: invisible
+        target.widget._size = target.widget._size or {}
+        SessionRegistry.show_session(target_key, opts.show_opts)
+        if opts.on_commit then
+            opts.on_commit(target, nil)
+        end
+        return true
+    end
+
+    local source_key = source.session_key
+    if not source_key or SessionRegistry.sessions[source_key] ~= source then
+        SessionRegistry.destroy(target_key)
+        return false
+    end
+
+    if opts.prepare then
+        local ok, err = pcall(opts.prepare, source, target)
+        if not ok then
+            Logger.notify(
+                "Session replacement prepare error: " .. vim.inspect(err)
+            )
+            SessionRegistry.destroy(target_key)
+            return false
+        end
+    end
+
+    local source_tab = source.widget:get_visible_tab_id()
+    local anchor = source_tab
+            and source.widget:find_first_non_widget_window(source_tab)
+        or nil
+
+    if anchor and BufHelpers.is_win_usable(anchor) then
+        -- `ChatWidget:show` inherits from registry recency after `show_session`
+        -- captures the source's live size. Make this source the exact donor.
+        SessionRegistry.set_most_recent(source_key)
+        local show_opts = vim.tbl_deep_extend(
+            "force",
+            opts.show_opts or {},
+            { focus_prompt = false }
+        )
+        vim.api.nvim_win_call(anchor, function()
+            SessionRegistry.show_session(target_key, show_opts)
+        end)
+    else
+        SessionRegistry.set_most_recent(target_key)
+    end
+
+    if SessionRegistry.sessions[source_key] == source then
+        SessionRegistry.destroy(source_key)
+    end
+
+    if opts.on_commit then
+        opts.on_commit(target, source)
+    end
+    return true
 end
 
 --- @return agentic.SessionManager|nil
@@ -137,7 +261,8 @@ end
 --- @param callback fun(session: agentic.SessionManager)|nil
 --- @return agentic.SessionManager|nil
 function SessionRegistry.resolve_or_create(callback)
-    local instance = SessionRegistry.current() or SessionRegistry.create()
+    local instance = SessionRegistry.current()
+        or SessionRegistry.create(nil, { kind = "new" })
 
     -- Not done in `create`, which must leave `_most_recent` on the previous
     -- session while the new widget reads its size.
@@ -167,7 +292,7 @@ function SessionRegistry.create_with_current_session_guard(
 
     --- @param choice string|nil
     local function create(choice)
-        local session = SessionRegistry.create(provider_name)
+        local session = SessionRegistry.create(provider_name, { kind = "new" })
 
         if not session then
             return

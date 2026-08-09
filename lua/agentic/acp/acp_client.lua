@@ -30,7 +30,7 @@ local KNOWN_ACP_KINDS = {
 --- @field auth_methods agentic.acp.AuthMethod[]
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
---- @field ready_listeners fun(client: agentic.acp.ACPClient)[]
+--- @field ready_listeners { on_ready: fun(client: agentic.acp.ACPClient), on_failure: fun(err: agentic.acp.ACPError)|nil }[]
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 
 --- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
@@ -84,29 +84,33 @@ function ACPClient:new(config, on_ready)
     }
 
     local client = setmetatable(instance, self) --[[@as agentic.acp.ACPClient]]
-    client._on_ready = function(c)
-        on_ready(c)
-        for _, listener in ipairs(c.ready_listeners) do
-            vim.schedule(function()
-                listener(c)
-            end)
-        end
-        c.ready_listeners = {}
-    end
+    client._on_ready = on_ready
 
     client:_setup_transport()
     client:_connect()
     return client
 end
 
---- @param callback fun(client: agentic.acp.ACPClient)
-function ACPClient:when_ready(callback)
+--- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @param on_failure fun(err: agentic.acp.ACPError)|nil
+function ACPClient:when_ready(on_ready, on_failure)
     if self.state == "ready" then
         vim.schedule(function()
-            callback(self)
+            on_ready(self)
         end)
+    elseif self.state == "error" or self.state == "disconnected" then
+        local err =
+            self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, self.state)
+        if on_failure then
+            vim.schedule(function()
+                on_failure(err)
+            end)
+        end
     else
-        self.ready_listeners[#self.ready_listeners + 1] = callback
+        self.ready_listeners[#self.ready_listeners + 1] = {
+            on_ready = on_ready,
+            on_failure = on_failure,
+        }
     end
 end
 
@@ -204,6 +208,36 @@ function ACPClient:_set_state(state)
 
     if state == "disconnected" or state == "error" then
         self:_drain_pending_callbacks(state)
+        self:_drain_ready_listeners(state)
+    elseif state == "ready" then
+        self:_drain_ready_listeners(nil)
+    end
+end
+
+--- @param failure_reason string|nil
+function ACPClient:_drain_ready_listeners(failure_reason)
+    local listeners = self.ready_listeners
+    self.ready_listeners = {}
+
+    local err = failure_reason
+            and self:__create_error(
+                self.ERROR_CODES.TRANSPORT_ERROR,
+                failure_reason
+            )
+        or nil
+
+    for _, listener in ipairs(listeners) do
+        if err and listener.on_failure then
+            local on_failure = listener.on_failure
+            vim.schedule(function()
+                on_failure(err)
+            end)
+        elseif not err then
+            local on_ready = listener.on_ready
+            vim.schedule(function()
+                on_ready(self)
+            end)
+        end
     end
 end
 
@@ -732,7 +766,7 @@ end
 --- @param cwd string
 --- @param mcp_servers table[]|nil
 --- @param handlers agentic.acp.ClientHandlers
---- @param on_load_complete fun(err: agentic.acp.ACPError|nil)|nil
+--- @param on_load_complete fun(result: agentic.acp.LoadSessionResponse|nil, err: agentic.acp.ACPError|nil)|nil
 function ACPClient:load_session(
     session_id,
     cwd,
@@ -746,6 +780,7 @@ function ACPClient:load_session(
         Logger.notify("Agent does not support loading sessions")
         if on_load_complete then
             on_load_complete(
+                nil,
                 self:__create_error(
                     -1,
                     "Agent does not support loading sessions"
@@ -761,13 +796,21 @@ function ACPClient:load_session(
         sessionId = session_id,
         cwd = cwd,
         mcpServers = mcp_servers or {},
-    }, function(_result, err)
+    }, function(result, err)
+        if not result and not err then
+            err = self:__create_error(
+                self.ERROR_CODES.PROTOCOL_ERROR,
+                "Failed to load session: missing result"
+            )
+        end
+
         if err and self.subscribers[session_id] == handlers then
             self.subscribers[session_id] = nil
         end
 
         if on_load_complete then
-            on_load_complete(err)
+            --- @cast result agentic.acp.LoadSessionResponse|nil
+            on_load_complete(result, err)
         end
     end)
 end

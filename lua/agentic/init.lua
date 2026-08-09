@@ -24,6 +24,28 @@ local function show_session(session, opts)
     end
 end
 
+--- @return agentic.SessionRestoreContext|nil context
+local function resolve_restore_context()
+    local source = SessionRegistry.current()
+    if source then
+        return {
+            agent = source.agent,
+            provider_name = source.provider_name,
+            source = source,
+        }
+    end
+
+    local agent = AgentInstance.get_instance(Config.provider)
+    if not agent then
+        return nil
+    end
+
+    return {
+        agent = agent,
+        provider_name = Config.provider,
+    }
+end
+
 --- Opens the chat widget in the current tab page
 --- @param opts agentic.ui.ChatWidget.ShowOpts|nil
 function Agentic.open(opts)
@@ -242,17 +264,19 @@ end
 
 --- show a selector to restore a previous session
 function Agentic.restore_session()
-    SessionRegistry.resolve_or_create(function(session)
-        SessionRestore.show_picker(session)
-    end)
+    local context = resolve_restore_context()
+    if context then
+        SessionRestore.show_picker(context)
+    end
 end
 
 --- Restore a session by its ID.
 --- @param session_id string
 function Agentic.restore_session_by_id(session_id)
-    SessionRegistry.resolve_or_create(function(session)
-        SessionRestore.restore_by_id(session, session_id)
-    end)
+    local context = resolve_restore_context()
+    if context then
+        SessionRestore.restore_by_id(context, session_id)
+    end
 end
 
 --- Guards signal handlers and autocmds against a repeated `setup` call

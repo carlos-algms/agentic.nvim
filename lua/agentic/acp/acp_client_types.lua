@@ -230,6 +230,21 @@
 --- @field models? agentic.acp.ModelsInfo
 --- @field configOptions? agentic.acp.AnyConfigOption[]
 
+--- ACP standard fields returned by `session/load`. `models` is accepted only
+--- for compatibility with providers that still expose the legacy selector.
+--- @class agentic.acp.LoadSessionResponse
+--- @field modes? agentic.acp.ModesInfo
+--- @field models? agentic.acp.ModelsInfo
+--- @field configOptions? agentic.acp.AnyConfigOption[]
+
+--- @alias agentic.SessionStartSpec
+--- | { kind: "new" }
+--- | { kind: "load", session_id: string, title?: string, timestamp?: string|integer }
+
+--- @alias agentic.SessionStartResult
+--- | { kind: "new", session_id: string, response: agentic.acp.SessionCreationResponse }
+--- | { kind: "load", session_id: string, response: agentic.acp.LoadSessionResponse }
+
 --- @alias agentic.acp.ResponseRawParams
 --- | { sessionId: string, update: agentic.acp.SessionUpdateMessage }
 --- | agentic.acp.RequestPermission
