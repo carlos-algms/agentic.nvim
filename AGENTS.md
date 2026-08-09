@@ -151,7 +151,8 @@ Worked examples:
   placement.
 - Clipboard paste closure — resolves a widget through `WidgetRegistry`, then
   uses `get(session_key)`. Runs on every `vim.paste` and must not create
-  anything.
+  anything. Regression:
+  `lua/agentic/agentic.test.lua::"does not create a session from clipboard callbacks"`.
 
 All four return `SessionManager|nil`, `resolve_or_create` included:
 `SessionRegistry.create` returns `nil` when

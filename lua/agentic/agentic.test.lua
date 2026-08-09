@@ -952,4 +952,48 @@ describe("agentic: switch_provider", function()
         local lines = vim.api.nvim_buf_get_lines(input_bufnr, 0, -1, false)
         assert.equal("my prompt text", lines[1])
     end)
+
+    it("does not create a session from clipboard callbacks", function()
+        local Agentic = require("agentic")
+        local original_image_paste_enabled = Config.image_paste.enabled
+        local original_clipboard = package.loaded["agentic.ui.clipboard"]
+        local original_widget_registry =
+            package.loaded["agentic.ui.widget_registry"]
+        local clipboard_opts
+
+        package.loaded["agentic.ui.clipboard"] = {
+            setup = function(opts)
+                clipboard_opts = opts
+            end,
+        }
+        package.loaded["agentic.ui.widget_registry"] = {
+            get = function()
+                return { session_key = 9999 }
+            end,
+        }
+        Config.image_paste.enabled = true
+
+        local get_stub = track_stub(SessionRegistry, "get")
+        get_stub:returns(nil)
+        local create_stub = track_stub(SessionRegistry, "create")
+        local resolve_stub = track_stub(SessionRegistry, "resolve_or_create")
+        local new_signal_stub = track_stub(vim.uv, "new_signal")
+        new_signal_stub:returns(nil)
+
+        Agentic.setup({})
+
+        local is_in_widget = clipboard_opts.is_cursor_in_widget()
+        local pasted = clipboard_opts.on_paste("image.png")
+
+        Config.image_paste.enabled = original_image_paste_enabled
+        package.loaded["agentic.ui.clipboard"] = original_clipboard
+        package.loaded["agentic.ui.widget_registry"] = original_widget_registry
+
+        assert.is_false(is_in_widget)
+        assert.is_false(pasted)
+        assert.spy(get_stub).was.called(2)
+        assert.spy(get_stub).was.called_with(9999)
+        assert.spy(create_stub).was.called(0)
+        assert.spy(resolve_stub).was.called(0)
+    end)
 end)
