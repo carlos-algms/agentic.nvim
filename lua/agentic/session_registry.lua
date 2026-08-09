@@ -103,6 +103,12 @@ function SessionRegistry.visible_here()
     return nil
 end
 
+--- @param session_key integer
+--- @return agentic.SessionManager|nil
+function SessionRegistry.get(session_key)
+    return SessionRegistry.sessions[session_key]
+end
+
 --- The live session already holding an ACP session ID on this provider, if any.
 --- @param acp_session_id string
 --- @param agent agentic.acp.ACPClient
