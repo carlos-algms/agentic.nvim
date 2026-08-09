@@ -835,13 +835,20 @@ describe("agentic: switch_provider", function()
         session.is_generating = true
 
         -- Avoids a real RPC call
-        track_stub(session.agent, "stop_generation")
-        track_stub(session.permission_manager, "clear")
+        local stop_generation_stub =
+            track_stub(session.agent, "stop_generation")
+        local permission_clear_stub =
+            track_stub(session.permission_manager, "clear")
         local anim_stop_spy = track_stub(session.status_animation, "stop")
 
         Agentic.stop_generation()
 
         -- Both immediate, not deferred to the callback
+        assert.spy(stop_generation_stub).was.called(1)
+        assert
+            .spy(stop_generation_stub).was
+            .called_with(session.agent, "test-session-id")
+        assert.spy(permission_clear_stub).was.called(1)
         assert.is_false(session.is_generating)
         assert.spy(anim_stop_spy).was.called(1)
     end)
