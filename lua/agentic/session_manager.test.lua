@@ -1619,11 +1619,12 @@ describe("agentic.SessionManager", function()
         it("allows /new even when is_generating is true", function()
             local SessionRegistry = require("agentic.session_registry")
             local replace_stub = spy.stub(SessionRegistry, "replace")
+            local close_todos_spy = spy.new(function() end)
 
             --- @type agentic.SessionManager
             local session = {
                 is_generating = true,
-                todo_list = { close_if_all_completed = function() end },
+                todo_list = { close_if_all_completed = close_todos_spy },
                 provider_name = "claude-acp",
                 agent = {},
                 _handle_input_submit = SessionManager._handle_input_submit,
@@ -1633,6 +1634,7 @@ describe("agentic.SessionManager", function()
 
             assert.is_true(result)
             assert.spy(replace_stub).was.called(1)
+            assert.spy(close_todos_spy).was.called(0)
             replace_stub:revert()
         end)
     end)
@@ -2748,6 +2750,79 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local data = hook_spy.calls[1][1]
         assert.is_nil(data.response)
         assert.equal("create failed", data.err.message)
+    end)
+
+    it("builds the create hook payload outside a fast event", function()
+        local Child = require("tests.helpers.child")
+        local child = Child:new()
+        child.setup()
+
+        child.lua([[
+            local Config = require("agentic.config")
+            local SessionManager = require("agentic.session_manager")
+            local SessionStarter = require("agentic.session_starter")
+            _G.t = {}
+
+            local agent = {
+                provider_config = { name = "Test" },
+            }
+            function agent:when_ready(on_ready)
+                on_ready(self)
+            end
+            function agent:create_session(_handlers, callback)
+                local timer = vim.uv.new_timer()
+                timer:start(0, 0, function()
+                    timer:close()
+                    _G.t.dispatch_fast = vim.in_fast_event()
+                    _G.t.ok, _G.t.err = pcall(callback, nil, {
+                        code = -32000,
+                        message = "boom",
+                    })
+                end)
+            end
+            function agent:cancel_session() end
+
+            local session = {
+                _destroyed = false,
+                _start_called = false,
+                _session_creation_failed = false,
+                _session_ready_callbacks = {},
+                session_key = 3,
+                session_id = nil,
+                agent = agent,
+                status_animation = {
+                    start = function() end,
+                    stop = function()
+                        _G.t.stop_fast = vim.in_fast_event()
+                    end,
+                },
+                widget = {
+                    get_visible_tab_id = function()
+                        _G.t.widget_fast = vim.in_fast_event()
+                        vim.api.nvim_win_is_valid(1000)
+                    end,
+                },
+                _build_handlers = function()
+                    return {}
+                end,
+                start = SessionManager.start,
+            }
+            session._starter = SessionStarter:new(agent)
+            Config.hooks.on_create_session_response = function(data)
+                _G.t.hook_data = data
+            end
+
+            session:start({ kind = "new" })
+            vim.wait(2000, function()
+                return _G.t.widget_fast ~= nil
+            end)
+        ]])
+
+        assert.is_true(child.lua_get("_G.t.dispatch_fast"))
+        assert.is_true(child.lua_get("_G.t.ok"))
+        assert.is_false(child.lua_get("_G.t.stop_fast"))
+        assert.is_false(child.lua_get("_G.t.widget_fast"))
+        child.stop()
     end)
 
     it("delegates slash-new to registry replacement", function()

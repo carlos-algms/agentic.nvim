@@ -534,8 +534,6 @@ end
 --- @param input_text string
 --- @return boolean submitted
 function SessionManager:_handle_input_submit(input_text)
-    self.todo_list:close_if_all_completed()
-
     -- BEFORE the submit guard, so `/new` escapes a stuck session.
     if input_text:match("^/new%s") or input_text:match("^/new$") then
         require("agentic.session_registry").replace(
@@ -546,6 +544,8 @@ function SessionManager:_handle_input_submit(input_text)
         )
         return true
     end
+
+    self.todo_list:close_if_all_completed()
 
     if not self:can_submit_prompt() then
         return false
