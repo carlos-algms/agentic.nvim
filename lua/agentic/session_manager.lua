@@ -38,7 +38,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field _start_prepared boolean
 --- @field _on_new_session fun(session: agentic.SessionManager)
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
---- @field _pending_replacement_sources? table<any, boolean>
+--- @field pending_replacement_sources? table<any, boolean>
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -902,7 +902,6 @@ function SessionManager:complete_start(spec, result, err, callback)
             session_id = result.session_id,
             session_key = self.session_key,
             tab_page_id = self.widget:get_visible_tab_id(),
-            --- @diagnostic disable-next-line: assign-type-mismatch
             response = result.response,
             err = nil,
         }
@@ -994,7 +993,7 @@ function SessionManager:destroy()
         self.permission_manager:clear()
     end
     self._session_ready_callbacks = {}
-    self._pending_replacement_sources = nil
+    self.pending_replacement_sources = nil
     self.history_to_send = nil
     if self.chat_history then
         self.chat_history.session_id = nil

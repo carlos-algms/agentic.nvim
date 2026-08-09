@@ -67,7 +67,7 @@ describe("agentic.ProviderSwitcher", function()
                     is_focused = true,
                     focused_button_index = 1,
                 },
-                _rendered_button_count = 2,
+                rendered_button_count = 2,
                 metadata = { nested = "tool" },
             },
         }
@@ -257,15 +257,12 @@ describe("agentic.ProviderSwitcher", function()
         end
     )
 
-    it("commits the provider only after replacement placement", function()
+    it("keeps the configured default when switching", function()
         switch_provider()
         assert.is_not_nil(replacement_opts)
 
         replacement_opts.prepare(source, target)
         assert.equal("claude-agent-acp", Config.provider)
-
-        replacement_opts.on_commit(target, source)
-        assert.equal("gemini-acp", Config.provider)
     end)
 
     it("copies allowed continuity into independent containers", function()
@@ -314,7 +311,7 @@ describe("agentic.ProviderSwitcher", function()
         assert.is_nil(stored_tool_call.extmark_id)
         assert.is_nil(stored_tool_call.has_fold)
         assert.is_nil(stored_tool_call.permission)
-        assert.is_nil(stored_tool_call._rendered_button_count)
+        assert.is_nil(stored_tool_call.rendered_button_count)
 
         local target_input = vim.api.nvim_buf_get_lines(
             target.widget.buf_nrs.input,
@@ -367,7 +364,7 @@ describe("agentic.ProviderSwitcher", function()
         assert.is_nil(prompt[2].extmark_id)
         assert.is_nil(prompt[2].permission)
         assert.is_nil(rendered[2].has_fold)
-        assert.is_nil(rendered[2]._rendered_button_count)
+        assert.is_nil(rendered[2].rendered_button_count)
         assert.same(stored, prompt)
         assert.same(stored, rendered)
     end)

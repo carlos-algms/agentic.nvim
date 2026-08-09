@@ -24,7 +24,7 @@ fallback windows, hidden floats, and buffer redirection, read
 - Tool-call body updates replace only the body between stable anchor pads.
 - Manual folds only. Never `foldexpr`; read ADR 0001 before proposing foldexpr
   workarounds.
-- `tracker._rendered_button_count` is render-path-only state.
+- `tracker.rendered_button_count` is render-path-only state.
 
 ## Tool-call layout
 

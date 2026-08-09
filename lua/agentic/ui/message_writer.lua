@@ -51,7 +51,7 @@ local TITLE_FENCE = "`````"
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
 --- @field permission? agentic.ui.MessageWriter.PermissionState
---- @field _rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
+--- @field rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -354,8 +354,7 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
     end
 
     for tool_call_id, tracker in pairs(self.tool_call_blocks) do
-        --- @diagnostic disable-next-line: invisible
-        local rendered = tracker._rendered_button_count or 0
+        local rendered = tracker.rendered_button_count or 0
         if rendered > 0 then
             local end_row = self:get_block_end_row(tool_call_id)
             if end_row then
@@ -604,8 +603,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         -- bottom_pad_row and old_end_row. Only _render_permission_section
         -- writes inside that range; if any other path inserts/deletes rows
         -- there, this slice corrupts the block.
-        --- @diagnostic disable-next-line: invisible
-        local k_buttons = tracker._rendered_button_count or 0
+        local k_buttons = tracker.rendered_button_count or 0
         local bottom_pad_row = old_end_row - k_buttons - 1
 
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
@@ -966,8 +964,7 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
-    --- @diagnostic disable-next-line: invisible
-    local k = tracker._rendered_button_count or 0
+    local k = tracker.rendered_button_count or 0
     if k == 0 then
         return nil
     end
@@ -1332,14 +1329,13 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
         return
     end
 
-    --- @diagnostic disable-next-line: invisible
-    local k_old = tracker._rendered_button_count or 0
+    local k_old = tracker.rendered_button_count or 0
     local k_new = #section.button_lines
     local bottom_pad_row = end_row - k_old - 1
 
     local block_start_row = self:_get_block_start_row(tracker.tool_call_id)
     -- Floor at header + top_pad = start_row + 2. If the computed
-    -- bottom_pad_row falls into header / top_pad / body, _rendered_button_count
+    -- bottom_pad_row falls into header / top_pad / body, rendered_button_count
     -- is stale (mid-resize race) and the delete/insert would corrupt the
     -- block. Bail without touching the buffer.
     local min_bottom_pad_row = (block_start_row or 0)
@@ -1356,8 +1352,7 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
         )
         -- Stale k_old vs buffer state: reset so the next repaint recomputes
         -- bottom_pad_row from scratch instead of compounding the error.
-        --- @diagnostic disable-next-line: invisible
-        tracker._rendered_button_count = 0
+        tracker.rendered_button_count = 0
         return
     end
 
@@ -1469,8 +1464,7 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
         )
     end
 
-    --- @diagnostic disable-next-line: invisible
-    tracker._rendered_button_count = k_new
+    tracker.rendered_button_count = k_new
 end
 
 --- Sets or updates a thinking highlight extmark over the given line range.

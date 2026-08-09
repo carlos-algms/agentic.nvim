@@ -7,7 +7,7 @@
 --- @field _replaying boolean
 --- @field _claimed_session_id? string
 --- @field _cancelled_session_ids table<string, boolean>
---- @field _callback? fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
+--- @field callback? fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
 local SessionStartAttempt = {}
 SessionStartAttempt.__index = SessionStartAttempt
 
@@ -36,13 +36,13 @@ local function new_attempt(agent)
         _replaying = false,
         _claimed_session_id = nil,
         _cancelled_session_ids = {},
-        _callback = nil,
+        callback = nil,
     }, SessionStartAttempt)
 end
 
 --- @param result agentic.SessionStartResult|nil
 --- @param err agentic.acp.ACPError|nil
-function SessionStartAttempt:_complete(result, err)
+function SessionStartAttempt:complete(result, err)
     if self._completed or self._completion_queued then
         return
     end
@@ -59,8 +59,8 @@ function SessionStartAttempt:_complete(result, err)
         self._replaying = false
         self._claimed_session_id = nil
 
-        local callback = self._callback
-        self._callback = nil
+        local callback = self.callback
+        self.callback = nil
         if callback then
             if self._cancelled and result then
                 callback(nil, CANCELLED_ERROR)
@@ -84,13 +84,13 @@ end
 --- @param spec agentic.SessionStartSpec
 --- @param handlers agentic.acp.ClientHandlers
 --- @param callback fun(result: agentic.SessionStartResult|nil, err: agentic.acp.ACPError|nil)
-function SessionStartAttempt:_start(spec, handlers, callback)
-    self._callback = callback
+function SessionStartAttempt:start(spec, handlers, callback)
+    self.callback = callback
 
     if spec.kind == "load" then
         self._claimed_session_id = spec.session_id
     elseif spec.kind ~= "new" then
-        self:_complete(nil, INVALID_SPEC_ERROR)
+        self:complete(nil, INVALID_SPEC_ERROR)
         return
     end
 
@@ -111,7 +111,7 @@ function SessionStartAttempt:_start(spec, handlers, callback)
 
                 if err or not response then
                     self._request_sent = false
-                    self:_complete(nil, err or INVALID_SPEC_ERROR)
+                    self:complete(nil, err or INVALID_SPEC_ERROR)
                     return
                 end
 
@@ -122,7 +122,7 @@ function SessionStartAttempt:_start(spec, handlers, callback)
                     session_id = response.sessionId,
                     response = response,
                 }
-                self:_complete(result, nil)
+                self:complete(result, nil)
             end)
         else
             self._replaying = true
@@ -139,7 +139,7 @@ function SessionStartAttempt:_start(spec, handlers, callback)
 
                     if err or not response then
                         self._request_sent = false
-                        self:_complete(nil, err or INVALID_SPEC_ERROR)
+                        self:complete(nil, err or INVALID_SPEC_ERROR)
                         return
                     end
 
@@ -149,12 +149,12 @@ function SessionStartAttempt:_start(spec, handlers, callback)
                         session_id = spec.session_id,
                         response = response,
                     }
-                    self:_complete(result, nil)
+                    self:complete(result, nil)
                 end
             )
         end
     end, function(err)
-        self:_complete(nil, err)
+        self:complete(nil, err)
     end)
 end
 
@@ -179,7 +179,7 @@ function SessionStartAttempt:cancel()
         self:_cancel_provider_session(self._claimed_session_id)
     end
     if not self._completion_queued then
-        self:_complete(nil, CANCELLED_ERROR)
+        self:complete(nil, CANCELLED_ERROR)
     end
 end
 
@@ -195,15 +195,12 @@ function SessionStarter.start(agent, spec, prepare_handlers, callback)
         return attempt:is_replaying()
     end)
     if not handlers then
-        --- @diagnostic disable-next-line: invisible
-        attempt._callback = callback
-        --- @diagnostic disable-next-line: invisible
-        attempt:_complete(nil, err or INVALID_SPEC_ERROR)
+        attempt.callback = callback
+        attempt:complete(nil, err or INVALID_SPEC_ERROR)
         return attempt
     end
 
-    --- @diagnostic disable-next-line: invisible
-    attempt:_start(spec, handlers, callback)
+    attempt:start(spec, handlers, callback)
     return attempt
 end
 

@@ -265,8 +265,7 @@ describe("agentic: switch_provider", function()
             assert.same({ "RequestedProvider" }, provider_names)
             assert.is_not_nil(ready_callbacks.RequestedProvider)
             assert.is_nil(ready_callbacks.OldProvider)
-            -- Provider selection commits only after the target becomes ready and
-            -- registry placement succeeds.
+            -- The explicit switch target does not rewrite the configured default.
             assert.equal("OldProvider", Config.provider)
         end
     )
@@ -301,7 +300,7 @@ describe("agentic: switch_provider", function()
         Agentic.switch_provider({ provider = "NewProvider" })
         flush_schedule()
 
-        assert.equal("NewProvider", Config.provider)
+        assert.are_not.equal("NewProvider", Config.provider)
 
         local new_session = SessionRegistry.list()[1] --[[@as agentic.SessionManager]]
         assert.is_not_nil(new_session)
@@ -567,7 +566,7 @@ describe("agentic: switch_provider", function()
             Agentic.switch_provider({ provider = "SwitchedProvider" })
             flush_schedule()
 
-            assert.equal("SwitchedProvider", Config.provider)
+            assert.are_not.equal("SwitchedProvider", Config.provider)
 
             -- Keys 1 and 2 are `first` and `second`; the replacement gets 3.
             local replacement = SessionRegistry.sessions[3] --[[@as agentic.SessionManager]]

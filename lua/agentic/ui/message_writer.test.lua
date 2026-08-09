@@ -273,7 +273,7 @@ describe("agentic.ui.MessageWriter", function()
                 local tracker =
                     writer.tool_call_blocks["auto-scroll-permission-row"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                local k = tracker._rendered_button_count or 0
+                local k = tracker.rendered_button_count or 0
                 assert.is_true(k > 0)
                 local end_row = block_end_row("auto-scroll-permission-row")
                 local first_button_row = end_row - k
@@ -302,7 +302,7 @@ describe("agentic.ui.MessageWriter", function()
                 local tracker =
                     writer.tool_call_blocks["auto-scroll-above-perm"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                local k = tracker._rendered_button_count or 0
+                local k = tracker.rendered_button_count or 0
                 local end_row = block_end_row("auto-scroll-above-perm")
                 local bottom_pad_row = end_row - k - 1
                 -- Park cursor on the body row above the bottom_pad row
@@ -355,7 +355,7 @@ describe("agentic.ui.MessageWriter", function()
             return PermissionSection.button_row_extmarks(
                 bufnr,
                 block_end_row(tool_call_id),
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 
@@ -418,7 +418,7 @@ describe("agentic.ui.MessageWriter", function()
             return PermissionSection.button_row_lines(
                 bufnr,
                 block_end_row(tool_call_id),
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 
@@ -887,7 +887,7 @@ describe("agentic.ui.MessageWriter", function()
                         writer.tool_call_blocks["render-first-paint"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
                     -- 2 buttons + 2 spacers (between + trailing).
-                    assert.equal(4, tracker._rendered_button_count)
+                    assert.equal(4, tracker.rendered_button_count)
 
                     local end_row_after = block_end_row("render-first-paint")
                     assert.equal(end_row_before + 4, end_row_after)
@@ -917,7 +917,7 @@ describe("agentic.ui.MessageWriter", function()
                     local end_row = block_end_row("render-extmarks")
                     local tracker = writer.tool_call_blocks["render-extmarks"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    local k = tracker._rendered_button_count
+                    local k = tracker.rendered_button_count
                     -- 2 buttons + 2 spacers (between + trailing).
                     assert.equal(4, k)
 
@@ -1053,7 +1053,7 @@ describe("agentic.ui.MessageWriter", function()
 
                     local tracker = writer.tool_call_blocks["render-clear"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(0, tracker._rendered_button_count)
+                    assert.equal(0, tracker.rendered_button_count)
 
                     local end_row_after = block_end_row("render-clear")
                     -- 2 buttons + 1 inter-spacer + 1 trailing spacer removed.
@@ -1102,7 +1102,7 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker = writer.tool_call_blocks["render-idempotent"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
                     -- 2 buttons + 1 inter-spacer + 1 trailing spacer.
-                    assert.equal(4, tracker._rendered_button_count)
+                    assert.equal(4, tracker.rendered_button_count)
                 end
             )
 
@@ -1170,7 +1170,7 @@ describe("agentic.ui.MessageWriter", function()
                 assert.equal(0, #rows_after)
                 local tracker = writer.tool_call_blocks["row-n-clear"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                assert.equal(0, tracker._rendered_button_count)
+                assert.equal(0, tracker.rendered_button_count)
                 -- Block shrinks back to its pre-permission end_row.
                 assert.equal(end_row_before - 2, block_end_row("row-n-clear"))
 
@@ -1248,7 +1248,7 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker =
                         writer.tool_call_blocks["get-row-not-rendered"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(0, tracker._rendered_button_count)
+                    assert.equal(0, tracker.rendered_button_count)
                     assert.is_nil(
                         writer:get_button_row("get-row-not-rendered", 1)
                     )

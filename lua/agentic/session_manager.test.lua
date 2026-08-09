@@ -2937,7 +2937,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         manager.chat_history.messages = { { type = "agent", text = "old" } }
         manager.history_to_send = {}
         manager._session_ready_callbacks = { function() end }
-        manager._pending_replacement_sources = { [{}] = true }
+        manager.pending_replacement_sources = { [{}] = true }
         manager.file_list._files = { "old" }
         manager.code_selection._selections = { { lines = { "old" } } }
         manager.diagnostics_list._diagnostics = { { message = "old" } }
@@ -2971,7 +2971,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         assert.equal(0, #manager.chat_history.messages)
         assert.is_nil(manager.history_to_send)
         assert.equal(0, #manager._session_ready_callbacks)
-        assert.is_nil(manager._pending_replacement_sources)
+        assert.is_nil(manager.pending_replacement_sources)
         assert.is_true(manager.file_list:is_empty())
         assert.is_true(manager.code_selection:is_empty())
         assert.is_true(manager.diagnostics_list:is_empty())

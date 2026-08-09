@@ -54,7 +54,7 @@ hides every other session in the current tabpage, hides the target if visible in
 different one, repoints `_most_recent`, then shows. Those first two steps are the
 invariant — **at most one visible widget per tabpage, at most one tabpage per
 session** — and siting them here makes "hide before show" structural, which
-`ChatWidget._size` inheritance depends on. Every entry point that surfaces a
+`ChatWidget.size` inheritance depends on. Every entry point that surfaces a
 session elsewhere routes through it.
 
 Three sites call `ChatWidget:show` directly. Each re-renders in place, so none

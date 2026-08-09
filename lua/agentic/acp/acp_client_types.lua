@@ -241,9 +241,19 @@
 --- | { kind: "new" }
 --- | { kind: "load", session_id: string, title?: string, timestamp?: string|integer }
 
+--- @class agentic.SessionStartNewResult
+--- @field kind "new"
+--- @field session_id string
+--- @field response agentic.acp.SessionCreationResponse
+
+--- @class agentic.SessionStartLoadResult
+--- @field kind "load"
+--- @field session_id string
+--- @field response agentic.acp.LoadSessionResponse
+
 --- @alias agentic.SessionStartResult
---- | { kind: "new", session_id: string, response: agentic.acp.SessionCreationResponse }
---- | { kind: "load", session_id: string, response: agentic.acp.LoadSessionResponse }
+--- | agentic.SessionStartNewResult
+--- | agentic.SessionStartLoadResult
 
 --- @alias agentic.acp.ResponseRawParams
 --- | { sessionId: string, update: agentic.acp.SessionUpdateMessage }

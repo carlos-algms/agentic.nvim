@@ -1,5 +1,4 @@
 local BufHelpers = require("agentic.utils.buf_helpers")
-local Config = require("agentic.config")
 local Logger = require("agentic.utils.logger")
 local SessionRegistry = require("agentic.session_registry")
 
@@ -44,8 +43,7 @@ local function copy_transcript(messages)
             message.extmark_id = nil
             message.has_fold = nil
             message.permission = nil
-            --- @diagnostic disable-next-line: invisible
-            message._rendered_button_count = nil
+            message.rendered_button_count = nil
         end
     end
 
@@ -111,11 +109,7 @@ local function apply_provider_switch(provider_name)
     end
 
     --- @type agentic.SessionReplacementOpts
-    local replacement_opts = {
-        on_commit = function()
-            Config.provider = provider_name
-        end,
-    }
+    local replacement_opts = {}
 
     if source then
         replacement_opts.prepare = function(live_source, target)

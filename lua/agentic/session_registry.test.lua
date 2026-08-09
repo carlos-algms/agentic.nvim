@@ -730,7 +730,7 @@ describe("agentic.SessionRegistry", function()
             end
         )
 
-        it("commits the provider once creation proceeds", function()
+        it("keeps the configured provider once creation proceeds", function()
             SessionRegistry.resolve_or_create()
             local select_stub = get_select_stub()
 
@@ -745,19 +745,22 @@ describe("agentic.SessionRegistry", function()
             local on_choice = select_stub.calls[1][3]
             on_choice(items[1])
 
-            assert.equal("gemini-acp", config_mock.provider)
+            assert.equal("claude-acp", config_mock.provider)
             assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
         end)
 
-        it("commits the provider when there is nothing to guard", function()
-            SessionRegistry.create_with_current_session_guard(
-                function() end,
-                "gemini-acp"
-            )
+        it(
+            "keeps the configured provider when there is nothing to guard",
+            function()
+                SessionRegistry.create_with_current_session_guard(
+                    function() end,
+                    "gemini-acp"
+                )
 
-            assert.equal("gemini-acp", config_mock.provider)
-            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        end)
+                assert.equal("claude-acp", config_mock.provider)
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            end
+        )
 
         -- `current` is captured BEFORE the async `vim.ui.select`, so switching
         -- sessions while the prompt is open leaves the closure holding a key the
@@ -1417,18 +1420,26 @@ describe("agentic.SessionRegistry", function()
                 end
             end)
 
-            it("appends '(current)' for Config.provider", function()
-                config_mock.provider = "claude-acp"
-                default_config_mock.provider = "gemini-acp"
+            it(
+                "appends '(current)' for the most recent session provider",
+                function()
+                    config_mock.provider = "claude-acp"
+                    default_config_mock.provider = "gemini-acp"
+                    local current = create_mock_session()
+                    current.session_key = 99
+                    current.provider_name = "gemini-acp"
+                    SessionRegistry.sessions[99] = current
+                    SessionRegistry._most_recent = current
 
-                SessionRegistry.select_provider(function() end)
+                    SessionRegistry.select_provider(function() end)
 
-                local label = captured_opts.format_item({
-                    name = "claude-acp",
-                    installed = true,
-                })
-                assert.equal("claude-acp (current) ✓ available", label)
-            end)
+                    local label = captured_opts.format_item({
+                        name = "gemini-acp",
+                        installed = true,
+                    })
+                    assert.equal("gemini-acp (current) ✓ available", label)
+                end
+            )
 
             it(
                 "appends '(default)' for DefaultConfig.provider when not current",
@@ -1738,7 +1749,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         target.ready_callback(target)
 
         assert.equal(0, prepare_count)
-        assert.same({}, target.widget._size)
+        assert.same({}, target.widget.size)
         assert.same({ "target:start", "target:show" }, events)
     end)
 
@@ -1747,12 +1758,12 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         local source = new_session("source", current_tab)
         source.session_key = 40
         source.widget.session_key = 40
-        source.widget._size = { width = 50 }
+        source.widget.size = { width = 50 }
         SessionRegistry.sessions[40] = source
         local unrelated = new_session("unrelated")
         unrelated.session_key = 39
         unrelated.widget.session_key = 39
-        unrelated.widget._size = { width = 70 }
+        unrelated.widget.size = { width = 70 }
         SessionRegistry.sessions[39] = unrelated
         SessionRegistry.set_most_recent(39)
 
@@ -1765,7 +1776,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         local donor
         target.widget.show = function()
             for _, session in ipairs(SessionRegistry.list()) do
-                if session ~= target and session.widget._size then
+                if session ~= target and session.widget.size then
                     donor = session
                     break
                 end

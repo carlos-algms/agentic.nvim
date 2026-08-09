@@ -83,12 +83,12 @@ function SessionRegistry.create(provider_name, start_spec, agent)
         return nil
     end
 
-    SessionRegistry._next_id = SessionRegistry._next_id + 1
-    session.session_key = SessionRegistry._next_id
-    SessionRegistry.sessions[session.session_key] = session
-    session.widget.session_key = session.session_key
+    local session_key = SessionRegistry._next_id + 1
+    SessionRegistry._next_id = session_key
+    session.session_key = session_key
+    SessionRegistry.sessions[session_key] = session
+    session.widget.session_key = session_key
 
-    local session_key = session.session_key --[[@as integer]]
     session:on_session_ready(function() end, function()
         if SessionRegistry.sessions[session_key] == session then
             SessionRegistry.destroy(session_key)
@@ -121,21 +121,18 @@ local function await_replacement(
     destroy_target_on_rollback
 )
     local source_token = source or NIL_REPLACEMENT_SOURCE
-    --- @diagnostic disable-next-line: invisible
-    local pending = target._pending_replacement_sources or {}
+    local pending = target.pending_replacement_sources or {}
     if pending[source_token] then
         return
     end
 
     pending[source_token] = true
-    --- @diagnostic disable-next-line: invisible
-    target._pending_replacement_sources = pending
+    target.pending_replacement_sources = pending
 
     local function clear_pending()
         pending[source_token] = nil
         if next(pending) == nil then
-            --- @diagnostic disable-next-line: invisible
-            target._pending_replacement_sources = nil
+            target.pending_replacement_sources = nil
         end
     end
 
@@ -160,15 +157,13 @@ end
 --- @return boolean
 local function replacement_is_pending(source, target)
     local source_token = source or NIL_REPLACEMENT_SOURCE
-    --- @diagnostic disable-next-line: invisible
-    local pending = target._pending_replacement_sources
+    local pending = target.pending_replacement_sources
     return pending ~= nil and pending[source_token] == true
 end
 
 --- @class agentic.SessionReplacementOpts
 --- @field agent? agentic.acp.ACPClient
 --- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager)
---- @field on_commit? fun(target: agentic.SessionManager, source: agentic.SessionManager|nil)
 --- @field show_opts? agentic.ui.ChatWidget.ShowOpts
 
 --- @param source agentic.SessionManager|nil
@@ -236,12 +231,8 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
     if not source then
         -- A source-less start has no continuity donor, even if unrelated hidden
         -- sessions remain registered.
-        --- @diagnostic disable-next-line: invisible
-        target.widget._size = target.widget._size or {}
+        target.widget.size = target.widget.size or {}
         SessionRegistry.show_session(target_key, opts.show_opts)
-        if opts.on_commit then
-            opts.on_commit(target, nil)
-        end
         return true
     end
 
@@ -290,9 +281,6 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
         SessionRegistry.destroy(source_key)
     end
 
-    if opts.on_commit then
-        opts.on_commit(target, source)
-    end
     return true
 end
 
@@ -377,7 +365,7 @@ end
 
 --- Creates an additional session after resolving the current one's lifecycle.
 --- @param on_created fun(session: agentic.SessionManager)
---- @param provider_name agentic.UserConfig.ProviderName|nil Becomes the global provider only if creation proceeds
+--- @param provider_name agentic.UserConfig.ProviderName|nil
 function SessionRegistry.create_with_current_session_guard(
     on_created,
     provider_name
@@ -390,12 +378,6 @@ function SessionRegistry.create_with_current_session_guard(
 
         if not session then
             return
-        end
-
-        -- Committed only after creation succeeds: cancellation or a failed health check
-        -- must leave the provider used by the current session unchanged.
-        if provider_name then
-            Config.provider = provider_name
         end
 
         on_created(session)
@@ -601,6 +583,10 @@ function SessionRegistry.select_provider(on_selected)
         providers = unhealthy_providers
     end
 
+    local current = SessionRegistry.current()
+    local current_provider = current and current.provider_name
+        or Config.provider
+
     vim.ui.select(providers, {
         prompt = "Select an ACP provider for the new session:",
         snacks = {
@@ -612,7 +598,7 @@ function SessionRegistry.select_provider(on_selected)
         format_item = function(item)
             local label = item.name
 
-            if label == Config.provider then
+            if label == current_provider then
                 label = label .. " (current)"
             elseif label == DefaultConfig.provider then
                 label = label .. " (default)"
