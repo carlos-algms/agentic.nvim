@@ -1,4 +1,5 @@
 local assert = require("tests.helpers.assert")
+local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
 
 describe("ACPClient", function()
@@ -218,6 +219,102 @@ describe("ACPClient", function()
 
             local encoded = vim.json.encode(captured_initialize_params)
             assert.is_not_nil(encoded:find('"boolean":{}', 1, true))
+        end)
+    end)
+
+    describe("mock response delivery", function()
+        local child = Child.new()
+
+        before_each(function()
+            child.setup()
+        end)
+
+        after_each(function()
+            child.stop()
+        end)
+
+        it("delivers responses synchronously by default", function()
+            child.lua([[
+                local ACPClient = require("agentic.acp.acp_client")
+                local client = ACPClient:new({ command = "test-agent" }, function() end)
+                local callback_called = false
+
+                _G.p5_direct_delivery = {}
+
+                client:create_session({
+                    on_session_update = function() end,
+                    on_request_permission = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                }, function(result, err)
+                    callback_called = true
+                    _G.p5_direct_delivery.callback_fast = vim.in_fast_event()
+                    _G.p5_direct_delivery.result = result
+                    _G.p5_direct_delivery.err = err
+                end)
+
+                client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = client.id_counter,
+                    result = { sessionId = "direct-session" },
+                })
+
+                _G.p5_direct_delivery.completed_before_return = callback_called
+            ]])
+
+            local result = child.lua_get("_G.p5_direct_delivery")
+            assert.is_true(result.completed_before_return)
+            assert.is_false(result.callback_fast)
+            assert.equal("direct-session", result.result.sessionId)
+            assert.is_nil(result.err)
+        end)
+
+        it("delivers ACP errors from a libuv fast event", function()
+            child.lua([[
+                local ACPClient = require("agentic.acp.acp_client")
+                local client = ACPClient:new({ command = "test-agent" }, function() end)
+
+                _G.p5_fast_delivery = {}
+
+                local original_on_message = client.transport.callbacks.on_message
+                client.transport.callbacks.on_message = function(message)
+                    _G.p5_fast_delivery.on_message_fast = vim.in_fast_event()
+                    local ok, err = pcall(original_on_message, message)
+                    _G.p5_fast_delivery.on_message_ok = ok
+                    _G.p5_fast_delivery.on_message_err = err
+                end
+
+                client:create_session({
+                    on_session_update = function() end,
+                    on_request_permission = function() end,
+                    on_error = function() end,
+                    on_tool_call = function() end,
+                    on_tool_call_update = function() end,
+                }, function(result, err)
+                    _G.p5_fast_delivery.callback_fast = vim.in_fast_event()
+                    _G.p5_fast_delivery.result = result
+                    _G.p5_fast_delivery.callback_err = err
+                end)
+
+                client.transport:deliver({
+                    jsonrpc = "2.0",
+                    id = client.id_counter,
+                    error = { code = -32000, message = "fast delivery failed" },
+                }, "fast_event")
+            ]])
+
+            vim.uv.sleep(50)
+            child.api.nvim_eval("1")
+
+            local result = child.lua_get("_G.p5_fast_delivery")
+            assert.is_true(result.on_message_fast)
+            assert.is_true(result.callback_fast)
+            assert.is_true(result.on_message_ok)
+            assert.is_nil(result.on_message_err)
+            assert.is_nil(result.result)
+            assert.equal(-32000, result.callback_err.code)
+            assert.equal("fast delivery failed", result.callback_err.message)
         end)
     end)
 
