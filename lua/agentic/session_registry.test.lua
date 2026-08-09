@@ -1797,34 +1797,46 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         vim.api.nvim_set_current_tabpage(first_tab)
     end)
 
-    for _, case in ipairs({
-        { name = "hidden", tab = nil },
-        { name = "unusable", tab = vim.api.nvim_get_current_tabpage() },
-    }) do
-        it("keeps target hidden for a " .. case.name .. " source", function()
-            local source = new_session("source", case.tab)
-            source.session_key = 40
-            source.widget.session_key = 40
-            if case.name == "unusable" then
-                source.widget.find_first_non_widget_window = function()
-                    return -1
-                end
-            end
-            SessionRegistry.sessions[40] = source
-            local target = SessionRegistry.replace(
-                source,
-                "claude-acp",
-                { kind = "new" },
-                { agent = new_agent("Injected") }
-            )
+    it("keeps target hidden for a hidden source", function()
+        local source = new_session("source", nil)
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
 
-            target.ready_callback(target)
+        target.ready_callback(target)
 
-            assert.equal(-1, target.widget:get_visible_tab_id() or -1)
-            assert.equal(target, SessionRegistry.current())
-            assert.same({ "target:start", "source:destroy" }, events)
-        end)
-    end
+        assert.equal(-1, target.widget:get_visible_tab_id() or -1)
+        assert.equal(target, SessionRegistry.current())
+        assert.same({ "target:start", "source:destroy" }, events)
+    end)
+
+    it("rolls back when a visible source has no usable anchor", function()
+        local source = new_session("source", vim.api.nvim_get_current_tabpage())
+        source.session_key = 40
+        source.widget.session_key = 40
+        source.widget.find_first_non_widget_window = function()
+            return -1
+        end
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+
+        target.ready_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
 
     it("commits an already-loaded distinct target without creating", function()
         local source = new_session("source")

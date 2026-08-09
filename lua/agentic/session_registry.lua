@@ -228,7 +228,10 @@ function SessionRegistry.commit_replacement(source, target, opts)
             and source.widget:find_first_non_widget_window(source_tab)
         or nil
 
-    if anchor and BufHelpers.is_win_usable(anchor) then
+    if source_tab and not (anchor and BufHelpers.is_win_usable(anchor)) then
+        SessionRegistry.destroy(target_key)
+        return false
+    elseif anchor and BufHelpers.is_win_usable(anchor) then
         -- `ChatWidget:show` inherits from registry recency after `show_session`
         -- captures the source's live size. Make this source the exact donor.
         SessionRegistry.set_most_recent(source_key)

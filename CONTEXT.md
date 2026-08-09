@@ -23,7 +23,7 @@ precise term).
 
 **ACPClient**: The Lua object that owns one **Provider** subprocess and one
 **ACPTransport**. Routes RPC responses and `session/update` notifications. One
-per **AgentInstance**.
+per **Provider** name, cached by the singleton **AgentInstance**.
 
 **ACPTransport**: Stdio framing layer below **ACPClient**. Splits JSON-RPC by
 newlines, preserves partial trailers.
@@ -38,9 +38,9 @@ newlines, preserves partial trailers.
 `Session` means three different things at three layers. Use the qualified term.
 
 **ACP Session**: A protocol-level session id, opaque string issued by the
-**Provider** via `session/new`. One **AgentInstance** can hold many; this plugin
-activates one per **SessionManager**. _Avoid_: bare "session" when discussing
-protocol traffic.
+**Provider** via `session/new`. One shared **ACPClient** can hold many; this
+plugin activates one per **SessionManager**. _Avoid_: bare "session" when
+discussing protocol traffic.
 
 **SessionManager**: The Lua orchestrator for one conversation. Owns the
 **ChatWidget**, holds the active **ACP Session** id, routes `session/update`
@@ -271,9 +271,8 @@ enabled by default.
   pending or ready **ACP Session** on its injected **ACPClient** for life.
 - A **ChatWidget** is visible in at most one **Tabpage**, and a **Tabpage**
   shows at most one **ChatWidget**. Both may be zero.
-- One **AgentInstance** per **Provider** name, shared across every
-  **SessionManager**; only **AgentInstance** initiates provider client and
-  process creation.
+- The singleton **AgentInstance** caches one shared **ACPClient** per
+  **Provider** name; only it initiates provider client and process creation.
 - A **ChatWidget** owns one **MessageWriter** which owns many **Tool Call
   Blocks** keyed by tool call id.
 - A **Permission Request** belongs to exactly one **Tool Call** (by id) on
@@ -285,8 +284,8 @@ enabled by default.
 ## Example dialogue
 
 > **Dev:** "When the user starts a second chat, do we spawn another
-> **Provider**?" **Maintainer:** "No. **AgentInstance** is shared. We create a
-> new **ACP Session** on the existing instance, and a new **SessionManager**
+> **Provider**?" **Maintainer:** "No. The provider's **ACPClient** is shared. We
+> create a new **ACP Session** on that client, and a new **SessionManager**
 > owns it under its own **Session key**. Opening a **Tabpage** on its own
 > creates nothing."
 
@@ -318,10 +317,11 @@ enabled by default.
 - "Replace" was used for tabpage eviction and for ending one conversation in
   favor of another. Resolved: **Evict** only hides; **Replace** commits a ready
   target and destroys its source.
-- "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
-  object, and the LLM behind the provider. Resolved: **Provider** for the
-  subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain
-  concept here.
+- "Agent" was used to mean **Provider** subprocess, **AgentInstance** singleton
+  factory/cache, **ACPClient**, and the LLM behind the provider. Resolved:
+  **Provider** for the subprocess, **AgentInstance** for the singleton
+  factory/cache, and **ACPClient** for the cached client; the LLM is not a
+  domain concept here.
 - "Tool call" was used to mean both the protocol event and its rendered block.
   Resolved: **Tool Call** for the event, **Tool Call Block** for the rendering.
 - "Diff" was used to mean both the in-chat diff and the file-buffer preview.

@@ -289,40 +289,24 @@ describe("SessionRestore", function()
         end
     )
 
-    for _, ready in ipairs({ true, false }) do
-        it(
-            "reuses an existing "
-                .. (ready and "ready" or "in-flight")
-                .. " target",
-            function()
-                local agent = new_agent()
-                local source = { session_key = 1 }
-                local target = {
-                    owns_ready_acp_session = function()
-                        return ready
-                    end,
-                    on_session_ready = function(self, callback)
-                        self.ready_callback = callback
-                    end,
-                }
-                find_stub:returns(target)
+    it("delegates an existing target to registry replacement", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        find_stub:returns({ session_key = 2 })
 
-                SessionRestore.restore_by_id(context(agent, source), "one")
-                agent.ready_callback(agent)
-                if not ready then
-                    assert.spy(commit_stub).was.called(0)
-                    target.ready_callback(target)
-                end
+        SessionRestore.restore_by_id(context(agent, source), "one")
+        agent.ready_callback(agent)
 
-                assert
-                    .spy(commit_stub).was
-                    .called_with(source, target, { agent = agent })
-                assert.spy(replace_stub).was.called(0)
-            end
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent }
         )
-    end
+        assert.spy(commit_stub).was.called(0)
+    end)
 
-    it("treats the same-manager target as a no-op", function()
+    it("delegates the same-manager target to the registry no-op", function()
         local agent = new_agent()
         local source = { session_key = 1 }
         find_stub:returns(source)
@@ -331,7 +315,42 @@ describe("SessionRestore", function()
         agent.ready_callback(agent)
 
         assert.spy(commit_stub).was.called(0)
-        assert.spy(replace_stub).was.called(0)
+        assert.spy(replace_stub).was.called(1)
+    end)
+
+    it("reuses an existing target without load capability", function()
+        local agent = new_agent()
+        agent.agent_capabilities.loadSession = false
+        local source = { session_key = 1 }
+        find_stub:returns({ session_key = 2 })
+
+        SessionRestore.restore_by_id(context(agent, source), "one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called(1)
+        assert.spy(notify_stub).was.called(0)
+    end)
+
+    it("deduplicates repeated restore while the target is pending", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        local target = { ready_callback_count = 0 }
+        function target:owns_ready_acp_session()
+            return false
+        end
+        function target:on_session_ready(callback)
+            self.ready_callback_count = self.ready_callback_count + 1
+            self.ready_callback = callback
+        end
+        find_stub:returns(target)
+        replace_stub:revert()
+
+        SessionRestore.restore_by_id(context(agent, source), "one")
+        agent.ready_callback(agent)
+        SessionRestore.restore_by_id(context(agent, source), "one")
+        agent.ready_callback(agent)
+
+        assert.equal(1, target.ready_callback_count)
     end)
 
     it("rejects unsupported load without creating a target", function()

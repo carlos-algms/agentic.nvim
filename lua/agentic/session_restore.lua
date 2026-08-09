@@ -22,6 +22,26 @@ end
 --- @param title string|nil
 --- @param timestamp string|integer|nil
 local function restore(context, session_id, title, timestamp)
+    --- @type agentic.SessionStartSpec
+    local start_spec = {
+        kind = "load",
+        session_id = session_id,
+        title = title,
+        timestamp = timestamp,
+    }
+
+    local existing =
+        SessionRegistry.find_by_acp_session_id(session_id, context.agent)
+    if existing then
+        SessionRegistry.replace(
+            context.source,
+            context.provider_name,
+            start_spec,
+            { agent = context.agent }
+        )
+        return
+    end
+
     local capabilities = context.agent.agent_capabilities
     if not capabilities or not capabilities.loadSession then
         Logger.notify(
@@ -31,35 +51,6 @@ local function restore(context, session_id, title, timestamp)
         return
     end
 
-    local existing =
-        SessionRegistry.find_by_acp_session_id(session_id, context.agent)
-    if existing then
-        if existing == context.source then
-            return
-        end
-
-        local opts = { agent = context.agent }
-        if existing:owns_ready_acp_session(session_id) then
-            SessionRegistry.commit_replacement(context.source, existing, opts)
-        else
-            existing:on_session_ready(function()
-                SessionRegistry.commit_replacement(
-                    context.source,
-                    existing,
-                    opts
-                )
-            end)
-        end
-        return
-    end
-
-    --- @type agentic.SessionStartSpec
-    local start_spec = {
-        kind = "load",
-        session_id = session_id,
-        title = title,
-        timestamp = timestamp,
-    }
     SessionRegistry.replace(
         context.source,
         context.provider_name,
