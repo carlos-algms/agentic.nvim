@@ -69,8 +69,9 @@ entries. _Avoid_: bare "title" — say Session title, or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
 **SessionManager** and the owner of manager registration, placement, and
-replacement. `init.lua` resolves restore clients through **AgentInstance** and
-passes them to `SessionRestore` without creating a placeholder manager.
+replacement. For restore, `init.lua` uses the source manager's injected
+**ACPClient** when present, otherwise resolves one through **AgentInstance**, and
+passes the client separately from the optional source to `SessionRestore`.
 `show_session` is the single path that moves a **SessionManager** into a
 **Tabpage**; `replace` owns transactional replacement. Three in-place re-render
 sites call `ChatWidget:show` directly. See ADR 0008.

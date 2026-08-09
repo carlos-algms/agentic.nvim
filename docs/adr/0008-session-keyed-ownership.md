@@ -91,13 +91,14 @@ continuity copy or size donor, and failure leaves no target manager or widget
 while preserving unrelated registered sessions.
 
 **Restore does not require a placeholder manager.** Restore entry points
-resolve a provider client through `AgentInstance` and pass a context containing
-that client to `SessionRestore`. Opening and listing the restore picker creates
-no manager. Choosing an ACP session resolves exactly one target and creates a
-load target only when no manager on that client already claims the id. An
-existing claimant becomes the target without another `session/load`; choosing
-the source manager is a no-op. Provider list title and timestamp are optional
-restore metadata, not provider-facing startup state.
+use the source manager's injected client when present; without a source they
+resolve the provider client through `AgentInstance`. They pass that client
+separately from the optional source to `SessionRestore`. Opening and listing the
+restore picker creates no manager. Choosing an ACP session resolves exactly one
+target and creates a load target only when no manager on that client already
+claims the id. An existing claimant becomes the target without another
+`session/load`; choosing the source manager is a no-op. Provider list title and
+timestamp are optional restore metadata, not provider-facing startup state.
 
 **State lives public on its owning instance.** `ChatWidget.headers` and
 `DiffCoordinator.diff_state` are mutated in place. `.luarc.json` sets
