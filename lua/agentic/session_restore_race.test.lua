@@ -307,33 +307,55 @@ describe("race: stale create_session after load_acp_session", function()
 
     -- The ordering `SessionRestore` produces: the manager is built for the
     -- restore, so its bootstrap `session/new` is already queued for the next tick
-    -- when `load_acp_session` runs in this one. An unguarded bootstrap reaches
-    -- `_cancel_session`, which clears `_is_restoring_session` and thereby disarms
-    -- the Race A guard, leaving two requests competing for `session_id`.
-    it("load before the bootstrap sends no competing create", function()
-        local create_cb_ref = {}
-        local load_cb_ref = {}
-        local session = make_session(create_cb_ref, load_cb_ref)
+    -- when `load_acp_session` runs in this one. The create still goes out --
+    -- `session/load` does not re-send modes/models, so its response is their
+    -- only source -- but in `restore_mode`, so it never reaches
+    -- `_cancel_session`, which would clear `_is_restoring_session` and disarm
+    -- the Race A guard.
+    it(
+        "load before the bootstrap adopts the create's config options",
+        function()
+            local create_cb_ref = {}
+            local load_cb_ref = {}
+            local session = make_session(create_cb_ref, load_cb_ref)
 
-        -- The constructor's queued bootstrap, through the same `vim.schedule`
-        -- queue the real one uses: enqueued first, run last.
-        vim.schedule(function()
-            session:_bootstrap_session()
-        end)
+            -- The constructor's queued bootstrap, through the same
+            -- `vim.schedule` queue the real one uses: enqueued first, run last.
+            vim.schedule(function()
+                session:_bootstrap_session()
+            end)
 
-        session:load_acp_session("restored-id", "title", nil)
-        drain()
+            session:load_acp_session("restored-id", "title", nil)
+            drain()
 
-        -- Nothing in flight to answer out of order, and the guard is still armed.
-        assert.is_nil(create_cb_ref.cb)
-        assert.is_true(session._is_restoring_session)
+            -- The create is in flight, and the restore guard survived it.
+            assert.is_not_nil(create_cb_ref.cb)
+            assert.is_true(session._is_restoring_session)
 
-        load_cb_ref.cb(nil)
-        drain()
+            load_cb_ref.cb(nil)
+            drain()
 
-        assert.equal("restored-id", session.session_id)
-        assert.equal(0, #session._cancelled)
-    end)
+            assert.equal("restored-id", session.session_id)
+
+            -- The stale create answers last: the staleness guard adopts its
+            -- options and cancels the session it opened, leaving the restored
+            -- id untouched.
+            local config_options =
+                { { category = "mode", currentValue = "plan" } }
+            create_cb_ref.cb(
+                { sessionId = "new-id", configOptions = config_options },
+                nil
+            )
+            drain()
+
+            assert.equal("restored-id", session.session_id)
+            assert.equal(
+                config_options,
+                session.config_options._config_options_set
+            )
+            assert.is_true(vim.tbl_contains(session._cancelled, "new-id"))
+        end
+    )
 
     -- The staleness guard runs BEFORE the `if err or not response` branch, so the
     -- restored session_id survives. Moved below that branch, the error path would

@@ -790,11 +790,17 @@ end
 --- The first `session/new`, one tick after construction. Guarded HERE and not in
 --- `new_session`, which stays usable as the chat input's `/new`.
 function SessionManager:_bootstrap_session()
-    if self._destroyed or self._is_restoring_session then
+    if self._destroyed then
         return
     end
 
-    self:new_session()
+    -- Still sent when a restore claimed this manager first: `session/load` does
+    -- not re-send modes/models, so this response is their only source.
+    -- `restore_mode` keeps it out of `_cancel_session`, which would clear
+    -- `_is_restoring_session` and leave two requests racing for `session_id`.
+    -- The staleness guard in the response callback adopts the options and
+    -- cancels the session this opened.
+    self:new_session({ restore_mode = self._is_restoring_session })
 end
 
 --- @param opts {restore_mode?: boolean, on_created?: fun(), timestamp?: string|integer}|nil
