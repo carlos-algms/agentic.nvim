@@ -36,8 +36,9 @@ the displaced session as the size donor exposed by `SessionRegistry.list`.
 the sole factory and cache for the shared `ACPClient`; constructing that client
 is the only path that starts its provider process. `SessionManager:new` receives
 the client and never resolves or starts a provider. Each manager constructs one
-`SessionStarter`, which waits for client readiness and sends exactly one
-`session/new` or `session/load`. The manager therefore owns one pending or ready
+`SessionStarter`, which selects one start kind, waits for client readiness, and
+sends at most one `session/new` or `session/load` request. Cancellation or
+readiness failure can send none. The manager therefore owns one pending or ready
 ACP conversation for life; another start or load requires another manager.
 
 **Placement is derived.** `ChatWidget:get_visible_tab_id()` resolves the tabpage

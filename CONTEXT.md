@@ -51,9 +51,10 @@ requires another SessionManager. The isolation unit for this plugin. _Avoid_:
 "the session" — say SessionManager.
 
 **SessionStarter**: The one-shot startup owner inside a **SessionManager**. It
-waits for the injected **ACPClient**, sends exactly one `session/new` or
-`session/load`, and owns startup cancellation and late-response cleanup. It
-does not resolve providers, create UI, or place sessions.
+selects one start kind, waits for the injected **ACPClient**, and sends at most
+one `session/new` or `session/load` request after readiness. Cancellation or
+readiness failure can send none. It owns startup cancellation and late-response
+cleanup, but does not resolve providers, create UI, or place sessions.
 
 **Session key**: The integer **SessionRegistry** key, assigned at creation and
 stable for the **SessionManager**'s whole life. The only stable identity a
@@ -67,7 +68,9 @@ the provider during `session/new` or `session/load`. Labels session-picker
 entries. _Avoid_: bare "title" — say Session title, or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
-**SessionManager**. The only sanctioned entry point from `init.lua`.
+**SessionManager** and the owner of manager registration, placement, and
+replacement. `init.lua` resolves restore clients through **AgentInstance** and
+passes them to `SessionRestore` without creating a placeholder manager.
 `show_session` is the single path that moves a **SessionManager** into a
 **Tabpage**; `replace` owns transactional replacement. Three in-place re-render
 sites call `ChatWidget:show` directly. See ADR 0008.
@@ -236,8 +239,8 @@ unified `configOptions`. Same per-session scope.
 **SlashCommands**: Per-session input-buffer completion. Command list arrives via
 `session/update` `available_commands_update` and is augmented locally: the
 plugin filters out `clear` and auto-injects `/new` if absent. Only `/new` is
-intercepted on submit (calls `new_session`); every other slash-prefixed line is
-sent verbatim to the **Provider**.
+intercepted on submit (calls `SessionRegistry.replace` for a fresh manager);
+every other slash-prefixed line is sent verbatim to the **Provider**.
 
 ### Hooks
 
