@@ -43,6 +43,12 @@ describe("Add file or selection to session", function()
         child.lua([[ require("agentic").toggle() ]])
         child.flush()
 
+        local code_winid = child.lua([[
+            local session = require("agentic.session_registry").current()
+            assert(session, "expected an existing session")
+            return session.widget.win_nrs.code
+        ]])
+
         local selections = child.lua([[
             local session = require("agentic.session_registry").current()
             assert(session, "expected an existing session")
@@ -56,5 +62,6 @@ describe("Add file or selection to session", function()
         assert.same(expected_lines, selections[1].lines)
         assert.equal(28, selections[1].start_line)
         assert.equal(29, selections[1].end_line)
+        assert.is_true(child.api.nvim_win_is_valid(code_winid))
     end)
 end)
