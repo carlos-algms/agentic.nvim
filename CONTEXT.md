@@ -15,9 +15,11 @@ backend, server, model, agent (without qualifier).
 **ACP (Agent Client Protocol)**: Newline-delimited JSON-RPC protocol used to
 talk to a **Provider**.
 
-**AgentInstance**: The single, shared **ACPClient** held per **Provider** name.
-One subprocess per provider, multiplexed across every **Session**. _Avoid_:
-agent, client (use the precise term).
+**AgentInstance**: The factory and cache for the single, shared **ACPClient**
+per **Provider** name. It alone requests provider-process startup by
+constructing the client that owns that process. One subprocess per provider,
+multiplexed across every **ACP Session**. _Avoid_: agent, client (use the
+precise term).
 
 **ACPClient**: The Lua object that owns one **Provider** subprocess and one
 **ACPTransport**. Routes RPC responses and `session/update` notifications. One
@@ -42,25 +44,33 @@ protocol traffic.
 
 **SessionManager**: The Lua orchestrator for one conversation. Owns the
 **ChatWidget**, holds the active **ACP Session** id, routes `session/update`
-events to the **MessageWriter**, **PermissionManager**, and **ChatHistory**. The
-isolation unit for this plugin. _Avoid_: "the session" — say SessionManager.
+events to the **MessageWriter**, **PermissionManager**, and **ChatHistory**, and
+receives its **ACPClient** from its creator. One SessionManager owns one ACP
+conversation for its whole lifetime; starting or loading another conversation
+requires another SessionManager. The isolation unit for this plugin. _Avoid_:
+"the session" — say SessionManager.
+
+**SessionStarter**: The one-shot startup owner inside a **SessionManager**. It
+waits for the injected **ACPClient**, sends exactly one `session/new` or
+`session/load`, and owns startup cancellation and late-response cleanup. It
+does not resolve providers, create UI, or place sessions.
 
 **Session key**: The integer **SessionRegistry** key, assigned at creation and
 stable for the **SessionManager**'s whole life. The only stable identity a
 **Session** has; published to users on every hook payload. _Avoid_: keying
 anything off a **Tabpage** handle.
 
-**Session title**: The human-readable label for a **SessionManager**, held on
-**ChatHistory**. Derived from the first prompt submit, or inherited from the
-**Provider** on restore. Written once, so it stays stable as the conversation
-grows. Labels session-picker entries. _Avoid_: bare "title" — say Session title,
-or **Tool Call** title.
+**Session title**: Optional local navigation metadata for a **SessionManager**,
+held on **ChatHistory**. Derived from the first prompt submit, or seeded by a
+**Provider**'s `session/list` item on restore when present. It is never sent to
+the provider during `session/new` or `session/load`. Labels session-picker
+entries. _Avoid_: bare "title" — say Session title, or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
 **SessionManager**. The only sanctioned entry point from `init.lua`.
 `show_session` is the single path that moves a **SessionManager** into a
-**Tabpage**; three in-place re-render sites call `ChatWidget:show` directly. See
-ADR 0008.
+**Tabpage**; `replace` owns transactional replacement. Three in-place re-render
+sites call `ChatWidget:show` directly. See ADR 0008.
 
 ### Tabpage scope
 
@@ -76,7 +86,7 @@ closing a widget destroys nothing.
 
 ### Lifecycle verbs
 
-Three distinct operations. "Close" named two of them.
+Four distinct operations. "Close" named two of them.
 
 **Hide**: Close a **ChatWidget**'s windows while the **SessionManager**, its
 **ACP Session** and its generation all stay alive. Produces a **Background
@@ -91,6 +101,15 @@ step toward this.
 can take it. The displaced **SessionManager** keeps running as a **Background
 session**. _Avoid_: "replace", "swap out" — both imply the outgoing session
 ends.
+
+**Replace**: Start or select a distinct target **SessionManager** and keep the
+source intact until the target is ready. When the source is visible, show the
+target before destroying the source; a hidden source produces a hidden target.
+A newly started target has a new **Session key**, **ChatWidget**, and state
+containers. If the requested **ACP Session** is already owned by another manager
+on the same **ACPClient**, that existing manager is the target and no second
+`session/load` is sent. A failed target is destroyed while the source stays
+intact. Distinct from **Evict**, which only hides the displaced manager.
 
 ### UI surface
 
@@ -243,12 +262,13 @@ enabled by default.
 ## Relationships
 
 - A **SessionRegistry** maps each **Session key** to one **SessionManager**.
-- A **SessionManager** owns one **ChatWidget** and references one **ACP
-  Session** id on one **AgentInstance**.
+- A **SessionManager** owns one **ChatWidget**, one **SessionStarter**, and one
+  pending or ready **ACP Session** on its injected **ACPClient** for life.
 - A **ChatWidget** is visible in at most one **Tabpage**, and a **Tabpage**
   shows at most one **ChatWidget**. Both may be zero.
 - One **AgentInstance** per **Provider** name, shared across every
-  **SessionManager**.
+  **SessionManager**; only **AgentInstance** initiates provider client and
+  process creation.
 - A **ChatWidget** owns one **MessageWriter** which owns many **Tool Call
   Blocks** keyed by tool call id.
 - A **Permission Request** belongs to exactly one **Tool Call** (by id) on
@@ -281,15 +301,18 @@ enabled by default.
 - "Title" meant four things: `ChatHistory.title` (local, from the first prompt),
   `SessionInfo.title` (provider-side, via `session/list`), `ToolCall.title`
   (block label, ACP-required), and an unused `AgentInfo.title`. Resolved:
-  **Session title** covers the first two — the provider's value seeds the local
-  one on restore. For a new session, the first prompt seeds it. **Tool Call**
-  title covers the third. The unused one gets no term. ACP
+  **Session title** covers the first two — the provider's optional value seeds
+  the local one on restore when present. For a new session, the first prompt
+  seeds it. **Tool Call** title covers the third. The unused one gets no term. ACP
   `session_info_update` may carry a live title, but the current handler treats
   session metadata as informational and does not update the local title.
 - "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle verbs**.
   The public `Agentic.close` keeps its name for API compatibility but performs a
   **Hide**, as does the `q` keymap. Two user-facing docs shipped disagreeing about
   which one `q` did — hence the pinned verbs.
+- "Replace" was used for tabpage eviction and for ending one conversation in
+  favor of another. Resolved: **Evict** only hides; **Replace** commits a ready
+  target and destroys its source.
 - "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
   object, and the LLM behind the provider. Resolved: **Provider** for the
   subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain

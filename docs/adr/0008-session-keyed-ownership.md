@@ -1,7 +1,7 @@
 # 0008. Session-keyed ownership
 
 - Status: accepted
-- Last updated: 2026-07-30
+- Last updated: 2026-08-09
 - Related: PR #283, PR #261, issue #282
 
 ## Context
@@ -31,6 +31,14 @@ incrementing integer. `create` assigns `session_key` _after_
 `SessionManager:new` returns. `SessionRegistry.show_session` repoints
 `_most_recent` before the first show, while `_previous_most_recent` preserves
 the displaced session as the size donor exposed by `SessionRegistry.list`.
+
+**Process and conversation startup have separate owners.** `AgentInstance` is
+the sole factory and cache for the shared `ACPClient`; constructing that client
+is the only path that starts its provider process. `SessionManager:new` receives
+the client and never resolves or starts a provider. Each manager constructs one
+`SessionStarter`, which waits for client readiness and sends exactly one
+`session/new` or `session/load`. The manager therefore owns one pending or ready
+ACP conversation for life; another start or load requires another manager.
 
 **Placement is derived.** `ChatWidget:get_visible_tab_id()` resolves the tabpage
 from the chat window; `is_open` is `get_visible_tab_id() ~= nil`.
@@ -62,15 +70,29 @@ can break the invariant; a fourth needs the same proof.
 | `init.lua` clipboard `on_paste` | Resolves via `WidgetRegistry` from the buffer under the cursor. |
 
 **Sessions outlive tabpages.** No `TabClosed` autocmd. A session whose tabpage
-closed reports `get_visible_tab_id()` nil and keeps generating. Destruction is
-explicit only: `Agentic.destroy_session`, provider switch, restore's
-empty-session reclamation. `SessionRegistry.destroy` removes the key before
-`session:destroy()` and repoints `_most_recent`.
+closed reports `get_visible_tab_id()` nil and keeps generating. Destruction
+occurs only through a destructive user action or after a replacement commits.
+`SessionRegistry.destroy` removes the key before `session:destroy()` and
+repoints `_most_recent`.
 
-**Restore is additive.** `SessionRestore` creates a session, loads into it,
-shows it, then destroys the session it resolved — only if that one is empty (no
-messages, files, selections, diagnostics, or non-blank draft). Order matters:
-`create()` can fail, and the outgoing session is the size donor.
+**Conversation changes are transactional replacements.** `SessionRegistry`
+owns the transaction used by the `/new` prompt command, provider switch, and
+restore. It keeps the source registered and unchanged while a distinct target
+starts. Startup failure destroys only the target. Once ready, provider-switch
+continuity is prepared on fresh target-owned containers. For a visible source,
+`commit_replacement` re-resolves its live tabpage and anchor, makes it the exact
+size donor, calls `show_session` so hide records the outgoing widget size and
+show applies it to the target, then destroys the source. A hidden source stays
+hidden during commit. No source is also valid: the ready target is shown with
+no continuity copy or size donor, and failure leaves no manager or widget.
+
+**Restore does not require a placeholder manager.** Restore entry points
+resolve a provider client through `AgentInstance` and pass a context containing
+that client to `SessionRestore`. Selection creates no manager. Choosing an ACP
+session creates exactly one load target. When the same client already has a
+manager claiming that ACP session id, it becomes the target without another
+`session/load`; choosing the source manager is a no-op. Provider list title and
+timestamp are optional restore metadata, not provider-facing startup state.
 
 **State lives public on its owning instance.** `ChatWidget.headers` and
 `DiffCoordinator.diff_state` are mutated in place. `.luarc.json` sets
@@ -91,9 +113,8 @@ what it closed over. `SessionManager._destroyed` is set at the top of `destroy`
 and checked _inside_ every handler and scheduled callback;
 `ACPClient:__with_subscriber` re-resolves `subscribers[session_id]` inside its
 scheduled callback, closing the whole class at one site;
-`SessionManager:_bootstrap_session` is guarded on `_destroyed` and
-`_is_restoring_session`; `StatusAnimation._epoch` invalidates a frame callback
-that fired before `stop`.
+`SessionStarter` owns startup cancellation and late-response cleanup;
+`StatusAnimation._epoch` invalidates a frame callback that fired before `stop`.
 
 `on_request_permission` cannot simply return: it owes a JSON-RPC response, and
 the provider subprocess is shared across sessions (ADR 0004), so an unanswered
@@ -101,6 +122,11 @@ request outlives its session. Both liveness gates answer
 `outcome = "cancelled"`. A nil option id anywhere in that chain means cancelled
 — `selected` with no `optionId` is not a valid `RequestPermissionOutcome`, and
 `PermissionManager:clear` resolves pending requests with nil during teardown.
+
+`SessionStarter:cancel` owns the startup boundary: it cancels a claimed
+provider session at most once and rejects a late create/load response after its
+manager has been destroyed. `SessionManager:destroy` cancels the starter before
+tearing down manager-owned state and UI.
 
 **Destroying a session must not take a tabpage with it.** `ChatWidget:destroy`
 runs `_ensure_fallback_window` (shared with `hide`) in the widget's _own_ tabpage
@@ -123,7 +149,9 @@ prompt to label `select_session` rows.
 - A session can generate with no window anywhere. Code assuming a visible window
   must nil-check `get_visible_tab_id()` and degrade.
 - Nothing reaps sessions. A user who never calls `destroy_session` accumulates
-  them, each holding an ACP session on the shared subprocess (ADR 0004).
+  sessions created additively, each holding an ACP session on the shared
+  subprocess (ADR 0004). Successful replacement does not accumulate its
+  source.
 - `_most_recent` is a mutable cursor written by `show_session`,
   `set_most_recent` and `resolve_or_create`. Creating without showing strands
   the cursor, which is how a closed-widget provider switch left a session
@@ -147,6 +175,10 @@ prompt to label `select_session` rows.
 | Keep `vim.t` for diff and header state                           | Returns copies, so nested mutation silently did not persist, and tab-scoped storage cannot follow a session that moves or runs in none.                                                    |
 | Weak-valued `sessions` table                                     | Once `cancel_session` drops the subscriber the registry is the only strong reference, so a wanted background session would be collected.                                                   |
 | Reuse widget, buffers or `config_options` on provider switch     | Providers announce different option sets; inheriting leaks state the new provider never declared. Fresh session with replayed messages is honest.                                          |
+| Reuse a `SessionManager` for `session/new` or `session/load`     | Manager-owned UI and state survive reset paths, so the new conversation retains traces of the old one. A fresh manager and widget make ownership enforceable.                              |
+| Destroy the source before its replacement is ready               | Provider startup can fail. Early destruction loses the working conversation and removes the live widget-size donor.                                                                        |
+| Create a placeholder manager to resolve a provider client        | Merely opening the restore picker allocates UI and starts an ACP conversation. `AgentInstance` can resolve the shared client without session state.                                        |
+| Require a session title during create, load, or provider switch  | ACP startup does not require it and a provider-list item may omit it. The title is optional local navigation metadata and is never sent to the provider.                                   |
 | Cycle sessions in `list()` order                                 | `list()` is recency-ordered and `show_session` rewrites it, so each press reorders the sequence being traversed and `prev` stops inverting `next`.                                         |
 | Capture the size donor in `show_session` before repointing       | `resolve_or_create` repoints one call earlier, so the guard would duplicate there and at every future write site. Recording the displaced session fixes all paths at the cursor.           |
 | Fetch session titles from `session/list`                         | No ACP title on `session/new`, `session/load`, or any `SessionUpdate`. Reconciling costs a round trip per provider before the picker renders.                                              |
@@ -158,6 +190,7 @@ prompt to label `select_session` rows.
 | ---------- | -------------------------------------------------------------------------------------------- |
 | 2026-07-25 | Initial decision: ownership keyed by session, placement derived from the widget.             |
 | 2026-07-30 | Clarified that the buffer-name key suffix is published per header render, not retroactively. |
+| 2026-08-09 | Replaced additive restore with atomic one-shot session replacement.                          |
 
 ## Sources
 
