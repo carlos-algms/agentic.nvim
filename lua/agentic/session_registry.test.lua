@@ -1862,6 +1862,38 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         assert.is_nil(SessionRegistry.get(40))
     end)
 
+    it(
+        "retains an already-loaded target when placement cannot commit",
+        function()
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            source.widget.find_first_non_widget_window = function()
+                return -1
+            end
+            SessionRegistry.sessions[40] = source
+            local target = new_session("loaded")
+            target.session_id = "load-id"
+            target.agent = new_agent("Injected")
+            target.session_key = 41
+            target.widget.session_key = 41
+            SessionRegistry.sessions[41] = target
+
+            local resolved = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = target.agent }
+            )
+
+            assert.equal(target, resolved)
+            assert.equal(source, SessionRegistry.get(40))
+            assert.equal(target, SessionRegistry.get(41))
+            assert.same({}, events)
+        end
+    )
+
     it("treats replacement with the same loaded manager as a no-op", function()
         local source = new_session("source")
         source.session_id = "load-id"

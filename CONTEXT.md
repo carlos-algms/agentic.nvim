@@ -98,9 +98,9 @@ session**. Reversible. _Avoid_: "close", "destroy".
 
 **Destroy**: Remove a **SessionManager** from the **SessionRegistry**, cancel
 its **ACP Session**, delete its **ChatWidget buffers**. Irreversible. It follows
-explicit user intent, rolls back a failed replacement target, or tears down the
-source after replacement commits. _Avoid_: "close"; a **Hide** is not a step
-toward this.
+explicit user intent, rolls back a newly started replacement target, or tears
+down the source after replacement commits. _Avoid_: "close"; a **Hide** is not
+a step toward this.
 
 **Evict**: **Hide** whichever **ChatWidget** occupies a **Tabpage** so another
 can take it. The displaced **SessionManager** keeps running as a **Background
@@ -114,8 +114,9 @@ the target without flicker; a hidden source produces a hidden target. A newly
 started target has a new **Session key**, **ChatWidget**, and state containers.
 If the requested **ACP Session** is already owned by another manager on the same
 **ACPClient**, that existing manager is the target and no second `session/load`
-is sent. A failed target is destroyed while the source stays intact. Distinct
-from **Evict**, which only hides the displaced manager.
+is sent. Transaction rollback destroys only a newly started target; an existing
+claimant remains owned by its original lifecycle. The source stays intact.
+Distinct from **Evict**, which only hides the displaced manager.
 
 ### UI surface
 

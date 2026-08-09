@@ -79,16 +79,18 @@ removes the key before `session:destroy()` and repoints `_most_recent`.
 **Conversation changes are transactional replacements.** `SessionRegistry`
 owns the transaction used by the `/new` prompt command, provider switch, and
 restore. It keeps the source registered and unchanged while a distinct target
-starts. Startup or placement failure destroys only the target. Once ready,
-provider-switch continuity is prepared on fresh target-owned containers. For a
-visible source, `commit_replacement` re-resolves its live tabpage and anchor,
-makes it the exact size donor, calls `show_session` so hide records the outgoing
-widget size and show applies it to the target, then destroys the source. A
-hidden source stays hidden during commit. A visible source without a usable
-anchor cannot preserve that ordering, so commit rolls back the target and
-retains the source. No source is also valid: the ready target is shown with no
-continuity copy or size donor, and failure leaves no target manager or widget
-while preserving unrelated registered sessions.
+starts. Startup or placement failure destroys the target only when that
+transaction created it. An existing claimant remains owned by its original
+lifecycle. Once ready, provider-switch continuity is prepared on fresh
+target-owned containers. For a visible source, `commit_replacement` re-resolves
+its live tabpage and anchor, makes it the exact size donor, calls `show_session`
+so hide records the outgoing widget size and show applies it to the target, then
+destroys the source. A hidden source stays hidden during commit. A visible
+source without a usable anchor cannot preserve that ordering, so commit rolls
+back the transaction and retains the source and any pre-existing target. No
+source is also valid: the ready target is shown with no continuity copy or size
+donor, and failure leaves no newly created target manager or widget while
+preserving unrelated registered sessions.
 
 **Restore does not require a placeholder manager.** Restore entry points
 use the source manager's injected client when present; without a source they

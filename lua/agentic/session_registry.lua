@@ -45,6 +45,9 @@ local function remember_most_recent(session)
     SessionRegistry._most_recent = session
 end
 
+--- @type fun(source: agentic.SessionManager|nil, target: agentic.SessionManager, opts: agentic.SessionReplacementOpts, destroy_target_on_rollback: boolean): boolean
+local commit_replacement
+
 --- @param provider_name agentic.UserConfig.ProviderName|nil Defaults to `Config.provider`
 --- @param start_spec agentic.SessionStartSpec|nil Defaults to a new session
 --- @param agent agentic.acp.ACPClient|nil
@@ -90,7 +93,13 @@ end
 --- @param source agentic.SessionManager|nil
 --- @param target agentic.SessionManager
 --- @param opts agentic.SessionReplacementOpts
-local function await_replacement(source, target, opts)
+--- @param destroy_target_on_rollback boolean
+local function await_replacement(
+    source,
+    target,
+    opts,
+    destroy_target_on_rollback
+)
     local source_token = source or NIL_REPLACEMENT_SOURCE
     --- @diagnostic disable-next-line: invisible
     local pending = target._pending_replacement_sources or {}
@@ -112,11 +121,15 @@ local function await_replacement(source, target, opts)
 
     target:on_session_ready(function()
         clear_pending()
-        SessionRegistry.commit_replacement(source, target, opts)
+        commit_replacement(source, target, opts, destroy_target_on_rollback)
     end, function()
         clear_pending()
         local target_key = target.session_key
-        if target_key and SessionRegistry.sessions[target_key] == target then
+        if
+            destroy_target_on_rollback
+            and target_key
+            and SessionRegistry.sessions[target_key] == target
+        then
             SessionRegistry.destroy(target_key)
         end
     end)
@@ -161,9 +174,9 @@ function SessionRegistry.replace(source, provider_name, start_spec, opts)
             if replacement_is_pending(source, existing) then
                 return existing
             elseif existing:owns_ready_acp_session(start_spec.session_id) then
-                SessionRegistry.commit_replacement(source, existing, opts)
+                commit_replacement(source, existing, opts, false)
             else
-                await_replacement(source, existing, opts)
+                await_replacement(source, existing, opts, false)
             end
             return existing
         end
@@ -174,20 +187,26 @@ function SessionRegistry.replace(source, provider_name, start_spec, opts)
         return nil
     end
 
-    await_replacement(source, target, opts)
+    await_replacement(source, target, opts, true)
 
     return target
 end
 
 --- @param source agentic.SessionManager|nil
 --- @param target agentic.SessionManager
---- @param opts agentic.SessionReplacementOpts|nil
+--- @param opts agentic.SessionReplacementOpts
+--- @param destroy_target_on_rollback boolean
 --- @return boolean committed
-function SessionRegistry.commit_replacement(source, target, opts)
-    opts = opts or {}
+commit_replacement = function(source, target, opts, destroy_target_on_rollback)
     local target_key = target.session_key
     if not target_key or SessionRegistry.sessions[target_key] ~= target then
         return false
+    end
+
+    local function rollback_target()
+        if destroy_target_on_rollback then
+            SessionRegistry.destroy(target_key)
+        end
     end
 
     if source == target then
@@ -208,7 +227,7 @@ function SessionRegistry.commit_replacement(source, target, opts)
 
     local source_key = source.session_key
     if not source_key or SessionRegistry.sessions[source_key] ~= source then
-        SessionRegistry.destroy(target_key)
+        rollback_target()
         return false
     end
 
@@ -218,7 +237,7 @@ function SessionRegistry.commit_replacement(source, target, opts)
             Logger.notify(
                 "Session replacement prepare error: " .. vim.inspect(err)
             )
-            SessionRegistry.destroy(target_key)
+            rollback_target()
             return false
         end
     end
@@ -229,7 +248,7 @@ function SessionRegistry.commit_replacement(source, target, opts)
         or nil
 
     if source_tab and not (anchor and BufHelpers.is_win_usable(anchor)) then
-        SessionRegistry.destroy(target_key)
+        rollback_target()
         return false
     elseif anchor and BufHelpers.is_win_usable(anchor) then
         -- `ChatWidget:show` inherits from registry recency after `show_session`
@@ -255,6 +274,14 @@ function SessionRegistry.commit_replacement(source, target, opts)
         opts.on_commit(target, source)
     end
     return true
+end
+
+--- @param source agentic.SessionManager|nil
+--- @param target agentic.SessionManager
+--- @param opts agentic.SessionReplacementOpts|nil
+--- @return boolean committed
+function SessionRegistry.commit_replacement(source, target, opts)
+    return commit_replacement(source, target, opts or {}, false)
 end
 
 --- @return agentic.SessionManager|nil
