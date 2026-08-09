@@ -1496,6 +1496,8 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         end
 
         function session:on_session_ready(on_ready, on_failure)
+            self.ready_callbacks = self.ready_callbacks or {}
+            self.ready_callbacks[#self.ready_callbacks + 1] = on_ready
             self.ready_callback = on_ready
             self.failure_callback = on_failure
         end
@@ -1505,7 +1507,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         end
 
         function session:owns_ready_acp_session(session_id)
-            return self.session_id == session_id
+            return self.ready_owned ~= false and self.session_id == session_id
         end
 
         sessions[#sessions + 1] = session
@@ -1867,4 +1869,46 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         assert.spy(new_stub).was.called(0)
         assert.same({}, events)
     end)
+
+    it(
+        "deduplicates rapid replacement requests for one in-flight target",
+        function()
+            local agent = new_agent("Injected")
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            SessionRegistry.sessions[40] = source
+            local target = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            target.agent = agent
+            target.session_id = "load-id"
+            target.ready_owned = false
+
+            local duplicate = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            assert.equal(target, duplicate)
+
+            for _, callback in ipairs(target.ready_callbacks) do
+                callback(target)
+            end
+
+            assert.equal(target, SessionRegistry.get(target.session_key))
+            assert.is_nil(SessionRegistry.get(40))
+            assert.same({
+                "target:start",
+                "source:hide",
+                "target:show",
+                "source:destroy",
+            }, events)
+        end
+    )
 end)

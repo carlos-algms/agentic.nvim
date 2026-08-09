@@ -38,6 +38,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field _session_creation_failed boolean
 --- @field _start_called boolean
 --- @field _session_ready_callbacks fun(succeeded: boolean)[]
+--- @field _pending_replacement_sources? table<any, boolean>
 local SessionManager = {}
 SessionManager.__index = SessionManager
 
@@ -851,6 +852,12 @@ function SessionManager:start(spec, callback)
                     err = err,
                 }
                 Hooks.invoke("on_create_session_response", hook_data)
+            else
+                Logger.notify(
+                    "Failed to load session: "
+                        .. (err and err.message or "unknown error"),
+                    vim.log.levels.ERROR
+                )
             end
             SessionManager._resolve_session_ready_callbacks(self, false)
             if callback then
@@ -994,6 +1001,31 @@ function SessionManager:destroy()
     end
     if self.permission_manager then
         self.permission_manager:clear()
+    end
+    self._session_ready_callbacks = {}
+    self.history_to_send = nil
+    if self.chat_history then
+        self.chat_history.session_id = nil
+        self.chat_history.title = ""
+        self.chat_history.messages = {}
+    end
+    if self.file_list then
+        self.file_list:clear()
+    end
+    if self.code_selection then
+        self.code_selection:clear()
+    end
+    if self.diagnostics_list then
+        self.diagnostics_list:clear()
+    end
+    if self.todo_list then
+        self.todo_list:clear()
+    end
+    if self.config_options then
+        self.config_options:clear()
+    end
+    if self.session_state then
+        self.session_state:clear()
     end
     if self.widget.buf_nrs and self.widget.buf_nrs.input then
         SlashCommands.setCommands(self.widget.buf_nrs.input, {})

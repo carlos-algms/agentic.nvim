@@ -2237,21 +2237,27 @@ describe("agentic.SessionManager", function()
                     title = "",
                     add_message = function() end,
                 },
-                todo_list = { close_if_all_completed = function() end },
+                todo_list = {
+                    close_if_all_completed = function() end,
+                    clear = function() end,
+                },
                 code_selection = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 file_list = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 diagnostics_list = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 message_writer = {
                     write_message = function() end,
@@ -2504,6 +2510,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
     local AgentInstance = require("agentic.acp.agent_instance")
     local SessionRegistry = require("agentic.session_registry")
     local get_instance_stub
+    local notify_stub
     local managers
 
     local function new_agent()
@@ -2515,6 +2522,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             load_calls = 0,
             cancelled = {},
             create_error = nil,
+            load_error = nil,
         }
 
         function agent:when_ready(on_ready, on_failure)
@@ -2533,7 +2541,10 @@ describe("agentic.SessionManager one-shot lifecycle", function()
 
         function agent:load_session(_id, _cwd, _servers, _handlers, callback)
             self.load_calls = self.load_calls + 1
-            callback(self.load_response or {}, nil)
+            callback(
+                self.load_error and nil or self.load_response or {},
+                self.load_error
+            )
         end
 
         function agent:cancel_session(session_id)
@@ -2557,6 +2568,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
     before_each(function()
         managers = {}
         get_instance_stub = spy.stub(AgentInstance, "get_instance")
+        notify_stub = spy.stub(Logger, "notify")
     end)
 
     after_each(function()
@@ -2564,6 +2576,7 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             manager:destroy()
         end
         Config.hooks.on_create_session_response = nil
+        notify_stub:revert()
         get_instance_stub:revert()
     end)
 
@@ -2709,6 +2722,24 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         end
     )
 
+    it("reports a load request failure before rollback", function()
+        local agent = new_agent()
+        agent.load_error = { code = -32000, message = "load failed" }
+        local manager = make_manager(agent)
+
+        manager:start({ kind = "load", session_id = "load-id" })
+        agent.ready_callback(agent)
+        flush_until(function()
+            return notify_stub.call_count > 0
+        end)
+
+        assert.spy(notify_stub).was.called(1)
+        assert.equal(
+            "Failed to load session: load failed",
+            notify_stub.calls[1][1]
+        )
+    end)
+
     it("rejects a second start without dropping the adopted session", function()
         local agent = new_agent()
         local manager = make_manager(agent)
@@ -2818,11 +2849,16 @@ describe("agentic.SessionManager one-shot lifecycle", function()
             end)
         ]])
 
-        assert.is_true(child.lua_get("_G.t.dispatch_fast"))
-        assert.is_true(child.lua_get("_G.t.ok"))
-        assert.is_false(child.lua_get("_G.t.stop_fast"))
-        assert.is_false(child.lua_get("_G.t.widget_fast"))
+        local dispatch_fast = child.lua_get("_G.t.dispatch_fast")
+        local callback_ok = child.lua_get("_G.t.ok")
+        local stop_fast = child.lua_get("_G.t.stop_fast")
+        local widget_fast = child.lua_get("_G.t.widget_fast")
         child.stop()
+
+        assert.is_true(dispatch_fast)
+        assert.is_true(callback_ok)
+        assert.is_false(stop_fast)
+        assert.is_false(widget_fast)
     end)
 
     it("delegates slash-new to registry replacement", function()
@@ -2870,11 +2906,28 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         local manager = make_manager(agent)
         manager:start({ kind = "new" })
         local starter_cancel_stub = spy.stub(manager._starter, "cancel")
-        local status_stop_stub = spy.stub(manager.status_animation, "stop")
+        local status_stop_stub = spy.on(manager.status_animation, "stop")
         local permission_clear_stub =
-            spy.stub(manager.permission_manager, "clear")
-        local widget_destroy_stub = spy.stub(manager.widget, "destroy")
-        local writer_destroy_stub = spy.stub(manager.message_writer, "destroy")
+            spy.on(manager.permission_manager, "clear")
+        local file_clear_stub = spy.on(manager.file_list, "clear")
+        local selection_clear_stub = spy.on(manager.code_selection, "clear")
+        local diagnostics_clear_stub = spy.on(manager.diagnostics_list, "clear")
+        local todo_clear_stub = spy.on(manager.todo_list, "clear")
+        local options_clear_stub = spy.on(manager.config_options, "clear")
+        local state_clear_stub = spy.on(manager.session_state, "clear")
+        local widget_destroy_stub = spy.on(manager.widget, "destroy")
+        local writer_destroy_stub = spy.on(manager.message_writer, "destroy")
+        manager.chat_history.session_id = "pending-id"
+        manager.chat_history.title = "pending title"
+        manager.chat_history.messages = { { type = "agent", text = "old" } }
+        manager.history_to_send = {}
+        manager._session_ready_callbacks = { function() end }
+        manager.file_list._files = { "old" }
+        manager.code_selection._selections = { { lines = { "old" } } }
+        manager.diagnostics_list._diagnostics = { { message = "old" } }
+        manager.todo_list.total_count = 1
+        manager.config_options.options = { { id = "old" } }
+        manager.session_state._usage = { used = 1, size = 2 }
 
         manager:destroy()
         manager:destroy()
@@ -2882,11 +2935,34 @@ describe("agentic.SessionManager one-shot lifecycle", function()
         assert.spy(starter_cancel_stub).was.called(1)
         assert.spy(status_stop_stub).was.called(1)
         assert.spy(permission_clear_stub).was.called(1)
+        assert.spy(file_clear_stub).was.called(1)
+        assert.spy(selection_clear_stub).was.called(1)
+        assert.spy(diagnostics_clear_stub).was.called(1)
+        assert.spy(todo_clear_stub).was.called(1)
+        assert.spy(options_clear_stub).was.called(1)
+        assert.spy(state_clear_stub).was.called(1)
         assert.spy(widget_destroy_stub).was.called(1)
         assert.spy(writer_destroy_stub).was.called(1)
+        assert.is_nil(manager.chat_history.session_id)
+        assert.equal("", manager.chat_history.title)
+        assert.equal(0, #manager.chat_history.messages)
+        assert.is_nil(manager.history_to_send)
+        assert.equal(0, #manager._session_ready_callbacks)
+        assert.is_true(manager.file_list:is_empty())
+        assert.is_true(manager.code_selection:is_empty())
+        assert.is_true(manager.diagnostics_list:is_empty())
+        assert.is_true(manager.todo_list:is_empty())
+        assert.equal(0, #manager.config_options.options)
+        assert.is_nil(manager.session_state:get_context_used())
         starter_cancel_stub:revert()
         status_stop_stub:revert()
         permission_clear_stub:revert()
+        file_clear_stub:revert()
+        selection_clear_stub:revert()
+        diagnostics_clear_stub:revert()
+        todo_clear_stub:revert()
+        options_clear_stub:revert()
+        state_clear_stub:revert()
         widget_destroy_stub:revert()
         writer_destroy_stub:revert()
     end)

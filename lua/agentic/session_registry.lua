@@ -8,6 +8,7 @@ local SessionManager = require("agentic.session_manager")
 
 local KEEP_CURRENT_SESSION = "Keep current session in the background"
 local DESTROY_CURRENT_SESSION = "Destroy current session"
+local NIL_REPLACEMENT_SOURCE = {}
 
 --- @class agentic.SessionRegistry
 --- @field sessions table<integer, agentic.SessionManager|nil> Keyed by session key
@@ -85,6 +86,42 @@ function SessionRegistry.create(provider_name, start_spec, agent)
     return session
 end
 
+--- Register one commit callback per source/target pair while startup is pending.
+--- @param source agentic.SessionManager|nil
+--- @param target agentic.SessionManager
+--- @param opts agentic.SessionReplacementOpts
+local function await_replacement(source, target, opts)
+    local source_token = source or NIL_REPLACEMENT_SOURCE
+    --- @diagnostic disable-next-line: invisible
+    local pending = target._pending_replacement_sources or {}
+    if pending[source_token] then
+        return
+    end
+
+    pending[source_token] = true
+    --- @diagnostic disable-next-line: invisible
+    target._pending_replacement_sources = pending
+
+    local function clear_pending()
+        pending[source_token] = nil
+        if next(pending) == nil then
+            --- @diagnostic disable-next-line: invisible
+            target._pending_replacement_sources = nil
+        end
+    end
+
+    target:on_session_ready(function()
+        clear_pending()
+        SessionRegistry.commit_replacement(source, target, opts)
+    end, function()
+        clear_pending()
+        local target_key = target.session_key
+        if target_key and SessionRegistry.sessions[target_key] == target then
+            SessionRegistry.destroy(target_key)
+        end
+    end)
+end
+
 --- @class agentic.SessionReplacementOpts
 --- @field agent? agentic.acp.ACPClient
 --- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager)
@@ -114,9 +151,7 @@ function SessionRegistry.replace(source, provider_name, start_spec, opts)
             if existing:owns_ready_acp_session(start_spec.session_id) then
                 SessionRegistry.commit_replacement(source, existing, opts)
             else
-                existing:on_session_ready(function()
-                    SessionRegistry.commit_replacement(source, existing, opts)
-                end)
+                await_replacement(source, existing, opts)
             end
             return existing
         end
@@ -127,14 +162,7 @@ function SessionRegistry.replace(source, provider_name, start_spec, opts)
         return nil
     end
 
-    target:on_session_ready(function()
-        SessionRegistry.commit_replacement(source, target, opts)
-    end, function()
-        local target_key = target.session_key
-        if target_key and SessionRegistry.sessions[target_key] == target then
-            SessionRegistry.destroy(target_key)
-        end
-    end)
+    await_replacement(source, target, opts)
 
     return target
 end
