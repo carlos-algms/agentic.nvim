@@ -110,13 +110,15 @@ ends.
 **Replace**: Start or select a distinct target **SessionManager** and keep the
 source intact until the target is ready. When the source is visible, show the
 target before destroying the source so its recorded widget size transfers to
-the target without flicker; a hidden source produces a hidden target. A newly
-started target has a new **Session key**, **ChatWidget**, and state containers.
-If the requested **ACP Session** is already owned by another manager on the same
-**ACPClient**, that existing manager is the target and no second `session/load`
-is sent. Transaction rollback destroys only a newly started target; an existing
-claimant remains owned by its original lifecycle. The source stays intact.
-Distinct from **Evict**, which only hides the displaced manager.
+the target without flicker. With a hidden source, target placement does not
+change: a newly started target remains hidden, while an existing claimant keeps
+its current placement. A newly started target has a new **Session key**,
+**ChatWidget**, and state containers. If the requested **ACP Session** is
+already owned by another manager on the same **ACPClient**, that existing
+manager is the target and no second `session/load` is sent. Transaction rollback
+destroys only a newly started target; an existing claimant remains owned by its
+original lifecycle. The source stays intact. Distinct from **Evict**, which only
+hides the displaced manager.
 
 ### UI surface
 

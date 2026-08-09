@@ -85,12 +85,14 @@ lifecycle. Once ready, provider-switch continuity is prepared on fresh
 target-owned containers. For a visible source, `commit_replacement` re-resolves
 its live tabpage and anchor, makes it the exact size donor, calls `show_session`
 so hide records the outgoing widget size and show applies it to the target, then
-destroys the source. A hidden source stays hidden during commit. A visible
-source without a usable anchor cannot preserve that ordering, so commit rolls
-back the transaction and retains the source and any pre-existing target. No
-source is also valid: the ready target is shown with no continuity copy or size
-donor, and failure leaves no newly created target manager or widget while
-preserving unrelated registered sessions.
+destroys the source. With a hidden source, commit does not change target
+placement: a newly started target remains hidden, while an existing claimant
+keeps its current placement. A visible source without a usable anchor cannot
+preserve show-before-destroy ordering, so commit rolls back the transaction and
+retains the source and any pre-existing target. No source is also valid: the
+ready target is shown with no continuity copy or size donor, and failure leaves
+no newly created target manager or widget while preserving unrelated registered
+sessions.
 
 **Restore does not require a placeholder manager.** Restore entry points
 use the source manager's injected client when present; without a source they

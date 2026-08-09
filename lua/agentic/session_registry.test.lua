@@ -1894,6 +1894,35 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         end
     )
 
+    it("retains an existing in-flight target when its wait fails", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = new_session("loaded")
+        target.session_id = "load-id"
+        target.agent = new_agent("Injected")
+        target.owns_ready_acp_session = function()
+            return false
+        end
+        target.session_key = 41
+        target.widget.session_key = 41
+        SessionRegistry.sessions[41] = target
+
+        local resolved = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            { agent = target.agent }
+        )
+        target.failure_callback(target)
+
+        assert.equal(target, resolved)
+        assert.equal(source, SessionRegistry.get(40))
+        assert.equal(target, SessionRegistry.get(41))
+        assert.same({}, events)
+    end)
+
     it("treats replacement with the same loaded manager as a no-op", function()
         local source = new_session("source")
         source.session_id = "load-id"
