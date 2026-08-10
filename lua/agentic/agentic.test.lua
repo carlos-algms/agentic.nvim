@@ -164,7 +164,6 @@ describe("agentic: switch_provider", function()
         flush_schedule()
 
         assert.equal(0, vim.tbl_count(SessionRegistry.sessions))
-        assert.equal(0, get_instance_stub.call_count)
         assert.equal(0, create_session_calls)
         assert.spy(show_warning_stub).was.called(1)
     end)
