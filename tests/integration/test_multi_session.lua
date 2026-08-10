@@ -665,8 +665,19 @@ end)()
             _G.loaded_manager = tostring(target)
             _G.loaded_subscriber = tostring(target.agent.subscribers["sid-1"])
         ]])
-        child.lua([[ require("agentic").new_session() ]])
+        child.lua([[
+            vim.ui.select = function(items, _, on_choice)
+                _G.selects = _G.selects + 1
+                on_choice(items[1])
+            end
+            require("agentic").new_session()
+        ]])
         child.flush()
+        assert.equal(2, session_count())
+        child.lua([[
+            local source = require("agentic.session_registry").sessions[2]
+            _G.source_chat = source.widget.buf_nrs.chat
+        ]])
 
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
@@ -681,6 +692,8 @@ end)()
                 return tostring(target) == _G.loaded_manager
                     and tostring(target.agent.subscribers["sid-1"])
                         == _G.loaded_subscriber
+                    and require("agentic.session_registry").sessions[2] == nil
+                    and not vim.api.nvim_buf_is_valid(_G.source_chat)
             end)()
         ]]))
     end)
