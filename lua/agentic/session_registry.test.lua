@@ -1966,7 +1966,13 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
 
         assert.equal(source, SessionRegistry.get(40))
         assert.is_nil(SessionRegistry.get(target.session_key))
-        assert.same({ "target:start", "source:hide", "target:destroy" }, events)
+        assert.equal(source, SessionRegistry.current())
+        assert.same({
+            "target:start",
+            "source:hide",
+            "target:destroy",
+            "source:show",
+        }, events)
     end)
 
     it("rolls back when a visible source has no usable anchor", function()

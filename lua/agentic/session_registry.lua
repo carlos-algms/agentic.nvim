@@ -282,6 +282,24 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
                 "Session replacement placement error: " .. vim.inspect(show_err)
             )
             rollback_target()
+            if SessionRegistry.sessions[source_key] == source then
+                SessionRegistry.set_most_recent(source_key)
+                local restored, restore_err = pcall(
+                    vim.api.nvim_win_call,
+                    anchor,
+                    function()
+                        SessionRegistry.show_session(source_key, {
+                            focus_prompt = false,
+                        })
+                    end
+                )
+                if not restored then
+                    Logger.notify(
+                        "Session replacement rollback placement error: "
+                            .. vim.inspect(restore_err)
+                    )
+                end
+            end
             return false
         end
     else
