@@ -2541,10 +2541,11 @@ describe("agentic.SessionManager one-shot lifecycle", function()
 
         function agent:load_session(_id, _cwd, _servers, _handlers, callback)
             self.load_calls = self.load_calls + 1
-            callback(
-                self.load_error and nil or self.load_response or {},
-                self.load_error
-            )
+            if self.load_error then
+                callback(nil, self.load_error)
+            else
+                callback(self.load_response or {}, nil)
+            end
         end
 
         function agent:cancel_session(session_id)
