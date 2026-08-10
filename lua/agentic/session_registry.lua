@@ -260,11 +260,12 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
     local anchor = source_tab
             and source.widget:find_first_non_widget_window(source_tab)
         or nil
+    local usable_anchor = anchor and BufHelpers.is_win_usable(anchor)
 
-    if source_tab and not (anchor and BufHelpers.is_win_usable(anchor)) then
+    if source_tab and not usable_anchor then
         rollback_target()
         return false
-    elseif anchor and BufHelpers.is_win_usable(anchor) then
+    elseif usable_anchor then
         -- `ChatWidget:show` inherits from registry recency after `show_session`
         -- captures the source's live size. Make this source the exact donor.
         SessionRegistry.set_most_recent(source_key)
@@ -273,9 +274,16 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
             opts.show_opts or {},
             { focus_prompt = false }
         )
-        vim.api.nvim_win_call(anchor, function()
+        local shown, show_err = pcall(vim.api.nvim_win_call, anchor, function()
             SessionRegistry.show_session(target_key, show_opts)
         end)
+        if not shown then
+            Logger.notify(
+                "Session replacement placement error: " .. vim.inspect(show_err)
+            )
+            rollback_target()
+            return false
+        end
     else
         SessionRegistry.set_most_recent(target_key)
     end

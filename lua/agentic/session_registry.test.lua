@@ -1906,6 +1906,30 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         assert.same({ "target:start", "source:destroy" }, events)
     end)
 
+    it("rolls back a new target when placement raises", function()
+        local source = new_session("source", vim.api.nvim_get_current_tabpage())
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        target.widget.show = function()
+            error("show failed")
+        end
+
+        assert.has_no_errors(function()
+            target.ready_callback(target)
+        end)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "source:hide", "target:destroy" }, events)
+    end)
+
     it("rolls back when a visible source has no usable anchor", function()
         local source = new_session("source", vim.api.nvim_get_current_tabpage())
         source.session_key = 40
