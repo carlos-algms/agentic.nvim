@@ -1350,23 +1350,20 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
 
     local k_old = tracker.rendered_button_count or 0
     local k_new = #section.button_lines
-    local bottom_pad_row = end_row - k_old - 1
-
     local block_start_row = self:_get_block_start_row(tracker.tool_call_id)
-    -- Floor at header + top_pad = start_row + 2. If the computed
-    -- bottom_pad_row falls into header / top_pad / body, rendered_button_count
-    -- is stale (mid-resize race) and the delete/insert would corrupt the
-    -- block. Bail without touching the buffer.
     local min_bottom_pad_row = (block_start_row or 0)
         + ToolCallBlocks.HEADER_HEIGHT
-    if bottom_pad_row < min_bottom_pad_row then
-        local recovered_count =
-            self:_recover_rendered_button_count(min_bottom_pad_row, end_row)
-        if recovered_count then
-            k_old = recovered_count
-            bottom_pad_row = end_row - k_old - 1
-        end
+    local recovered_count =
+        self:_recover_rendered_button_count(min_bottom_pad_row, end_row)
+    if recovered_count then
+        k_old = recovered_count
     end
+
+    local bottom_pad_row = end_row - k_old - 1
+    -- Floor at header + top_pad = start_row + 2. If the computed
+    -- bottom_pad_row falls into header / top_pad / body, rendered_button_count
+    -- could not be recovered and the delete/insert would corrupt the block.
+    -- Bail without touching the buffer.
     if bottom_pad_row < min_bottom_pad_row then
         Logger.debug(
             "Permission section: could not recover stale row count; skip",
