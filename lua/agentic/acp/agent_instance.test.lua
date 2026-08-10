@@ -43,6 +43,7 @@ describe("agentic.acp.AgentInstance", function()
         health_results = {
             ["codex-acp"] = true,
             ["gemini-acp"] = false,
+            ["claude-acp"] = true,
         }
         health_spy = spy.new(function(provider_name)
             return health_results[provider_name] == true
@@ -73,19 +74,13 @@ describe("agentic.acp.AgentInstance", function()
         end
     end)
 
-    it(
-        "returns nil for missing configuration without constructing a client",
-        function()
-            local client = AgentInstance.get_instance(
-                "claude-acp",
-                function() end
-            )
+    it("rejects a healthy provider with no configuration", function()
+        local client = AgentInstance.get_instance("claude-acp", function() end)
 
-            assert.is_nil(client)
-            assert.spy(health_spy).was.called_with("claude-acp")
-            assert.spy(client_new_spy).was.called(0)
-        end
-    )
+        assert.is_nil(client)
+        assert.spy(health_spy).was.called_with("claude-acp")
+        assert.spy(client_new_spy).was.called(0)
+    end)
 
     it(
         "returns nil for an unavailable command without constructing a client",
