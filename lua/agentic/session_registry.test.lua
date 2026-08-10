@@ -108,6 +108,12 @@ describe("agentic.SessionRegistry", function()
 
             function attempt:cancel()
                 self.cancelled = true
+                vim.schedule(function()
+                    self.callback(nil, {
+                        code = -32800,
+                        message = "Session startup cancelled",
+                    })
+                end)
             end
 
             return attempt
@@ -1501,6 +1507,8 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
     local SessionManager = session_manager_mock
     local get_instance_stub
     local new_stub
+    local schedule_stub
+    local scheduled
     local sessions
     local events
 
@@ -1534,7 +1542,8 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
                     events[#events + 1] = label .. ":show"
                 end,
             },
-            destroy = function()
+            destroy = function(self)
+                self.destroyed = true
                 events[#events + 1] = label .. ":destroy"
             end,
         }
@@ -1546,7 +1555,12 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
             return {}
         end
 
-        function session:complete_start() end
+        function session:complete_start()
+            if self.destroyed then
+                return
+            end
+            self.completed_start = true
+        end
 
         function session:on_session_ready(on_ready, on_failure)
             self.ready_callbacks = self.ready_callbacks or {}
@@ -1571,8 +1585,13 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         SessionRegistry._most_recent = nil
         SessionRegistry._previous_most_recent = nil
         SessionRegistry._start_attempts = {}
+        scheduled = {}
         sessions = {}
         events = {}
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled[#scheduled + 1] = callback
+        end)
         get_instance_stub = spy.stub(AgentInstance, "get_instance")
         get_instance_stub:returns(new_agent("Resolved"))
         new_stub = spy.stub(SessionManager, "new")
@@ -1592,6 +1611,7 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         SessionRegistry._most_recent = nil
         SessionRegistry._previous_most_recent = nil
         SessionRegistry._start_attempts = {}
+        schedule_stub:revert()
         new_stub:revert()
         get_instance_stub:revert()
     end)
@@ -1619,11 +1639,18 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
             local target =
                 SessionRegistry.create("claude-acp", { kind = "new" })
             local attempt = SessionRegistry._start_attempts[target]
+            local complete_start_spy = spy.on(target, "complete_start")
 
             SessionRegistry.destroy(target.session_key)
+            while #scheduled > 0 do
+                table.remove(scheduled, 1)()
+            end
 
             assert.is_true(attempt.cancelled)
+            assert.spy(complete_start_spy).was.called(1)
+            assert.is_nil(target.completed_start)
             assert.same({ "target:start", "target:destroy" }, events)
+            complete_start_spy:revert()
         end
     )
 
