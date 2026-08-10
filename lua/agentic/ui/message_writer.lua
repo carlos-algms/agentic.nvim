@@ -1321,6 +1321,25 @@ function MessageWriter:_build_status_word(tracker)
     return text, segments
 end
 
+--- @param min_row integer
+--- @param end_row integer
+--- @return integer|nil count
+function MessageWriter:_recover_rendered_button_count(min_row, end_row)
+    local ok, extmarks = pcall(
+        vim.api.nvim_buf_get_extmarks,
+        self.bufnr,
+        NS_STATUS,
+        { min_row, 0 },
+        { end_row, -1 },
+        { limit = 1 }
+    )
+    if not ok or not extmarks or not extmarks[1] then
+        return nil
+    end
+
+    return end_row - extmarks[1][2]
+end
+
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @param end_row integer 0-indexed status row before this repaint
 --- @param section agentic.ui.MessageWriter.PermissionSection
@@ -1341,8 +1360,16 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
     local min_bottom_pad_row = (block_start_row or 0)
         + ToolCallBlocks.HEADER_HEIGHT
     if bottom_pad_row < min_bottom_pad_row then
+        local recovered_count =
+            self:_recover_rendered_button_count(min_bottom_pad_row, end_row)
+        if recovered_count then
+            k_old = recovered_count
+            bottom_pad_row = end_row - k_old - 1
+        end
+    end
+    if bottom_pad_row < min_bottom_pad_row then
         Logger.debug(
-            "Permission section: bottom_pad_row inside block body; skip",
+            "Permission section: could not recover stale row count; skip",
             {
                 end_row = end_row,
                 k_old = k_old,
@@ -1350,9 +1377,6 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
                 min_bottom_pad_row = min_bottom_pad_row,
             }
         )
-        -- Stale k_old vs buffer state: reset so the next repaint recomputes
-        -- bottom_pad_row from scratch instead of compounding the error.
-        tracker.rendered_button_count = 0
         return
     end
 

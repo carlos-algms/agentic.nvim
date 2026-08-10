@@ -1107,6 +1107,33 @@ describe("agentic.ui.MessageWriter", function()
             )
 
             it(
+                "recovers a stale rendered-row count without duplicating buttons",
+                function()
+                    setup_permission_block("render-stale-count", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+                    local tracker =
+                        writer.tool_call_blocks["render-stale-count"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local end_row_before = block_end_row("render-stale-count")
+                    tracker.rendered_button_count = end_row_before + 1
+
+                    writer:repaint_status_row("render-stale-count")
+
+                    assert.equal(4, tracker.rendered_button_count)
+                    assert.equal(
+                        end_row_before,
+                        block_end_row("render-stale-count")
+                    )
+                    local rows = button_row_lines("render-stale-count")
+                    assert.equal(4, #rows)
+                    assert.truthy(rows[1]:find("Allow"))
+                    assert.truthy(rows[3]:find("Reject"))
+                end
+            )
+
+            it(
                 "rendering one block does not displace another block's content",
                 function()
                     writer:write_tool_call_block(
