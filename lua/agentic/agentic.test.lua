@@ -331,14 +331,12 @@ describe("agentic: switch_provider", function()
 
         Agentic.switch_provider({ provider = "MissingProvider" })
 
-        assert
-            .spy(replace_stub).was
-            .called_with(
-                session,
-                "MissingProvider",
-                { kind = "new" },
-                replace_stub.calls[1][4]
-            )
+        assert.spy(replace_stub).was.called(1)
+        local replace_call = replace_stub.calls[1]
+        assert.equal(session, replace_call[1])
+        assert.equal("MissingProvider", replace_call[2])
+        assert.same({ kind = "new" }, replace_call[3])
+        assert.equal("function", type(replace_call[4].prepare))
         assert.equal(original_provider, Config.provider)
         assert.equal(session, SessionRegistry.sessions[session.session_key])
         assert.spy(logger_notify_stub).was.called(1)
