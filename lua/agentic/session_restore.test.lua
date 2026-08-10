@@ -69,6 +69,11 @@ describe("SessionRestore", function()
     end)
 
     after_each(function()
+        for session_key in pairs(SessionRegistry.sessions) do
+            SessionRegistry.sessions[session_key] = nil
+        end
+        SessionRegistry._most_recent = nil
+        SessionRegistry._previous_most_recent = nil
         for _, stub in ipairs(extra_stubs) do
             stub:revert()
         end
@@ -229,7 +234,6 @@ describe("SessionRestore", function()
         target.failure_callback(target)
 
         assert.spy(destroy_stub).was.called_with(22)
-        SessionRegistry.sessions[22] = nil
     end)
 
     it("shows a successful target before destroying its source", function()
@@ -279,8 +283,6 @@ describe("SessionRestore", function()
 
         assert.same({ "show", "destroy" }, events)
         assert.spy(destroy_stub).was.called_with(21)
-        SessionRegistry.sessions[21] = nil
-        SessionRegistry.sessions[22] = nil
     end)
 
     it("leaves the source intact when its load target fails", function()
@@ -308,8 +310,6 @@ describe("SessionRestore", function()
 
         assert.spy(destroy_stub).was.called_with(22)
         assert.equal(source, SessionRegistry.sessions[21])
-        SessionRegistry.sessions[21] = nil
-        SessionRegistry.sessions[22] = nil
     end)
 
     it(

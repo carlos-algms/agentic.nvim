@@ -1509,6 +1509,8 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
     local new_stub
     local schedule_stub
     local scheduled
+    local baseline_tabs
+    local baseline_current_tab
     local sessions
     local events
 
@@ -1586,6 +1588,11 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         SessionRegistry._previous_most_recent = nil
         SessionRegistry._start_attempts = {}
         scheduled = {}
+        baseline_current_tab = vim.api.nvim_get_current_tabpage()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
         sessions = {}
         events = {}
         schedule_stub = spy.stub(vim, "schedule")
@@ -1604,6 +1611,15 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
     end)
 
     after_each(function()
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.api.nvim_set_current_tabpage(tabpage)
+                vim.cmd("tabclose!")
+            end
+        end
+        if vim.api.nvim_tabpage_is_valid(baseline_current_tab) then
+            vim.api.nvim_set_current_tabpage(baseline_current_tab)
+        end
         for key in pairs(SessionRegistry.sessions) do
             SessionRegistry.sessions[key] = nil
         end
@@ -1909,9 +1925,6 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
         target.ready_callback(target)
 
         assert.equal(second_tab, shown_tab)
-        vim.api.nvim_set_current_tabpage(second_tab)
-        vim.cmd("tabclose!")
-        vim.api.nvim_set_current_tabpage(first_tab)
     end)
 
     it("keeps target hidden for a hidden source", function()

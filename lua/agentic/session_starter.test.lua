@@ -4,6 +4,7 @@ local spy = require("tests.helpers.spy")
 describe("SessionStarter", function()
     local SessionStarter
     local schedule_stub
+    local get_instance_stub
     local queue
 
     local NOOP_HANDLERS = {
@@ -76,17 +77,18 @@ describe("SessionStarter", function()
         schedule_stub:invokes(function(fn)
             queue[#queue + 1] = fn
         end)
+        local AgentInstance = require("agentic.acp.agent_instance")
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
         SessionStarter = require("agentic.session_starter")
     end)
 
     after_each(function()
+        get_instance_stub:revert()
         schedule_stub:revert()
     end)
 
     it("returns an attempt without sending before readiness", function()
         local agent = new_agent()
-        local AgentInstance = require("agentic.acp.agent_instance")
-        local get_instance_stub = spy.stub(AgentInstance, "get_instance")
         local attempt = SessionStarter.start(
             agent,
             { kind = "new" },
@@ -98,7 +100,6 @@ describe("SessionStarter", function()
         assert.equal(0, agent.create_calls)
         assert.equal(0, agent.load_calls)
         assert.spy(get_instance_stub).was.called(0)
-        get_instance_stub:revert()
     end)
 
     for _, case in ipairs({
