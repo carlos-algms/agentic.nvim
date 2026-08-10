@@ -33,12 +33,18 @@ local function resolve_context()
     }
 end
 
---- @param err agentic.acp.ACPError
-local function notify_readiness_failure(err)
-    Logger.notify(
-        "Failed to list sessions: " .. (err.message or "provider unavailable"),
-        vim.log.levels.WARN
-    )
+--- @param operation string
+--- @return fun(err: agentic.acp.ACPError) callback
+local function notify_readiness_failure(operation)
+    return function(err)
+        Logger.notify(
+            "Failed to "
+                .. operation
+                .. ": "
+                .. (err.message or "provider unavailable"),
+            vim.log.levels.WARN
+        )
+    end
 end
 
 --- @param context agentic.SessionRestoreContext
@@ -141,7 +147,7 @@ function SessionRestore.show_picker()
                 end)
             end)
         end)
-    end, notify_readiness_failure)
+    end, notify_readiness_failure("list sessions"))
 end
 
 --- @param session_id string
@@ -153,7 +159,7 @@ function SessionRestore.restore_by_id(session_id)
 
     context.agent:when_ready(function()
         restore(context, session_id, nil, nil)
-    end, notify_readiness_failure)
+    end, notify_readiness_failure("restore session"))
 end
 
 return SessionRestore

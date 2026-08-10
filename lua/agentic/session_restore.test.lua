@@ -171,6 +171,18 @@ describe("SessionRestore", function()
             .called_with("Failed to list sessions: offline", vim.log.levels.WARN)
     end)
 
+    it("reports restore readiness failures as restore failures", function()
+        local agent = new_agent()
+
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
+        agent.failure_callback({ code = -32000, message = "offline" })
+
+        assert
+            .spy(notify_stub).was
+            .called_with("Failed to restore session: offline", vim.log.levels.WARN)
+    end)
+
     it("creates no placeholder when provider resolution fails", function()
         current_stub:returns(nil)
         get_instance_stub:returns(nil)
