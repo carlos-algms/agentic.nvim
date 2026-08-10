@@ -381,4 +381,42 @@ describe("SessionStarter", function()
         assert.is_false(first:has_session_id("two"))
         assert.is_true(second:has_session_id("two"))
     end)
+
+    it("rejects an invalid start specification without sending", function()
+        local agent = new_agent()
+        local callback = spy.new()
+        local invalid_spec = { kind = "invalid" }
+
+        SessionStarter.start(
+            agent,
+            invalid_spec --[[@as agentic.SessionStartSpec]],
+            prepare(NOOP_HANDLERS),
+            callback
+        )
+        drain()
+
+        assert.spy(callback).was.called(1)
+        assert.is_nil(callback.calls[1][1])
+        assert.equal(-32602, callback.calls[1][2].code)
+        assert.equal(0, agent.create_calls)
+        assert.equal(0, agent.load_calls)
+    end)
+
+    it("rejects missing handlers without waiting for readiness", function()
+        local agent = new_agent()
+        local callback = spy.new()
+        local expected_err = { code = -32000, message = "no handlers" }
+
+        SessionStarter.start(agent, { kind = "new" }, function()
+            return nil, expected_err
+        end, callback)
+        drain()
+
+        assert.spy(callback).was.called(1)
+        assert.is_nil(callback.calls[1][1])
+        assert.equal(expected_err, callback.calls[1][2])
+        assert.equal(0, agent.create_calls)
+        assert.equal(0, agent.load_calls)
+        assert.is_nil(agent.ready_callback)
+    end)
 end)
