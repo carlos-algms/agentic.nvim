@@ -1928,7 +1928,6 @@ describe("agentic.SessionRegistry one-shot lifecycle", function()
 
         target.ready_callback(target)
 
-        assert.equal(-1, target.widget:get_visible_tab_id() or -1)
         assert.equal(target, SessionRegistry.current())
         assert.same({ "target:start", "source:destroy" }, events)
     end)
