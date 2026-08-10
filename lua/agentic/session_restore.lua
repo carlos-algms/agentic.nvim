@@ -60,25 +60,19 @@ local function restore(context, session_id, title, timestamp)
         timestamp = timestamp,
     }
 
+    -- Only a fresh target issues `session/load`; an existing manager can be
+    -- shown without the provider advertising load support.
     local existing =
         SessionRegistry.find_by_acp_session_id(session_id, context.agent)
-    if existing then
-        SessionRegistry.replace(
-            context.source,
-            context.provider_name,
-            start_spec,
-            { agent = context.agent }
-        )
-        return
-    end
-
-    local capabilities = context.agent.agent_capabilities
-    if not capabilities or not capabilities.loadSession then
-        Logger.notify(
-            "Agent does not support loading sessions",
-            vim.log.levels.WARN
-        )
-        return
+    if not existing then
+        local capabilities = context.agent.agent_capabilities
+        if not capabilities or not capabilities.loadSession then
+            Logger.notify(
+                "Agent does not support loading sessions",
+                vim.log.levels.WARN
+            )
+            return
+        end
     end
 
     SessionRegistry.replace(
