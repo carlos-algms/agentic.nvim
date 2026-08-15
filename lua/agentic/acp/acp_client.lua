@@ -342,6 +342,20 @@ function ACPClient:_handle_notification(message_id, method, params)
         Logger.debug(
             string.format("Received '%s' notification, ignoring it", method)
         )
+    elseif type(method) == "string" and method:sub(1, 1) == "_" then
+        -- ACP reserves "_"-prefixed method names for vendor extensions and
+        -- requires unrecognized notifications to be ignored:
+        -- https://agentclientprotocol.com/protocol/extensibility
+        -- Devin's `_cognition.ai/mcp/serversChanged` otherwise raised a warning
+        -- toast on every MCP server change. The `type` check keeps a malformed
+        -- frame (non-string `method`) on the `else` branch: `on_message` runs
+        -- unprotected in the transport read loop, where a throw is fatal.
+        Logger.debug(
+            string.format(
+                "Received custom notification '%s', ignoring it",
+                method
+            )
+        )
     else
         Logger.notify("Unknown notification method: " .. method)
     end

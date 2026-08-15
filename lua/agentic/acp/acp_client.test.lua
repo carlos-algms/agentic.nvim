@@ -794,6 +794,69 @@ describe("ACPClient", function()
         end)
     end)
 
+    describe("_handle_notification", function()
+        --- Deliver a bare notification frame (no `id`, no `params`).
+        --- `method` is loosely typed on purpose: one case feeds a non-string to
+        --- prove the dispatch guard cannot throw into the libuv read loop.
+        --- @param method any
+        local function deliver(method)
+            local on_message = captured_on_message
+            assert.is_not_nil(on_message)
+            --- @cast on_message -nil
+
+            --- @type agentic.acp.ResponseRaw
+            local frame = { jsonrpc = "2.0" }
+            frame.method = method
+
+            on_message(frame)
+        end
+
+        it("ignores an unrecognized extension notification", function()
+            create_ready_client()
+            logger_notify_stub:reset()
+            logger_debug_stub:reset()
+
+            deliver("_cognition.ai/mcp/serversChanged")
+
+            assert.spy(logger_notify_stub).was.called(0)
+            assert.spy(logger_debug_stub).was.called(1)
+            assert.truthy(
+                logger_debug_stub.calls[1][1]:find(
+                    "_cognition.ai/mcp/serversChanged",
+                    1,
+                    true
+                )
+            )
+        end)
+
+        it("warns about an unrecognized spec notification", function()
+            create_ready_client()
+            logger_notify_stub:reset()
+
+            deliver("session/unheard_of")
+
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:find(
+                    "Unknown notification method: session/unheard_of",
+                    1,
+                    true
+                )
+            )
+        end)
+
+        it("warns without throwing when the method is not a string", function()
+            create_ready_client()
+            logger_notify_stub:reset()
+
+            assert.has_no_errors(function()
+                deliver(123)
+            end)
+
+            assert.spy(logger_notify_stub).was.called(1)
+        end)
+    end)
+
     describe("__handle_request_permission", function()
         local REQUEST = {
             sessionId = "s1",
