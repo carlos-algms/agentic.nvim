@@ -795,17 +795,19 @@ describe("ACPClient", function()
     end)
 
     describe("_handle_notification", function()
-        --- Deliver a bare notification frame (no `id`, no `params`).
+        --- Deliver an inbound frame with no `params`. Passing `id` makes it a
+        --- request; omitting it makes it a notification.
         --- `method` is loosely typed on purpose: one case feeds a non-string to
         --- prove the dispatch guard cannot throw into the libuv read loop.
         --- @param method any
-        local function deliver(method)
+        --- @param id number|nil
+        local function deliver(method, id)
             local on_message = captured_on_message
             assert.is_not_nil(on_message)
             --- @cast on_message -nil
 
             --- @type agentic.acp.ResponseRaw
-            local frame = { jsonrpc = "2.0" }
+            local frame = { jsonrpc = "2.0", id = id }
             frame.method = method
 
             on_message(frame)
@@ -854,6 +856,194 @@ describe("ACPClient", function()
             end)
 
             assert.spy(logger_notify_stub).was.called(1)
+        end)
+
+        -- A request carries an `id` and the agent blocks until it is answered.
+        -- The subprocess is shared across every session (ADR 0004), so one
+        -- stranded `id` hangs all of them. The spec requires `-32601` for a
+        -- custom method the receiver does not recognize.
+        it("answers an unrecognized extension request", function()
+            create_ready_client()
+            local sent = capture_sent()
+            logger_notify_stub:reset()
+
+            deliver("_cognition.ai/workspace/buffers", 42)
+
+            assert.equal(1, #sent)
+            assert.equal(42, sent[1].id)
+            assert.equal(-32601, sent[1].error.code)
+            assert.equal("Method not found", sent[1].error.message)
+            assert.spy(logger_notify_stub).was.called(0)
+        end)
+
+        -- `terminal` is advertised as false, so a compliant agent never calls
+        -- `terminal/*`. A non-compliant one still can, and the unanswered `id`
+        -- hangs the shared subprocess just the same.
+        it("answers an unhandled spec request", function()
+            create_ready_client()
+            local sent = capture_sent()
+            logger_notify_stub:reset()
+
+            deliver("terminal/create", 7)
+
+            assert.equal(1, #sent)
+            assert.equal(7, sent[1].id)
+            assert.equal(-32601, sent[1].error.code)
+            assert.spy(logger_notify_stub).was.called(1)
+            assert.truthy(
+                logger_notify_stub.calls[1][1]:find(
+                    "Unknown request method: terminal/create",
+                    1,
+                    true
+                )
+            )
+        end)
+    end)
+
+    -- https://agentclientprotocol.com/protocol/extensibility
+    describe("extensibility compliance", function()
+        -- ClientCapabilities per the ACP v1 schema. The spec reserves every
+        -- other root name for future protocol versions, so anything outside
+        -- this set is a custom field the spec forbids.
+        local SPEC_CLIENT_CAPABILITIES = {
+            fs = true,
+            terminal = true,
+            session = true,
+            plan = true,
+            auth = true,
+            elicitation = true,
+            nes = true,
+            positionEncodings = true,
+            _meta = true,
+        }
+
+        local SPEC_FS_CAPABILITIES = {
+            readTextFile = true,
+            writeTextFile = true,
+            _meta = true,
+        }
+
+        --- `_meta` is the one key the spec sets aside for implementation data;
+        --- any other `_`-prefixed key is an extension this client never defines.
+        --- @param value any
+        local function assert_no_extension_fields(value)
+            if type(value) ~= "table" then
+                return
+            end
+
+            for key, nested in pairs(value) do
+                if type(key) == "string" then
+                    assert.is_true(key == "_meta" or key:sub(1, 1) ~= "_")
+                end
+
+                assert_no_extension_fields(nested)
+            end
+        end
+
+        it("sends no extension methods or custom fields", function()
+            local client = create_ready_client()
+            local sent = capture_sent()
+
+            client:create_session(NOOP_HANDLERS, function() end)
+            client:send_prompt("s1", {}, function() end)
+            client:set_config_option({
+                sessionId = "s1",
+                configId = "model",
+                value = "opus",
+            }, function() end)
+            client:stop_generation("s1")
+            client:cancel_session("s1")
+
+            assert.is_true(#sent > 0)
+
+            for _, frame in ipairs(sent) do
+                assert.is_true(frame.method:sub(1, 1) ~= "_")
+                assert_no_extension_fields(frame.params)
+            end
+        end)
+
+        it("advertises only spec capability fields", function()
+            create_ready_client()
+
+            assert.is_not_nil(captured_initialize_params)
+            --- @cast captured_initialize_params agentic.acp.InitializeParams
+
+            local caps = captured_initialize_params.clientCapabilities
+
+            for key in pairs(caps) do
+                assert.is_true(SPEC_CLIENT_CAPABILITIES[key] == true)
+            end
+
+            local fs = caps.fs
+            assert.is_not_nil(fs)
+            --- @cast fs -nil
+
+            for key in pairs(fs) do
+                assert.is_true(SPEC_FS_CAPABILITIES[key] == true)
+            end
+        end)
+
+        -- `_meta` may ride on any spec type, and implementations must make no
+        -- assumptions about its contents.
+        it("accepts agent capabilities carrying _meta", function()
+            --- @type agentic.acp.AgentCapabilities
+            local agent_caps = {
+                loadSession = true,
+                promptCapabilities = PROMPT_CAPS,
+            }
+
+            --- @diagnostic disable-next-line: inject-field
+            agent_caps._meta = { ["zed.dev"] = { workspace = true } }
+
+            local client = create_ready_client(agent_caps)
+
+            assert.equal("ready", client.state)
+            assert.spy(logger_notify_stub).was.called(0)
+        end)
+
+        it("routes a session update carrying _meta", function()
+            local client = create_ready_client()
+            local queue = queue_schedules()
+            local received = spy.new(function() end)
+
+            --- @type agentic.acp.ClientHandlers
+            local handlers = {
+                on_session_update = function(update)
+                    received(update)
+                end,
+                on_request_permission = function() end,
+                on_error = function() end,
+                on_tool_call = function() end,
+                on_tool_call_update = function() end,
+            }
+
+            client.subscribers["s1"] = handlers
+
+            local on_message = captured_on_message
+            assert.is_not_nil(on_message)
+            --- @cast on_message -nil
+
+            logger_notify_stub:reset()
+
+            on_message({
+                jsonrpc = "2.0",
+                method = "session/update",
+                params = {
+                    sessionId = "s1",
+                    _meta = {
+                        traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                    },
+                    update = {
+                        sessionUpdate = "agent_message_chunk",
+                        content = { type = "text", text = "hi", _meta = {} },
+                    },
+                },
+            })
+
+            drain(queue)
+
+            assert.spy(received).was.called(1)
+            assert.spy(logger_notify_stub).was.called(0)
         end)
     end)
 
