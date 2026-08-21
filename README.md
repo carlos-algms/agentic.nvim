@@ -735,7 +735,7 @@ assigned at creation and stable for its whole life.
 - Use `destroy_session()` to end a session directly
 
 With a current session present, `new_session()` asks whether to keep it running in
-the background or destroy it before creating the replacement.
+the background or destroy it before creating another session.
 
 `destroy_session(opts)` takes a **session** field naming the key to destroy.
 Without it, it destroys the session visible in the current tab, falling back to
@@ -910,8 +910,9 @@ Use `]c` and `[c` to navigate between diff hunks (configurable).
 Type `/` in the Prompt buffer to see available slash commands with
 auto-completion.
 
-The `/new` command is always available to start a new session, other commands
-are provided by your ACP provider.
+The `/new` command is always available to start a new session. With a current
+session present, it asks whether to keep that session running in the background
+or destroy it. Other commands are provided by your ACP provider.
 
 ### File Picker
 
@@ -981,10 +982,12 @@ If you know the session ID, call
 session directly. This skips listing sessions, so it also works with providers
 that don't support session listing.
 
-Restoration is transactional. The current session stays live until the selected
-target is ready. Success shows the target, preserves the visible widget size,
-then destroys the previous manager and all of its state. Failure or picker
-cancellation leaves the current session unchanged.
+With a current session present, restoration uses the same lifecycle choice as
+`new_session()`: keep the current session running in the background or destroy
+it. The current session stays visible while the selected target loads. Success
+shows the target and preserves the visible widget size. The source is destroyed
+only when `Destroy current session` was selected. Failure or picker cancellation
+leaves the current session unchanged.
 
 With no current session, selecting a restore creates only the load target. The
 picker and session listing do not create a placeholder session.

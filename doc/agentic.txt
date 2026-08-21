@@ -601,12 +601,14 @@ agentic.stop_generation()
 agentic.restore_session()
   Show the provider's session picker to restore a previous
   session. Sessions are interchangeable between Neovim and the
-  terminal. After restoration succeeds, the previous chat closes.
+  terminal. When a current session exists, choose whether to keep it
+  running in the background or destroy it.
 
                                              *agentic.restore_session_by_id()*
 agentic.restore_session_by_id({session_id})
-  Restore a previous session by its ID. After it succeeds, the
-  previous chat closes.
+  Restore a previous session by its ID. When a current session
+  exists, choose whether to keep it running in the background or
+  destroy it.
 
   Parameters: ~
     {session_id}  (string)  Session ID to restore.
@@ -770,8 +772,9 @@ Slash commands ~
                                                 *agentic-slash-commands*
 Type `/` in the prompt buffer to see available slash commands with
 auto-completion. The `/new` command is always available. Other
-commands are provided by your ACP provider. `/new` atomically replaces
-the current session after the provider creates the new one.
+commands are provided by your ACP provider. When a current session
+exists, `/new` asks whether to keep it running in the background or
+destroy it.
 
 File picker ~
                                                   *agentic-file-picker*
@@ -812,8 +815,11 @@ Sessions are interchangeable between Neovim and the terminal. Call
 |agentic.restore_session()| to see previous sessions from your
 provider.
 
-The current chat stays open while restoration runs. It closes after a
-successful restore. A failed or cancelled restore leaves it unchanged.
+When a current session exists, restoration asks whether to keep it
+running in the background or destroy it. The current chat stays visible
+while restoration runs. A successful restore shows the target and keeps
+the source alive unless destruction was selected. A failed or cancelled
+restore leaves the source unchanged.
 
 System information ~
                                              *agentic-system-context*

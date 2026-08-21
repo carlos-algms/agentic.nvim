@@ -11,6 +11,7 @@ describe("SessionRestore", function()
     local commit_stub
     local notify_stub
     local select_stub
+    local lifecycle_stub
     local schedule_stub
     local current_stub
     local get_instance_stub
@@ -57,6 +58,10 @@ describe("SessionRestore", function()
         commit_stub = spy.stub(SessionRegistry, "commit_replacement")
         notify_stub = spy.stub(Logger, "notify")
         select_stub = spy.stub(vim.ui, "select")
+        lifecycle_stub = spy.stub(SessionRegistry, "choose_session_lifecycle")
+        lifecycle_stub:invokes(function(_session, _prompt, on_selected)
+            on_selected(false)
+        end)
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(callback)
             callback()
@@ -82,6 +87,7 @@ describe("SessionRestore", function()
         commit_stub:revert()
         notify_stub:revert()
         select_stub:revert()
+        lifecycle_stub:revert()
         schedule_stub:revert()
         current_stub:revert()
         get_instance_stub:revert()
@@ -213,6 +219,44 @@ describe("SessionRestore", function()
         assert.is_nil(opts.prepare)
     end)
 
+    it("offers to keep the source before restoring another session", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert
+            .spy(lifecycle_stub).was
+            .called_with(source, "Restore session:", lifecycle_stub.calls[1][3])
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent, retain_source = true }
+        )
+    end)
+
+    it("destroys the source only when that choice is selected", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        lifecycle_stub:invokes(function(_session, _prompt, on_selected)
+            on_selected(true)
+        end)
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent }
+        )
+    end)
+
     it("removes the only nil-source target when loading fails", function()
         local agent = new_agent()
         local target = { session_key = 22 }
@@ -236,7 +280,7 @@ describe("SessionRestore", function()
         assert.spy(destroy_stub).was.called_with(22)
     end)
 
-    it("shows a successful target before destroying its source", function()
+    it("shows a successful target while retaining its source", function()
         local agent = new_agent()
         local current_tab = vim.api.nvim_get_current_tabpage()
         local current_win = vim.api.nvim_get_current_win()
@@ -281,8 +325,9 @@ describe("SessionRestore", function()
         agent.ready_callback(agent)
         target.ready_callback(target)
 
-        assert.same({ "show", "destroy" }, events)
-        assert.spy(destroy_stub).was.called_with(21)
+        assert.same({ "show" }, events)
+        assert.spy(destroy_stub).was.called(0)
+        assert.equal(source, SessionRegistry.sessions[21])
     end)
 
     it("leaves the source intact when its load target fails", function()
@@ -313,7 +358,7 @@ describe("SessionRestore", function()
     end)
 
     it(
-        "delegates destructive success and rollback to registry replacement",
+        "delegates retained success and rollback to registry replacement",
         function()
             local agent = new_agent()
             local source = { session_key = 1 }
@@ -326,7 +371,7 @@ describe("SessionRestore", function()
                 source,
                 "claude-acp",
                 { kind = "load", session_id = "one" },
-                { agent = agent }
+                { agent = agent, retain_source = true }
             )
         end
     )
@@ -344,7 +389,7 @@ describe("SessionRestore", function()
             source,
             "claude-acp",
             { kind = "load", session_id = "one" },
-            { agent = agent }
+            { agent = agent, retain_source = true }
         )
         assert.spy(commit_stub).was.called(0)
     end)
@@ -445,7 +490,10 @@ describe("SessionRestore", function()
         assert.equal("Local title", spec.title)
         assert.equal("2026-08-09T12:00:00Z", spec.timestamp)
         assert.equal(source, replace_stub.calls[1][1])
-        assert.same({ agent = agent }, replace_stub.calls[1][4])
+        assert.same(
+            { agent = agent, retain_source = true },
+            replace_stub.calls[1][4]
+        )
         assert.equal("source widget", source.widget)
         assert.equal("source title", source.chat_history.title)
     end)

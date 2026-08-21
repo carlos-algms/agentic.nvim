@@ -65,11 +65,23 @@ function SessionRegistry.create(provider_name, start_spec, agent)
 
     local ok, session = pcall(function()
         return SessionManager:new(agent, provider_name, function(current)
-            SessionRegistry.replace(
+            SessionRegistry.choose_session_lifecycle(
                 current,
-                current.provider_name,
-                { kind = "new" },
-                { agent = current.agent }
+                "New session:",
+                function(destroy_source)
+                    --- @type agentic.SessionReplacementOpts
+                    local opts = { agent = current.agent }
+                    if not destroy_source then
+                        opts.retain_source = true
+                    end
+
+                    SessionRegistry.replace(
+                        current,
+                        current.provider_name,
+                        { kind = "new" },
+                        opts
+                    )
+                end
             )
         end)
     end)
@@ -164,6 +176,7 @@ end
 --- @class agentic.SessionReplacementOpts
 --- @field agent? agentic.acp.ACPClient
 --- @field prepare? fun(source: agentic.SessionManager, target: agentic.SessionManager): boolean?
+--- @field retain_source? boolean
 --- @field show_opts? agentic.ui.ChatWidget.ShowOpts
 
 --- @param source agentic.SessionManager|nil
@@ -306,7 +319,10 @@ commit_replacement = function(source, target, opts, destroy_target_on_rollback)
         SessionRegistry.set_most_recent(target_key)
     end
 
-    if SessionRegistry.sessions[source_key] == source then
+    if
+        not opts.retain_source
+        and SessionRegistry.sessions[source_key] == source
+    then
         SessionRegistry.destroy(source_key)
     end
 
@@ -392,6 +408,30 @@ function SessionRegistry.resolve_or_create(callback)
     return instance
 end
 
+--- Resolves whether a source session stays alive before another session starts.
+--- @param session agentic.SessionManager|nil
+--- @param prompt string
+--- @param on_selected fun(destroy_session: boolean)
+function SessionRegistry.choose_session_lifecycle(session, prompt, on_selected)
+    if not session then
+        on_selected(false)
+        return
+    end
+
+    vim.ui.select({
+        KEEP_CURRENT_SESSION,
+        DESTROY_CURRENT_SESSION,
+    }, {
+        prompt = prompt,
+    }, function(choice)
+        if choice == KEEP_CURRENT_SESSION then
+            on_selected(false)
+        elseif choice == DESTROY_CURRENT_SESSION then
+            on_selected(true)
+        end
+    end)
+end
+
 --- Creates an additional session after resolving the current one's lifecycle.
 --- @param on_created fun(session: agentic.SessionManager)
 --- @param provider_name agentic.UserConfig.ProviderName|nil
@@ -401,8 +441,8 @@ function SessionRegistry.create_with_current_session_guard(
 )
     local current = SessionRegistry.current()
 
-    --- @param choice string|nil
-    local function create(choice)
+    --- @param destroy_current boolean
+    local function create(destroy_current)
         local session = SessionRegistry.create(provider_name, { kind = "new" })
 
         if not session then
@@ -412,29 +452,12 @@ function SessionRegistry.create_with_current_session_guard(
         on_created(session)
 
         local current_key = current and current.session_key
-        if choice == DESTROY_CURRENT_SESSION and current_key then
+        if destroy_current and current_key then
             SessionRegistry.destroy(current_key)
         end
     end
 
-    if not current then
-        create(nil)
-        return
-    end
-
-    vim.ui.select({
-        KEEP_CURRENT_SESSION,
-        DESTROY_CURRENT_SESSION,
-    }, {
-        prompt = "New session:",
-    }, function(choice)
-        if
-            choice == KEEP_CURRENT_SESSION
-            or choice == DESTROY_CURRENT_SESSION
-        then
-            create(choice)
-        end
-    end)
+    SessionRegistry.choose_session_lifecycle(current, "New session:", create)
 end
 
 --- @param session_key integer

@@ -75,11 +75,23 @@ local function restore(context, session_id, title, timestamp)
         end
     end
 
-    SessionRegistry.replace(
+    SessionRegistry.choose_session_lifecycle(
         context.source,
-        context.provider_name,
-        start_spec,
-        { agent = context.agent }
+        "Restore session:",
+        function(destroy_source)
+            --- @type agentic.SessionReplacementOpts
+            local opts = { agent = context.agent }
+            if context.source and not destroy_source then
+                opts.retain_source = true
+            end
+
+            SessionRegistry.replace(
+                context.source,
+                context.provider_name,
+                start_spec,
+                opts
+            )
+        end
     )
 end
 

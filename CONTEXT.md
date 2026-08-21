@@ -75,7 +75,9 @@ Three in-place re-render sites call `ChatWidget:show` directly. See ADR 0008.
 
 **SessionRestore**: Resolves the current manager and its injected **ACPClient**,
 or asks **AgentInstance** directly when no manager exists. It lists provider
-sessions and delegates the selected replacement to **SessionRegistry**.
+sessions, reuses the new-session lifecycle choice, and delegates target startup
+to **SessionRegistry**. Keeping the source evicts it into the background;
+destroying it remains an explicit choice.
 
 ### Tabpage scope
 
@@ -100,8 +102,8 @@ session**. Reversible. _Avoid_: "close", "destroy".
 **Destroy**: Remove a **SessionManager** from the **SessionRegistry**, cancel
 its **ACP Session**, delete its **ChatWidget buffers**. Irreversible. It follows
 explicit user intent, rolls back a newly started replacement target, or tears
-down the source after replacement commits. _Avoid_: "close"; a **Hide** is not
-a step toward this.
+down the source after a replacement commits when its lifecycle requires
+destruction. _Avoid_: "close"; a **Hide** is not a step toward this.
 
 **Evict**: **Hide** whichever **ChatWidget** occupies a **Tabpage** so another
 can take it. The displaced **SessionManager** keeps running as a **Background
@@ -110,16 +112,17 @@ ends.
 
 **Replace**: Start or select a distinct target **SessionManager** and keep the
 source intact until the target is ready. When the source is visible, show the
-target before destroying the source so its recorded widget size transfers to
-the target without flicker. With a hidden source, target placement does not
-change: a newly started target remains hidden, while an existing claimant keeps
-its current placement. A newly started target has a new **Session key**,
-**ChatWidget**, and state containers. If the requested **ACP Session** is
-already owned by another manager on the same **ACPClient**, that existing
-manager is the target and no second `session/load` is sent. Transaction rollback
-destroys only a newly started target; an existing claimant remains owned by its
-original lifecycle. The source stays intact. Distinct from **Evict**, which only
-hides the displaced manager.
+target before applying its lifecycle choice so the recorded widget size
+transfers without flicker. The default lifecycle destroys the source. Restore
+can retain it, which makes placement an **Evict** instead. With a hidden source,
+target placement does not change: a newly started target remains hidden, while
+an existing claimant keeps its current placement. A newly started target has a
+new **Session key**, **ChatWidget**, and state containers. If the requested
+**ACP Session** is already owned by another manager on the same **ACPClient**,
+that existing manager is the target and no second `session/load` is sent.
+Transaction rollback destroys only a newly started target; an existing claimant
+remains owned by its original lifecycle. The source stays intact. Distinct from
+**Evict**, which only hides the displaced manager.
 
 ### UI surface
 
@@ -244,8 +247,9 @@ unified `configOptions`. Same per-session scope.
 **SlashCommands**: Per-session input-buffer completion. Command list arrives via
 `session/update` `available_commands_update` and is augmented locally: the
 plugin filters out `clear` and auto-injects `/new` if absent. Only `/new` is
-intercepted on submit (calls `SessionRegistry.replace` for a fresh manager);
-every other slash-prefixed line is sent verbatim to the **Provider**.
+intercepted on submit. It uses the shared source-lifecycle choice before calling
+`SessionRegistry.replace` for a fresh manager. Every other slash-prefixed line
+is sent verbatim to the **Provider**.
 
 ### Hooks
 
@@ -322,7 +326,8 @@ enabled by default.
   which one `q` did — hence the pinned verbs.
 - "Replace" was used for tabpage eviction and for ending one conversation in
   favor of another. Resolved: **Evict** only hides; **Replace** commits a ready
-  target and destroys its source.
+  target and applies its requested source lifecycle. Restore retains the source
+  unless the user selects destruction.
 - "Agent" was used to mean **Provider** subprocess, **AgentInstance** singleton
   factory/cache, **ACPClient**, and the LLM behind the provider. Resolved:
   **Provider** for the subprocess, **AgentInstance** for the singleton

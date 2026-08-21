@@ -111,8 +111,9 @@ end)()
             end
 
             _G.selects = 0
-            vim.ui.select = function()
+            vim.ui.select = function(items, _, on_choice)
                 _G.selects = _G.selects + 1
+                on_choice(items[1])
             end
         ]])
     end
@@ -322,7 +323,7 @@ end)()
         ]]))
     end)
 
-    it("slash-new replaces the manager, widget, buffers, and state", function()
+    it("slash-new keeps the source when that choice is selected", function()
         stub_new_sessions()
         child.lua([[ require("agentic").open() ]])
         child.flush()
@@ -342,18 +343,42 @@ end)()
         ]])
         child.flush()
 
-        assert.equal(1, session_count())
+        assert.equal(2, session_count())
         assert.is_true(child.lua_get([[
             (function()
+                local source = require("agentic.session_registry").sessions[1]
                 local target = require("agentic.session_registry").sessions[2]
-                return target ~= nil
+                return source ~= nil
+                    and target ~= nil
                     and tostring(target) ~= _G.old_manager
                     and tostring(target.widget) ~= _G.old_widget
                     and target.widget.buf_nrs.chat ~= _G.old_chat
                     and target.chat_history.title == ""
                     and #target.chat_history.messages == 0
-                    and not vim.api.nvim_buf_is_valid(_G.old_chat)
+                    and vim.api.nvim_buf_is_valid(_G.old_chat)
             end)()
+        ]]))
+    end)
+
+    it("slash-new destroys the source only when selected", function()
+        stub_new_sessions()
+        child.lua([[ require("agentic").open() ]])
+        child.flush()
+        child.lua([[
+            local source = require("agentic.session_registry").sessions[1]
+            _G.old_chat = source.widget.buf_nrs.chat
+            vim.ui.select = function(items, _, on_choice)
+                on_choice(items[2])
+            end
+            source:_handle_input_submit("/new")
+        ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.equal(2, visible_key())
+        assert.is_true(child.lua_get([[
+            require("agentic.session_registry").sessions[1] == nil
+                and not vim.api.nvim_buf_is_valid(_G.old_chat)
         ]]))
     end)
 
@@ -369,7 +394,7 @@ end)()
         assert.equal(-1, session_tab(1))
     end)
 
-    it("inherits the resized width of the session it replaces", function()
+    it("slash-new inherits the resized width of its source", function()
         stub_new_sessions()
         child.lua([[ require("agentic").open() ]])
         child.flush()
@@ -386,7 +411,7 @@ end)()
         ]])
         child.flush()
 
-        assert.equal(1, session_count())
+        assert.equal(2, session_count())
         assert.equal(
             50,
             child.lua_get([[
@@ -624,16 +649,19 @@ end)()
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
 
-        assert.equal(1, session_count())
+        assert.equal(2, session_count())
         assert.equal(1, child.lua_get([[_G.load_calls]]))
+        assert.equal(1, child.lua_get([[_G.selects]]))
         assert.is_true(child.lua_get([[
             (function()
+                local source = require("agentic.session_registry").sessions[1]
                 local target = require("agentic.session_registry").sessions[2]
-                return target ~= nil
+                return source ~= nil
+                    and target ~= nil
                     and tostring(target) ~= _G.old_manager
                     and tostring(target.widget) ~= _G.old_widget
                     and target.widget.buf_nrs.chat ~= _G.old_chat
-                    and not vim.api.nvim_buf_is_valid(_G.old_chat)
+                    and vim.api.nvim_buf_is_valid(_G.old_chat)
                     and target.chat_history.title == ""
                     and target.source_only_property == nil
                     and #target.chat_history.messages == 1
@@ -654,6 +682,33 @@ end)()
                 )
             ]])
         )
+    end)
+
+    it("destroys the source only when restore selects that choice", function()
+        stub_restore()
+        child.lua(
+            [[ require("agentic").open({ auto_add_to_context = false }) ]]
+        )
+        child.flush()
+        child.lua([[
+            local source = require("agentic.session_registry").sessions[1]
+            _G.old_chat = source.widget.buf_nrs.chat
+            vim.ui.select = function(items, _, on_choice)
+                _G.selects = _G.selects + 1
+                on_choice(items[2])
+            end
+        ]])
+
+        child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
+        child.flush()
+
+        assert.equal(1, session_count())
+        assert.equal(2, visible_key())
+        assert.equal(1, child.lua_get([[_G.selects]]))
+        assert.is_true(child.lua_get([[
+            require("agentic.session_registry").sessions[1] == nil
+                and not vim.api.nvim_buf_is_valid(_G.old_chat)
+        ]]))
     end)
 
     it("shows an existing loaded target without loading twice", function()
@@ -682,7 +737,7 @@ end)()
         child.lua([[ require("agentic").restore_session_by_id("sid-1") ]])
         child.flush()
 
-        assert.equal(1, session_count())
+        assert.equal(2, session_count())
         assert.equal(1, visible_key())
         assert.equal(1, child.lua_get([[_G.load_calls]]))
         assert.equal(1, child.lua_get([=[_G.subscribe_calls["sid-1"]]=]))
@@ -692,8 +747,8 @@ end)()
                 return tostring(target) == _G.loaded_manager
                     and tostring(target.agent.subscribers["sid-1"])
                         == _G.loaded_subscriber
-                    and require("agentic.session_registry").sessions[2] == nil
-                    and not vim.api.nvim_buf_is_valid(_G.source_chat)
+                    and require("agentic.session_registry").sessions[2] ~= nil
+                    and vim.api.nvim_buf_is_valid(_G.source_chat)
             end)()
         ]]))
     end)
