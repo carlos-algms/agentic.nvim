@@ -242,17 +242,13 @@ end
 
 --- show a selector to restore a previous session
 function Agentic.restore_session()
-    SessionRegistry.resolve_or_create(function(session)
-        SessionRestore.show_picker(session)
-    end)
+    SessionRestore.show_picker()
 end
 
 --- Restore a session by its ID.
 --- @param session_id string
 function Agentic.restore_session_by_id(session_id)
-    SessionRegistry.resolve_or_create(function(session)
-        SessionRestore.restore_by_id(session, session_id)
-    end)
+    SessionRestore.restore_by_id(session_id)
 end
 
 --- Guards signal handlers and autocmds against a repeated `setup` call

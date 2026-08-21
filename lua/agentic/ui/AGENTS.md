@@ -110,7 +110,7 @@ stateDiagram-v2
     placement, so an outgoing session in another tabpage stays visible. Destroying
     it reaches `WidgetLayout.close` there, and without the fallback that tabpage
     disappears under the user. Reachable from `Agentic.destroy_session` and from
-    session restore. Regression:
+    restore's explicit `Destroy current session` choice. Regression:
     `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
   - **Ordering: the fallback MUST run before `WidgetRegistry.unregister`.**
     `find_first_non_widget_window` excludes windows showing a registered widget

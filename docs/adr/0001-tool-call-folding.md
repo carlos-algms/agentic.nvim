@@ -53,7 +53,7 @@ two widths match.
 The two widths diverge whenever the visible chat's width is not
 `calculate_width(Config.windows.width)`. Two common causes:
 
-- A manual resize (`ChatWidget._size`), in any layout.
+- A manual resize (`ChatWidget.size`), in any layout.
 - `bottom` layout: `WidgetLayout.open` creates the chat below the editor, then
   splits the input to its right. The input takes
   `Config.windows.stack_width_ratio` of the initial row, so the chat gets the

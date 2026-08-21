@@ -735,7 +735,7 @@ assigned at creation and stable for its whole life.
 - Use `destroy_session()` to end a session directly
 
 With a current session present, `new_session()` asks whether to keep it running in
-the background or destroy it before creating the replacement.
+the background or destroy it after the new target session is ready.
 
 `destroy_session(opts)` takes a **session** field naming the key to destroy.
 Without it, it destroys the session visible in the current tab, falling back to
@@ -910,8 +910,9 @@ Use `]c` and `[c` to navigate between diff hunks (configurable).
 Type `/` in the Prompt buffer to see available slash commands with
 auto-completion.
 
-The `/new` command is always available to start a new session, other commands
-are provided by your ACP provider.
+The `/new` command is always available to start a new session. With a current
+session present, it asks whether to keep that session running in the background
+or destroy it. Other commands are provided by your ACP provider.
 
 ### File Picker
 
@@ -981,14 +982,17 @@ If you know the session ID, call
 session directly. This skips listing sessions, so it also works with providers
 that don't support session listing.
 
-**Restoring never overwrites a conversation.**
+With a current session present, restoration uses the same lifecycle choice as
+`new_session()`: keep the current session running in the background or destroy
+it. Selecting the ACP session already owned by the current session is a no-op;
+that session is never destroyed. Otherwise, the current session stays visible
+while the selected target loads. Success shows the target and preserves the
+visible widget size. The source is destroyed only when
+`Destroy current session` was selected. Failure or picker cancellation leaves
+the current session unchanged.
 
-A restore always creates an additional session and shows it, leaving the session
-you were on alive and reachable through `require("agentic").select_session()`.
-
-One exception: a completely empty session — no messages, no attached files, no
-code selections, no diagnostics, nothing typed in the prompt — is reclaimed rather
-than left behind as an empty shell.
+With no current session, selecting a restore creates only the load target. The
+picker and session listing do not create a placeholder session.
 
 ### System Information
 

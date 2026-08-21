@@ -539,8 +539,9 @@ agentic.add_buffer_diagnostics({opts})
                                                  *agentic.new_session()*
 agentic.new_session({opts})
   Create and show a new session. When a current session exists, show
-  a picker to keep it running in the background or destroy it.
-  Cancelling creates nothing. See |agentic-sessions|.
+  a picker to keep it running in the background or destroy it after
+  the new target is ready. Cancelling creates nothing. See
+  |agentic-sessions|.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:
@@ -601,11 +602,16 @@ agentic.stop_generation()
 agentic.restore_session()
   Show the provider's session picker to restore a previous
   session. Sessions are interchangeable between Neovim and the
-  terminal.
+  terminal. When a current session exists, choose whether to keep it
+  running in the background or destroy it. Selecting its already-current
+  ACP session is a no-op; the current session is never destroyed.
 
                                              *agentic.restore_session_by_id()*
 agentic.restore_session_by_id({session_id})
-  Restore a previous session by its ID.
+  Restore a previous session by its ID. When a current session
+  exists, choose whether to keep it running in the background or
+  destroy it. Selecting its already-current ACP session is a no-op;
+  the current session is never destroyed.
 
   Parameters: ~
     {session_id}  (string)  Session ID to restore.
@@ -769,7 +775,9 @@ Slash commands ~
                                                 *agentic-slash-commands*
 Type `/` in the prompt buffer to see available slash commands with
 auto-completion. The `/new` command is always available. Other
-commands are provided by your ACP provider.
+commands are provided by your ACP provider. When a current session
+exists, `/new` asks whether to keep it running in the background or
+destroy it.
 
 File picker ~
                                                   *agentic-file-picker*
@@ -810,12 +818,12 @@ Sessions are interchangeable between Neovim and the terminal. Call
 |agentic.restore_session()| to see previous sessions from your
 provider.
 
-Restoring never overwrites a conversation: it always creates an
-additional session and shows it, leaving the session you were on alive
-and reachable through |agentic.select_session()|. One exception: a
-completely empty session -- no messages, no attached files, no code
-selections, no diagnostics, nothing typed in the prompt -- is reclaimed
-instead of being left behind.
+When a current session exists, restoration asks whether to keep it
+running in the background or destroy it. The current chat stays visible
+while restoration runs. A successful restore shows the target and keeps
+the source alive unless destruction was selected. A failed or cancelled
+restore leaves the source unchanged. Selecting the ACP session already
+owned by the current session is a no-op and never destroys it.
 
 System information ~
                                              *agentic-system-context*

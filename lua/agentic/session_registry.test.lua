@@ -2,12 +2,16 @@
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
+local session_manager_mock
+local session_starter_mock
+local agent_instance_mock
+local lifecycle_session_registry
+
 describe("agentic.SessionRegistry", function()
     --- @type agentic.SessionRegistry
     local SessionRegistry
 
     --- @type table Mock for SessionManager module
-    local session_manager_mock
     --- @type table Mock for ACPHealth module
     local acp_health_mock
     --- @type table Stub for Logger module
@@ -55,15 +59,26 @@ describe("agentic.SessionRegistry", function()
                     widget_events[#widget_events + 1] = name .. ":show"
                     show_opts[#show_opts + 1] = { name = name, opts = opts }
                 end,
+                find_first_non_widget_window = function()
+                    return vim.api.nvim_get_current_win()
+                end,
             },
             destroy = function() end,
+            prepare_start = function(self, spec)
+                self.start_spec = spec
+                self.key_during_start = self.session_key
+                return {}
+            end,
+            complete_start = function() end,
+            on_session_ready = function(self, on_ready, on_failure)
+                self._ready_callbacks = self._ready_callbacks or {}
+                self._failure_callbacks = self._failure_callbacks or {}
+                self._ready_callbacks[#self._ready_callbacks + 1] = on_ready
+                self._failure_callbacks[#self._failure_callbacks + 1] =
+                    on_failure
+            end,
             is_mock = true,
         }
-
-        function session:has_acp_session_id(acp_session_id)
-            return self.session_id == acp_session_id
-                or self._restoring_session_id == acp_session_id
-        end
 
         return session
     end
@@ -71,6 +86,40 @@ describe("agentic.SessionRegistry", function()
     session_manager_mock = {
         new = function()
             return create_mock_session()
+        end,
+    }
+
+    session_starter_mock = {
+        start = function(_agent, spec, prepare_handlers, callback)
+            prepare_handlers(function()
+                return spec.kind == "load"
+            end)
+            local attempt = {
+                spec = spec,
+                callback = callback,
+                cancelled = false,
+            }
+
+            function attempt:has_session_id(session_id)
+                return self.spec.kind == "load"
+                    and self.spec.session_id == session_id
+            end
+
+            function attempt:is_replaying()
+                return self.spec.kind == "load"
+            end
+
+            function attempt:cancel()
+                self.cancelled = true
+                vim.schedule(function()
+                    self.callback(nil, {
+                        code = -32800,
+                        message = "Session startup cancelled",
+                    })
+                end)
+            end
+
+            return attempt
         end,
     }
 
@@ -106,23 +155,34 @@ describe("agentic.SessionRegistry", function()
         provider = "claude-acp",
     }
 
+    agent_instance_mock = {
+        get_instance = function()
+            return { provider_config = { name = "Test" } }
+        end,
+    }
+
     local original_loaded = {
         ["agentic.config"] = package.loaded["agentic.config"],
         ["agentic.config_default"] = package.loaded["agentic.config_default"],
         ["agentic.acp.acp_health"] = package.loaded["agentic.acp.acp_health"],
+        ["agentic.acp.agent_instance"] = package.loaded["agentic.acp.agent_instance"],
         ["agentic.utils.logger"] = package.loaded["agentic.utils.logger"],
         ["agentic.session_manager"] = package.loaded["agentic.session_manager"],
+        ["agentic.session_starter"] = package.loaded["agentic.session_starter"],
         ["agentic.session_registry"] = package.loaded["agentic.session_registry"],
     }
 
     package.loaded["agentic.config"] = config_mock
     package.loaded["agentic.config_default"] = default_config_mock
     package.loaded["agentic.acp.acp_health"] = acp_health_mock
+    package.loaded["agentic.acp.agent_instance"] = agent_instance_mock
     package.loaded["agentic.utils.logger"] = logger_stub
     package.loaded["agentic.session_manager"] = session_manager_mock
+    package.loaded["agentic.session_starter"] = session_starter_mock
     package.loaded["agentic.session_registry"] = nil
 
     SessionRegistry = require("agentic.session_registry")
+    lifecycle_session_registry = SessionRegistry
 
     for key, value in pairs(original_loaded) do
         package.loaded[key] = value
@@ -133,6 +193,7 @@ describe("agentic.SessionRegistry", function()
         show_opts = {}
         create_session_stub = nil
         package.loaded["agentic.session_manager"] = session_manager_mock
+        package.loaded["agentic.session_starter"] = session_starter_mock
 
         acp_health_mock.check_configured_provider = function()
             return true
@@ -142,6 +203,9 @@ describe("agentic.SessionRegistry", function()
         end
         acp_health_mock.is_command_available = function()
             return false
+        end
+        agent_instance_mock.get_instance = function()
+            return { provider_config = { name = "Test" } }
         end
 
         config_mock.provider = "claude-acp"
@@ -170,15 +234,20 @@ describe("agentic.SessionRegistry", function()
             SessionRegistry._next_id = 0
             SessionRegistry._most_recent = nil
             SessionRegistry._previous_most_recent = nil
+            SessionRegistry._start_attempts = {}
         end
 
         package.loaded["agentic.session_manager"] =
             original_loaded["agentic.session_manager"]
+        package.loaded["agentic.session_starter"] =
+            original_loaded["agentic.session_starter"]
         package.loaded["agentic.config"] = original_loaded["agentic.config"]
         package.loaded["agentic.config_default"] =
             original_loaded["agentic.config_default"]
         package.loaded["agentic.acp.acp_health"] =
             original_loaded["agentic.acp.acp_health"]
+        package.loaded["agentic.acp.agent_instance"] =
+            original_loaded["agentic.acp.agent_instance"]
         package.loaded["agentic.utils.logger"] =
             original_loaded["agentic.utils.logger"]
 
@@ -255,8 +324,8 @@ describe("agentic.SessionRegistry", function()
         it(
             "returns nil and stores nothing when provider not configured",
             function()
-                acp_health_mock.check_configured_provider = function()
-                    return false
+                agent_instance_mock.get_instance = function()
+                    return nil
                 end
 
                 assert.is_nil(SessionRegistry.create())
@@ -276,41 +345,41 @@ describe("agentic.SessionRegistry", function()
             end
         )
 
-        -- Restore is provider-local: `SessionManager:new` resolves its agent from
-        -- `Config.provider` synchronously, so `create` borrows the global and hands
-        -- it straight back. Without the borrow, restoring provider A's session
-        -- while B is global sends A's ID through B.
-        it("resolves the requested provider without keeping it", function()
-            local provider_during_new
-
-            session_manager_mock.new = function()
-                provider_during_new = config_mock.provider
-                return create_mock_session()
-            end
-
-            SessionRegistry.create("gemini-acp")
-
-            assert.equal("gemini-acp", provider_during_new)
-            assert.equal("claude-acp", config_mock.provider)
-        end)
-
         it(
-            "health-checks the requested provider and restores the current one",
+            "passes the requested provider without changing the global",
             function()
-                local provider_during_check
-                acp_health_mock.check_configured_provider = function()
-                    provider_during_check = config_mock.provider
-                    return false
+                local provider_during_new
+
+                session_manager_mock.new = function(
+                    _self,
+                    _agent,
+                    provider_name
+                )
+                    provider_during_new = provider_name
+                    return create_mock_session()
                 end
 
-                local session = SessionRegistry.create("gemini-acp")
+                SessionRegistry.create("gemini-acp")
 
-                assert.is_nil(session)
-                assert.equal("gemini-acp", provider_during_check)
+                assert.equal("gemini-acp", provider_during_new)
                 assert.equal("claude-acp", config_mock.provider)
-                assert.equal(0, #SessionRegistry.list())
             end
         )
+
+        it("resolves the requested provider through AgentInstance", function()
+            local resolved_provider
+            agent_instance_mock.get_instance = function(provider_name)
+                resolved_provider = provider_name
+                return nil
+            end
+
+            local session = SessionRegistry.create("gemini-acp")
+
+            assert.is_nil(session)
+            assert.equal("gemini-acp", resolved_provider)
+            assert.equal("claude-acp", config_mock.provider)
+            assert.equal(0, #SessionRegistry.list())
+        end)
 
         it("leaves the global provider alone with no argument", function()
             local provider_during_new
@@ -536,9 +605,13 @@ describe("agentic.SessionRegistry", function()
             local agent = {}
             local session = create_mock_session()
             session.session_key = 1
-            session._restoring_session_id = "acp-1"
             session.agent = agent
             SessionRegistry.sessions[1] = session
+            SessionRegistry._start_attempts[session] = {
+                has_session_id = function(_, session_id)
+                    return session_id == "acp-1"
+                end,
+            }
 
             assert.equal(
                 session,
@@ -630,20 +703,35 @@ describe("agentic.SessionRegistry", function()
             assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
         end)
 
-        it("destroys the current session when creating another", function()
-            local current = SessionRegistry.resolve_or_create()
-            local select_stub = get_select_stub()
+        it(
+            "destroys the current session only after the target is ready",
+            function()
+                local current = SessionRegistry.resolve_or_create()
+                local select_stub = get_select_stub()
+                local target
 
-            SessionRegistry.create_with_current_session_guard(function() end)
+                SessionRegistry.create_with_current_session_guard(
+                    function(session)
+                        target = session
+                    end
+                )
 
-            assert.spy(select_stub).was.called(1)
-            local items = select_stub.calls[1][1]
-            local on_choice = select_stub.calls[1][3]
-            on_choice(items[2])
+                assert.spy(select_stub).was.called(1)
+                local items = select_stub.calls[1][1]
+                local on_choice = select_stub.calls[1][3]
+                on_choice(items[2])
 
-            assert.is_nil(SessionRegistry.sessions[current.session_key])
-            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        end)
+                assert.equal(current, SessionRegistry.get(current.session_key))
+                assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
+
+                for _, callback in ipairs(target._ready_callbacks) do
+                    callback(target)
+                end
+
+                assert.is_nil(SessionRegistry.get(current.session_key))
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            end
+        )
 
         -- Committing before the prompt left the provider switched with no session
         -- created, so the NEXT `new_session` silently used the wrong one.
@@ -666,7 +754,7 @@ describe("agentic.SessionRegistry", function()
             end
         )
 
-        it("commits the provider once creation proceeds", function()
+        it("keeps the configured provider once creation proceeds", function()
             SessionRegistry.resolve_or_create()
             local select_stub = get_select_stub()
 
@@ -681,19 +769,22 @@ describe("agentic.SessionRegistry", function()
             local on_choice = select_stub.calls[1][3]
             on_choice(items[1])
 
-            assert.equal("gemini-acp", config_mock.provider)
+            assert.equal("claude-acp", config_mock.provider)
             assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
         end)
 
-        it("commits the provider when there is nothing to guard", function()
-            SessionRegistry.create_with_current_session_guard(
-                function() end,
-                "gemini-acp"
-            )
+        it(
+            "keeps the configured provider when there is nothing to guard",
+            function()
+                SessionRegistry.create_with_current_session_guard(
+                    function() end,
+                    "gemini-acp"
+                )
 
-            assert.equal("gemini-acp", config_mock.provider)
-            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        end)
+                assert.equal("claude-acp", config_mock.provider)
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            end
+        )
 
         -- `current` is captured BEFORE the async `vim.ui.select`, so switching
         -- sessions while the prompt is open leaves the closure holding a key the
@@ -701,8 +792,11 @@ describe("agentic.SessionRegistry", function()
         it("destroys the key captured before the prompt opened", function()
             local captured = SessionRegistry.resolve_or_create()
             local select_stub = get_select_stub()
+            local target
 
-            SessionRegistry.create_with_current_session_guard(function() end)
+            SessionRegistry.create_with_current_session_guard(function(session)
+                target = session
+            end)
 
             local switched_to = SessionRegistry.create()
             SessionRegistry.set_most_recent(switched_to.session_key)
@@ -711,6 +805,11 @@ describe("agentic.SessionRegistry", function()
             local items = select_stub.calls[1][1]
             local on_choice = select_stub.calls[1][3]
             on_choice(items[2])
+
+            assert.equal(captured, SessionRegistry.get(captured.session_key))
+            for _, callback in ipairs(target._ready_callbacks) do
+                callback(target)
+            end
 
             assert.is_nil(SessionRegistry.sessions[captured.session_key])
             assert.equal(
@@ -760,7 +859,9 @@ describe("agentic.SessionRegistry", function()
                 local on_choice = select_stub.calls[1][3]
                 on_choice(items[1])
 
-                assert.spy(create_session_stub).was.called_with("gemini-acp")
+                assert
+                    .spy(create_session_stub).was
+                    .called_with("gemini-acp", { kind = "new" })
                 assert.equal("claude-acp", config_mock.provider)
                 assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
             end
@@ -1351,18 +1452,26 @@ describe("agentic.SessionRegistry", function()
                 end
             end)
 
-            it("appends '(current)' for Config.provider", function()
-                config_mock.provider = "claude-acp"
-                default_config_mock.provider = "gemini-acp"
+            it(
+                "appends '(current)' for the most recent session provider",
+                function()
+                    config_mock.provider = "claude-acp"
+                    default_config_mock.provider = "gemini-acp"
+                    local current = create_mock_session()
+                    current.session_key = 99
+                    current.provider_name = "gemini-acp"
+                    SessionRegistry.sessions[99] = current
+                    SessionRegistry._most_recent = current
 
-                SessionRegistry.select_provider(function() end)
+                    SessionRegistry.select_provider(function() end)
 
-                local label = captured_opts.format_item({
-                    name = "claude-acp",
-                    installed = true,
-                })
-                assert.equal("claude-acp (current) ✓ available", label)
-            end)
+                    local label = captured_opts.format_item({
+                        name = "gemini-acp",
+                        installed = true,
+                    })
+                    assert.equal("gemini-acp (current) ✓ available", label)
+                end
+            )
 
             it(
                 "appends '(default)' for DefaultConfig.provider when not current",
@@ -1416,4 +1525,690 @@ describe("agentic.SessionRegistry", function()
             )
         end)
     end)
+end)
+
+describe("agentic.SessionRegistry one-shot lifecycle", function()
+    local SessionRegistry = lifecycle_session_registry
+    local AgentInstance = agent_instance_mock
+    local SessionManager = session_manager_mock
+    local get_instance_stub
+    local new_stub
+    local schedule_stub
+    local scheduled
+    local baseline_tabs
+    local baseline_current_tab
+    local sessions
+    local events
+
+    --- @param name string
+    --- @return agentic.acp.ACPClient
+    local function new_agent(name)
+        local agent = { provider_config = { name = name } }
+        return agent --[[@as agentic.acp.ACPClient]]
+    end
+
+    --- @return agentic.SessionManager
+    local function new_session(label, visible_tab)
+        local session = {
+            agent = nil,
+            provider_name = nil,
+            widget = {
+                session_key = nil,
+                get_visible_tab_id = function()
+                    if type(visible_tab) == "function" then
+                        return visible_tab()
+                    end
+                    return visible_tab
+                end,
+                find_first_non_widget_window = function()
+                    return vim.api.nvim_get_current_win()
+                end,
+                hide = function()
+                    events[#events + 1] = label .. ":hide"
+                end,
+                show = function()
+                    events[#events + 1] = label .. ":show"
+                end,
+            },
+            destroy = function(self)
+                self.destroyed = true
+                events[#events + 1] = label .. ":destroy"
+            end,
+        }
+
+        function session:prepare_start(spec)
+            self.start_spec = spec
+            self.key_during_start = self.session_key
+            events[#events + 1] = label .. ":start"
+            return {}
+        end
+
+        function session:complete_start()
+            if self.destroyed then
+                return
+            end
+            self.completed_start = true
+        end
+
+        function session:on_session_ready(on_ready, on_failure)
+            self.ready_callbacks = self.ready_callbacks or {}
+            self.ready_callbacks[#self.ready_callbacks + 1] = on_ready
+            self.ready_callback = on_ready
+            self.failure_callback = on_failure
+        end
+
+        function session:owns_ready_acp_session(session_id)
+            return self.ready_owned ~= false and self.session_id == session_id
+        end
+
+        sessions[#sessions + 1] = session
+        return session --[[@as agentic.SessionManager]]
+    end
+
+    before_each(function()
+        for key in pairs(SessionRegistry.sessions) do
+            SessionRegistry.sessions[key] = nil
+        end
+        SessionRegistry._next_id = 0
+        SessionRegistry._most_recent = nil
+        SessionRegistry._previous_most_recent = nil
+        SessionRegistry._start_attempts = {}
+        scheduled = {}
+        baseline_current_tab = vim.api.nvim_get_current_tabpage()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        sessions = {}
+        events = {}
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            scheduled[#scheduled + 1] = callback
+        end)
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
+        get_instance_stub:returns(new_agent("Resolved"))
+        new_stub = spy.stub(SessionManager, "new")
+        new_stub:invokes(function(_self, agent, provider_name)
+            local session = new_session("target")
+            session.agent = agent
+            session.provider_name = provider_name
+            return session
+        end)
+    end)
+
+    after_each(function()
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                vim.api.nvim_set_current_tabpage(tabpage)
+                vim.cmd("tabclose!")
+            end
+        end
+        if vim.api.nvim_tabpage_is_valid(baseline_current_tab) then
+            vim.api.nvim_set_current_tabpage(baseline_current_tab)
+        end
+        for key in pairs(SessionRegistry.sessions) do
+            SessionRegistry.sessions[key] = nil
+        end
+        SessionRegistry._next_id = 0
+        SessionRegistry._most_recent = nil
+        SessionRegistry._previous_most_recent = nil
+        SessionRegistry._start_attempts = {}
+        schedule_stub:revert()
+        new_stub:revert()
+        get_instance_stub:revert()
+    end)
+
+    it("uses an injected client and publishes keys before start", function()
+        local agent = new_agent("Injected")
+
+        local target = SessionRegistry.create(
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            agent
+        )
+
+        assert.is_not_nil(target)
+        assert.spy(get_instance_stub).was.called(0)
+        assert.equal(agent, target.agent)
+        assert.equal(target.session_key, target.widget.session_key)
+        assert.equal(target.session_key, target.key_during_start)
+        assert.equal("load", target.start_spec.kind)
+    end)
+
+    it(
+        "cancels the registry-owned start attempt before manager teardown",
+        function()
+            local target =
+                SessionRegistry.create("claude-acp", { kind = "new" })
+            local attempt = SessionRegistry._start_attempts[target]
+            local complete_start_spy = spy.on(target, "complete_start")
+
+            SessionRegistry.destroy(target.session_key)
+            while #scheduled > 0 do
+                table.remove(scheduled, 1)()
+            end
+
+            assert.is_true(attempt.cancelled)
+            assert.spy(complete_start_spy).was.called(1)
+            assert.is_nil(target.completed_start)
+            assert.same({ "target:start", "target:destroy" }, events)
+            complete_start_spy:revert()
+        end
+    )
+
+    it("resolves before allocating and returns nil on failure", function()
+        get_instance_stub:returns(nil)
+
+        local target = SessionRegistry.create("claude-acp", { kind = "new" })
+
+        assert.is_nil(target)
+        assert.spy(new_stub).was.called(0)
+        assert.equal(0, #SessionRegistry.list())
+    end)
+
+    it("uses the common guarded create path from resolve_or_create", function()
+        local target = SessionRegistry.resolve_or_create()
+
+        assert.is_not_nil(target)
+        assert.equal("new", target.start_spec.kind)
+        assert.spy(get_instance_stub).was.called(1)
+    end)
+
+    it("returns nil from create wrappers when resolution fails", function()
+        get_instance_stub:returns(nil)
+        local created_spy = spy.new(function() end)
+
+        assert.is_nil(SessionRegistry.resolve_or_create())
+        SessionRegistry.create_with_current_session_guard(function(session)
+            created_spy(session)
+        end)
+
+        assert.spy(created_spy).was.called(0)
+        assert.equal(0, #SessionRegistry.list())
+        assert.spy(new_stub).was.called(0)
+    end)
+
+    it(
+        "keeps source live until target readiness then shows before destroy",
+        function()
+            local current_tab = vim.api.nvim_get_current_tabpage()
+            local source = new_session("source", current_tab)
+            source.session_key = 40
+            source.widget.session_key = 40
+            SessionRegistry.sessions[40] = source
+            local prepare_count = 0
+
+            local target = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "new" },
+                {
+                    agent = new_agent("Injected"),
+                    prepare = function()
+                        prepare_count = prepare_count + 1
+                    end,
+                }
+            )
+
+            assert.is_not_nil(target)
+            assert.equal(source, SessionRegistry.get(40))
+            assert.is_not_nil(target.ready_callback)
+            target.ready_callback(target)
+
+            assert.equal(1, prepare_count)
+            assert.same({
+                "target:start",
+                "source:hide",
+                "target:show",
+                "source:destroy",
+            }, events)
+            assert.is_nil(SessionRegistry.get(40))
+        end
+    )
+
+    it("rolls back when replacement preparation is rejected", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            {
+                agent = new_agent("Injected"),
+                prepare = function()
+                    return false
+                end,
+            }
+        )
+        assert.is_not_nil(target)
+        target.ready_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
+    it("rolls back only the target when startup fails", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        assert.is_not_nil(target)
+        target.failure_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
+    it("rolls back a nil-source target when startup fails", function()
+        local target = SessionRegistry.replace(
+            nil,
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            { agent = new_agent("Injected") }
+        )
+
+        assert.is_not_nil(target)
+        target.failure_callback(target)
+
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
+    it("skips prepare for a nil source", function()
+        local prepare_count = 0
+        local target = SessionRegistry.replace(
+            nil,
+            "claude-acp",
+            { kind = "new" },
+            {
+                agent = new_agent("Injected"),
+                prepare = function()
+                    prepare_count = prepare_count + 1
+                end,
+            }
+        )
+        assert.is_not_nil(target)
+        target.ready_callback(target)
+
+        assert.equal(0, prepare_count)
+        assert.same({}, target.widget.size)
+        assert.same({ "target:start", "target:show" }, events)
+    end)
+
+    it("inherits size from the replaced source, not global recency", function()
+        local current_tab = vim.api.nvim_get_current_tabpage()
+        local source = new_session("source", current_tab)
+        source.session_key = 40
+        source.widget.session_key = 40
+        source.widget.size = { width = 50 }
+        SessionRegistry.sessions[40] = source
+        local unrelated = new_session("unrelated")
+        unrelated.session_key = 39
+        unrelated.widget.session_key = 39
+        unrelated.widget.size = { width = 70 }
+        SessionRegistry.sessions[39] = unrelated
+        SessionRegistry.set_most_recent(39)
+
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        local donor
+        target.widget.show = function()
+            for _, session in ipairs(SessionRegistry.list()) do
+                if session ~= target and session.widget.size then
+                    donor = session
+                    break
+                end
+            end
+            events[#events + 1] = "target:show"
+        end
+        target.ready_callback(target)
+
+        assert.equal(source, donor)
+    end)
+
+    it("destroys only the target when the source becomes stale", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        SessionRegistry.sessions[40] = nil
+
+        target.ready_callback(target)
+
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
+    it("leaves a live source when the target becomes stale", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        SessionRegistry.sessions[target.session_key] = nil
+
+        target.ready_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.same({ "target:start" }, events)
+    end)
+
+    it("re-resolves the source tab when startup completes", function()
+        local first_tab = vim.api.nvim_get_current_tabpage()
+        vim.cmd("tabnew")
+        local second_tab = vim.api.nvim_get_current_tabpage()
+        local source_tab = first_tab
+        local source = new_session("source", function()
+            return source_tab
+        end)
+        source.widget.find_first_non_widget_window = function(_self, tabpage)
+            return vim.api.nvim_tabpage_get_win(tabpage --[[@as integer]])
+        end
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        local shown_tab
+        target.widget.show = function()
+            shown_tab = vim.api.nvim_get_current_tabpage()
+            events[#events + 1] = "target:show"
+        end
+
+        source_tab = second_tab
+        vim.api.nvim_set_current_tabpage(first_tab)
+        target.ready_callback(target)
+
+        assert.equal(second_tab, shown_tab)
+    end)
+
+    it("keeps target hidden for a hidden source", function()
+        local source = new_session("source", nil)
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+
+        target.ready_callback(target)
+
+        assert.equal(target, SessionRegistry.current())
+        assert.same({ "target:start", "source:destroy" }, events)
+    end)
+
+    it("rolls back a new target when placement raises", function()
+        local source = new_session("source", vim.api.nvim_get_current_tabpage())
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+        target.widget.show = function()
+            error("show failed")
+        end
+
+        assert.has_no_errors(function()
+            target.ready_callback(target)
+        end)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.equal(source, SessionRegistry.current())
+        assert.same({
+            "target:start",
+            "source:hide",
+            "target:destroy",
+            "source:show",
+        }, events)
+    end)
+
+    it("rolls back when a visible source has no usable anchor", function()
+        local source = new_session("source", vim.api.nvim_get_current_tabpage())
+        source.session_key = 40
+        source.widget.session_key = 40
+        source.widget.find_first_non_widget_window = function()
+            return -1
+        end
+        SessionRegistry.sessions[40] = source
+        local target = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "new" },
+            { agent = new_agent("Injected") }
+        )
+
+        target.ready_callback(target)
+
+        assert.equal(source, SessionRegistry.get(40))
+        assert.is_nil(SessionRegistry.get(target.session_key))
+        assert.same({ "target:start", "target:destroy" }, events)
+    end)
+
+    it("commits an already-loaded distinct target without creating", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = new_session("loaded")
+        target.session_id = "load-id"
+        target.agent = new_agent("Injected")
+        target.session_key = 41
+        target.widget.session_key = 41
+        SessionRegistry.sessions[41] = target
+
+        local resolved = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            { agent = target.agent }
+        )
+
+        assert.equal(target, resolved)
+        assert.spy(new_stub).was.called(0)
+        assert.is_nil(SessionRegistry.get(40))
+    end)
+
+    it(
+        "retains an already-loaded target when placement cannot commit",
+        function()
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            source.widget.find_first_non_widget_window = function()
+                return -1
+            end
+            SessionRegistry.sessions[40] = source
+            local target = new_session("loaded")
+            target.session_id = "load-id"
+            target.agent = new_agent("Injected")
+            target.session_key = 41
+            target.widget.session_key = 41
+            SessionRegistry.sessions[41] = target
+
+            local resolved = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = target.agent }
+            )
+
+            assert.equal(target, resolved)
+            assert.equal(source, SessionRegistry.get(40))
+            assert.equal(target, SessionRegistry.get(41))
+            assert.same({}, events)
+        end
+    )
+
+    it("retains an existing in-flight target when its wait fails", function()
+        local source = new_session("source")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+        local target = new_session("loaded")
+        target.session_id = "load-id"
+        target.agent = new_agent("Injected")
+        target.owns_ready_acp_session = function()
+            return false
+        end
+        target.session_key = 41
+        target.widget.session_key = 41
+        SessionRegistry.sessions[41] = target
+
+        local resolved = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            { agent = target.agent }
+        )
+        target.failure_callback(target)
+
+        assert.equal(target, resolved)
+        assert.equal(source, SessionRegistry.get(40))
+        assert.equal(target, SessionRegistry.get(41))
+        assert.same({}, events)
+    end)
+
+    it("treats replacement with the same loaded manager as a no-op", function()
+        local source = new_session("source")
+        source.session_id = "load-id"
+        source.agent = new_agent("Injected")
+        source.session_key = 40
+        source.widget.session_key = 40
+        SessionRegistry.sessions[40] = source
+
+        local resolved = SessionRegistry.replace(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "load-id" },
+            { agent = source.agent }
+        )
+
+        assert.equal(source, resolved)
+        assert.spy(new_stub).was.called(0)
+        assert.same({}, events)
+    end)
+
+    it(
+        "deduplicates rapid replacement requests for one in-flight target",
+        function()
+            local agent = new_agent("Injected")
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            SessionRegistry.sessions[40] = source
+            local target = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            target.agent = agent
+            target.session_id = "load-id"
+            target.ready_owned = false
+
+            local duplicate = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            assert.equal(target, duplicate)
+
+            for _, callback in ipairs(target.ready_callbacks) do
+                callback(target)
+            end
+
+            assert.equal(target, SessionRegistry.get(target.session_key))
+            assert.is_nil(SessionRegistry.get(40))
+            assert.same({
+                "target:start",
+                "source:hide",
+                "target:show",
+                "source:destroy",
+            }, events)
+        end
+    )
+
+    it(
+        "deduplicates replacement after target readiness but before commit",
+        function()
+            local agent = new_agent("Injected")
+            local source =
+                new_session("source", vim.api.nvim_get_current_tabpage())
+            source.session_key = 40
+            source.widget.session_key = 40
+            SessionRegistry.sessions[40] = source
+            local target = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            target.agent = agent
+            target.session_id = "load-id"
+
+            local duplicate = SessionRegistry.replace(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "load-id" },
+                { agent = agent }
+            )
+            assert.equal(target, duplicate)
+            assert.same({ "target:start" }, events)
+
+            for _, callback in ipairs(target.ready_callbacks) do
+                callback(target)
+            end
+
+            assert.equal(target, SessionRegistry.get(target.session_key))
+            assert.is_nil(SessionRegistry.get(40))
+            assert.same({
+                "target:start",
+                "source:hide",
+                "target:show",
+                "source:destroy",
+            }, events)
+        end
+    )
 end)
