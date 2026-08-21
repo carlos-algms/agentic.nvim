@@ -71,8 +71,11 @@ describe("agentic.SessionRegistry", function()
             end,
             complete_start = function() end,
             on_session_ready = function(self, on_ready, on_failure)
-                self._ready_callback = on_ready
-                self._failure_callback = on_failure
+                self._ready_callbacks = self._ready_callbacks or {}
+                self._failure_callbacks = self._failure_callbacks or {}
+                self._ready_callbacks[#self._ready_callbacks + 1] = on_ready
+                self._failure_callbacks[#self._failure_callbacks + 1] =
+                    on_failure
             end,
             is_mock = true,
         }
@@ -700,20 +703,38 @@ describe("agentic.SessionRegistry", function()
             assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
         end)
 
-        it("destroys the current session when creating another", function()
-            local current = SessionRegistry.resolve_or_create()
-            local select_stub = get_select_stub()
+        it(
+            "destroys the current session only after the target is ready",
+            function()
+                local current = SessionRegistry.resolve_or_create()
+                local select_stub = get_select_stub()
+                local target
 
-            SessionRegistry.create_with_current_session_guard(function() end)
+                SessionRegistry.create_with_current_session_guard(
+                    function(session)
+                        target = session
+                    end
+                )
 
-            assert.spy(select_stub).was.called(1)
-            local items = select_stub.calls[1][1]
-            local on_choice = select_stub.calls[1][3]
-            on_choice(items[2])
+                assert.spy(select_stub).was.called(1)
+                local items = select_stub.calls[1][1]
+                local on_choice = select_stub.calls[1][3]
+                on_choice(items[2])
 
-            assert.is_nil(SessionRegistry.sessions[current.session_key])
-            assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
-        end)
+                assert.equal(
+                    current,
+                    SessionRegistry.sessions[current.session_key]
+                )
+                assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
+
+                for _, callback in ipairs(target._ready_callbacks) do
+                    callback(target)
+                end
+
+                assert.is_nil(SessionRegistry.sessions[current.session_key])
+                assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
+            end
+        )
 
         -- Committing before the prompt left the provider switched with no session
         -- created, so the NEXT `new_session` silently used the wrong one.
@@ -774,8 +795,11 @@ describe("agentic.SessionRegistry", function()
         it("destroys the key captured before the prompt opened", function()
             local captured = SessionRegistry.resolve_or_create()
             local select_stub = get_select_stub()
+            local target
 
-            SessionRegistry.create_with_current_session_guard(function() end)
+            SessionRegistry.create_with_current_session_guard(function(session)
+                target = session
+            end)
 
             local switched_to = SessionRegistry.create()
             SessionRegistry.set_most_recent(switched_to.session_key)
@@ -784,6 +808,14 @@ describe("agentic.SessionRegistry", function()
             local items = select_stub.calls[1][1]
             local on_choice = select_stub.calls[1][3]
             on_choice(items[2])
+
+            assert.equal(
+                captured,
+                SessionRegistry.sessions[captured.session_key]
+            )
+            for _, callback in ipairs(target._ready_callbacks) do
+                callback(target)
+            end
 
             assert.is_nil(SessionRegistry.sessions[captured.session_key])
             assert.equal(

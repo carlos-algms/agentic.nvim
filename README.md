@@ -735,7 +735,7 @@ assigned at creation and stable for its whole life.
 - Use `destroy_session()` to end a session directly
 
 With a current session present, `new_session()` asks whether to keep it running in
-the background or destroy it before creating another session.
+the background or destroy it after the new target session is ready.
 
 `destroy_session(opts)` takes a **session** field naming the key to destroy.
 Without it, it destroys the session visible in the current tab, falling back to

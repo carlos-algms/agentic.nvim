@@ -539,8 +539,9 @@ agentic.add_buffer_diagnostics({opts})
                                                  *agentic.new_session()*
 agentic.new_session({opts})
   Create and show a new session. When a current session exists, show
-  a picker to keep it running in the background or destroy it.
-  Cancelling creates nothing. See |agentic-sessions|.
+  a picker to keep it running in the background or destroy it after
+  the new target is ready. Cancelling creates nothing. See
+  |agentic-sessions|.
 
   Parameters: ~
     {opts}  (table|nil)  Optional fields:

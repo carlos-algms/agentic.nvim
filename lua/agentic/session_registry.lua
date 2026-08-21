@@ -453,7 +453,11 @@ function SessionRegistry.create_with_current_session_guard(
 
         local current_key = current and current.session_key
         if destroy_current and current_key then
-            SessionRegistry.destroy(current_key)
+            session:on_session_ready(function()
+                if SessionRegistry.sessions[current_key] == current then
+                    SessionRegistry.destroy(current_key)
+                end
+            end)
         end
     end
 
