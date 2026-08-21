@@ -1,6 +1,7 @@
 local Logger = require("agentic.utils.logger")
 local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
+local TerminalManager = require("agentic.acp.terminal_manager")
 
 local KNOWN_ACP_KINDS = {
     read = true,
@@ -32,6 +33,7 @@ local KNOWN_ACP_KINDS = {
 --- @field transport? agentic.acp.ACPTransportInstance
 --- @field ready_listeners { on_ready: fun(client: agentic.acp.ACPClient), on_failure: fun(err: agentic.acp.ACPError)|nil }[]
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
+--- @field terminals agentic.acp.TerminalManager
 
 --- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
 --- @field _on_ready fun(client: agentic.acp.ACPClient)
@@ -57,6 +59,7 @@ function ACPClient:new(config, on_ready)
     local instance = {
         provider_config = config,
         subscribers = {},
+        terminals = TerminalManager:new(),
         id_counter = 0,
         protocol_version = 1,
         client_info = {
@@ -68,7 +71,11 @@ function ACPClient:new(config, on_ready)
                 readTextFile = false,
                 writeTextFile = false,
             },
-            terminal = false,
+            -- Off by default so every provider keeps its prior local shell
+            -- execution. Opt-in per provider (`terminal = true`) only for
+            -- agents that delegate shell to the client via the `terminal/*`
+            -- reverse-RPC methods (e.g. Kimi Code). See the terminal handler.
+            terminal = config.terminal == true,
             session = {
                 configOptions = {
                     boolean = vim.empty_dict(),
@@ -230,6 +237,7 @@ function ACPClient:_set_state(state)
     if state == "disconnected" or state == "error" then
         self:_drain_pending_callbacks(state)
         self:_drain_ready_listeners(state)
+        self.terminals:release_all()
     elseif state == "ready" then
         self:_drain_ready_listeners(nil)
     end
@@ -347,6 +355,20 @@ function ACPClient:__send_result(id, result)
     self.transport:send(data)
 end
 
+--- @protected
+--- @param id number
+--- @param code number
+--- @param message string
+function ACPClient:__send_error(id, code, message)
+    local payload = {
+        jsonrpc = "2.0",
+        id = id,
+        error = self:__create_error(code, message),
+    }
+
+    self.transport:send(vim.json.encode(payload))
+end
+
 --- @param message agentic.acp.ResponseRaw
 function ACPClient:_handle_message(message)
     -- Chunks are not logged: they would flood the log file.
@@ -399,9 +421,106 @@ function ACPClient:_handle_notification(message_id, method, params)
         Logger.debug(
             string.format("Received '%s' notification, ignoring it", method)
         )
+    elseif vim.startswith(method, "terminal/") then
+        self:__handle_terminal_request(message_id, method, params)
     else
         Logger.notify("Unknown notification method: " .. method)
     end
+end
+
+--- Client side of ACP terminal support: agents that delegate shell execution
+--- (e.g. Kimi Code in ACP mode) send these as reverse-RPC requests. Each is a
+--- JSON-RPC request owed exactly one result/error on `message_id`.
+--- @protected
+--- @param message_id number
+--- @param method string
+--- @param params table
+function ACPClient:__handle_terminal_request(message_id, method, params)
+    if type(params) ~= "table" then
+        self:__send_error(
+            message_id,
+            self.ERROR_CODES.INVALID_REQUEST,
+            method .. " requires params"
+        )
+        return
+    end
+
+    -- Spawning and killing processes touches vim APIs that are unsafe in the
+    -- libuv read callback this runs from; hop onto the main loop first.
+    vim.schedule(function()
+        local terminals = self.terminals
+
+        if method == "terminal/create" then
+            local id, err = terminals:create(params)
+            if id then
+                self:__send_result(message_id, { terminalId = id })
+            else
+                self:__send_error(
+                    message_id,
+                    self.ERROR_CODES.INVALID_REQUEST,
+                    err or "failed to create terminal"
+                )
+            end
+            return
+        end
+
+        local terminal_id = params.terminalId
+        if type(terminal_id) ~= "string" then
+            self:__send_error(
+                message_id,
+                self.ERROR_CODES.INVALID_REQUEST,
+                method .. " requires a 'terminalId'"
+            )
+            return
+        end
+
+        local function unknown()
+            self:__send_error(
+                message_id,
+                self.ERROR_CODES.INVALID_REQUEST,
+                "Unknown terminalId: " .. terminal_id
+            )
+        end
+
+        -- terminal/kill and terminal/release both return an empty result on
+        -- success or the same "unknown terminal" error otherwise.
+        local function ok_or_unknown(known)
+            if known then
+                self:__send_result(message_id, vim.empty_dict())
+            else
+                unknown()
+            end
+        end
+
+        if method == "terminal/output" then
+            local output = terminals:get_output(terminal_id)
+            if output then
+                self:__send_result(message_id, output)
+            else
+                unknown()
+            end
+        elseif method == "terminal/wait_for_exit" then
+            local known = terminals:wait_for_exit(terminal_id, function(status)
+                self:__send_result(message_id, {
+                    exitCode = status.exitCode,
+                    signal = status.signal,
+                })
+            end)
+            if not known then
+                unknown()
+            end
+        elseif method == "terminal/kill" then
+            ok_or_unknown(terminals:kill(terminal_id))
+        elseif method == "terminal/release" then
+            ok_or_unknown(terminals:release(terminal_id))
+        else
+            self:__send_error(
+                message_id,
+                self.ERROR_CODES.INVALID_REQUEST,
+                "Unknown terminal method: " .. method
+            )
+        end
+    end)
 end
 
 --- @protected
@@ -944,6 +1063,9 @@ function ACPClient:cancel_session(session_id)
 
     -- Dropped first, so no further messages reach the old subscriber.
     self.subscribers[session_id] = nil
+
+    -- Destroying the session must not orphan its running shell commands.
+    self.terminals:release_session(session_id)
 
     self:_send_notification("session/cancel", {
         sessionId = session_id,
