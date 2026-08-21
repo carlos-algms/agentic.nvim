@@ -603,13 +603,15 @@ agentic.restore_session()
   Show the provider's session picker to restore a previous
   session. Sessions are interchangeable between Neovim and the
   terminal. When a current session exists, choose whether to keep it
-  running in the background or destroy it.
+  running in the background or destroy it. Selecting its already-current
+  ACP session is a no-op; the current session is never destroyed.
 
                                              *agentic.restore_session_by_id()*
 agentic.restore_session_by_id({session_id})
   Restore a previous session by its ID. When a current session
   exists, choose whether to keep it running in the background or
-  destroy it.
+  destroy it. Selecting its already-current ACP session is a no-op;
+  the current session is never destroyed.
 
   Parameters: ~
     {session_id}  (string)  Session ID to restore.
@@ -820,7 +822,8 @@ When a current session exists, restoration asks whether to keep it
 running in the background or destroy it. The current chat stays visible
 while restoration runs. A successful restore shows the target and keeps
 the source alive unless destruction was selected. A failed or cancelled
-restore leaves the source unchanged.
+restore leaves the source unchanged. Selecting the ACP session already
+owned by the current session is a no-op and never destroys it.
 
 System information ~
                                              *agentic-system-context*

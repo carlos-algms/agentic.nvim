@@ -984,10 +984,12 @@ that don't support session listing.
 
 With a current session present, restoration uses the same lifecycle choice as
 `new_session()`: keep the current session running in the background or destroy
-it. The current session stays visible while the selected target loads. Success
-shows the target and preserves the visible widget size. The source is destroyed
-only when `Destroy current session` was selected. Failure or picker cancellation
-leaves the current session unchanged.
+it. Selecting the ACP session already owned by the current session is a no-op;
+that session is never destroyed. Otherwise, the current session stays visible
+while the selected target loads. Success shows the target and preserves the
+visible widget size. The source is destroyed only when
+`Destroy current session` was selected. Failure or picker cancellation leaves
+the current session unchanged.
 
 With no current session, selecting a restore creates only the load target. The
 picker and session listing do not create a placeholder session.
