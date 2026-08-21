@@ -721,17 +721,14 @@ describe("agentic.SessionRegistry", function()
                 local on_choice = select_stub.calls[1][3]
                 on_choice(items[2])
 
-                assert.equal(
-                    current,
-                    SessionRegistry.sessions[current.session_key]
-                )
+                assert.equal(current, SessionRegistry.get(current.session_key))
                 assert.equal(2, vim.tbl_count(SessionRegistry.sessions))
 
                 for _, callback in ipairs(target._ready_callbacks) do
                     callback(target)
                 end
 
-                assert.is_nil(SessionRegistry.sessions[current.session_key])
+                assert.is_nil(SessionRegistry.get(current.session_key))
                 assert.equal(1, vim.tbl_count(SessionRegistry.sessions))
             end
         )
@@ -809,10 +806,7 @@ describe("agentic.SessionRegistry", function()
             local on_choice = select_stub.calls[1][3]
             on_choice(items[2])
 
-            assert.equal(
-                captured,
-                SessionRegistry.sessions[captured.session_key]
-            )
+            assert.equal(captured, SessionRegistry.get(captured.session_key))
             for _, callback in ipairs(target._ready_callbacks) do
                 callback(target)
             end
