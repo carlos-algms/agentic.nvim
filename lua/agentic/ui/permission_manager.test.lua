@@ -1019,7 +1019,7 @@ describe("agentic.ui.PermissionManager", function()
             return PermissionSection.button_row_lines(
                 bufnr,
                 writer:get_block_end_row(tool_call_id) or 0,
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 

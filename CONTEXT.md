@@ -15,13 +15,15 @@ backend, server, model, agent (without qualifier).
 **ACP (Agent Client Protocol)**: Newline-delimited JSON-RPC protocol used to
 talk to a **Provider**.
 
-**AgentInstance**: The single, shared **ACPClient** held per **Provider** name.
-One subprocess per provider, multiplexed across every **Session**. _Avoid_:
-agent, client (use the precise term).
+**AgentInstance**: The factory and cache for the single, shared **ACPClient**
+per **Provider** name. It alone requests provider-process startup by
+constructing the client that owns that process. One subprocess per provider,
+multiplexed across every **ACP Session**. _Avoid_: agent, client (use the
+precise term).
 
 **ACPClient**: The Lua object that owns one **Provider** subprocess and one
 **ACPTransport**. Routes RPC responses and `session/update` notifications. One
-per **AgentInstance**.
+per **Provider** name, cached by the singleton **AgentInstance**.
 
 **ACPTransport**: Stdio framing layer below **ACPClient**. Splits JSON-RPC by
 newlines, preserves partial trailers.
@@ -36,31 +38,46 @@ newlines, preserves partial trailers.
 `Session` means three different things at three layers. Use the qualified term.
 
 **ACP Session**: A protocol-level session id, opaque string issued by the
-**Provider** via `session/new`. One **AgentInstance** can hold many; this plugin
-activates one per **SessionManager**. _Avoid_: bare "session" when discussing
-protocol traffic.
+**Provider** via `session/new`. One shared **ACPClient** can hold many; this
+plugin activates one per **SessionManager**. _Avoid_: bare "session" when
+discussing protocol traffic.
 
 **SessionManager**: The Lua orchestrator for one conversation. Owns the
 **ChatWidget**, holds the active **ACP Session** id, routes `session/update`
-events to the **MessageWriter**, **PermissionManager**, and **ChatHistory**. The
-isolation unit for this plugin. _Avoid_: "the session" — say SessionManager.
+events to the **MessageWriter**, **PermissionManager**, and **ChatHistory**, and
+receives its **ACPClient** from its creator. One SessionManager owns one ACP
+conversation for its whole lifetime; starting or loading another conversation
+requires another SessionManager. The isolation unit for this plugin. _Avoid_:
+"the session" — say SessionManager.
+
+**SessionStarter**: Static factory for a one-shot startup attempt. It waits for
+the injected **ACPClient**, sends one `session/new` or `session/load`, and owns
+cancellation and late-response cleanup. **SessionRegistry** owns the returned
+attempt; **SessionManager** does not depend on SessionStarter.
 
 **Session key**: The integer **SessionRegistry** key, assigned at creation and
 stable for the **SessionManager**'s whole life. The only stable identity a
 **Session** has; published to users on every hook payload. _Avoid_: keying
 anything off a **Tabpage** handle.
 
-**Session title**: The human-readable label for a **SessionManager**, held on
-**ChatHistory**. Derived from the first prompt submit, or inherited from the
-**Provider** on restore. Written once, so it stays stable as the conversation
-grows. Labels session-picker entries. _Avoid_: bare "title" — say Session title,
-or **Tool Call** title.
+**Session title**: Optional local navigation metadata for a **SessionManager**,
+held on **ChatHistory**. Derived from the first prompt submit, or seeded by a
+**Provider**'s `session/list` item on restore when present. It is never sent to
+the provider during `session/new` or `session/load`. Labels session-picker
+entries. _Avoid_: bare "title" — say Session title, or **Tool Call** title.
 
 **SessionRegistry**: The module-level singleton mapping **Session key** ->
-**SessionManager**. The only sanctioned entry point from `init.lua`.
-`show_session` is the single path that moves a **SessionManager** into a
-**Tabpage**; three in-place re-render sites call `ChatWidget:show` directly. See
-ADR 0008.
+**SessionManager** and the owner of manager registration, placement, and
+replacement. It composes SessionStarter with the inert manager and owns the
+startup attempt. `show_session` is the single path that moves a
+**SessionManager** into a **Tabpage**; `replace` owns transactional replacement.
+Three in-place re-render sites call `ChatWidget:show` directly. See ADR 0008.
+
+**SessionRestore**: Resolves the current manager and its injected **ACPClient**,
+or asks **AgentInstance** directly when no manager exists. It lists provider
+sessions, reuses the new-session lifecycle choice, and delegates target startup
+to **SessionRegistry**. Keeping the source evicts it into the background;
+destroying it remains an explicit choice.
 
 ### Tabpage scope
 
@@ -76,21 +93,36 @@ closing a widget destroys nothing.
 
 ### Lifecycle verbs
 
-Three distinct operations. "Close" named two of them.
+Four distinct operations. "Close" named two of them.
 
 **Hide**: Close a **ChatWidget**'s windows while the **SessionManager**, its
 **ACP Session** and its generation all stay alive. Produces a **Background
 session**. Reversible. _Avoid_: "close", "destroy".
 
 **Destroy**: Remove a **SessionManager** from the **SessionRegistry**, cancel
-its **ACP Session**, delete its **ChatWidget buffers**. Irreversible, and only
-ever the result of explicit user intent. _Avoid_: "close"; a **Hide** is not a
-step toward this.
+its **ACP Session**, delete its **ChatWidget buffers**. Irreversible. It follows
+explicit user intent, rolls back a newly started replacement target, or tears
+down the source after a replacement commits when its lifecycle requires
+destruction. _Avoid_: "close"; a **Hide** is not a step toward this.
 
 **Evict**: **Hide** whichever **ChatWidget** occupies a **Tabpage** so another
 can take it. The displaced **SessionManager** keeps running as a **Background
 session**. _Avoid_: "replace", "swap out" — both imply the outgoing session
 ends.
+
+**Replace**: Start or select a distinct target **SessionManager** and keep the
+source intact until the target is ready. When the source is visible, show the
+target before applying its lifecycle choice so the recorded widget size
+transfers without flicker. The default lifecycle destroys the source. Restore
+can retain it, which makes placement an **Evict** instead. With a hidden source,
+target placement does not change: a newly started target remains hidden, while
+an existing claimant keeps its current placement. A newly started target has a
+new **Session key**, **ChatWidget**, and state containers. If the requested
+**ACP Session** is already owned by another manager on the same **ACPClient**,
+that existing manager is the target and no second `session/load` is sent.
+Transaction rollback destroys only a newly started target; an existing claimant
+remains owned by its original lifecycle. The source stays intact. Distinct from
+**Evict**, which only hides the displaced manager.
 
 ### UI surface
 
@@ -202,11 +234,11 @@ the `user` sender.
 ### Provider features (per session, keymap-driven)
 
 **AgentConfigOptions**: Per-**SessionManager** orchestrator for provider-side
-toggles (mode, model, thought level). Reads
-`SessionCreationResponse.configOptions` (new path) or
-`response.modes`/`response.models` (legacy path) at session creation. No public
-`init.lua` entry — selectors open from configurable keymaps (`change_mode`,
-`switch_model`, `change_thought_level`).
+toggles (mode, model, thought level). For both `session/new` and `session/load`,
+reads `response.configOptions` when present; otherwise reads legacy
+`response.modes` and `response.models` independently. No public `init.lua` entry
+— selectors open from configurable keymaps (`change_mode`, `switch_model`,
+`change_thought_level`).
 
 **AgentModes** / **AgentModels**: Legacy-path holders inside
 `AgentConfigOptions`. Used when a provider sends `modes`/`models` instead of
@@ -215,8 +247,9 @@ unified `configOptions`. Same per-session scope.
 **SlashCommands**: Per-session input-buffer completion. Command list arrives via
 `session/update` `available_commands_update` and is augmented locally: the
 plugin filters out `clear` and auto-injects `/new` if absent. Only `/new` is
-intercepted on submit (calls `new_session`); every other slash-prefixed line is
-sent verbatim to the **Provider**.
+intercepted on submit. It uses the shared source-lifecycle choice before calling
+`SessionRegistry.replace` for a fresh manager. Every other slash-prefixed line
+is sent verbatim to the **Provider**.
 
 ### Hooks
 
@@ -243,12 +276,13 @@ enabled by default.
 ## Relationships
 
 - A **SessionRegistry** maps each **Session key** to one **SessionManager**.
-- A **SessionManager** owns one **ChatWidget** and references one **ACP
-  Session** id on one **AgentInstance**.
+- A **SessionRegistry** owns each pending **SessionStarter** attempt.
+- A **SessionManager** owns one **ChatWidget** and one ready **ACP Session** on
+  its injected **ACPClient** for life.
 - A **ChatWidget** is visible in at most one **Tabpage**, and a **Tabpage**
   shows at most one **ChatWidget**. Both may be zero.
-- One **AgentInstance** per **Provider** name, shared across every
-  **SessionManager**.
+- The singleton **AgentInstance** caches one shared **ACPClient** per
+  **Provider** name; only it initiates provider client and process creation.
 - A **ChatWidget** owns one **MessageWriter** which owns many **Tool Call
   Blocks** keyed by tool call id.
 - A **Permission Request** belongs to exactly one **Tool Call** (by id) on
@@ -260,8 +294,8 @@ enabled by default.
 ## Example dialogue
 
 > **Dev:** "When the user starts a second chat, do we spawn another
-> **Provider**?" **Maintainer:** "No. **AgentInstance** is shared. We create a
-> new **ACP Session** on the existing instance, and a new **SessionManager**
+> **Provider**?" **Maintainer:** "No. The provider's **ACPClient** is shared. We
+> create a new **ACP Session** on that client, and a new **SessionManager**
 > owns it under its own **Session key**. Opening a **Tabpage** on its own
 > creates nothing."
 
@@ -281,19 +315,24 @@ enabled by default.
 - "Title" meant four things: `ChatHistory.title` (local, from the first prompt),
   `SessionInfo.title` (provider-side, via `session/list`), `ToolCall.title`
   (block label, ACP-required), and an unused `AgentInfo.title`. Resolved:
-  **Session title** covers the first two — the provider's value seeds the local
-  one on restore. For a new session, the first prompt seeds it. **Tool Call**
-  title covers the third. The unused one gets no term. ACP
+  **Session title** covers the first two — the provider's optional value seeds
+  the local one on restore when present. For a new session, the first prompt
+  seeds it. **Tool Call** title covers the third. The unused one gets no term. ACP
   `session_info_update` may carry a live title, but the current handler treats
   session metadata as informational and does not update the local title.
 - "Close" named both **Hide** and **Destroy**. Resolved: see **Lifecycle verbs**.
   The public `Agentic.close` keeps its name for API compatibility but performs a
   **Hide**, as does the `q` keymap. Two user-facing docs shipped disagreeing about
   which one `q` did — hence the pinned verbs.
-- "Agent" was used to mean **Provider** subprocess, **AgentInstance** Lua
-  object, and the LLM behind the provider. Resolved: **Provider** for the
-  subprocess, **AgentInstance** for the Lua holder; the LLM is not a domain
-  concept here.
+- "Replace" was used for tabpage eviction and for ending one conversation in
+  favor of another. Resolved: **Evict** only hides; **Replace** commits a ready
+  target and applies its requested source lifecycle. Restore retains the source
+  unless the user selects destruction.
+- "Agent" was used to mean **Provider** subprocess, **AgentInstance** singleton
+  factory/cache, **ACPClient**, and the LLM behind the provider. Resolved:
+  **Provider** for the subprocess, **AgentInstance** for the singleton
+  factory/cache, and **ACPClient** for the cached client; the LLM is not a
+  domain concept here.
 - "Tool call" was used to mean both the protocol event and its rendered block.
   Resolved: **Tool Call** for the event, **Tool Call Block** for the rendering.
 - "Diff" was used to mean both the in-chat diff and the file-buffer preview.

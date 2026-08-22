@@ -5,6 +5,29 @@ local spy = require("tests.helpers.spy")
 local AgentModes = require("agentic.acp.agent_modes")
 local Logger = require("agentic.utils.logger")
 local SessionManager = require("agentic.session_manager")
+local SessionStarter = require("agentic.session_starter")
+
+--- @return agentic.SessionManager manager
+local function new_test_manager()
+    local Config = require("agentic.config")
+    local AgentInstance = require("agentic.acp.agent_instance")
+    local agent = AgentInstance.get_instance(Config.provider)
+    return SessionManager:new(agent, Config.provider, function() end)
+end
+
+--- @param manager agentic.SessionManager
+--- @param spec agentic.SessionStartSpec
+--- @param callback fun(session: agentic.SessionManager, err: agentic.acp.ACPError|nil)|nil
+--- @return agentic.SessionStartAttempt|nil attempt
+local function start_test_manager(manager, spec, callback)
+    local attempt
+    attempt = SessionStarter.start(manager.agent, spec, function(is_replaying)
+        return manager:prepare_start(spec, is_replaying)
+    end, function(result, start_err)
+        manager:complete_start(spec, result, start_err, callback)
+    end)
+    return attempt
+end
 
 --- @param mode_id string
 --- @return agentic.acp.CurrentModeUpdate
@@ -274,6 +297,11 @@ describe("agentic.SessionManager", function()
                     default_mode = nil,
                 }
                 fake.agent_info = {}
+                function fake:when_ready(on_ready, _on_failure)
+                    vim.schedule(function()
+                        on_ready(fake)
+                    end)
+                end
                 function fake:create_session(_h, cb)
                     cb({
                         sessionId = "test-session",
@@ -304,7 +332,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("returns false when connection error occurred", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             flush_schedule()
             session.session_id = "test-session" --[[@as string]]
             session._connection_error = true
@@ -375,6 +403,23 @@ describe("agentic.SessionManager", function()
                     default_mode = nil,
                 }
                 fake.agent_info = {}
+                function fake:when_ready(on_ready, on_failure)
+                    vim.schedule(function()
+                        if
+                            agent_state == "error"
+                            or agent_state == "disconnected"
+                        then
+                            if on_failure then
+                                on_failure({
+                                    code = -32000,
+                                    message = agent_state,
+                                })
+                            end
+                        else
+                            on_ready(fake)
+                        end
+                    end)
+                end
                 function fake:create_session(_h, cb)
                     cb(create_response, create_error)
                 end
@@ -400,7 +445,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("queues the callback via schedule when session_id exists", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             flush_schedule()
             session.session_id = "ready-session" --[[@as string]]
 
@@ -421,7 +466,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("queues callback when session_id is nil", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             -- Never flushed: session_id stays nil, so the callback must queue
 
             local callback_called = false
@@ -436,11 +481,12 @@ describe("agentic.SessionManager", function()
         it("fires the failure callback when session creation fails", function()
             create_response = nil
             create_error = { message = "creation failed" }
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             local ready_spy = spy.new(function() end)
             local failure_spy = spy.new(function() end)
 
             session:on_session_ready(ready_spy, failure_spy)
+            start_test_manager(session, { kind = "new" })
             flush_schedule()
 
             assert.spy(ready_spy).was.called(0)
@@ -450,7 +496,7 @@ describe("agentic.SessionManager", function()
 
         it("ignores a cached-client error callback after destroy", function()
             agent_state = "error"
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
 
             session:destroy()
 
@@ -463,7 +509,7 @@ describe("agentic.SessionManager", function()
         it("ignores a deferred connection error after destroy", function()
             agent_state = "error"
             invoke_agent_callback = false
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
 
             session:destroy()
 
@@ -474,7 +520,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("ignores an already-ready callback after destroy", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             flush_schedule()
             session.session_id = "ready-session" --[[@as string]]
             local ready_spy = spy.new(function() end)
@@ -548,7 +594,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("clears session_ready_callbacks", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             -- Stays uninitialized: schedule is a no-op here
             session:on_session_ready(function() end)
             assert.equal(1, #session._session_ready_callbacks)
@@ -659,7 +705,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("prepends history on first submit and clears it", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             flush_schedule()
             session.session_id = "test-session" --[[@as string]]
 
@@ -769,12 +815,10 @@ describe("agentic.SessionManager", function()
             end
 
             local session = make_session()
-            session._is_restoring_session = true
-
             session:_on_session_update({
                 sessionUpdate = "agent_message_chunk",
                 content = { type = "text", text = "replayed" },
-            })
+            }, true)
 
             assert.spy(hook_spy).was.called(0)
         end)
@@ -856,7 +900,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("schedules a refresh from on_config_options_applied", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             local refresh_spy = spy.new(function() end)
             session.widget.schedule_header_refresh = refresh_spy
 
@@ -866,7 +910,7 @@ describe("agentic.SessionManager", function()
         end)
 
         it("schedules a refresh from on_set_mode_success", function()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
+            local session = new_test_manager()
             local refresh_spy = spy.new(function() end)
             session.widget.schedule_header_refresh = refresh_spy
 
@@ -991,163 +1035,6 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
-    describe("_cancel_session: session_state clear", function()
-        local SessionState = require("agentic.acp.session_state")
-        --- @type TestStub
-        local slash_commands_stub
-
-        before_each(function()
-            local SlashCommands = require("agentic.acp.slash_commands")
-            slash_commands_stub = spy.stub(SlashCommands, "setCommands")
-        end)
-
-        after_each(function()
-            slash_commands_stub:revert()
-        end)
-
-        --- @param session_id string|nil
-        --- @return agentic.SessionManager
-        local function make_session(session_id)
-            local ChatHistory = require("agentic.ui.chat_history")
-            local config_options = {
-                get_model_id = function() end,
-                get_mode_id = function() end,
-                clear = function() end,
-            }
-            local session_state = SessionState:new(config_options, "Test")
-            session_state:set_usage({ used = 500, size = 1000 })
-
-            return {
-                is_generating = true,
-                _is_restoring_session = true,
-                session_id = session_id,
-                config_options = config_options,
-                session_state = session_state,
-                permission_manager = { clear = function() end },
-                agent = { cancel_session = function() end },
-                widget = {
-                    clear = function() end,
-                    buf_nrs = { input = 1 },
-                },
-                todo_list = { clear = function() end },
-                file_list = { clear = function() end },
-                code_selection = { clear = function() end },
-                diagnostics_list = { clear = function() end },
-                status_animation = { stop = function() end },
-                chat_history = ChatHistory:new(),
-                history_to_send = {},
-                message_writer = {
-                    reset_sender_tracking = function() end,
-                },
-                _cancel_session = SessionManager._cancel_session,
-            } --[[@as agentic.SessionManager]]
-        end
-
-        it("clears usage when a session_id is set", function()
-            local session = make_session("session-1")
-
-            session:_cancel_session()
-
-            assert.is_nil(session.session_state:get_context_used())
-            assert.is_nil(session.session_state:get_context_size())
-        end)
-    end)
-
-    describe("load_acp_session: usage not restored", function()
-        local SessionState = require("agentic.acp.session_state")
-        --- @type TestStub
-        local slash_commands_stub
-        --- @type TestStub|nil
-        local keymap_stub
-        local test_bufnr
-
-        before_each(function()
-            local SlashCommands = require("agentic.acp.slash_commands")
-            slash_commands_stub = spy.stub(SlashCommands, "setCommands")
-            keymap_stub = nil
-            test_bufnr = nil
-        end)
-
-        after_each(function()
-            if keymap_stub then
-                keymap_stub:revert()
-            end
-            slash_commands_stub:revert()
-            if test_bufnr and vim.api.nvim_buf_is_valid(test_bufnr) then
-                vim.api.nvim_buf_delete(test_bufnr, { force = true })
-            end
-        end)
-
-        it("leaves usage nil after snapshot/cancel/restore", function()
-            local ChatHistory = require("agentic.ui.chat_history")
-            local AgentConfigOptions =
-                require("agentic.acp.agent_config_options")
-            local BufHelpers = require("agentic.utils.buf_helpers")
-            test_bufnr = vim.api.nvim_create_buf(false, true)
-
-            keymap_stub = spy.stub(BufHelpers, "multi_keymap_set")
-            local config_options = AgentConfigOptions:new(
-                { chat = test_bufnr },
-                {
-                    set_mode = function() end,
-                    set_model = function() end,
-                    set_thought_level = function() end,
-                }
-            )
-            local session_state = SessionState:new(config_options, "Test")
-            session_state:set_usage({ used = 9000, size = 10000 })
-
-            --- @type agentic.SessionManager
-            local session = {
-                is_generating = false,
-                _is_restoring_session = false,
-                session_id = "old-session",
-                config_options = config_options,
-                session_state = session_state,
-                permission_manager = { clear = function() end },
-                agent = {
-                    agent_capabilities = { loadSession = true },
-                    agent_info = nil,
-                    provider_config = { name = "Test" },
-                    cancel_session = function() end,
-                    load_session = function() end,
-                },
-                widget = {
-                    clear = function() end,
-                    buf_nrs = { input = 1, chat = test_bufnr },
-                },
-                todo_list = { clear = function() end },
-                file_list = { clear = function() end },
-                code_selection = { clear = function() end },
-                diagnostics_list = { clear = function() end },
-                status_animation = {
-                    start = function() end,
-                    stop = function() end,
-                },
-                chat_history = ChatHistory:new(),
-                history_to_send = {},
-                message_writer = {
-                    reset_sender_tracking = function() end,
-                    generate_welcome_header = function()
-                        return ""
-                    end,
-                    write_structural_message = function() end,
-                },
-                _cancel_session = SessionManager._cancel_session,
-                _build_handlers = function()
-                    return {}
-                end,
-                load_acp_session = SessionManager.load_acp_session,
-            } --[[@as agentic.SessionManager]]
-
-            session:load_acp_session("new-session", "title", nil)
-
-            assert.is_nil(session.session_state:get_context_used())
-
-            vim.api.nvim_buf_delete(test_bufnr, { force = true })
-        end)
-    end)
-
     describe("_on_session_update: user_message_chunk", function()
         --- @type TestSpy
         local write_message_spy
@@ -1185,27 +1072,22 @@ describe("agentic.SessionManager", function()
             assert.spy(write_restoring_message_spy).was.called(0)
         end)
 
-        it(
-            "renders as formatted message when _is_restoring_session is true",
-            function()
-                session._is_restoring_session = true --- @diagnostic disable-line: inject-field
+        it("renders replay chunks as formatted messages", function()
+            session:_on_session_update({
+                sessionUpdate = "user_message_chunk",
+                content = { type = "text", text = "hello" },
+            }, true)
 
-                session:_on_session_update({
-                    sessionUpdate = "user_message_chunk",
-                    content = { type = "text", text = "hello" },
-                })
+            assert.spy(write_restoring_message_spy).was.called(1)
+            assert.spy(write_message_spy).was.called(0)
+            local message = write_restoring_message_spy.calls[1][2]
+            assert.truthy(message.content.text:match("hello"))
 
-                assert.spy(write_restoring_message_spy).was.called(1)
-                assert.spy(write_message_spy).was.called(0)
-                local message = write_restoring_message_spy.calls[1][2]
-                assert.truthy(message.content.text:match("hello"))
-
-                assert.spy(session.chat_history.add_message).was.called(1)
-                local added = session.chat_history.add_message.calls[1][2] --- @diagnostic disable-line: undefined-field
-                assert.equal("user", added.type)
-                assert.equal("hello", added.text)
-            end
-        )
+            assert.spy(session.chat_history.add_message).was.called(1)
+            local added = session.chat_history.add_message.calls[1][2] --- @diagnostic disable-line: undefined-field
+            assert.equal("user", added.type)
+            assert.equal("hello", added.text)
+        end)
     end)
 
     describe("on_tool_call_update: buffer reload", function()
@@ -1654,11 +1536,10 @@ describe("agentic.SessionManager", function()
                         file_path = "/tmp/restore-replay.lua",
                     },
                 })
-                session._is_restoring_session = true
-
                 SessionManager._on_tool_call_update(
                     session,
-                    { tool_call_id = "tc-1", status = "completed" }
+                    { tool_call_id = "tc-1", status = "completed" },
+                    true
                 )
 
                 assert.spy(hook_spy).was.called(0)
@@ -1729,73 +1610,35 @@ describe("agentic.SessionManager", function()
         )
     end)
 
-    describe("_cancel_session resets is_generating", function()
-        --- @type TestStub
-        local slash_commands_stub
-
-        before_each(function()
-            local SlashCommands = require("agentic.acp.slash_commands")
-            slash_commands_stub = spy.stub(SlashCommands, "setCommands")
-        end)
-
-        after_each(function()
-            slash_commands_stub:revert()
-        end)
-
-        it("resets is_generating to false", function()
-            local ChatHistory = require("agentic.ui.chat_history")
-            --- @type agentic.SessionManager
-            local session = {
-                is_generating = true,
-                _is_restoring_session = true,
-                session_id = nil,
-                permission_manager = {
-                    clear = spy.new(function() end),
-                },
-                agent = {
-                    cancel_session = spy.new(function() end),
-                },
-                widget = {
-                    clear = spy.new(function() end),
-                    buf_nrs = { input = 1 },
-                },
-                todo_list = { clear = function() end },
-                file_list = { clear = function() end },
-                code_selection = { clear = function() end },
-                diagnostics_list = { clear = function() end },
-                config_options = { clear = function() end },
-                status_animation = { stop = spy.new(function() end) },
-                chat_history = ChatHistory:new(),
-                history_to_send = {},
-                message_writer = {
-                    reset_sender_tracking = function() end,
-                },
-                _cancel_session = SessionManager._cancel_session,
-            } --[[@as agentic.SessionManager]]
-
-            session:_cancel_session()
-
-            assert.is_false(session.is_generating)
-            assert.spy(session.status_animation.stop).was.called(1)
-        end)
-    end)
-
     describe("_handle_input_submit /new while generating", function()
         it("allows /new even when is_generating is true", function()
-            local new_session_spy = spy.new(function() end)
+            local SessionRegistry = require("agentic.session_registry")
+            local replace_stub = spy.stub(SessionRegistry, "replace")
+            local close_todos_spy = spy.new(function() end)
 
             --- @type agentic.SessionManager
             local session = {
                 is_generating = true,
-                todo_list = { close_if_all_completed = function() end },
-                new_session = new_session_spy,
+                todo_list = { close_if_all_completed = close_todos_spy },
+                provider_name = "claude-acp",
+                agent = {},
+                _on_new_session = function(current)
+                    SessionRegistry.replace(
+                        current,
+                        current.provider_name,
+                        { kind = "new" },
+                        { agent = current.agent }
+                    )
+                end,
                 _handle_input_submit = SessionManager._handle_input_submit,
             } --[[@as agentic.SessionManager]]
 
             local result = session:_handle_input_submit("/new")
 
             assert.is_true(result)
-            assert.spy(new_session_spy).was.called(1)
+            assert.spy(replace_stub).was.called(1)
+            assert.spy(close_todos_spy).was.called(0)
+            replace_stub:revert()
         end)
     end)
 
@@ -1897,270 +1740,6 @@ describe("agentic.SessionManager", function()
         end)
     end)
 
-    describe("new_session: on_create_session_response hook", function()
-        local Config = require("agentic.config")
-        --- @type TestStub
-        local schedule_stub
-
-        before_each(function()
-            schedule_stub = spy.stub(vim, "schedule")
-            schedule_stub:invokes(function(fn)
-                fn()
-            end)
-        end)
-
-        --- Surface for both branches. `_cancel_session` and `_build_handlers`,
-        --- which `new_session` calls before `agent:create_session`, are no-ops so
-        --- only the hook is under test. config_options, chat_history and
-        --- message_writer are reached on the success path only.
-        --- @return agentic.SessionManager
-        local function make_session()
-            return {
-                session_key = 3,
-                widget = {
-                    get_visible_tab_id = function()
-                        return 99
-                    end,
-                },
-                session_id = nil,
-                status_animation = {
-                    start = function() end,
-                    stop = function() end,
-                },
-                config_options = {
-                    set_options = function() end,
-                    set_legacy_modes = function() end,
-                    set_legacy_models = function() end,
-                    set_initial_mode = function() end,
-                    set_initial_thought_level = function() end,
-                    -- `false` = no model change pending, so thought level applies
-                    -- inline rather than from a later response.
-                    set_initial_model = function()
-                        return false
-                    end,
-                },
-                chat_history = {},
-                message_writer = {
-                    generate_welcome_header = function()
-                        return ""
-                    end,
-                    write_structural_message = function() end,
-                },
-                _session_ready_callbacks = {},
-                _cancel_session = function() end,
-                _build_handlers = function()
-                    return {}
-                end,
-                new_session = SessionManager.new_session,
-                agent = {
-                    provider_config = { name = "Test" },
-                },
-            } --[[@as agentic.SessionManager]]
-        end
-
-        --- Fires `create_session`'s callback synchronously with response/err.
-        --- @param session agentic.SessionManager
-        --- @param response agentic.acp.SessionCreationResponse|nil
-        --- @param err agentic.acp.ACPError|nil
-        local function fake_create_session(session, response, err)
-            session.agent.create_session = function(_self, _handlers, callback)
-                callback(response, err)
-            end
-        end
-
-        after_each(function()
-            schedule_stub:revert()
-            Config.hooks = Config.hooks or {}
-            Config.hooks.on_create_session_response = nil
-        end)
-
-        it("fires on success with the response and the session key", function()
-            local hook_spy = spy.new(function() end)
-            Config.hooks = Config.hooks or {}
-            Config.hooks.on_create_session_response = function(data)
-                hook_spy(data)
-            end
-
-            local session = make_session()
-            --- @type agentic.acp.SessionCreationResponse
-            local response = { sessionId = "sid-created" }
-            fake_create_session(session, response, nil)
-
-            SessionManager.new_session(session)
-
-            assert.spy(hook_spy).was.called(1)
-            local data = hook_spy.calls[1][1]
-            assert.equal("sid-created", data.session_id)
-            assert.equal(3, data.session_key)
-            assert.equal(99, data.tab_page_id)
-            assert.equal(response, data.response)
-            assert.is_nil(data.err)
-            assert.equal("sid-created", session.session_id)
-        end)
-
-        it("fires on error with err set and response nil", function()
-            local hook_spy = spy.new(function() end)
-            Config.hooks = Config.hooks or {}
-            Config.hooks.on_create_session_response = function(data)
-                hook_spy(data)
-            end
-
-            local session = make_session()
-            local err = { code = -32000, message = "boom" }
-            fake_create_session(
-                session,
-                nil,
-                err --[[@as agentic.acp.ACPError]]
-            )
-
-            SessionManager.new_session(session)
-
-            assert.spy(hook_spy).was.called(1)
-            local data = hook_spy.calls[1][1]
-            assert.is_nil(data.session_id)
-            assert.equal(3, data.session_key)
-            assert.equal(99, data.tab_page_id)
-            assert.is_nil(data.response)
-            assert.equal(err, data.err)
-            assert.is_nil(session.session_id)
-        end)
-
-        it("does not fire when no hook is configured", function()
-            Config.hooks = Config.hooks or {}
-            Config.hooks.on_create_session_response = nil
-
-            local session = make_session()
-            fake_create_session(session, nil, {
-                code = -32000,
-                message = "boom",
-            } --[[@as agentic.acp.ACPError]])
-
-            assert.has_no_errors(function()
-                SessionManager.new_session(session)
-            end)
-        end)
-
-        it(
-            "fires on error but preserves an already-owned session_id",
-            function()
-                -- A session_id already set when this create callback fires means a
-                -- restore/takeover owns the session. The staleness guard runs
-                -- before the error branch, so even a FAILED stale create must not
-                -- null out the owned session_id.
-                local hook_call_order = {}
-                Config.hooks = Config.hooks or {}
-                Config.hooks.on_create_session_response = function(data)
-                    table.insert(hook_call_order, {
-                        err = data.err,
-                        session_id_at_fire = data.session_id,
-                    })
-                end
-
-                local session = make_session()
-                session.session_id = "owned-id"
-                fake_create_session(session, nil, {
-                    code = -32000,
-                    message = "boom",
-                } --[[@as agentic.acp.ACPError]])
-
-                SessionManager.new_session(session)
-
-                assert.equal(1, #hook_call_order)
-                assert.is_not_nil(hook_call_order[1].err)
-                assert.equal("owned-id", session.session_id)
-            end
-        )
-    end)
-
-    describe("new_session: response arrives in a fast event context", function()
-        local Child = require("tests.helpers.child")
-        local child = Child:new()
-
-        before_each(function()
-            child.setup()
-        end)
-
-        after_each(function()
-            child.stop()
-        end)
-
-        -- A response is dispatched straight from the libuv stdout reader
-        -- (`acp_transport` -> `ACPClient:_handle_message` -> callback), so
-        -- `create_session`'s callback body runs in a fast event context. Building
-        -- the hook payload there called `ChatWidget:get_visible_tab_id`, whose
-        -- `nvim_win_is_valid` raises "E5560: nvim_win_is_valid must not be called
-        -- in a fast event context" and aborts the rest of the callback.
-        --
-        -- `tests/mocks/acp_transport_mock.lua` never drives a real libuv callback,
-        -- so a uv timer is the only genuine fast context here, and a child Neovim
-        -- the only place to await it without pumping mini.test's own queue.
-        it("builds the hook payload outside the fast event context", function()
-            child.lua([[
-                local SessionManager = require("agentic.session_manager")
-
-                _G.t = {}
-
-                local session = {
-                    session_key = 3,
-                    session_id = nil,
-                    widget = {
-                        -- Mirrors ChatWidget:get_visible_tab_id, whose first act is
-                        -- an `nvim_win_is_valid` call.
-                        get_visible_tab_id = function()
-                            _G.t.fast = vim.in_fast_event()
-                            vim.api.nvim_win_is_valid(1000)
-                            return 99
-                        end,
-                    },
-                    status_animation = {
-                        start = function() end,
-                        stop = function()
-                            _G.t.stop_fast = vim.in_fast_event()
-                        end,
-                    },
-                    _cancel_session = function() end,
-                    _build_handlers = function()
-                        return {}
-                    end,
-                    new_session = SessionManager.new_session,
-                    agent = {
-                        provider_config = { name = "Test" },
-                        create_session = function(_self, _handlers, callback)
-                            local timer = vim.uv.new_timer()
-                            timer:start(0, 0, function()
-                                timer:close()
-                                _G.t.dispatch_fast = vim.in_fast_event()
-                                _G.t.ok, _G.t.err = pcall(callback, nil, {
-                                    code = -32000,
-                                    message = "boom",
-                                })
-                            end)
-                        end,
-                    },
-                }
-
-                session:new_session()
-
-                vim.wait(2000, function()
-                    return _G.t.ok ~= nil
-                end)
-                vim.wait(2000, function()
-                    return _G.t.fast ~= nil
-                end)
-                vim.wait(2000, function()
-                    return _G.t.stop_fast ~= nil
-                end)
-            ]])
-
-            -- Sanity: the timer really did produce a fast event context.
-            assert.is_true(child.lua_get("_G.t.dispatch_fast"))
-
-            assert.is_false(child.lua_get("_G.t.stop_fast"))
-            assert.is_false(child.lua_get("_G.t.fast"))
-            assert.is_true(child.lua_get("_G.t.ok"))
-        end)
-    end)
-
     describe("initial thought_level wiring", function()
         local AgentConfigOptions = require("agentic.acp.agent_config_options")
 
@@ -2212,6 +1791,11 @@ describe("agentic.SessionManager", function()
                     default_thought_level = "max",
                 }
                 fake.agent_info = {}
+                function fake:when_ready(on_ready, _on_failure)
+                    vim.schedule(function()
+                        on_ready(fake)
+                    end)
+                end
                 function fake:create_session(_h, cb)
                     cb({
                         sessionId = "test-session",
@@ -2245,7 +1829,8 @@ describe("agentic.SessionManager", function()
         it(
             "applies default_thought_level when no model change is triggered",
             function()
-                local _session = SessionManager:new() --[[@as agentic.SessionManager]]
+                local session = new_test_manager()
+                start_test_manager(session, { kind = "new" })
                 flush_schedule()
 
                 assert.equal(1, set_initial_thought_level_stub.call_count)
@@ -2255,255 +1840,6 @@ describe("agentic.SessionManager", function()
                 assert.equal(2, call.n)
             end
         )
-    end)
-
-    describe("destroy during async bootstrap", function()
-        local Config = require("agentic.config")
-        --- @type TestStub
-        local get_instance_stub
-        --- @type TestStub
-        local notify_stub
-        --- @type TestStub
-        local schedule_stub
-        --- @type TestStub
-        local health_check_stub
-
-        --- @type fun()[]
-        local schedule_queue = {}
-
-        local function flush_schedule()
-            while #schedule_queue > 0 do
-                local fn = table.remove(schedule_queue, 1)
-                fn()
-            end
-        end
-
-        --- @type table
-        local fake_agent
-        --- @type TestSpy
-        local cancel_spy
-        --- @type agentic.acp.ClientHandlers|nil
-        local captured_handlers
-        --- @type fun(response: table|nil, err: table|nil)|nil
-        local captured_create_callback
-        --- @type TestSpy|nil
-        local widget_destroy_spy
-        local original_provider
-
-        before_each(function()
-            local AgentInstance = require("agentic.acp.agent_instance")
-            local ACPHealth = require("agentic.acp.acp_health")
-
-            original_provider = Config.provider
-            notify_stub = spy.stub(Logger, "notify")
-            schedule_queue = {}
-            schedule_stub = spy.stub(vim, "schedule")
-            schedule_stub:invokes(function(fn)
-                table.insert(schedule_queue, fn)
-            end)
-            health_check_stub = spy.stub(ACPHealth, "check_configured_provider")
-            health_check_stub:returns(true)
-
-            captured_handlers = nil
-            captured_create_callback = nil
-            widget_destroy_spy = nil
-            cancel_spy = spy.new(function() end)
-
-            get_instance_stub = spy.stub(AgentInstance, "get_instance")
-            get_instance_stub:invokes(function(provider_name, callback)
-                --- @type agentic.acp.ACPClient
-                local fake = {}
-                fake.state = "ready"
-                fake.provider_config = {
-                    name = provider_name or "Test",
-                    initial_model = nil,
-                    default_mode = nil,
-                }
-                fake.agent_info = {}
-                -- Response NOT delivered here: every case fires it explicitly,
-                -- after `destroy`.
-                function fake:create_session(handlers, cb)
-                    captured_handlers = handlers
-                    captured_create_callback = cb
-                end
-                fake.cancel_session = cancel_spy
-                fake_agent = fake
-
-                if callback then
-                    callback(fake)
-                end
-
-                return fake
-            end)
-            Config.provider = "TestProvider"
-        end)
-
-        after_each(function()
-            if widget_destroy_spy then
-                widget_destroy_spy:revert()
-            end
-            Config.provider = original_provider
-            notify_stub:revert()
-            schedule_stub:revert()
-            health_check_stub:revert()
-            get_instance_stub:revert()
-        end)
-
-        --- @return agentic.SessionManager session with `session/new` in flight
-        --- @return fun(response: table|nil, err: table|nil) fire_create_response
-        local function pending_session()
-            local session = SessionManager:new() --[[@as agentic.SessionManager]]
-            flush_schedule()
-
-            assert.is_nil(session.session_id)
-            assert.is_not_nil(captured_create_callback)
-
-            return session, captured_create_callback --[[@as fun(response: table|nil, err: table|nil)]]
-        end
-
-        it(
-            "sends no session/new when destroy lands before the bootstrap",
-            function()
-                -- `SessionRegistry.create` schedules the bootstrap, so create and
-                -- destroy in the SAME tick leave it queued against a dead manager:
-                -- `_cancel_session` over emptied `buf_nrs`, a spinner on a deleted
-                -- buffer, and a real `session/new` on the wire.
-                local session = SessionManager:new() --[[@as agentic.SessionManager]]
-
-                session:destroy()
-
-                assert.has_no_errors(function()
-                    flush_schedule()
-                end)
-
-                assert.is_nil(captured_create_callback)
-            end
-        )
-
-        it("cancels an ACP session that arrives after destroy", function()
-            local session, fire_create_response = pending_session()
-
-            session:destroy()
-
-            assert.has_no_errors(function()
-                fire_create_response({ sessionId = "late-session" })
-                flush_schedule()
-            end)
-
-            -- Never adopted, never left orphaned on the provider
-            assert.is_nil(session.session_id)
-            assert.is_true(cancel_spy:called_with(fake_agent, "late-session"))
-        end)
-
-        it("skips the welcome block when destroy lands before it", function()
-            local session, fire_create_response = pending_session()
-
-            local ready_spy = spy.new(function() end)
-            session:on_session_ready(ready_spy)
-
-            -- The create callback is guarded, but the welcome / `on_created` /
-            -- ready-callback block is a SECOND `vim.schedule` spawned inside it.
-            -- A destroy landing in that one-tick window reaches it.
-            fire_create_response({ sessionId = "s1" })
-            session:destroy()
-
-            assert.has_no_errors(function()
-                flush_schedule()
-            end)
-
-            assert.spy(ready_spy).was.called(0)
-        end)
-
-        it("ignores session updates that arrive after destroy", function()
-            local session, fire_create_response = pending_session()
-
-            fire_create_response({ sessionId = "s1" })
-            flush_schedule()
-            assert.equal("s1", session.session_id)
-
-            local handlers = captured_handlers --[[@as agentic.acp.ClientHandlers]]
-            session:destroy()
-
-            assert.has_no_errors(function()
-                handlers.on_session_update({
-                    sessionUpdate = "agent_message_chunk",
-                    content = { type = "text", text = "late output" },
-                })
-                flush_schedule()
-            end)
-
-            assert.equal(0, #session.chat_history.messages)
-        end)
-
-        --- @param session agentic.SessionManager
-        --- @return fun(err: table|nil) fire_load_response
-        local function pending_load(session)
-            --- @type fun(err: table|nil)|nil
-            local fire_load_response
-
-            fake_agent.agent_capabilities = { loadSession = true }
-            function fake_agent:load_session(_id, _cwd, _mcp, _handlers, cb)
-                fire_load_response = cb
-            end
-
-            session:load_acp_session("restored-session")
-            flush_schedule()
-
-            assert.is_not_nil(fire_load_response)
-
-            return fire_load_response --[[@as fun(err: table|nil)]]
-        end
-
-        it("cancels an ACP session loaded after destroy", function()
-            local session = pending_session()
-            local fire_load_response = pending_load(session)
-
-            session:destroy()
-
-            assert.has_no_errors(function()
-                fire_load_response(nil)
-                flush_schedule()
-            end)
-
-            -- Never adopted, never left orphaned on the provider. The cancel also
-            -- drops the subscriber `load_session` registered before the request.
-            assert.is_nil(session.session_id)
-            assert.is_true(
-                cancel_spy:called_with(fake_agent, "restored-session")
-            )
-        end)
-
-        it("stays silent when a failed load lands after destroy", function()
-            local session = pending_session()
-            local fire_load_response = pending_load(session)
-
-            session:destroy()
-            notify_stub:reset()
-            cancel_spy:reset()
-
-            assert.has_no_errors(function()
-                fire_load_response({ message = "boom" })
-                flush_schedule()
-            end)
-
-            -- Nothing loaded, so nothing to cancel; the failure belongs to a
-            -- session the user already closed
-            assert.spy(notify_stub).was.called(0)
-            assert.spy(cancel_spy).was.called(0)
-        end)
-
-        it("is a no-op the second time it is called", function()
-            local session = pending_session()
-            widget_destroy_spy = spy.on(session.widget, "destroy")
-
-            session:destroy()
-
-            assert.has_no_errors(function()
-                session:destroy()
-            end)
-
-            assert.spy(widget_destroy_spy).was.called(1)
-        end)
     end)
 
     describe("_build_handlers: on_request_permission", function()
@@ -2665,15 +2001,15 @@ describe("agentic.SessionManager", function()
     end)
 
     describe("destroy", function()
-        it("is idempotent and marks destroyed before cancellation", function()
-            local cancel_spy = spy.new(function(session)
+        it("is idempotent and marks destroyed before UI teardown", function()
+            local session
+            local widget_destroy_spy = spy.new(function()
                 assert.is_true(session._destroyed)
             end)
-            local widget_destroy_spy = spy.new(function() end)
             local writer_destroy_spy = spy.new(function() end)
-            local session = {
+            session = {
                 _destroyed = false,
-                _cancel_session = cancel_spy,
+                is_generating = false,
                 widget = { destroy = widget_destroy_spy },
                 message_writer = { destroy = writer_destroy_spy },
                 destroy = SessionManager.destroy,
@@ -2682,7 +2018,6 @@ describe("agentic.SessionManager", function()
             session:destroy()
             session:destroy()
 
-            assert.spy(cancel_spy).was.called(1)
             assert.spy(widget_destroy_spy).was.called(1)
             assert.spy(writer_destroy_spy).was.called(1)
         end)
@@ -2733,6 +2068,7 @@ describe("agentic.SessionManager", function()
                 fake.state = "ready"
                 fake.provider_config = { name = provider_name or "Test" }
                 fake.agent_info = {}
+                function fake:when_ready(_on_ready, _on_failure) end
                 function fake:cancel_session() end
                 return fake
             end)
@@ -2901,21 +2237,27 @@ describe("agentic.SessionManager", function()
                     title = "",
                     add_message = function() end,
                 },
-                todo_list = { close_if_all_completed = function() end },
+                todo_list = {
+                    close_if_all_completed = function() end,
+                    clear = function() end,
+                },
                 code_selection = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 file_list = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 diagnostics_list = {
                     is_empty = function()
                         return true
                     end,
+                    clear = function() end,
                 },
                 message_writer = {
                     write_message = function() end,
@@ -2941,7 +2283,6 @@ describe("agentic.SessionManager", function()
                 can_submit_prompt = function()
                     return true
                 end,
-                _cancel_session = function() end,
                 destroy = SessionManager.destroy,
                 _handle_input_submit = SessionManager._handle_input_submit,
             } --[[@as agentic.SessionManager]]
@@ -3024,9 +2365,9 @@ describe("agentic.SessionManager", function()
             flush_schedule()
 
             assert.spy(finish_spy).was.called(0)
-            assert.spy(stop_spy).was.called(0)
+            assert.spy(stop_spy).was.called(1)
             assert.spy(hook_spy).was.called(0)
-            assert.is_true(session.is_generating)
+            assert.is_false(session.is_generating)
         end)
 
         it("titles the session from the first prompt only", function()
@@ -3161,5 +2502,499 @@ describe("agentic.SessionManager", function()
                 assert.equal("  new   question  ", prompt[2].text)
             end
         )
+    end)
+end)
+
+describe("agentic.SessionManager one-shot lifecycle", function()
+    local Config = require("agentic.config")
+    local AgentInstance = require("agentic.acp.agent_instance")
+    local SessionRegistry = require("agentic.session_registry")
+    local get_instance_stub
+    local notify_stub
+    local managers
+
+    local function new_agent()
+        local agent = {
+            state = "ready",
+            provider_config = { name = "Test Provider" },
+            agent_info = { version = "1" },
+            create_calls = 0,
+            load_calls = 0,
+            cancelled = {},
+            create_error = nil,
+            load_error = nil,
+        }
+
+        function agent:when_ready(on_ready, on_failure)
+            self.ready_callback = on_ready
+            self.failure_callback = on_failure
+        end
+
+        function agent:create_session(_handlers, callback)
+            self.create_calls = self.create_calls + 1
+            if self.create_error then
+                callback(nil, self.create_error)
+            else
+                callback(self.new_response or { sessionId = "new-id" }, nil)
+            end
+        end
+
+        function agent:load_session(_id, _cwd, _servers, _handlers, callback)
+            self.load_calls = self.load_calls + 1
+            if self.load_error then
+                callback(nil, self.load_error)
+            else
+                callback(self.load_response or {}, nil)
+            end
+        end
+
+        function agent:cancel_session(session_id)
+            self.cancelled[#self.cancelled + 1] = session_id
+        end
+
+        return agent
+    end
+
+    local function make_manager(agent, on_new_session)
+        get_instance_stub:returns(agent)
+        local manager = SessionManager:new(
+            agent,
+            "claude-acp",
+            on_new_session or function() end
+        )
+        managers[#managers + 1] = manager
+        return manager
+    end
+
+    local function flush_until(predicate)
+        vim.wait(100, predicate, 1)
+    end
+
+    before_each(function()
+        managers = {}
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
+        notify_stub = spy.stub(Logger, "notify")
+    end)
+
+    after_each(function()
+        for _, manager in ipairs(managers) do
+            manager:destroy()
+        end
+        Config.hooks.on_create_session_response = nil
+        notify_stub:revert()
+        get_instance_stub:revert()
+    end)
+
+    it("constructs inertly from the injected client", function()
+        local agent = new_agent()
+        local manager = make_manager(agent)
+
+        assert.equal(agent, manager.agent)
+        assert.spy(get_instance_stub).was.called(0)
+        assert.equal(0, agent.create_calls)
+        assert.equal(0, agent.load_calls)
+        assert.is_nil(manager.session_id)
+    end)
+
+    for _, case in ipairs({
+        { kind = "new", session_id = "new-id" },
+        { kind = "load", session_id = "load-id" },
+    }) do
+        it("starts one " .. case.kind .. " conversation", function()
+            local agent = new_agent()
+            local manager = make_manager(agent)
+            local callback_manager
+            local callback_err
+
+            start_test_manager(manager, {
+                kind = case.kind,
+                session_id = case.kind == "load" and case.session_id or nil,
+            }, function(value, err)
+                callback_manager = value
+                callback_err = err
+            end)
+
+            assert.equal(0, agent.create_calls)
+            assert.equal(0, agent.load_calls)
+            assert.is_not_nil(agent.ready_callback)
+            agent.ready_callback(agent)
+            flush_until(function()
+                return callback_manager ~= nil or callback_err ~= nil
+            end)
+
+            assert.equal(manager, callback_manager)
+            assert.is_nil(callback_err)
+            assert.equal(case.session_id, manager.session_id)
+            assert.equal(case.kind == "new" and 1 or 0, agent.create_calls)
+            assert.equal(case.kind == "load" and 1 or 0, agent.load_calls)
+        end)
+    end
+
+    it("prefers config options over legacy load metadata", function()
+        local agent = new_agent()
+        agent.load_response = {
+            configOptions = {},
+            modes = { currentModeId = "legacy-mode", availableModes = {} },
+            models = {
+                currentModelId = "legacy-model",
+                availableModels = {},
+            },
+        }
+        local manager = make_manager(agent)
+        local options_stub = spy.stub(manager.config_options, "set_options")
+        local modes_stub = spy.stub(manager.config_options, "set_legacy_modes")
+        local models_stub =
+            spy.stub(manager.config_options, "set_legacy_models")
+
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
+        assert.is_not_nil(agent.ready_callback)
+        agent.ready_callback(agent)
+        flush_until(function()
+            return manager.session_id ~= nil
+        end)
+
+        assert.spy(options_stub).was.called(1)
+        assert.spy(modes_stub).was.called(0)
+        assert.spy(models_stub).was.called(0)
+        options_stub:revert()
+        modes_stub:revert()
+        models_stub:revert()
+    end)
+
+    it("uses independent legacy mode and model load metadata", function()
+        local agent = new_agent()
+        agent.load_response = {
+            modes = { currentModeId = "legacy-mode", availableModes = {} },
+            models = {
+                currentModelId = "legacy-model",
+                availableModels = {},
+            },
+        }
+        local manager = make_manager(agent)
+        local modes_stub = spy.stub(manager.config_options, "set_legacy_modes")
+        local models_stub =
+            spy.stub(manager.config_options, "set_legacy_models")
+
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
+        assert.is_not_nil(agent.ready_callback)
+        agent.ready_callback(agent)
+        flush_until(function()
+            return manager.session_id ~= nil
+        end)
+
+        assert.spy(modes_stub).was.called(1)
+        assert.spy(models_stub).was.called(1)
+        modes_stub:revert()
+        models_stub:revert()
+    end)
+
+    it(
+        "keeps empty load metadata empty and skips new-session defaults",
+        function()
+            local agent = new_agent()
+            agent.load_response = {}
+            local manager = make_manager(agent)
+            local options_stub = spy.stub(manager.config_options, "set_options")
+            local modes_stub =
+                spy.stub(manager.config_options, "set_legacy_modes")
+            local models_stub =
+                spy.stub(manager.config_options, "set_legacy_models")
+            local model_default_stub =
+                spy.stub(manager.config_options, "set_initial_model")
+            local mode_default_stub =
+                spy.stub(manager.config_options, "set_initial_mode")
+            local thought_default_stub =
+                spy.stub(manager.config_options, "set_initial_thought_level")
+
+            start_test_manager(manager, {
+                kind = "load",
+                session_id = "load-id",
+            })
+            agent.ready_callback(agent)
+            flush_until(function()
+                return manager.session_id ~= nil
+            end)
+
+            assert.spy(options_stub).was.called(0)
+            assert.spy(modes_stub).was.called(0)
+            assert.spy(models_stub).was.called(0)
+            assert.spy(model_default_stub).was.called(0)
+            assert.spy(mode_default_stub).was.called(0)
+            assert.spy(thought_default_stub).was.called(0)
+            options_stub:revert()
+            modes_stub:revert()
+            models_stub:revert()
+            model_default_stub:revert()
+            mode_default_stub:revert()
+            thought_default_stub:revert()
+        end
+    )
+
+    it("reports a load request failure before rollback", function()
+        local agent = new_agent()
+        agent.load_error = { code = -32000, message = "load failed" }
+        local manager = make_manager(agent)
+
+        start_test_manager(manager, { kind = "load", session_id = "load-id" })
+        agent.ready_callback(agent)
+        flush_until(function()
+            return notify_stub.call_count > 0
+        end)
+
+        assert.spy(notify_stub).was.called(1)
+        assert.equal(
+            "Failed to load session: load failed",
+            notify_stub.calls[1][1]
+        )
+    end)
+
+    it("rejects a second start without dropping the adopted session", function()
+        local agent = new_agent()
+        local manager = make_manager(agent)
+        local second_err
+
+        start_test_manager(manager, { kind = "new" })
+        agent.ready_callback(agent)
+        flush_until(function()
+            return manager.session_id ~= nil
+        end)
+        local handlers
+        handlers, second_err = manager:prepare_start(
+            { kind = "new" },
+            function()
+                return false
+            end
+        )
+
+        assert.equal("new-id", manager.session_id)
+        assert.equal(1, agent.create_calls)
+        assert.is_nil(handlers)
+        assert.is_not_nil(second_err)
+    end)
+
+    it("fires the create response hook when a new session fails", function()
+        local agent = new_agent()
+        agent.create_error = { code = -32000, message = "create failed" }
+        local manager = make_manager(agent)
+        local hook_spy = spy.new(function() end)
+        Config.hooks.on_create_session_response = function(data)
+            hook_spy(data)
+        end
+
+        start_test_manager(manager, { kind = "new" })
+        agent.ready_callback(agent)
+        flush_until(function()
+            return hook_spy.call_count > 0
+        end)
+
+        assert.spy(hook_spy).was.called(1)
+        local data = hook_spy.calls[1][1]
+        assert.is_nil(data.response)
+        assert.equal("create failed", data.err.message)
+    end)
+
+    it("builds the create hook payload outside a fast event", function()
+        local Child = require("tests.helpers.child")
+        local child = Child:new()
+        child.setup()
+
+        child.lua([[
+            local Config = require("agentic.config")
+            local SessionManager = require("agentic.session_manager")
+            local SessionStarter = require("agentic.session_starter")
+            _G.t = {}
+
+            local agent = {
+                provider_config = { name = "Test" },
+            }
+            function agent:when_ready(on_ready)
+                on_ready(self)
+            end
+            function agent:create_session(_handlers, callback)
+                local timer = vim.uv.new_timer()
+                timer:start(0, 0, function()
+                    timer:close()
+                    _G.t.dispatch_fast = vim.in_fast_event()
+                    _G.t.ok, _G.t.err = pcall(callback, nil, {
+                        code = -32000,
+                        message = "boom",
+                    })
+                end)
+            end
+            function agent:cancel_session() end
+
+            local session = {
+                _destroyed = false,
+                _start_prepared = false,
+                _session_creation_failed = false,
+                _session_ready_callbacks = {},
+                session_key = 3,
+                session_id = nil,
+                agent = agent,
+                status_animation = {
+                    start = function() end,
+                    stop = function()
+                        _G.t.stop_fast = vim.in_fast_event()
+                    end,
+                },
+                widget = {
+                    get_visible_tab_id = function()
+                        _G.t.widget_fast = vim.in_fast_event()
+                        vim.api.nvim_win_is_valid(1000)
+                    end,
+                },
+                _build_handlers = function()
+                    return {}
+                end,
+                prepare_start = SessionManager.prepare_start,
+                complete_start = SessionManager.complete_start,
+            }
+            Config.hooks.on_create_session_response = function(data)
+                _G.t.hook_data = data
+            end
+
+            local spec = { kind = "new" }
+            SessionStarter.start(
+                agent,
+                spec,
+                function(is_replaying)
+                    return session:prepare_start(spec, is_replaying)
+                end,
+                function(result, err)
+                    session:complete_start(spec, result, err)
+                end
+            )
+            vim.wait(2000, function()
+                return _G.t.widget_fast ~= nil
+            end)
+        ]])
+
+        local dispatch_fast = child.lua_get("_G.t.dispatch_fast")
+        local callback_ok = child.lua_get("_G.t.ok")
+        local stop_fast = child.lua_get("_G.t.stop_fast")
+        local widget_fast = child.lua_get("_G.t.widget_fast")
+        child.stop()
+
+        assert.is_true(dispatch_fast)
+        assert.is_true(callback_ok)
+        assert.is_false(stop_fast)
+        assert.is_false(widget_fast)
+    end)
+
+    it("delegates slash-new without depending on the registry", function()
+        local agent = new_agent()
+        local on_new_session = spy.new(function() end)
+        local manager = make_manager(agent, on_new_session)
+        local replace_stub = spy.stub(SessionRegistry, "replace")
+
+        assert.is_true(manager:_handle_input_submit("/new"))
+
+        assert.spy(on_new_session).was.called_with(manager)
+        assert.spy(replace_stub).was.called(0)
+        replace_stub:revert()
+    end)
+
+    it("does not own startup orchestration", function()
+        local agent = new_agent()
+        local manager = make_manager(agent)
+
+        assert.is_nil(rawget(manager, "_starter"))
+        assert.is_nil(rawget(SessionManager, "start"))
+    end)
+
+    it("cancels adopted ownership once before destroying UI", function()
+        local agent = new_agent()
+        local manager = make_manager(agent)
+        manager.session_id = "owned-id"
+        local widget_destroy_stub = spy.stub(manager.widget, "destroy")
+
+        manager:destroy()
+        manager:destroy()
+
+        assert.same({ "owned-id" }, agent.cancelled)
+        assert.spy(widget_destroy_stub).was.called(1)
+        widget_destroy_stub:revert()
+    end)
+
+    it("tears down owners without owning pending startup", function()
+        local agent = new_agent()
+        local manager = make_manager(agent)
+        local attempt = start_test_manager(manager, { kind = "new" })
+        local attempt_cancel_stub = spy.stub(attempt, "cancel")
+        local status_stop_stub = spy.on(manager.status_animation, "stop")
+        local permission_clear_stub =
+            spy.on(manager.permission_manager, "clear")
+        local file_clear_stub = spy.on(manager.file_list, "clear")
+        local selection_clear_stub = spy.on(manager.code_selection, "clear")
+        local diagnostics_clear_stub = spy.on(manager.diagnostics_list, "clear")
+        local todo_clear_stub = spy.on(manager.todo_list, "clear")
+        local options_clear_stub = spy.on(manager.config_options, "clear")
+        local state_clear_stub = spy.on(manager.session_state, "clear")
+        local widget_destroy_stub = spy.on(manager.widget, "destroy")
+        local writer_destroy_stub = spy.on(manager.message_writer, "destroy")
+        manager.chat_history.session_id = "pending-id"
+        manager.chat_history.title = "pending title"
+        manager.chat_history.timestamp = 123
+        manager.chat_history.messages = { { type = "agent", text = "old" } }
+        manager.history_to_send = {}
+        manager._session_ready_callbacks = { function() end }
+        manager.pending_replacement_sources = { [{}] = true }
+        manager.file_list._files = { "old" }
+        manager.code_selection._selections = { { lines = { "old" } } }
+        manager.diagnostics_list._diagnostics = { { message = "old" } }
+        manager.todo_list.total_count = 1
+        manager.config_options.options = { { id = "old" } }
+        manager.session_state._usage = { used = 1, size = 2 }
+        manager.message_writer.tool_call_blocks = { old = {} }
+        manager.message_writer._last_sender = "agent"
+        manager.message_writer._last_message_type = "agent_message_chunk"
+        manager.message_writer._provider_name = "old-provider"
+        manager.message_writer._is_restoring = true
+        manager.message_writer._thinking_extmark_id = 1
+
+        manager:destroy()
+        manager:destroy()
+
+        assert.spy(attempt_cancel_stub).was.called(0)
+        assert.spy(status_stop_stub).was.called(1)
+        assert.spy(permission_clear_stub).was.called(1)
+        assert.spy(file_clear_stub).was.called(1)
+        assert.spy(selection_clear_stub).was.called(1)
+        assert.spy(diagnostics_clear_stub).was.called(1)
+        assert.spy(todo_clear_stub).was.called(1)
+        assert.spy(options_clear_stub).was.called(1)
+        assert.spy(state_clear_stub).was.called(1)
+        assert.spy(widget_destroy_stub).was.called(1)
+        assert.spy(writer_destroy_stub).was.called(1)
+        assert.is_nil(manager.chat_history.session_id)
+        assert.equal("", manager.chat_history.title)
+        assert.equal(0, manager.chat_history.timestamp)
+        assert.equal(0, #manager.chat_history.messages)
+        assert.is_nil(manager.history_to_send)
+        assert.equal(0, #manager._session_ready_callbacks)
+        assert.is_nil(manager.pending_replacement_sources)
+        assert.is_true(manager.file_list:is_empty())
+        assert.is_true(manager.code_selection:is_empty())
+        assert.is_true(manager.diagnostics_list:is_empty())
+        assert.is_true(manager.todo_list:is_empty())
+        assert.equal(0, #manager.config_options.options)
+        assert.is_nil(manager.session_state:get_context_used())
+        assert.same({}, manager.message_writer.tool_call_blocks)
+        assert.is_nil(manager.message_writer._last_sender)
+        assert.is_nil(manager.message_writer._last_message_type)
+        assert.is_nil(manager.message_writer._provider_name)
+        assert.is_false(manager.message_writer._is_restoring)
+        assert.is_nil(manager.message_writer._thinking_extmark_id)
+        attempt_cancel_stub:revert()
+        status_stop_stub:revert()
+        permission_clear_stub:revert()
+        file_clear_stub:revert()
+        selection_clear_stub:revert()
+        diagnostics_clear_stub:revert()
+        todo_clear_stub:revert()
+        options_clear_stub:revert()
+        state_clear_stub:revert()
+        widget_destroy_stub:revert()
+        writer_destroy_stub:revert()
     end)
 end)

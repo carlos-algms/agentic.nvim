@@ -43,7 +43,7 @@ local WidgetLayout = require("agentic.ui.widget_layout")
 --- @field _closing? boolean True during programmatic window closes
 --- @field _avoid_auto_close_cmd fun(self: agentic.ui.ChatWidget, fn: fun())
 --- @field _hidden_chat_winid? integer
---- @field _size? agentic.ui.ChatWidget.Size Size to reopen at, refreshed on every `hide`
+--- @field size? agentic.ui.ChatWidget.Size Size to reopen at, refreshed on every `hide`
 --- @field session_key? integer Registry key, published by `SessionRegistry.create`
 --- @field name_suffixed? boolean Sticky latch owned by `WindowDecoration`: once a second session coexisted, this widget's buffer names keep their " (N)" suffix. Never cleared
 --- @field _header_refresh_scheduled boolean
@@ -117,7 +117,7 @@ function ChatWidget:show(opts)
 
     self:_close_hidden_chat_window()
 
-    self._size = self._size or self:_inherited_size()
+    self.size = self.size or self:_inherited_size()
 
     --- @type agentic.ui.WidgetLayout.Params
     local params = {
@@ -125,7 +125,7 @@ function ChatWidget:show(opts)
         win_nrs = self.win_nrs,
         focus_prompt = opts.focus_prompt,
         position = self.current_position,
-        size = self._size,
+        size = self.size,
         with_programmatic_close = function(fn)
             self:_avoid_auto_close_cmd(fn)
         end,
@@ -174,7 +174,7 @@ function ChatWidget:_inherited_size()
     local axis = self.current_position == "bottom" and "height" or "width"
 
     for _, session in ipairs(SessionRegistry.list()) do
-        local size = session.widget._size
+        local size = session.widget.size
         if size and size[axis] then
             return vim.deepcopy(size)
         end
@@ -290,12 +290,12 @@ function ChatWidget:_remember_size()
         return
     end
 
-    self._size = self._size or {}
+    self.size = self.size or {}
 
     if self.current_position == "bottom" then
-        self._size.height = vim.api.nvim_win_get_height(winid)
+        self.size.height = vim.api.nvim_win_get_height(winid)
     else
-        self._size.width = vim.api.nvim_win_get_width(winid)
+        self.size.width = vim.api.nvim_win_get_width(winid)
     end
 end
 

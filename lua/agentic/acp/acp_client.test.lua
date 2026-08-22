@@ -81,7 +81,9 @@ describe("ACPClient", function()
             local decoded = vim.json.decode(data)
             if decoded.method == "initialize" and captured_on_message then
                 captured_initialize_params = decoded.params
-                captured_on_message({
+                local on_message = captured_on_message
+                --[[@as fun(message: table)]]
+                on_message({
                     jsonrpc = "2.0",
                     method = "initialize",
                     id = decoded.id,
@@ -432,26 +434,60 @@ describe("ACPClient", function()
     end)
 
     describe("load_session", function()
-        it("calls on_load_complete with nil err on success", function()
+        it("returns the standard load response on success", function()
             local client = create_ready_client(LOAD_CAPS)
             local complete_called = false
+            local received_result
             local received_err
 
-            stub_send_response(client, "session/load", {}, nil)
+            local response = {
+                modes = {
+                    currentModeId = "chat",
+                    availableModes = {},
+                },
+                configOptions = {},
+            }
+            stub_send_response(client, "session/load", response, nil)
 
             client:load_session(
                 "sid-1",
                 "/tmp",
                 {},
                 NOOP_HANDLERS,
-                function(err)
+                function(result, err)
                     complete_called = true
+                    received_result = result
                     received_err = err
                 end
             )
 
             assert.is_true(complete_called)
+            assert.equal(response, received_result)
             assert.is_nil(received_err)
+        end)
+
+        it("returns compatibility models from a legacy provider", function()
+            local client = create_ready_client(LOAD_CAPS)
+            local received_result
+            local response = {
+                models = {
+                    currentModelId = "legacy-model",
+                    availableModels = {},
+                },
+            }
+            stub_send_response(client, "session/load", response, nil)
+
+            client:load_session(
+                "sid-1",
+                "/tmp",
+                {},
+                NOOP_HANDLERS,
+                function(result)
+                    received_result = result
+                end
+            )
+
+            assert.equal(response, received_result)
         end)
 
         it("propagates error to on_load_complete", function()
@@ -470,7 +506,8 @@ describe("ACPClient", function()
                 "/tmp",
                 {},
                 NOOP_HANDLERS,
-                function(err)
+                function(result, err)
+                    assert.is_nil(result)
                     received_err = err
                 end
             )
@@ -478,6 +515,34 @@ describe("ACPClient", function()
             assert.is_not_nil(received_err)
             assert.equal(-32000, received_err.code)
             assert.equal("load failed", received_err.message)
+        end)
+
+        it("rejects a missing result and removes its subscriber", function()
+            local client = create_ready_client(LOAD_CAPS)
+            local received_result
+            local received_err
+
+            client:load_session(
+                "sid-1",
+                "/tmp",
+                {},
+                NOOP_HANDLERS,
+                function(result, err)
+                    received_result = result
+                    received_err = err
+                end
+            )
+            local callback = client.callbacks[client.id_counter]
+            assert.is_not_nil(callback)
+            callback(nil, nil)
+
+            assert.is_nil(received_result)
+            assert.is_not_nil(received_err)
+            assert.equal(
+                ACPClient.ERROR_CODES.PROTOCOL_ERROR,
+                received_err.code
+            )
+            assert.is_nil(client.subscribers["sid-1"])
         end)
 
         it(
@@ -512,6 +577,62 @@ describe("ACPClient", function()
             end
         )
 
+        it(
+            "keeps a replacement subscriber after an older load succeeds",
+            function()
+                local client = create_ready_client(LOAD_CAPS)
+                local request_ids = {}
+                transport_send_stub:invokes(function(_self, data)
+                    local decoded = vim.json.decode(data)
+                    request_ids[#request_ids + 1] = decoded.id
+                end)
+                local first_handlers = vim.deepcopy(NOOP_HANDLERS)
+                local replacement_handlers = vim.deepcopy(NOOP_HANDLERS)
+
+                client:load_session("sid-1", "/tmp", {}, first_handlers)
+                client:load_session("sid-1", "/tmp", {}, replacement_handlers)
+
+                --- @diagnostic disable-next-line: need-check-nil
+                captured_on_message({
+                    jsonrpc = "2.0",
+                    id = request_ids[1],
+                    result = {},
+                })
+
+                assert.is_true(
+                    client.subscribers["sid-1"] == replacement_handlers
+                )
+            end
+        )
+
+        it(
+            "rejects unsupported loads without subscribing or sending",
+            function()
+                local client = create_ready_client({
+                    loadSession = false,
+                    promptCapabilities = PROMPT_CAPS,
+                })
+                local result
+                local received_err
+
+                client:load_session(
+                    "sid-1",
+                    "/tmp",
+                    {},
+                    NOOP_HANDLERS,
+                    function(value, err)
+                        result = value
+                        received_err = err
+                    end
+                )
+
+                assert.is_nil(result)
+                assert.is_not_nil(received_err)
+                assert.is_nil(client.subscribers["sid-1"])
+                assert.spy(transport_send_stub).was.called(0)
+            end
+        )
+
         it("works without on_load_complete (backward compatible)", function()
             local client = create_ready_client(LOAD_CAPS)
 
@@ -520,6 +641,125 @@ describe("ACPClient", function()
             assert.has_no_errors(function()
                 client:load_session("sid-1", "/tmp", {}, NOOP_HANDLERS)
             end)
+        end)
+    end)
+
+    describe("when_ready", function()
+        it("schedules ready clients immediately", function()
+            local client = create_ready_client()
+            local queue = queue_schedules()
+            local received
+
+            client:when_ready(function(ready_client)
+                received = ready_client
+            end, function() end)
+
+            assert.equal(1, #queue)
+            assert.is_nil(received)
+            drain(queue)
+            assert.equal(client, received)
+        end)
+
+        it("schedules terminal failure immediately", function()
+            local client = create_ready_client()
+            client.state = "error"
+            local queue = queue_schedules()
+            local received_err
+
+            client:when_ready(function() end, function(err)
+                received_err = err
+            end)
+
+            assert.equal(1, #queue)
+            drain(queue)
+            assert.is_not_nil(received_err)
+            assert.equal(
+                ACPClient.ERROR_CODES.TRANSPORT_ERROR,
+                received_err.code
+            )
+        end)
+
+        it("schedules disconnected failure immediately", function()
+            local client = create_ready_client()
+            client.state = "disconnected"
+            local queue = queue_schedules()
+            local received_err
+
+            client:when_ready(function() end, function(err)
+                received_err = err
+            end)
+
+            assert.equal(1, #queue)
+            drain(queue)
+            assert.equal("disconnected", received_err.message)
+        end)
+
+        it(
+            "fails a queued ready listener when the provider disconnects",
+            function()
+                local client = create_ready_client()
+                client.state = "initializing"
+                local queue = queue_schedules()
+                local ready_count = 0
+                local failure_count = 0
+
+                client:when_ready(function()
+                    ready_count = ready_count + 1
+                end, function()
+                    failure_count = failure_count + 1
+                end)
+
+                --- @diagnostic disable-next-line: invisible
+                client:_set_state("ready")
+                --- @diagnostic disable-next-line: invisible
+                client:_set_state("error")
+                assert.equal(1, #queue)
+                drain(queue)
+                assert.equal(0, ready_count)
+                assert.equal(1, failure_count)
+            end
+        )
+
+        it(
+            "drains an initializing listener through failure exactly once",
+            function()
+                local client = create_ready_client()
+                client.state = "initializing"
+                local queue = queue_schedules()
+                local ready_count = 0
+                local failure_count = 0
+
+                client:when_ready(function()
+                    ready_count = ready_count + 1
+                end, function()
+                    failure_count = failure_count + 1
+                end)
+
+                --- @diagnostic disable-next-line: invisible
+                client:_set_state("disconnected")
+                --- @diagnostic disable-next-line: invisible
+                client:_set_state("error")
+                assert.equal(1, #queue)
+                drain(queue)
+                assert.equal(0, ready_count)
+                assert.equal(1, failure_count)
+            end
+        )
+
+        it("does not call ready when failure has no listener", function()
+            local client = create_ready_client()
+            client.state = "initializing"
+            local queue = queue_schedules()
+            local ready_count = 0
+
+            client:when_ready(function()
+                ready_count = ready_count + 1
+            end)
+
+            --- @diagnostic disable-next-line: invisible
+            client:_set_state("error")
+            drain(queue)
+            assert.equal(0, ready_count)
         end)
     end)
 
