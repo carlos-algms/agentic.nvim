@@ -448,10 +448,12 @@ function ACPClient:__handle_unknown_method(message_id, method)
             string.format("Received custom %s '%s', ignoring it", kind, method)
         )
     else
-        -- `method` is concatenated, never indexed: a malformed frame can carry
-        -- a non-string, and `on_message` runs unprotected in the transport read
-        -- loop where a throw is fatal.
-        Logger.notify("Unknown " .. kind .. " method: " .. method)
+        -- `tostring` keeps the warning safe for a non-string `method`: a
+        -- malformed frame can carry a boolean or table, and `on_message` runs
+        -- unprotected in the transport read loop where a throw is fatal. A
+        -- throw here would also strand a request `id` before `__send_error`
+        -- runs, hanging the shared subprocess (ADR 0004).
+        Logger.notify("Unknown " .. kind .. " method: " .. tostring(method))
     end
 
     if message_id then

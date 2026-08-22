@@ -1098,6 +1098,27 @@ describe("ACPClient", function()
             assert.spy(logger_notify_stub).was.called(1)
         end)
 
+        -- A non-string `method` arriving as a request (with `id`) must still
+        -- reach `__send_error`. Boolean and table values throw on Lua
+        -- concatenation, so a bare `.. method` strands the `id` before the
+        -- `-32601` reply and hangs the shared subprocess (ADR 0004).
+        for _, value in ipairs({ true, {} }) do
+            it("answers a request whose method is a " .. type(value), function()
+                create_ready_client()
+                local sent = capture_sent()
+                logger_notify_stub:reset()
+
+                assert.has_no_errors(function()
+                    deliver(value, 99)
+                end)
+
+                assert.equal(1, #sent)
+                assert.equal(99, sent[1].id)
+                assert.equal(-32601, sent[1].error.code)
+                assert.spy(logger_notify_stub).was.called(1)
+            end)
+        end
+
         -- A request carries an `id` and the agent blocks until it is answered.
         -- The subprocess is shared across every session (ADR 0004), so one
         -- stranded `id` hangs all of them. The spec requires `-32601` for a
