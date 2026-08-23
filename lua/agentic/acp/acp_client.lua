@@ -2,6 +2,10 @@ local Logger = require("agentic.utils.logger")
 local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
 
+--- JSON-RPC "Method not found", the answer the ACP spec requires for a request
+--- naming a method the receiver does not implement.
+local JSONRPC_METHOD_NOT_FOUND = -32601
+
 local KNOWN_ACP_KINDS = {
     read = true,
     edit = true,
@@ -347,6 +351,23 @@ function ACPClient:__send_result(id, result)
     self.transport:send(data)
 end
 
+--- @protected
+--- @param id number
+--- @param code number
+--- @param message string
+function ACPClient:__send_error(id, code, message)
+    local frame = {
+        jsonrpc = "2.0",
+        id = id,
+        error = { code = code, message = message },
+    }
+
+    local data = vim.json.encode(frame)
+    Logger.debug_to_file("error response:", frame)
+
+    self.transport:send(data)
+end
+
 --- @param message agentic.acp.ResponseRaw
 function ACPClient:_handle_message(message)
     -- Chunks are not logged: they would flood the log file.
@@ -384,7 +405,9 @@ function ACPClient:_handle_message(message)
     end
 end
 
---- @param message_id number
+--- Dispatches both notifications and requests: `_handle_message` routes on
+--- `method`, so `message_id` is `nil` for a notification and set for a request.
+--- @param message_id number|nil
 --- @param method string
 --- @param params table
 function ACPClient:_handle_notification(message_id, method, params)
@@ -400,7 +423,45 @@ function ACPClient:_handle_notification(message_id, method, params)
             string.format("Received '%s' notification, ignoring it", method)
         )
     else
-        Logger.notify("Unknown notification method: " .. method)
+        self:__handle_unknown_method(message_id, method)
+    end
+end
+
+--- ACP reserves `_`-prefixed method names for vendor extensions, and the two
+--- message shapes carry opposite obligations: an unrecognized notification
+--- SHOULD be ignored, while a request MUST be answered -- with `-32601` when
+--- the method is not implemented.
+--- https://agentclientprotocol.com/protocol/extensibility
+---
+--- Answering matters beyond extensions: the agent blocks until its `id` comes
+--- back, and the subprocess is shared across every session (ADR 0004), so one
+--- stranded `id` hangs all of them. Only `session/request_permission` of the
+--- client-bound requests is implemented here; every other one lands below.
+--- @protected
+--- @param message_id number|nil `nil` for a notification
+--- @param method any Unvalidated: `_handle_message` only checks it is truthy
+function ACPClient:__handle_unknown_method(message_id, method)
+    local kind = message_id and "request" or "notification"
+
+    if type(method) == "string" and method:sub(1, 1) == "_" then
+        Logger.debug(
+            string.format("Received custom %s '%s', ignoring it", kind, method)
+        )
+    else
+        -- `tostring` keeps the warning safe for a non-string `method`: a
+        -- malformed frame can carry a boolean or table, and `on_message` runs
+        -- unprotected in the transport read loop where a throw is fatal. A
+        -- throw here would also strand a request `id` before `__send_error`
+        -- runs, hanging the shared subprocess (ADR 0004).
+        Logger.notify("Unknown " .. kind .. " method: " .. tostring(method))
+    end
+
+    if message_id then
+        self:__send_error(
+            message_id,
+            JSONRPC_METHOD_NOT_FOUND,
+            "Method not found"
+        )
     end
 end
 
