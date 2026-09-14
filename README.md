@@ -116,6 +116,15 @@ limited to:
       <b>Pi</b>
     </td>
   </tr>
+  <tr>
+    <td align="center" width="130">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset=".github/assets/images/minimax-code-light.svg">
+        <img src=".github/assets/images/minimax-code.svg" width="48" height="48" alt="MiniMax Code">
+      </picture><br>
+      <b><a href="https://agent.minimax.io">MiniMax Code</a></b>
+    </td>
+  </tr>
 </table>
 
 _...and any future ACP-compatible provider._
@@ -239,6 +248,7 @@ tools like `nvm`, `fnm`, etc...
 | [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                                                                                                              |
 | [kiro-cli][kiro-docs]                | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                                                                                                         |
 | [pi-acp][pi-acp]                     | Requires the [`pi` CLI][pi-docs] installed first: `curl -fsSL https://pi.dev/install.sh \| sh`<br/> **OR** `pnpm add -g @earendil-works/pi-coding-agent`<br/> **OR** `npm i -g @earendil-works/pi-coding-agent`<br/> Then the adapter: `pnpm add -g pi-acp` **OR** `npm i -g pi-acp` |
+| [mcode](https://agent.minimax.io) | Follow the [CLI installation instructions](https://www.npmjs.com/package/@minimax-ai/code), including Node.js requirements and npm script permissions, then run `mcode login`. |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -261,7 +271,7 @@ tools like `nvm`, `fnm`, etc...
 
   --- @type agentic.PartialUserConfig
   opts = {
-    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp"
+    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp" | "mcode-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 

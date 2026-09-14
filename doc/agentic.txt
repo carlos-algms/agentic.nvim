@@ -58,6 +58,7 @@ Supported providers:
   - Goose (goose-acp)
   - Kiro (kiro-acp)
   - Pi (pi-acp)
+  - MiniMax Code (mcode-acp)
   - ...and any future ACP-compatible provider
 
 ==============================================================================
@@ -152,6 +153,11 @@ Provider install commands (always check official docs):
     `pnpm add -g pi-acp`
     OR `npm i -g pi-acp`
 
+  mcode                                           *agentic-install-mcode*
+    https://www.npmjs.com/package/@minimax-ai/code
+    Follow the CLI installation instructions, including Node.js requirements
+    and npm script permissions. Run `mcode login` before connecting.
+
 Clipboard image paste works out of the box on macOS, Windows, and WSL
 when Windows interop and `wslpath` are available. On Linux, you need
 one small CLI dependency (`wl-clipboard` or `xclip`). See
@@ -174,7 +180,7 @@ Using lazy.nvim: ~
       -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
       -- "opencode-acp" | "cursor-acp" | "copilot-acp"
       -- "auggie-acp" | "mistral-vibe-acp" | "cline-acp"
-      -- "goose-acp" | "kiro-acp" | "pi-acp"
+      -- "goose-acp" | "kiro-acp" | "pi-acp" | "mcode-acp"
       provider = "claude-agent-acp",
     },
 
@@ -241,7 +247,7 @@ provider ~
   `"claude-agent-acp"`, `"claude-acp"`, `"gemini-acp"`, `"codex-acp"`,
   `"opencode-acp"`, `"cursor-acp"`, `"copilot-acp"`, `"auggie-acp"`,
   `"mistral-vibe-acp"`, `"cline-acp"`, `"goose-acp"`, `"kiro-acp"`,
-  `"pi-acp"`.
+  `"pi-acp"`, `"mcode-acp"`.
 
                                       *agentic-config-acp-providers*
 acp_providers ~

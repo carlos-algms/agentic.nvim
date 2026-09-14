@@ -12,6 +12,7 @@
 --- | "goose-acp"
 --- | "kiro-acp"
 --- | "pi-acp"
+--- | "mcode-acp"
 
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
@@ -443,6 +444,13 @@ local ConfigDefault = {
         ["pi-acp"] = {
             name = "Pi ACP",
             command = "pi-acp",
+            env = {},
+        },
+
+        ["mcode-acp"] = {
+            name = "MiniMax Code ACP",
+            command = "mcode",
+            args = { "acp" },
             env = {},
         },
     },
