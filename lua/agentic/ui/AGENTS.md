@@ -77,7 +77,7 @@ stateDiagram-v2
 - `show` creates fresh windows on every call and reapplies every window-local
   option. There is no "resume" path.
 - Before closing widget windows, `hide` ensures a non-widget fallback window
-  exists in the same tabpage; if `find_first_non_widget_window` returns nil it
+  exists in the same tabpage; if `has_non_agentic_window` returns false it
   calls `open_editor_window`. Skipping this destroys the user's tabpage: closing
   the last window of a non-current tabpage closes that tabpage silently, and E444
   (cannot close last window) only fires when it is also the last tabpage. See
@@ -88,7 +88,7 @@ stateDiagram-v2
   `get_visible_tab_id` reads no other handle, so the derived placement is already
   nil there: `_ensure_fallback_window` returns early and the close takes the
   widget-only tabpage down with it. Only the tabpage IDENTITY crosses the boundary
-  — `_ensure_fallback_window` and `find_first_non_widget_window` still re-check
+  — `_ensure_fallback_window` and `has_non_agentic_window` still re-check
   `nvim_tabpage_is_valid` on it, per root `AGENTS.md`. Regression:
   `chat_widget.test.lua::"keeps a widget-only tab alive when the chat window closes"`.
 - `ChatWidget:open_editor_window` anchors on the first USABLE window in
