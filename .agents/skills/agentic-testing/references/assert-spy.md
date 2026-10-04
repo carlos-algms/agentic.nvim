@@ -67,7 +67,7 @@ describe("MyModule", function()
     end)
 
     it("uses fs_stat", function()
-        assert.equal(1, fs_stat_stub.call_count)
+        assert.equal(fs_stat_stub.call_count, 1)
     end)
 end)
 ```

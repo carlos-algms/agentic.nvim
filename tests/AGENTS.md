@@ -4,7 +4,7 @@ Read this before you write or change any test, in any folder. Most tests live
 next to their module as `lua/**/<module>.test.lua`; integration tests live in
 `tests/integration/`.
 
-The procedure (red/green steps, case-count check, child Neovim, async
+The procedure (red/green steps, revert check, child Neovim, async
 references) is in skill `agentic-testing`. This file holds the rules. Each rule
 exists because a test in this repo passed while the code was wrong.
 
@@ -56,11 +56,15 @@ precondition, not only the outcome. Example: `-1` can mean "hidden" or
 
 mini.test runs each `it()` body inside `pcall`. A callback passed to
 `vim.schedule`, `vim.defer_fn`, a `vim.uv` timer, or a coroutine runs AFTER that
-`pcall` has returned. An assertion that fails there is not reported. The test
-shows green, and the runner may drop the case from its count.
+`pcall` has returned. An assertion that fails there is not reported, and the
+test shows green.
 
 Store the value in the callback. Assert after the callback has run, in the
-`it()` body. Prefer a child Neovim for code that schedules.
+`it()` body.
+
+A test of async code or callbacks MUST run that code in a child Neovim
+(`tests.helpers.child`). In the same process, the scheduled work may not run
+before the assertion, and the test passes falsely.
 
 Two checks enforce this. At runtime, every `tests.helpers.assert` call inside a
 callback queued by `vim.schedule` or `vim.defer_fn` during a test fails the run
@@ -89,7 +93,6 @@ end)
 Same-process traps:
 
 - `vim.uv.sleep()` does not run scheduled callbacks
-- `vim.wait()` runs them, but can hide the case from mini.test's case count
 - `assert.has_no_errors` cannot see an error raised later, in a deferred
   callback or across child RPC
 
