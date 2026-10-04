@@ -125,6 +125,7 @@ end
 
 --- @class agentic.ui.NewSessionOpts : agentic.ui.ChatWidget.ShowOpts
 --- @field provider? agentic.UserConfig.ProviderName
+--- @field cwd? agentic.UserConfig.SessionCwdFn
 
 --- Add diagnostics at the current cursor line to the Chat context
 --- @param opts agentic.ui.ChatWidget.AddToContextOpts|nil
@@ -168,7 +169,7 @@ function Agentic.new_session(opts)
             session:add_selection_or_file_to_session()
         end
         show_session(session, opts)
-    end, provider)
+    end, provider, opts and opts.cwd)
 end
 
 --- Destroys a Chat session and its widget

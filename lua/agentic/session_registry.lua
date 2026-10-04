@@ -435,15 +435,20 @@ end
 --- Creates an additional session after resolving the current one's lifecycle.
 --- @param on_created fun(session: agentic.SessionManager)
 --- @param provider_name agentic.UserConfig.ProviderName|nil
+--- @param cwd_callback agentic.UserConfig.SessionCwdFn|nil
 function SessionRegistry.create_with_current_session_guard(
     on_created,
-    provider_name
+    provider_name,
+    cwd_callback
 )
     local current = SessionRegistry.current()
 
     --- @param destroy_current boolean
     local function create(destroy_current)
-        local session = SessionRegistry.create(provider_name, { kind = "new" })
+        local session = SessionRegistry.create(provider_name, {
+            kind = "new",
+            cwd = cwd_callback,
+        })
 
         if not session then
             return

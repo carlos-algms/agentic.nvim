@@ -238,7 +238,7 @@
 --- @field configOptions? agentic.acp.AnyConfigOption[]
 
 --- @alias agentic.SessionStartSpec
---- | { kind: "new" }
+--- | { kind: "new", cwd?: agentic.UserConfig.SessionCwdFn }
 --- | { kind: "load", session_id: string, title?: string, timestamp?: string|integer }
 
 --- @class agentic.SessionStartNewResult

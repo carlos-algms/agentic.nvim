@@ -1,6 +1,7 @@
 local assert = require("tests.helpers.assert")
 local Child = require("tests.helpers.child")
 local spy = require("tests.helpers.spy")
+local Config = require("agentic.config")
 
 describe("ACPClient", function()
     --- @type agentic.acp.ACPClient
@@ -24,6 +25,7 @@ describe("ACPClient", function()
     local logger_notify_stub
 
     local mock_transport
+    local original_session_cwd
 
     --- Reverted in `after_each`: an assertion throwing mid-test must not leave
     --- `vim.schedule` stubbed for every later file.
@@ -161,6 +163,8 @@ describe("ACPClient", function()
     end
 
     before_each(function()
+        original_session_cwd = Config.acp_configs.session_cwd
+        Config.acp_configs.session_cwd = nil
         package.loaded["agentic.acp.acp_client"] = nil
         package.loaded["agentic.acp.acp_transport"] = nil
         captured_initialize_params = nil
@@ -188,6 +192,7 @@ describe("ACPClient", function()
     end)
 
     after_each(function()
+        Config.acp_configs.session_cwd = original_session_cwd
         if schedule_stub then
             schedule_stub:revert()
             schedule_stub = nil
@@ -200,6 +205,135 @@ describe("ACPClient", function()
         transport_start_stub:revert()
         transport_stop_stub:revert()
         create_transport_stub:revert()
+    end)
+
+    describe("create_session cwd", function()
+        local cases = {
+            { name = "uses the current CWD without callbacks" },
+            {
+                name = "prefers the per-call CWD",
+                per_call = "/per-call",
+                global = "/global",
+                expected = "/per-call",
+            },
+            {
+                name = "falls back from a nil per-call result",
+                has_per_call = true,
+                global = "/global",
+                expected = "/global",
+            },
+            {
+                name = "falls back from an empty per-call result",
+                per_call = "",
+                global = "/global",
+                expected = "/global",
+            },
+            {
+                name = "falls back from a non-string per-call result",
+                per_call = 42,
+                global = "/global",
+                expected = "/global",
+            },
+            {
+                name = "falls back from a relative per-call path",
+                per_call = "relative/path",
+                global = "/global",
+                expected = "/global",
+            },
+            {
+                name = "uses the global CWD without a per-call callback",
+                global = "/global",
+                expected = "/global",
+            },
+            { name = "falls back from a nil global result", has_global = true },
+            { name = "falls back from an empty global result", global = "" },
+            {
+                name = "falls back from a relative global path",
+                global = "relative/path",
+            },
+            {
+                name = "falls back from a per-call error",
+                per_call_error = true,
+                global = "/global",
+                expected = "/global",
+            },
+            { name = "falls back from a global error", global_error = true },
+        }
+
+        for _, case in ipairs(cases) do
+            it(case.name, function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local current_cwd = vim.fn.getcwd()
+                local per_call_args = {}
+                local global_args = {}
+                local per_call_callback
+                local has_per_call = case.per_call ~= nil
+                    or case.has_per_call
+                    or case.per_call_error
+                local has_global = case.global ~= nil
+                    or case.has_global
+                    or case.global_error
+
+                if has_per_call then
+                    per_call_callback = function(cwd)
+                        per_call_args[#per_call_args + 1] = cwd
+                        if case.per_call_error then
+                            error("per-call callback failed")
+                        end
+                        return case.per_call
+                    end
+                end
+                if has_global then
+                    Config.acp_configs.session_cwd = function(cwd)
+                        global_args[#global_args + 1] = cwd
+                        if case.global_error then
+                            error("global callback failed")
+                        end
+                        return case.global
+                    end
+                end
+
+                client:create_session(
+                    NOOP_HANDLERS,
+                    function() end,
+                    per_call_callback
+                )
+
+                assert.equal(case.expected or current_cwd, sent[1].params.cwd)
+                assert.equal("session/new", sent[1].method)
+                assert.same(
+                    has_per_call and { current_cwd } or {},
+                    per_call_args
+                )
+                assert.same(
+                    has_global
+                            and case.expected ~= "/per-call"
+                            and { current_cwd }
+                        or {},
+                    global_args
+                )
+            end)
+        end
+
+        it(
+            "resolves a distinct CWD for each request on a shared client",
+            function()
+                local client = create_ready_client()
+                local sent = capture_sent()
+                local cwd = "/first"
+                Config.acp_configs.session_cwd = function()
+                    return cwd
+                end
+
+                client:create_session(NOOP_HANDLERS, function() end)
+                cwd = "/second"
+                client:create_session(NOOP_HANDLERS, function() end)
+
+                assert.equal("/first", sent[1].params.cwd)
+                assert.equal("/second", sent[2].params.cwd)
+            end
+        )
     end)
 
     describe("initialize", function()

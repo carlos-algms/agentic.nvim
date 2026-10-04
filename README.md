@@ -737,6 +737,34 @@ assigned at creation and stable for its whole life.
 With a current session present, `new_session()` asks whether to keep it running in
 the background or destroy it after the new target session is ready.
 
+Choose one callback location for a new ACP session. Use the global callback
+for a default:
+
+```lua
+require("agentic").setup({
+  acp_configs = {
+    session_cwd = function(current_cwd)
+      return vim.fs.root(current_cwd, ".git")
+    end,
+  },
+})
+```
+
+Use a per-call callback for a one-off directory:
+
+```lua
+require("agentic").new_session({
+  cwd = function(current_cwd)
+    return current_cwd .. "/packages/api"
+  end,
+})
+```
+
+The callback receives Neovim's current CWD and must return an absolute path or
+`nil`. A per-call callback overrides the global default. Invalid results fall
+back to the global callback, then Neovim's current CWD. This affects new ACP
+sessions only.
+
 `destroy_session(opts)` takes a **session** field naming the key to destroy.
 Without it, it destroys the session visible in the current tab, falling back to
 the most recently opened one.
