@@ -222,6 +222,51 @@ describe("BufferGuard", function()
         end
     )
 
+    it(
+        "does not reuse an excluded-filetype window as the redirect target",
+        function()
+            widget:show({ focus_prompt = false })
+
+            local editor_win = widget:find_first_non_widget_window()
+            assert.is_not_nil(editor_win)
+            ---@cast editor_win integer
+            vim.api.nvim_win_close(editor_win, true)
+
+            -- A fugitive window is the tab's only non-widget window, and
+            -- fugitive is in EXCLUDED_FILETYPES: redirecting into it would
+            -- replace the user's fugitive buffer. The guard must open a
+            -- fresh split instead.
+            local fugitive_buf = vim.api.nvim_create_buf(false, true)
+            cleanup_buffers[#cleanup_buffers + 1] = fugitive_buf
+            vim.bo[fugitive_buf].filetype = "fugitive"
+            vim.cmd("vsplit")
+            local fugitive_win = vim.api.nvim_get_current_win()
+            vim.api.nvim_win_set_buf(fugitive_win, fugitive_buf)
+
+            local widget_tab = widget:get_visible_tab_id()
+            local before = #vim.api.nvim_tabpage_list_wins(widget_tab)
+
+            vim.api.nvim_set_current_win(widget.win_nrs.chat)
+            local foreign = vim.api.nvim_create_buf(true, false)
+            cleanup_buffers[#cleanup_buffers + 1] = foreign
+            vim.api.nvim_win_set_buf(widget.win_nrs.chat, foreign)
+
+            assert.equal(
+                widget.buf_nrs.chat,
+                vim.api.nvim_win_get_buf(widget.win_nrs.chat)
+            )
+            assert.equal(fugitive_buf, vim.api.nvim_win_get_buf(fugitive_win))
+            assert.is_true(#vim.api.nvim_tabpage_list_wins(widget_tab) > before)
+
+            local foreign_wins = vim.fn.win_findbuf(foreign)
+            assert.is_true(#foreign_wins > 0)
+            for _, winid in ipairs(foreign_wins) do
+                assert.is_not.equal(fugitive_win, winid)
+                assert.equal(widget_tab, vim.api.nvim_win_get_tabpage(winid))
+            end
+        end
+    )
+
     it("does not re-create the shared guard on later calls", function()
         BufferGuard.ensure()
         local first_id = guard_autocmd_id()
