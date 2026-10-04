@@ -1,18 +1,4 @@
---- StatusAnimation module for displaying animated spinners in windows
----
---- This module provides utilities to render animated state indicators (spinners)
---- in buffers using extmarks and timers.
----
---- ## Usage
---- ```lua
---- local StatusAnimation = require("agentic.ui.status_animation")
---- local animator = StatusAnimation:new(bufnr)
---- animator:start("generating")
---- -- later...
---- animator:stop()
---- ```
----
-
+local BufHelpers = require("agentic.utils.buf_helpers")
 local Config = require("agentic.config")
 local Theme = require("agentic.theme")
 
@@ -27,11 +13,12 @@ local TIMING = {
 }
 
 --- @class agentic.ui.StatusAnimation
---- @field _bufnr number Buffer number where animation is rendered
---- @field _state? agentic.Theme.SpinnerState Current animation state
---- @field _next_frame_handle? uv.uv_timer_t One-shot deferred function handle from vim.defer_fn
---- @field _spinner_idx number Current spinner frame index
---- @field _extmark_id? number Current extmark ID
+--- @field _bufnr number
+--- @field _state? agentic.Theme.SpinnerState
+--- @field _next_frame_handle? uv.uv_timer_t
+--- @field _spinner_idx number
+--- @field _extmark_id? number
+--- @field _epoch number Bumped by every `start`; a stale frame reschedules nothing
 local StatusAnimation = {}
 StatusAnimation.__index = StatusAnimation
 
@@ -44,20 +31,23 @@ function StatusAnimation:new(bufnr)
         _next_frame_handle = nil,
         _spinner_idx = 1,
         _extmark_id = nil,
+        _epoch = 0,
     }, StatusAnimation)
 
     return instance
 end
 
---- Start the animation with the given state
---- Always stops and restarts to avoid overlapping with new content
 --- @param state agentic.Theme.SpinnerState
 function StatusAnimation:start(state)
     self:stop()
 
+    -- `stop` cannot un-queue an already-fired `vim.defer_fn` callback.
+    -- Regression: status_animation.test.lua::"drops a stale frame instead of scheduling a successor"
+    self._epoch = self._epoch + 1
+
     self._state = state
     self._spinner_idx = 1
-    self:_render_frame()
+    self:_render_frame(self._epoch)
 end
 
 function StatusAnimation:stop()
@@ -85,10 +75,13 @@ function StatusAnimation:stop()
     self._extmark_id = nil
 end
 
-function StatusAnimation:_render_frame()
+--- @param epoch number Epoch this frame was scheduled with
+function StatusAnimation:_render_frame(epoch)
+    if epoch ~= self._epoch then
+        return
+    end
+
     if not self._state or not vim.api.nvim_buf_is_valid(self._bufnr) then
-        -- return early to stop the animation in case state was cleared, or buffer is invalid
-        -- this avoids an infinite loop of deferred calls without a state and it actually renders nil in the UI
         return
     end
 
@@ -107,8 +100,9 @@ function StatusAnimation:_render_frame()
 
     local virt_text = { { display_text, hl_group } }
 
-    local winid = vim.fn.bufwinid(self._bufnr)
-    if winid ~= -1 and vim.api.nvim_win_is_valid(winid) then
+    -- A background session animates in its own tab, so the centring padding must measure that window.
+    local winid = BufHelpers.find_visible_win(self._bufnr)
+    if winid then
         local win_width = vim.api.nvim_win_get_width(winid)
         local text_width = vim.fn.strdisplaywidth(display_text)
         if win_width > text_width then
@@ -120,20 +114,20 @@ function StatusAnimation:_render_frame()
     local delay = TIMING[self._state] or TIMING.generating
 
     local virt_lines = {
-        { { "" } }, -- Empty line above
-        virt_text, -- Animation in middle
-        { { "" } }, -- Empty line below
+        { { "" } },
+        virt_text,
+        { { "" } },
     }
 
     self._extmark_id =
         vim.api.nvim_buf_set_extmark(self._bufnr, NS_ANIMATION, line_num, 0, {
-            id = self._extmark_id, -- Reuse existing extmark ID to update in-place
+            id = self._extmark_id,
             virt_lines = virt_lines,
             virt_lines_above = false,
         })
 
     self._next_frame_handle = vim.defer_fn(function()
-        self:_render_frame()
+        self:_render_frame(epoch)
     end, delay)
 end
 

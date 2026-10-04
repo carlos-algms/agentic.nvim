@@ -180,6 +180,12 @@ describe("FilePicker:scan_files", function()
             )
             -- Local headless Neovim runs can create nvim.log after rg scanned.
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "nvim%.log$")
+            -- Scheduled-task runs create .claude/scheduled_tasks.lock; gitignored
+            -- but glob fallback doesn't respect .gitignore.
+            table.insert(
+                FilePicker.GLOB_EXCLUDE_PATTERNS,
+                "scheduled_tasks%.lock$"
+            )
             -- .opencode/.gitignore ignores specific files (bun.lock, package.json, etc.)
             -- rg/fd/git respect nested .gitignore but glob fallback doesn't
             table.insert(FilePicker.GLOB_EXCLUDE_PATTERNS, "%.opencode/bun")

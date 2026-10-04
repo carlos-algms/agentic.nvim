@@ -29,7 +29,7 @@ end
 --- @param selection agentic.Selection
 function CodeSelection:add(selection)
     if selection and #selection.lines > 0 then
-        table.insert(self._selections, selection)
+        self._selections[#self._selections + 1] = selection
         self:_render()
     end
 end
@@ -88,7 +88,7 @@ function CodeSelection:remove_range(start_line, end_line)
             or (end_line >= fence_start + 1 and end_line <= fence_end + 1)
             or (start_line <= fence_start + 1 and end_line >= fence_end + 1)
         then
-            table.insert(indices_to_remove, match_count)
+            indices_to_remove[#indices_to_remove + 1] = match_count
         end
     end
 
@@ -103,6 +103,64 @@ function CodeSelection:remove_range(start_line, end_line)
     if #indices_to_remove > 0 then
         self:_render()
     end
+end
+
+--- @return string[] lines the lines to be written on the chat
+--- @return agentic.acp.Content[] prompt the content to be sent in the prompt to the agent
+function CodeSelection:to_prompt()
+    --- @type string[]
+    local lines = {}
+    --- @type agentic.acp.Content[]
+    local prompt = {}
+
+    lines[#lines + 1] = "\n- **Selected code**:\n"
+
+    local selections = self:get_selections()
+    self:clear()
+
+    for _, selection in ipairs(selections) do
+        if selection and #selection.lines > 0 then
+            -- Add line numbers to each line in the snippet
+            local numbered_lines = {}
+            for i, line in ipairs(selection.lines) do
+                local line_num = selection.start_line + i - 1
+                numbered_lines[#numbered_lines + 1] =
+                    string.format("Line %d: %s", line_num, line)
+            end
+            local numbered_snippet = table.concat(numbered_lines, "\n")
+
+            prompt[#prompt + 1] = {
+                type = "text",
+                text = string.format(
+                    table.concat({
+                        "<agentic_selected_code>",
+                        "<path>%s</path>",
+                        "<line_start>%s</line_start>",
+                        "<line_end>%s</line_end>",
+                        "<agentic_selected_code_snippet>",
+                        "%s",
+                        "</agentic_selected_code_snippet>",
+                        "</agentic_selected_code>",
+                    }, "\n"),
+                    FileSystem.to_absolute_path(selection.file_path),
+                    selection.start_line,
+                    selection.end_line,
+                    numbered_snippet
+                ),
+            }
+
+            lines[#lines + 1] = string.format(
+                "````%s %s#L%d-L%d\n%s\n````",
+                selection.file_type,
+                selection.file_path,
+                selection.start_line,
+                selection.end_line,
+                table.concat(selection.lines, "\n")
+            )
+        end
+    end
+
+    return lines, prompt
 end
 
 --- @return agentic.Selection[]
@@ -161,7 +219,7 @@ function CodeSelection:_render()
 
         -- Split the code fence into lines for buffer insertion
         for line in code_fence:gmatch("[^\n]+") do
-            table.insert(lines, line)
+            lines[#lines + 1] = line
         end
     end
 

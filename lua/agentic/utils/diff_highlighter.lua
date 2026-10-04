@@ -208,7 +208,10 @@ function M.apply_new_line_word_highlights(
     -- Find word-level changes
     local change = M.find_inline_change(old_line, new_line)
     if change and change.new_end > change.new_start then
-        -- Word-level highlight for changed portion only (not entire line)
+        -- Line-level background first so unchanged portions of the changed
+        -- line keep the added-line color, matching the deleted/modified path.
+        apply_add_line_highlight(bufnr, ns_id, line_number, new_line)
+        -- Word-level highlight on top for the changed portion.
         vim.highlight.range(
             bufnr,
             ns_id,

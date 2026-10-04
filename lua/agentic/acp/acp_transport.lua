@@ -32,6 +32,18 @@ local IGNORE_STDERR_PATTERNS = {
     "[PreToolUseHook]",
 }
 
+--- `luanil` decodes JSON `null` as `nil`, not truthy `vim.NIL` userdata.
+--- @param line string
+--- @return boolean ok
+--- @return agentic.acp.ResponseRaw|string decoded
+function M.decode_line(line)
+    return pcall(
+        vim.json.decode,
+        line,
+        { luanil = { object = true, array = true } }
+    )
+end
+
 --- Create stdio transport for ACP communication
 --- @param config agentic.acp.StdioTransportConfig
 --- @param callbacks agentic.acp.TransportCallbacks
@@ -64,6 +76,15 @@ function M.create_stdio_transport(config, callbacks)
 
     function transport:start()
         callbacks.on_state_change("connecting")
+
+        -- Resolve command to full executable path for Windows OS PATHEXT support
+        -- vim.fn.exepath handles .CMD, .EXE and .BAT extensions on Windows
+        local command = vim.fn.exepath(vim.fn.expand(config.command))
+        if command == "" then
+            -- if exepath returns empty, the command is not found in PATH
+            callbacks.on_state_change("error")
+            error(string.format("Command not found: %s", config.command))
+        end
 
         local stdin = uv.new_pipe(false)
         local stdout = uv.new_pipe(false)
@@ -104,7 +125,7 @@ function M.create_stdio_transport(config, callbacks)
         end
 
         --- @diagnostic disable-next-line: missing-fields
-        local handle, pid = uv.spawn(config.command, {
+        local handle, pid = uv.spawn(command, {
             args = args,
             env = final_env,
             stdio = { stdin, stdout, stderr },
@@ -171,12 +192,21 @@ function M.create_stdio_transport(config, callbacks)
             end
         end)
 
-        Logger.debug("Spawned ACP agent process with PID ", tostring(pid))
-
         if not handle then
+            stdin:close()
+            stdout:close()
+            stderr:close()
+
             callbacks.on_state_change("error")
-            error("Failed to spawn ACP agent process")
+            error(
+                string.format(
+                    "Failed to spawn ACP agent process: %s",
+                    tostring(pid)
+                )
+            )
         end
+
+        Logger.debug("Spawned ACP agent process with PID ", tostring(pid))
 
         self.process = handle
         self.pid = tonumber(pid)
@@ -203,8 +233,9 @@ function M.create_stdio_transport(config, callbacks)
                 for i = 1, #lines - 1 do
                     local line = vim.trim(lines[i])
                     if line ~= "" then
-                        local ok, message = pcall(vim.json.decode, line)
+                        local ok, message = M.decode_line(line)
                         if ok then
+                            --- @cast message agentic.acp.ResponseRaw
                             callbacks.on_message(message)
                         else
                             Logger.notify(

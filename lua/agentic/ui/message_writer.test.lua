@@ -273,7 +273,7 @@ describe("agentic.ui.MessageWriter", function()
                 local tracker =
                     writer.tool_call_blocks["auto-scroll-permission-row"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                local k = tracker._rendered_button_count or 0
+                local k = tracker.rendered_button_count or 0
                 assert.is_true(k > 0)
                 local end_row = block_end_row("auto-scroll-permission-row")
                 local first_button_row = end_row - k
@@ -302,7 +302,7 @@ describe("agentic.ui.MessageWriter", function()
                 local tracker =
                     writer.tool_call_blocks["auto-scroll-above-perm"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                local k = tracker._rendered_button_count or 0
+                local k = tracker.rendered_button_count or 0
                 local end_row = block_end_row("auto-scroll-above-perm")
                 local bottom_pad_row = end_row - k - 1
                 -- Park cursor on the body row above the bottom_pad row
@@ -355,7 +355,7 @@ describe("agentic.ui.MessageWriter", function()
             return PermissionSection.button_row_extmarks(
                 bufnr,
                 block_end_row(tool_call_id),
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 
@@ -418,7 +418,7 @@ describe("agentic.ui.MessageWriter", function()
             return PermissionSection.button_row_lines(
                 bufnr,
                 block_end_row(tool_call_id),
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 
@@ -887,7 +887,7 @@ describe("agentic.ui.MessageWriter", function()
                         writer.tool_call_blocks["render-first-paint"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
                     -- 2 buttons + 2 spacers (between + trailing).
-                    assert.equal(4, tracker._rendered_button_count)
+                    assert.equal(4, tracker.rendered_button_count)
 
                     local end_row_after = block_end_row("render-first-paint")
                     assert.equal(end_row_before + 4, end_row_after)
@@ -917,7 +917,7 @@ describe("agentic.ui.MessageWriter", function()
                     local end_row = block_end_row("render-extmarks")
                     local tracker = writer.tool_call_blocks["render-extmarks"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    local k = tracker._rendered_button_count
+                    local k = tracker.rendered_button_count
                     -- 2 buttons + 2 spacers (between + trailing).
                     assert.equal(4, k)
 
@@ -1053,7 +1053,7 @@ describe("agentic.ui.MessageWriter", function()
 
                     local tracker = writer.tool_call_blocks["render-clear"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(0, tracker._rendered_button_count)
+                    assert.equal(0, tracker.rendered_button_count)
 
                     local end_row_after = block_end_row("render-clear")
                     -- 2 buttons + 1 inter-spacer + 1 trailing spacer removed.
@@ -1102,7 +1102,62 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker = writer.tool_call_blocks["render-idempotent"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
                     -- 2 buttons + 1 inter-spacer + 1 trailing spacer.
-                    assert.equal(4, tracker._rendered_button_count)
+                    assert.equal(4, tracker.rendered_button_count)
+                end
+            )
+
+            it(
+                "recovers a stale rendered-row count without duplicating buttons",
+                function()
+                    setup_permission_block("render-stale-count", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+                    local tracker =
+                        writer.tool_call_blocks["render-stale-count"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local end_row_before = block_end_row("render-stale-count")
+                    tracker.rendered_button_count = end_row_before + 1
+
+                    writer:repaint_status_row("render-stale-count")
+
+                    assert.equal(4, tracker.rendered_button_count)
+                    assert.equal(
+                        end_row_before,
+                        block_end_row("render-stale-count")
+                    )
+                    local rows = button_row_lines("render-stale-count")
+                    assert.equal(4, #rows)
+                    assert.truthy(rows[1]:find("Allow"))
+                    assert.truthy(rows[3]:find("Reject"))
+                end
+            )
+
+            it(
+                "recovers an undersized rendered-row count without duplicating buttons",
+                function()
+                    setup_permission_block("render-undersized-count", {
+                        is_focused = true,
+                        focused_button_index = 1,
+                    })
+                    local tracker =
+                        writer.tool_call_blocks["render-undersized-count"]
+                    --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
+                    local end_row_before =
+                        block_end_row("render-undersized-count")
+                    tracker.rendered_button_count = 0
+
+                    writer:repaint_status_row("render-undersized-count")
+
+                    assert.equal(4, tracker.rendered_button_count)
+                    assert.equal(
+                        end_row_before,
+                        block_end_row("render-undersized-count")
+                    )
+                    local rows = button_row_lines("render-undersized-count")
+                    assert.equal(4, #rows)
+                    assert.truthy(rows[1]:find("Allow"))
+                    assert.truthy(rows[3]:find("Reject"))
                 end
             )
 
@@ -1170,7 +1225,7 @@ describe("agentic.ui.MessageWriter", function()
                 assert.equal(0, #rows_after)
                 local tracker = writer.tool_call_blocks["row-n-clear"]
                 --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                assert.equal(0, tracker._rendered_button_count)
+                assert.equal(0, tracker.rendered_button_count)
                 -- Block shrinks back to its pre-permission end_row.
                 assert.equal(end_row_before - 2, block_end_row("row-n-clear"))
 
@@ -1248,7 +1303,7 @@ describe("agentic.ui.MessageWriter", function()
                     local tracker =
                         writer.tool_call_blocks["get-row-not-rendered"]
                     --- @cast tracker agentic.ui.MessageWriter.ToolCallBlock
-                    assert.equal(0, tracker._rendered_button_count)
+                    assert.equal(0, tracker.rendered_button_count)
                     assert.is_nil(
                         writer:get_button_row("get-row-not-rendered", 1)
                     )
@@ -2373,6 +2428,78 @@ describe("agentic.ui.MessageWriter", function()
             assert.equal(lines[5], "")
             assert.equal(top_pad_row, start_row + 1)
             assert.equal(bottom_pad_row, end_row - 1)
+        end)
+    end)
+
+    describe("_generate_welcome_header", function()
+        it(
+            "returns header with provider name, session id, and timestamp",
+            function()
+                local header =
+                    writer:generate_welcome_header("Claude ACP", "abc123")
+
+                assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+                assert.truthy(header:match("\n%- %d%d%d%d%-%d%d%-%d%d"))
+                assert.truthy(header:match("\n%- session id: abc123\n"))
+                assert.truthy(header:match("\n%-%-%- %-%-$"))
+            end
+        )
+
+        it("uses 'unknown' when session_id is nil", function()
+            local header = writer:generate_welcome_header("Claude ACP", nil)
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.truthy(header:match("\n%- session id: unknown\n"))
+            assert.truthy(header:match("\n%-%-%- %-%-$"))
+        end)
+
+        it("includes version when provided", function()
+            local header =
+                writer:generate_welcome_header("Claude ACP", "abc123", "1.2.3")
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP v1%.2%.3\n"))
+            assert.truthy(header:match("\n%- session id: abc123\n"))
+        end)
+
+        it("omits version when nil", function()
+            local header =
+                writer:generate_welcome_header("Claude ACP", "abc123", nil)
+
+            assert.truthy(header:match("^# Agentic %- Claude ACP\n"))
+            assert.is_nil(header:match(" v"))
+        end)
+    end)
+
+    describe("write_finish_message", function()
+        it(
+            "writes the error branch with the error icon and inspected err",
+            function()
+                writer:write_finish_message(
+                    nil,
+                    { code = -32000, message = "boom" } --[[@as any]]
+                )
+
+                assert.truthy(content_has(Config.message_icons.error))
+                assert.truthy(content_has("Agent finished with error"))
+                assert.truthy(content_has("boom"))
+            end
+        )
+
+        it("writes the cancelled branch with the stopped icon", function()
+            writer:write_finish_message({ stopReason = "cancelled" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.stopped))
+            assert.truthy(content_has("Generation stopped by the user request"))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.finished))
+        end)
+
+        it("writes the completed branch with the finished icon", function()
+            writer:write_finish_message({ stopReason = "end_turn" }, nil)
+
+            assert.truthy(content_has(Config.message_icons.finished))
+            assert.is_false(content_has(Config.message_icons.error))
+            assert.is_false(content_has(Config.message_icons.stopped))
         end)
     end)
 end)

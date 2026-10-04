@@ -1,4 +1,4 @@
---- @diagnostic disable: invisible
+--- @diagnostic disable: invisible, missing-fields, param-type-mismatch
 local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 local PermissionSection = require("tests.helpers.permission_section")
@@ -20,6 +20,15 @@ describe("agentic.ui.PermissionManager", function()
     local schedule_stub
     --- @type TestSpy|nil
     local cmd_spy
+    --- @type TestSpy|nil
+    local repaint_spy
+    local own_win
+    --- @type table<integer, boolean>
+    local baseline_tabs
+    --- Registered by a single case; unregistered in teardown so a failed
+    --- assertion cannot leave a stale `bufnr -> widget` mapping behind.
+    --- @type table|nil
+    local registered_owner
 
     --- Build a permission request with the given tool_call_id. Defaults to
     --- one allow_once + one reject_once option; pass opts.options to override.
@@ -83,6 +92,14 @@ describe("agentic.ui.PermissionManager", function()
     end
 
     before_each(function()
+        baseline_tabs = {}
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            baseline_tabs[tabpage] = true
+        end
+        registered_owner = nil
+        own_win = nil
+        repaint_spy = nil
+
         schedule_stub = spy.stub(vim, "schedule")
         schedule_stub:invokes(function(fn)
             fn()
@@ -111,15 +128,99 @@ describe("agentic.ui.PermissionManager", function()
             cmd_spy:revert()
             cmd_spy = nil
         end
+        if repaint_spy then
+            repaint_spy:revert()
+            repaint_spy = nil
+        end
 
         schedule_stub:revert()
 
+        if registered_owner then
+            require("agentic.ui.widget_registry").unregister(registered_owner)
+            registered_owner = nil
+        end
+
+        if own_win and vim.api.nvim_win_is_valid(own_win) then
+            vim.api.nvim_win_close(own_win, true)
+        end
         if winid and vim.api.nvim_win_is_valid(winid) then
             vim.api.nvim_win_close(winid, true)
         end
+
+        for _, tabpage in ipairs(vim.api.nvim_list_tabpages()) do
+            if not baseline_tabs[tabpage] then
+                pcall(function()
+                    vim.api.nvim_set_current_tabpage(tabpage)
+                    vim.cmd("tabclose!")
+                end)
+            end
+        end
+
         if bufnr and vim.api.nvim_buf_is_valid(bufnr) then
             vim.api.nvim_buf_delete(bufnr, { force = true })
         end
+    end)
+
+    describe("registered chat owner", function()
+        it("returns the owning widget's visible chat window", function()
+            local WidgetRegistry = require("agentic.ui.widget_registry")
+            vim.cmd("tabnew")
+            local owner_tab = vim.api.nvim_get_current_tabpage()
+            own_win = vim.api.nvim_open_win(bufnr, true, {
+                relative = "editor",
+                width = 80,
+                height = 20,
+                row = 0,
+                col = 0,
+            })
+            registered_owner = {
+                buf_nrs = { chat = bufnr },
+                win_nrs = { chat = own_win },
+                get_visible_tab_id = function()
+                    return owner_tab
+                end,
+            }
+            WidgetRegistry.register(registered_owner)
+
+            assert.equal(own_win, pm:_find_visible_chat_winid())
+        end)
+
+        it(
+            "returns nil for a hidden owner with a foreign visible copy",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                registered_owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = {},
+                    get_visible_tab_id = function()
+                        return nil
+                    end,
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
+
+        it(
+            "rejects an owner window outside the derived owner tabpage",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                vim.cmd("tabnew")
+                local owner_tab = vim.api.nvim_get_current_tabpage()
+                vim.cmd("tabprevious")
+                registered_owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = { chat = winid },
+                    get_visible_tab_id = function()
+                        return owner_tab
+                    end,
+                }
+                WidgetRegistry.register(registered_owner)
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+            end
+        )
     end)
 
     describe("concurrent pending map", function()
@@ -430,7 +531,7 @@ describe("agentic.ui.PermissionManager", function()
                 spy.new(function() end) --[[@as function]]
             )
 
-            local repaint_spy = spy.on(writer, "repaint_status_row")
+            repaint_spy = spy.on(writer, "repaint_status_row")
             pm:_cycle_focus(1)
 
             assert.equal(2, repaint_spy.call_count)
@@ -440,8 +541,6 @@ describe("agentic.ui.PermissionManager", function()
             end
             assert.is_true(ids["tc-1"])
             assert.is_true(ids["tc-2"])
-
-            repaint_spy:revert()
         end)
     end)
 
@@ -577,6 +676,88 @@ describe("agentic.ui.PermissionManager", function()
 
                 local cursor = vim.api.nvim_win_get_cursor(winid)
                 assert.equal((button_row_1 or 0) + 1, cursor[1])
+            end
+        )
+
+        it(
+            "moves the cursor in the owning widget's window, not a copy in another tab",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+
+                -- The user opened the chat buffer in a plain window. It sits in
+                -- the FIRST tabpage, and `win_findbuf` returns tabpage order, so
+                -- an unpreferred lookup picks that copy over the widget's own
+                -- window in a later tab and scrolls a window nobody is watching.
+                local foreign_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(foreign_win, bufnr)
+
+                vim.cmd("tabnew")
+                own_win = vim.api.nvim_open_win(bufnr, true, {
+                    relative = "editor",
+                    width = 80,
+                    height = 40,
+                    row = 0,
+                    col = 0,
+                })
+                local owner_tab = vim.api.nvim_get_current_tabpage()
+
+                local owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = { chat = own_win },
+                    get_visible_tab_id = function()
+                        return owner_tab
+                    end,
+                }
+                WidgetRegistry.register(owner)
+                registered_owner = owner
+
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                local button_row_1 = writer:get_button_row("tc-1", 1)
+                assert.is_not_nil(button_row_1)
+
+                vim.api.nvim_win_set_cursor(own_win, { 1, 0 })
+                vim.api.nvim_win_set_cursor(foreign_win, { 1, 0 })
+
+                pm:_jump_cursor_to("tc-1")
+
+                assert.equal(
+                    (button_row_1 or 0) + 1,
+                    vim.api.nvim_win_get_cursor(own_win)[1]
+                )
+                assert.equal(1, vim.api.nvim_win_get_cursor(foreign_win)[1])
+            end
+        )
+
+        it(
+            "does not use a foreign visible copy when the owning widget is hidden",
+            function()
+                local WidgetRegistry = require("agentic.ui.widget_registry")
+                local owner = {
+                    buf_nrs = { chat = bufnr },
+                    win_nrs = {},
+                    get_visible_tab_id = function()
+                        return nil
+                    end,
+                }
+                WidgetRegistry.register(owner)
+                registered_owner = owner
+
+                seed_block("tc-1")
+                pm:add_request(
+                    make_request("tc-1"),
+                    spy.new(function() end) --[[@as function]]
+                )
+
+                vim.api.nvim_win_set_cursor(winid, { 1, 0 })
+
+                assert.is_nil(pm:_find_visible_chat_winid())
+                pm:_jump_cursor_to("tc-1")
+                assert.equal(1, vim.api.nvim_win_get_cursor(winid)[1])
             end
         )
 
@@ -838,7 +1019,7 @@ describe("agentic.ui.PermissionManager", function()
             return PermissionSection.button_row_lines(
                 bufnr,
                 writer:get_block_end_row(tool_call_id) or 0,
-                tracker._rendered_button_count or 0
+                tracker.rendered_button_count or 0
             )
         end
 

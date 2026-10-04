@@ -1,5 +1,13 @@
+local ACPPayloads = require("agentic.acp.acp_payloads")
 local FileSystem = require("agentic.utils.file_system")
 local BufHelpers = require("agentic.utils.buf_helpers")
+
+--- @param destination string
+--- @return string escaped_destination
+local function escape_markdown_link_destination(destination)
+    local escaped = destination:gsub("([<>])", "\\%1")
+    return escaped
+end
 
 --- @class agentic.ui.FileList
 --- @field _files string[]
@@ -36,7 +44,7 @@ function FileList:add(file_path)
     local _ok, stat = pcall(vim.uv.fs_stat, file_path)
 
     if stat and stat.type == "file" then
-        table.insert(self._files, file_path)
+        self._files[#self._files + 1] = file_path
         self:_render()
         return true
     end
@@ -59,6 +67,42 @@ function FileList:get_files()
     return vim.deepcopy(self._files)
 end
 
+--- @return string[] lines the lines to be written on the chat
+--- @return agentic.acp.Content[] prompt the content to be sent in the prompt to the agent
+function FileList:to_prompt()
+    --- @type string[]
+    local lines = {}
+    --- @type agentic.acp.Content[]
+    local prompt = {}
+
+    lines[#lines + 1] = "\n- **Referenced files**:"
+
+    local files = self:get_files()
+    self:clear()
+
+    for _, file_path in ipairs(files) do
+        prompt[#prompt + 1] = ACPPayloads.create_file_content(file_path)
+
+        local smart_path = FileSystem.to_smart_path(file_path)
+        local ext = FileSystem.get_file_extension(file_path)
+        local line
+        -- Image files render as markdown image tags so the chat
+        -- buffer (markdown filetype) can display them inline.
+        if FileSystem.IMAGE_MIMES[ext] then
+            line = string.format(
+                "  - ![](<%s>)",
+                escape_markdown_link_destination(smart_path)
+            )
+        else
+            line = string.format("  - @%s", smart_path)
+        end
+
+        lines[#lines + 1] = line
+    end
+
+    return lines, prompt
+end
+
 function FileList:clear()
     self._files = {}
     self:_render()
@@ -74,7 +118,7 @@ function FileList:_render()
     local lines = {}
 
     for _, file in ipairs(self._files) do
-        table.insert(lines, "-   " .. FileSystem.to_smart_path(file))
+        lines[#lines + 1] = "-   " .. FileSystem.to_smart_path(file)
     end
 
     BufHelpers.with_modifiable(self._bufnr, function(bufnr)

@@ -127,4 +127,59 @@ describe("JsonFormat", function()
             assert.same(once, twice)
         end)
     end)
+
+    describe("format_value", function()
+        it("expands a short object below the length threshold", function()
+            local result = JsonFormat.format_value({ command = "ls -la" })
+
+            assert.is_true(result:find("\n") ~= nil)
+            assert.equal("{", result:sub(1, 1))
+            assert.is_true(result:find('"command": "ls %-la"') ~= nil)
+        end)
+
+        it("emits sorted keys on their own indented lines", function()
+            local result = JsonFormat.format_value({
+                command = "ls",
+                description = "List files",
+            })
+
+            local lines = vim.split(result, "\n")
+            assert.equal('  "command": "ls",', lines[2])
+            assert.equal('  "description": "List files"', lines[3])
+        end)
+
+        it("returns {} for an empty dict without crashing", function()
+            assert.equal("{}", JsonFormat.format_value(vim.empty_dict()))
+        end)
+
+        it("expands nested objects", function()
+            local result = JsonFormat.format_value({
+                outer = { inner = "value" },
+            })
+
+            assert.is_true(result:find('"outer": {') ~= nil)
+            assert.is_true(result:find('"inner": "value"') ~= nil)
+        end)
+
+        it("renders array-shaped tables", function()
+            local result = JsonFormat.format_value({ "a", "b" })
+
+            assert.equal("[", result:sub(1, 1))
+            assert.is_true(result:find('"a"') ~= nil)
+            assert.is_true(result:find('"b"') ~= nil)
+        end)
+
+        it("encodes vim.NIL as null", function()
+            local result = JsonFormat.format_value({ value = vim.NIL })
+
+            assert.is_true(result:find('"value": null') ~= nil)
+        end)
+
+        it("encodes boolean and number values", function()
+            local result = JsonFormat.format_value({ flag = true, count = 3 })
+
+            assert.is_true(result:find('"count": 3') ~= nil)
+            assert.is_true(result:find('"flag": true') ~= nil)
+        end)
+    end)
 end)

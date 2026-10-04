@@ -3,6 +3,16 @@ local FileSystem = require("agentic.utils.file_system")
 --- @class agentic.acp.ACPPayloads
 local M = {}
 
+--- Tool call kinds that mutate files on disk.
+--- When these complete, buffers must be reloaded via checktime.
+M.FILE_MUTATING_KINDS = {
+    edit = true,
+    create = true,
+    write = true,
+    delete = true,
+    move = true,
+}
+
 --- @param text string|string[]
 --- @return agentic.acp.UserMessageChunk
 function M.generate_user_message(text)

@@ -2,12 +2,16 @@
 
 ## Provider switch
 
-`init.lua::apply_provider_switch`:
+`provider_switcher.lua::apply_provider_switch`:
 
-1. Destroys the current `SessionManager`.
-2. Swaps `Config.provider`.
-3. Creates a new `AgentInstance` and ACP session.
-4. Calls `MessageWriter:replay_history_messages` to repaint the chat buffer from
+1. Creates a replacement `SessionManager` through the target provider's shared
+   `AgentInstance` and begins ACP session creation.
+2. Waits for `on_session_ready`. The old session stays registered until then,
+   so a subprocess failure does not discard the transcript.
+3. Destroys the old `SessionManager` and swaps `Config.provider`.
+4. Transfers chat history, staged files, and code selections to the replacement
+   session.
+5. Calls `MessageWriter:replay_history_messages` to repaint the chat buffer from
    prior UI history.
 
 The new provider receives zero prior LLM context:

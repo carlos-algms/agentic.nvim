@@ -7,6 +7,7 @@ local JsonFormat = require("agentic.utils.json_format")
 local Logger = require("agentic.utils.logger")
 local Theme = require("agentic.theme")
 local ToolCallBlocks = require("agentic.ui.tool_call_blocks")
+local ACPPayloads = require("agentic.acp.acp_payloads")
 
 local NS_TOOL_BLOCKS = ToolCallBlocks.NS_TOOL_BLOCKS
 local NS_DIFF_HIGHLIGHTS =
@@ -50,7 +51,7 @@ local TITLE_FENCE = "`````"
 --- @field diff? agentic.ui.MessageWriter.ToolCallDiff
 --- @field has_fold? boolean
 --- @field permission? agentic.ui.MessageWriter.PermissionState
---- @field _rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
+--- @field rendered_button_count? integer Rendered button-row count; lags `permission` state until the next `repaint_status_row`.
 
 --- @class agentic.ui.MessageWriter
 --- @field bufnr integer
@@ -353,8 +354,7 @@ function MessageWriter:_cursor_on_permission_button_row(cursor_line)
     end
 
     for tool_call_id, tracker in pairs(self.tool_call_blocks) do
-        --- @diagnostic disable-next-line: invisible
-        local rendered = tracker._rendered_button_count or 0
+        local rendered = tracker.rendered_button_count or 0
         if rendered > 0 then
             local end_row = self:get_block_end_row(tool_call_id)
             if end_row then
@@ -603,8 +603,7 @@ function MessageWriter:update_tool_call_block(tool_call_block)
         -- bottom_pad_row and old_end_row. Only _render_permission_section
         -- writes inside that range; if any other path inserts/deletes rows
         -- there, this slice corrupts the block.
-        --- @diagnostic disable-next-line: invisible
-        local k_buttons = tracker._rendered_button_count or 0
+        local k_buttons = tracker.rendered_button_count or 0
         local bottom_pad_row = old_end_row - k_buttons - 1
 
         local body_lines = vim.list_slice(new_lines, 3, #new_lines - 2)
@@ -965,8 +964,7 @@ function MessageWriter:get_button_row(tool_call_id, index)
         return nil
     end
 
-    --- @diagnostic disable-next-line: invisible
-    local k = tracker._rendered_button_count or 0
+    local k = tracker.rendered_button_count or 0
     if k == 0 then
         return nil
     end
@@ -1066,7 +1064,6 @@ end
 --- headers show the correct provider from history.
 --- @param messages agentic.ui.ChatHistory.Message[]
 function MessageWriter:replay_history_messages(messages)
-    local ACPPayloads = require("agentic.acp.acp_payloads")
     local current_provider = self._provider_name
 
     for _, msg in ipairs(messages) do
@@ -1324,6 +1321,25 @@ function MessageWriter:_build_status_word(tracker)
     return text, segments
 end
 
+--- @param min_row integer
+--- @param end_row integer
+--- @return integer|nil count
+function MessageWriter:_recover_rendered_button_count(min_row, end_row)
+    local ok, extmarks = pcall(
+        vim.api.nvim_buf_get_extmarks,
+        self.bufnr,
+        NS_STATUS,
+        { min_row, 0 },
+        { end_row, -1 },
+        { limit = 1 }
+    )
+    if not ok or not extmarks or not extmarks[1] then
+        return nil
+    end
+
+    return end_row - extmarks[1][2]
+end
+
 --- @param tracker agentic.ui.MessageWriter.ToolCallBlock
 --- @param end_row integer 0-indexed status row before this repaint
 --- @param section agentic.ui.MessageWriter.PermissionSection
@@ -1332,21 +1348,25 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
         return
     end
 
-    --- @diagnostic disable-next-line: invisible
-    local k_old = tracker._rendered_button_count or 0
+    local k_old = tracker.rendered_button_count or 0
     local k_new = #section.button_lines
-    local bottom_pad_row = end_row - k_old - 1
-
     local block_start_row = self:_get_block_start_row(tracker.tool_call_id)
-    -- Floor at header + top_pad = start_row + 2. If the computed
-    -- bottom_pad_row falls into header / top_pad / body, _rendered_button_count
-    -- is stale (mid-resize race) and the delete/insert would corrupt the
-    -- block. Bail without touching the buffer.
     local min_bottom_pad_row = (block_start_row or 0)
         + ToolCallBlocks.HEADER_HEIGHT
+    local recovered_count =
+        self:_recover_rendered_button_count(min_bottom_pad_row, end_row)
+    if recovered_count then
+        k_old = recovered_count
+    end
+
+    local bottom_pad_row = end_row - k_old - 1
+    -- Floor at header + top_pad = start_row + 2. If the computed
+    -- bottom_pad_row falls into header / top_pad / body, rendered_button_count
+    -- could not be recovered and the delete/insert would corrupt the block.
+    -- Bail without touching the buffer.
     if bottom_pad_row < min_bottom_pad_row then
         Logger.debug(
-            "Permission section: bottom_pad_row inside block body; skip",
+            "Permission section: could not recover stale row count; skip",
             {
                 end_row = end_row,
                 k_old = k_old,
@@ -1354,10 +1374,6 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
                 min_bottom_pad_row = min_bottom_pad_row,
             }
         )
-        -- Stale k_old vs buffer state: reset so the next repaint recomputes
-        -- bottom_pad_row from scratch instead of compounding the error.
-        --- @diagnostic disable-next-line: invisible
-        tracker._rendered_button_count = 0
         return
     end
 
@@ -1469,8 +1485,7 @@ function MessageWriter:_render_permission_section(tracker, end_row, section)
         )
     end
 
-    --- @diagnostic disable-next-line: invisible
-    tracker._rendered_button_count = k_new
+    tracker.rendered_button_count = k_new
 end
 
 --- Sets or updates a thinking highlight extmark over the given line range.
@@ -1526,6 +1541,73 @@ function MessageWriter:_apply_status_highlights_if_present(tracker)
     self:repaint_status_row(tracker.tool_call_id)
 end
 
-function MessageWriter:destroy() end
+--- @param provider_name string
+--- @param session_id string|nil
+--- @param version string|nil
+--- @param timestamp string|integer|nil Formatted string, unix timestamp, or nil for now
+--- @return string header
+function MessageWriter:generate_welcome_header(
+    provider_name,
+    session_id,
+    version,
+    timestamp
+)
+    local date_str
+    if type(timestamp) == "string" then
+        date_str = timestamp
+    else
+        date_str = os.date("%Y-%m-%d %H:%M:%S", timestamp)
+    end
+    local name = provider_name
+    if version then
+        name = name .. " v" .. version
+    end
+    return string.format(
+        "# Agentic - %s\n- session id: %s\n- %s\n--- --",
+        name,
+        session_id or "unknown",
+        date_str
+    )
+end
+
+--- @param response table|nil
+--- @param err agentic.acp.ACPError|nil
+function MessageWriter:write_finish_message(response, err)
+    local finish_message = ""
+
+    if err then
+        finish_message = string.format(
+            "\n### %s Agent finished with error: %s\n%s",
+            Config.message_icons.error,
+            vim.inspect(err),
+            finish_message
+        )
+    elseif response and response.stopReason == "cancelled" then
+        finish_message = string.format(
+            "\n### %s Generation stopped by the user request\n%s",
+            Config.message_icons.stopped,
+            finish_message
+        )
+    else
+        finish_message = string.format(
+            "\n### %s %s\n-----",
+            Config.message_icons.finished,
+            os.date("%Y-%m-%d %H:%M:%S")
+        )
+    end
+
+    self:write_message(ACPPayloads.generate_agent_message(finish_message))
+end
+
+function MessageWriter:destroy()
+    self.tool_call_blocks = {}
+    self._last_message_type = nil
+    self._should_auto_scroll = nil
+    self._scroll_scheduled = false
+    self._last_sender = nil
+    self._provider_name = nil
+    self._is_restoring = false
+    self:_clear_thinking_state()
+end
 
 return MessageWriter

@@ -191,6 +191,40 @@ describe("agentic.ui.CodeSelection", function()
         return selection1, selection2
     end
 
+    describe("to_prompt", function()
+        it(
+            "returns header, fenced chat lines, prompt entries, and clears",
+            function()
+                local selection1, selection2 = create_two_selections()
+
+                code_selection:add(selection1)
+                code_selection:add(selection2)
+
+                local lines, prompt = code_selection:to_prompt()
+
+                assert.equal("\n- **Selected code**:\n", lines[1])
+                -- one chat entry per selection, after the header.
+                assert.equal(3, #lines)
+                assert.is_not_nil(
+                    lines[2]:find("````lua src/alpha.lua#L5-L6", 1, true)
+                )
+                assert.is_not_nil(lines[2]:find("local alpha = 100", 1, true))
+                assert.is_not_nil(
+                    lines[3]:find("````lua src/beta.lua#L15-L16", 1, true)
+                )
+
+                -- prompt entries wrap each snippet with numbered lines.
+                assert.equal(2, #prompt)
+                assert.equal("text", prompt[1].type)
+                assert.is_not_nil(
+                    prompt[1].text:find("Line 5: local alpha = 100", 1, true)
+                )
+
+                assert.is_true(code_selection:is_empty())
+            end
+        )
+    end)
+
     describe("remove_at_cursor with multiple selections", function()
         it(
             "removes second selection when cursor is on last line of second fence block",

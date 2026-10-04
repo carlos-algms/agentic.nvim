@@ -1,8 +1,11 @@
 local Logger = require("agentic.utils.logger")
+local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
 
---- Known ACP protocol tool call kinds.
---- Used to detect unknown kinds from providers we don't use daily.
+--- JSON-RPC "Method not found", the answer the ACP spec requires for a request
+--- naming a method the receiver does not implement.
+local JSONRPC_METHOD_NOT_FOUND = -32601
+
 local KNOWN_ACP_KINDS = {
     read = true,
     edit = true,
@@ -18,9 +21,7 @@ local KNOWN_ACP_KINDS = {
     switch_mode = true,
 }
 
---- Data fields set in the constructor. Separated from the full class
---- so LuaLS validates instance fields without requiring methods that
---- live on the prototype via __index.
+--- Split from the class so LuaLS validates instance fields without the prototype methods.
 --- @class agentic.acp.ACPClientData
 --- @field provider_config agentic.acp.ACPProviderConfig
 --- @field id_counter number
@@ -33,7 +34,7 @@ local KNOWN_ACP_KINDS = {
 --- @field auth_methods agentic.acp.AuthMethod[]
 --- @field callbacks table<number, fun(result: table|nil, err: agentic.acp.ACPError|nil)>
 --- @field transport? agentic.acp.ACPTransportInstance
---- @field ready_listeners fun(client: agentic.acp.ACPClient)[]
+--- @field ready_listeners { on_ready: fun(client: agentic.acp.ACPClient), on_failure: fun(err: agentic.acp.ACPError)|nil }[]
 --- @field subscribers table<string, agentic.acp.ClientHandlers>
 
 --- @class agentic.acp.ACPClient : agentic.acp.ACPClientData
@@ -72,6 +73,11 @@ function ACPClient:new(config, on_ready)
                 writeTextFile = false,
             },
             terminal = false,
+            session = {
+                configOptions = {
+                    boolean = vim.empty_dict(),
+                },
+            },
         },
         auth_methods = {},
         ready_listeners = {},
@@ -82,51 +88,101 @@ function ACPClient:new(config, on_ready)
     }
 
     local client = setmetatable(instance, self) --[[@as agentic.acp.ACPClient]]
-    client._on_ready = function(c)
-        on_ready(c)
-        for _, listener in ipairs(c.ready_listeners) do
-            vim.schedule(function()
-                listener(c)
-            end)
-        end
-        c.ready_listeners = {}
-    end
+    client._on_ready = on_ready
 
     client:_setup_transport()
     client:_connect()
     return client
 end
 
---- @param callback fun(client: agentic.acp.ACPClient)
-function ACPClient:when_ready(callback)
+--- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @param on_failure fun(err: agentic.acp.ACPError)|nil
+--- @param err agentic.acp.ACPError|nil
+function ACPClient:_schedule_ready_listener(on_ready, on_failure, err)
+    vim.schedule(function()
+        if err then
+            if on_failure then
+                on_failure(err)
+            end
+            return
+        end
+
+        if self.state == "ready" then
+            on_ready(self)
+        elseif on_failure then
+            on_failure(
+                self:__create_error(
+                    self.ERROR_CODES.TRANSPORT_ERROR,
+                    self.state
+                )
+            )
+        end
+    end)
+end
+
+--- @param on_ready fun(client: agentic.acp.ACPClient)
+--- @param on_failure fun(err: agentic.acp.ACPError)|nil
+function ACPClient:when_ready(on_ready, on_failure)
     if self.state == "ready" then
-        vim.schedule(function()
-            callback(self)
-        end)
+        self:_schedule_ready_listener(on_ready, on_failure, nil)
+    elseif self.state == "error" or self.state == "disconnected" then
+        local err =
+            self:__create_error(self.ERROR_CODES.TRANSPORT_ERROR, self.state)
+        if on_failure then
+            self:_schedule_ready_listener(on_ready, on_failure, err)
+        end
     else
-        self.ready_listeners[#self.ready_listeners + 1] = callback
+        self.ready_listeners[#self.ready_listeners + 1] = {
+            on_ready = on_ready,
+            on_failure = on_failure,
+        }
     end
 end
 
 --- @param session_id string
 --- @param handlers agentic.acp.ClientHandlers
 function ACPClient:_subscribe(session_id, handlers)
+    -- One subscriber per session ID: a replacement reroutes every update and permission
+    -- prompt to the newer handlers. Legitimate on a reconnect replay, a defect when two
+    -- managers claim one ID. Logged, not blocked: refusing the write would strand a
+    -- reconnect's fresh handlers.
+    if
+        self.subscribers[session_id]
+        and self.subscribers[session_id] ~= handlers
+    then
+        Logger.debug(
+            "Replacing existing subscriber for session_id: " .. session_id
+        )
+    end
+
     self.subscribers[session_id] = handlers
 end
 
 --- @protected
 --- @param session_id string
 --- @param callback fun(sub: agentic.acp.ClientHandlers): nil
-function ACPClient:__with_subscriber(session_id, callback)
-    local subscriber = self.subscribers[session_id]
-
-    if not subscriber then
+--- @param on_missing fun()|nil Runs when no subscriber answers; a JSON-RPC request needs it
+function ACPClient:__with_subscriber(session_id, callback, on_missing)
+    if not self.subscribers[session_id] then
         Logger.debug("No subscriber found for session_id: " .. session_id)
+
+        if on_missing then
+            on_missing()
+        end
+
         return
     end
 
     vim.schedule(function()
-        callback(subscriber)
+        -- Re-resolved here: `cancel_session` can drop the subscriber while this
+        -- callback sits in the queue.
+        local subscriber = self.subscribers[session_id]
+
+        if subscriber then
+            callback(subscriber)
+        elseif on_missing then
+            on_missing()
+        end
     end)
 end
 
@@ -177,10 +233,41 @@ function ACPClient:_set_state(state)
 
     if state == "disconnected" or state == "error" then
         self:_drain_pending_callbacks(state)
+        self:_drain_ready_listeners(state)
+    elseif state == "ready" then
+        self:_drain_ready_listeners(nil)
     end
 end
 
---- Reject all pending RPC callbacks when the connection drops.
+--- @param failure_reason string|nil
+function ACPClient:_drain_ready_listeners(failure_reason)
+    local listeners = self.ready_listeners
+    self.ready_listeners = {}
+
+    local err = failure_reason
+            and self:__create_error(
+                self.ERROR_CODES.TRANSPORT_ERROR,
+                failure_reason
+            )
+        or nil
+
+    for _, listener in ipairs(listeners) do
+        if err and listener.on_failure then
+            self:_schedule_ready_listener(
+                listener.on_ready,
+                listener.on_failure,
+                err
+            )
+        elseif not err then
+            self:_schedule_ready_listener(
+                listener.on_ready,
+                listener.on_failure,
+                nil
+            )
+        end
+    end
+end
+
 --- @protected
 --- @param reason string
 function ACPClient:_drain_pending_callbacks(reason)
@@ -264,10 +351,26 @@ function ACPClient:__send_result(id, result)
     self.transport:send(data)
 end
 
---- Handles raw JSON-RPC message received from the transport
+--- @protected
+--- @param id number
+--- @param code number
+--- @param message string
+function ACPClient:__send_error(id, code, message)
+    local frame = {
+        jsonrpc = "2.0",
+        id = id,
+        error = { code = code, message = message },
+    }
+
+    local data = vim.json.encode(frame)
+    Logger.debug_to_file("error response:", frame)
+
+    self.transport:send(data)
+end
+
 --- @param message agentic.acp.ResponseRaw
 function ACPClient:_handle_message(message)
-    -- NOT log agent messages chunk to avoid huge logs file
+    -- Chunks are not logged: they would flood the log file.
     if
         not (
             message.params
@@ -282,9 +385,7 @@ function ACPClient:_handle_message(message)
         Logger.debug_to_file(self.provider_config.name, "response: ", message)
     end
 
-    -- Check if this is a notification (has method but no id, or has both method and id for notifications)
     if message.method and not message.result and not message.error then
-        -- This is a notification
         self:_handle_notification(message.id, message.method, message.params)
     elseif message.id and (message.result or message.error) then
         local callback = self.callbacks[message.id]
@@ -304,13 +405,17 @@ function ACPClient:_handle_message(message)
     end
 end
 
---- @param message_id number
+--- Dispatches both notifications and requests: `_handle_message` routes on
+--- `method`, so `message_id` is `nil` for a notification and set for a request.
+--- @param message_id number|nil
 --- @param method string
 --- @param params table
 function ACPClient:_handle_notification(message_id, method, params)
     if method == "session/update" then
         self:__handle_session_update(params)
     elseif method == "session/request_permission" then
+        -- `params` is declared as a bare `table`, which cannot satisfy the
+        -- structured `RequestPermission` shape. The callee guards the payload.
         --- @diagnostic disable-next-line: param-type-mismatch
         self:__handle_request_permission(message_id, params)
     elseif method == "fs/read_text_file" or method == "fs/write_text_file" then
@@ -318,7 +423,45 @@ function ACPClient:_handle_notification(message_id, method, params)
             string.format("Received '%s' notification, ignoring it", method)
         )
     else
-        Logger.notify("Unknown notification method: " .. method)
+        self:__handle_unknown_method(message_id, method)
+    end
+end
+
+--- ACP reserves `_`-prefixed method names for vendor extensions, and the two
+--- message shapes carry opposite obligations: an unrecognized notification
+--- SHOULD be ignored, while a request MUST be answered -- with `-32601` when
+--- the method is not implemented.
+--- https://agentclientprotocol.com/protocol/extensibility
+---
+--- Answering matters beyond extensions: the agent blocks until its `id` comes
+--- back, and the subprocess is shared across every session (ADR 0004), so one
+--- stranded `id` hangs all of them. Only `session/request_permission` of the
+--- client-bound requests is implemented here; every other one lands below.
+--- @protected
+--- @param message_id number|nil `nil` for a notification
+--- @param method any Unvalidated: `_handle_message` only checks it is truthy
+function ACPClient:__handle_unknown_method(message_id, method)
+    local kind = message_id and "request" or "notification"
+
+    if type(method) == "string" and method:sub(1, 1) == "_" then
+        Logger.debug(
+            string.format("Received custom %s '%s', ignoring it", kind, method)
+        )
+    else
+        -- `tostring` keeps the warning safe for a non-string `method`: a
+        -- malformed frame can carry a boolean or table, and `on_message` runs
+        -- unprotected in the transport read loop where a throw is fatal. A
+        -- throw here would also strand a request `id` before `__send_error`
+        -- runs, hanging the shared subprocess (ADR 0004).
+        Logger.notify("Unknown " .. kind .. " method: " .. tostring(method))
+    end
+
+    if message_id then
+        self:__send_error(
+            message_id,
+            JSONRPC_METHOD_NOT_FOUND,
+            "Method not found"
+        )
     end
 end
 
@@ -345,8 +488,7 @@ function ACPClient:__handle_session_update(params)
         update.status = update.status or "pending"
 
         if not KNOWN_ACP_KINDS[update.kind] then
-            -- Using notify intentionally so users of providers
-            -- we don't use daily report unknown kinds as issues
+            -- notify, not debug: we want users to report these as issues.
             Logger.notify(
                 "Unknown ACP tool call kind: "
                     .. tostring(update.kind)
@@ -367,8 +509,7 @@ function ACPClient:__handle_session_update(params)
     end
 end
 
---- Safely split a string into an array of lines
---- Some agents send `nil` other send `vim.NIL` for empty content
+--- Agents send either `nil` or `vim.NIL` for empty content.
 --- @param possible_string string|nil|vim.NIL
 --- @return string[] lines
 function ACPClient:safe_split(possible_string)
@@ -379,7 +520,6 @@ function ACPClient:safe_split(possible_string)
     return {}
 end
 
---- Build the message for a tool_call. it's usually the first update received for a tool call
 --- @protected
 --- @param update agentic.acp.ToolCallBase
 --- @return agentic.ui.MessageWriter.ToolCallBlock message
@@ -401,7 +541,7 @@ function ACPClient:__build_tool_call_message(update)
         message.argument = update.title
     end
 
-    if update.content then
+    if type(update.content) == "table" then
         local body_parts = {}
         for _, content in ipairs(update.content) do
             if content then
@@ -441,8 +581,9 @@ function ACPClient:__build_tool_call_message(update)
         end
     end
 
-    -- Fallback: build diff from rawInput when content is missing (e.g. OpenCode)
-    local raw_input = update.rawInput
+    -- Fallback for providers that send no `content` (OpenCode).
+    local raw_input = type(update.rawInput) == "table" and update.rawInput
+        or nil
 
     if not message.diff and update.kind == "edit" and raw_input then
         local new_string = raw_input.new_string or raw_input.newString
@@ -461,18 +602,37 @@ function ACPClient:__build_tool_call_message(update)
         message.file_path = raw_input.file_path or raw_input.filePath
     end
 
-    if not message.file_path and update.locations then
+    if not message.file_path and type(update.locations) == "table" then
         local first_location = update.locations[1]
         if first_location and first_location.path then
             message.file_path = first_location.path
         end
     end
 
+    -- `read` is skipped: its renderer treats `#body` as a line count.
+    if
+        not message.body
+        and not message.diff
+        and update.kind ~= "read"
+        and raw_input
+        and not vim.tbl_isempty(raw_input)
+    then
+        if type(raw_input.command) == "string" and raw_input.command ~= "" then
+            message.argument = raw_input.command
+            if
+                type(raw_input.description) == "string"
+                and raw_input.description ~= ""
+            then
+                message.body = self:safe_split(raw_input.description)
+            end
+        else
+            message.body = vim.split(JsonFormat.format_value(raw_input), "\n")
+        end
+    end
+
     return message
 end
 
---- Default handler for tool_call session updates.
---- Builds a generic ToolCallBlock from standard ACP fields.
 --- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallMessage
@@ -484,7 +644,6 @@ function ACPClient:__handle_tool_call(session_id, update)
     end)
 end
 
---- Default handler for tool_call_update session updates.
 --- @protected
 --- @param session_id string
 --- @param update agentic.acp.ToolCallUpdate
@@ -498,27 +657,76 @@ end
 
 --- @protected
 --- @param message_id number
---- @param request agentic.acp.RequestPermission
+--- @param request agentic.acp.RequestPermission|nil
 function ACPClient:__handle_request_permission(message_id, request)
-    if not request.sessionId or not request.toolCall then
-        error("Invalid request_permission")
+    local answered = false
+
+    --- Idempotent: the dispatch guard cancels on a throw that may land after
+    --- the subscriber already answered, and two results on one `id` is a
+    --- protocol violation.
+    --- @param option_id string|nil nil is a cancellation, not a selection
+    local function answer(option_id)
+        if answered then
+            return
+        end
+
+        answered = true
+
+        --- @type agentic.acp.RequestPermissionOutcome
+        local outcome = option_id
+                and { outcome = "selected", optionId = option_id }
+            or { outcome = "cancelled" }
+
+        self:__send_result(message_id, {
+            outcome = outcome,
+        })
+    end
+
+    if
+        type(request) ~= "table"
+        or type(request.sessionId) ~= "string"
+        or type(request.toolCall) ~= "table"
+    then
+        -- Checked by TYPE, not truthiness: a non-string `sessionId` silently
+        -- matches no subscriber, and a truthy non-table `toolCall` throws
+        -- inside the scheduled `__build_tool_call_message`. Either way the
+        -- `id` is owed an answer.
+        Logger.notify(
+            "Invalid session/request_permission: " .. vim.inspect(request)
+        )
+        answer(nil)
+
         return
     end
 
     local session_id = request.sessionId
 
     self:__with_subscriber(session_id, function(subscriber)
-        local message = self:__build_tool_call_message(request.toolCall)
-        subscriber.on_tool_call_update(message)
+        -- The type guard above only covers the payload's top level; nested
+        -- shapes and both subscriber callbacks can still throw in here.
+        -- `vim.schedule` swallows that throw, so the read loop survives while
+        -- the shared subprocess waits on the `id` forever. See
+        -- `lua/agentic/acp/AGENTS.md`.
+        local ok, err = pcall(function()
+            local message = self:__build_tool_call_message(request.toolCall)
+            subscriber.on_tool_call_update(message)
 
-        subscriber.on_request_permission(request, function(option_id)
-            --- @type agentic.acp.RequestPermissionOutcome
-            local outcome = { outcome = "selected", optionId = option_id }
-
-            self:__send_result(message_id, {
-                outcome = outcome,
-            })
+            subscriber.on_request_permission(request, answer)
         end)
+
+        if not ok then
+            -- Always notified: a silent cancel hides a genuine UI bug behind a
+            -- permission prompt that merely "didn't appear".
+            Logger.notify(
+                "Failed to dispatch session/request_permission: "
+                    .. tostring(err)
+            )
+            -- No-op when the subscriber already answered before throwing.
+            answer(nil)
+        end
+    end, function()
+        -- The request is still outstanding on the shared provider subprocess.
+        answer(nil)
     end)
 end
 
@@ -571,7 +779,6 @@ function ACPClient:_connect()
         end
         self.auth_methods = auth_methods
 
-        -- Check if we need to authenticate
         local auth_method = self.provider_config.auth_method
 
         -- FIXIT: auth_method should be validated against available methods from the agent message
@@ -643,7 +850,7 @@ end
 --- @param cwd string
 --- @param mcp_servers table[]|nil
 --- @param handlers agentic.acp.ClientHandlers
---- @param on_load_complete fun(err: agentic.acp.ACPError|nil)|nil
+--- @param on_load_complete fun(result: agentic.acp.LoadSessionResponse|nil, err: agentic.acp.ACPError|nil)|nil
 function ACPClient:load_session(
     session_id,
     cwd,
@@ -657,6 +864,7 @@ function ACPClient:load_session(
         Logger.notify("Agent does not support loading sessions")
         if on_load_complete then
             on_load_complete(
+                nil,
                 self:__create_error(
                     -1,
                     "Agent does not support loading sessions"
@@ -672,14 +880,21 @@ function ACPClient:load_session(
         sessionId = session_id,
         cwd = cwd,
         mcpServers = mcp_servers or {},
-    }, function(_result, err)
-        if err then
-            -- Avoid dangling subscribers if there are errors
+    }, function(result, err)
+        if not result and not err then
+            err = self:__create_error(
+                self.ERROR_CODES.PROTOCOL_ERROR,
+                "Failed to load session: missing result"
+            )
+        end
+
+        if err and self.subscribers[session_id] == handlers then
             self.subscribers[session_id] = nil
         end
 
         if on_load_complete then
-            on_load_complete(err)
+            --- @cast result agentic.acp.LoadSessionResponse|nil
+            on_load_complete(result, err)
         end
     end)
 end
@@ -739,7 +954,6 @@ function ACPClient:send_prompt(session_id, prompt, callback)
     self:_send_request("session/prompt", params, callback)
 end
 
---- Set the agent mode for a session
 --- @param session_id string
 --- @param mode_id string
 --- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
@@ -752,27 +966,12 @@ function ACPClient:set_mode(session_id, mode_id, callback)
     self:_send_request("session/set_mode", params, callback)
 end
 
---- Set a config option value for a session
---- @param session_id string
---- @param config_id string
---- @param config_value string
+--- @param params agentic.acp.SetConfigOptionParams
 --- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
-function ACPClient:set_config_option(
-    session_id,
-    config_id,
-    config_value,
-    callback
-)
-    local params = {
-        sessionId = session_id,
-        configId = config_id,
-        value = config_value,
-    }
-
+function ACPClient:set_config_option(params, callback)
     self:_send_request("session/set_config_option", params, callback)
 end
 
---- Set the provided model to the session
 --- @param session_id string
 --- @param model_id string
 --- @param callback fun(result: table|nil, err: agentic.acp.ACPError|nil)
@@ -785,7 +984,7 @@ function ACPClient:set_model(session_id, model_id, callback)
     self:_send_request("session/set_model", params, callback)
 end
 
---- Stops current generation/tool execution, keeps session active for the next prompt
+--- Keeps the session active for the next prompt, unlike `cancel_session`.
 --- @param session_id string
 function ACPClient:stop_generation(session_id)
     if not session_id then
@@ -797,15 +996,14 @@ function ACPClient:stop_generation(session_id)
     })
 end
 
---- Cancels and destroys session (cleanup)
---- Either to create a new session or if the tabpage is closed
+--- Destroys the session, unlike `stop_generation`.
 --- @param session_id string
 function ACPClient:cancel_session(session_id)
     if not session_id then
         return
     end
 
-    -- remove subscriber first to avoid handling any further messages
+    -- Dropped first, so no further messages reach the old subscriber.
     self.subscribers[session_id] = nil
 
     self:_send_notification("session/cancel", {

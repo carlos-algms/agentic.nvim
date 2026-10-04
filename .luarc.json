@@ -46,7 +46,7 @@
     ],
     "checkThirdParty": false,
     "preloadFileSize": 10000,
-    "ignoreDir": [".git", "node_modules", ".github", "deps"]
+    "ignoreDir": [".git", "node_modules", ".github", "deps", ".worktrees"]
   },
   "type": {
     "checkTableShape": true,

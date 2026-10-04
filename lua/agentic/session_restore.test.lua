@@ -2,352 +2,535 @@ local assert = require("tests.helpers.assert")
 local spy = require("tests.helpers.spy")
 
 describe("SessionRestore", function()
-    --- @type agentic.SessionRestore
     local SessionRestore
+    local SessionRegistry
+    local AgentInstance
     local Logger
+    local replace_stub
+    local find_stub
+    local commit_stub
+    local notify_stub
+    local select_stub
+    local lifecycle_stub
+    local schedule_stub
+    local current_stub
+    local get_instance_stub
+    local extra_stubs
 
-    --- @type TestStub
-    local logger_notify_stub
-    --- @type TestStub
-    local vim_ui_select_stub
-    --- @type TestStub
-    local vim_schedule_stub
-
-    local NO_DEFAULT = {}
-
-    --- @param opts {session_id?: string|table, chat_history?: table, list_sessions?: TestSpy}|nil
-    local function create_mock_session(opts)
-        opts = opts or {}
-        local sid = opts.session_id
-        if sid == nil then
-            sid = "current-session"
-        elseif sid == NO_DEFAULT then
-            sid = nil
-        end
-        return {
-            session_id = sid,
-            chat_history = opts.chat_history or { messages = {} },
-            agent = {
-                cancel_session = spy.new(function() end),
-                list_sessions = opts.list_sessions or spy.new(function() end),
-                when_ready = spy.new(function(_self, cb)
-                    cb()
-                end),
+    local function new_agent()
+        local agent = {
+            agent_capabilities = {
+                loadSession = true,
+                sessionCapabilities = { list = true },
             },
-            widget = {
-                clear = spy.new(function() end),
-                show = spy.new(function() end),
-            },
-            load_acp_session = spy.new(function() end),
+            list_calls = 0,
         }
+
+        function agent:when_ready(on_ready, on_failure)
+            self.ready_callback = on_ready
+            self.failure_callback = on_failure
+        end
+
+        function agent:list_sessions(_cwd, callback)
+            self.list_calls = self.list_calls + 1
+            callback(self.list_result or { sessions = {} }, self.list_error)
+        end
+
+        return agent
     end
 
-    local function select_session(index)
-        local callback = vim_ui_select_stub.calls[index][3]
-        local items = vim_ui_select_stub.calls[index][1]
-        return callback, items
+    local function use_context(agent, source)
+        current_stub:returns(source)
+        get_instance_stub:returns(agent)
+        if source then
+            source.agent = agent
+            source.provider_name = "claude-acp"
+        end
     end
 
     before_each(function()
-        package.loaded["agentic.session_restore"] = nil
-        package.loaded["agentic.utils.logger"] = nil
-
-        SessionRestore = require("agentic.session_restore")
+        extra_stubs = {}
+        SessionRegistry = require("agentic.session_registry")
+        AgentInstance = require("agentic.acp.agent_instance")
         Logger = require("agentic.utils.logger")
-
-        logger_notify_stub = spy.stub(Logger, "notify")
-        vim_ui_select_stub = spy.stub(vim.ui, "select")
-        vim_schedule_stub = spy.stub(vim, "schedule")
-        vim_schedule_stub:invokes(function(cb)
-            cb()
+        replace_stub = spy.stub(SessionRegistry, "replace")
+        find_stub = spy.stub(SessionRegistry, "find_by_acp_session_id")
+        commit_stub = spy.stub(SessionRegistry, "commit_replacement")
+        notify_stub = spy.stub(Logger, "notify")
+        select_stub = spy.stub(vim.ui, "select")
+        lifecycle_stub = spy.stub(SessionRegistry, "choose_session_lifecycle")
+        lifecycle_stub:invokes(function(_session, _prompt, on_selected)
+            on_selected(false)
         end)
+        schedule_stub = spy.stub(vim, "schedule")
+        schedule_stub:invokes(function(callback)
+            callback()
+        end)
+        current_stub = spy.stub(SessionRegistry, "current")
+        get_instance_stub = spy.stub(AgentInstance, "get_instance")
+
+        package.loaded["agentic.session_restore"] = nil
+        SessionRestore = require("agentic.session_restore")
     end)
 
     after_each(function()
-        logger_notify_stub:revert()
-        vim_ui_select_stub:revert()
-        vim_schedule_stub:revert()
+        for session_key in pairs(SessionRegistry.sessions) do
+            SessionRegistry.sessions[session_key] = nil
+        end
+        SessionRegistry._most_recent = nil
+        SessionRegistry._previous_most_recent = nil
+        for _, stub in ipairs(extra_stubs) do
+            stub:revert()
+        end
+        replace_stub:revert()
+        find_stub:revert()
+        commit_stub:revert()
+        notify_stub:revert()
+        select_stub:revert()
+        lifecycle_stub:revert()
+        schedule_stub:revert()
+        current_stub:revert()
+        get_instance_stub:revert()
+        package.loaded["agentic.session_restore"] = nil
     end)
 
-    describe("conflict detection", function()
-        local acp_sessions = {
-            {
-                sessionId = "acp-1",
-                title = "ACP First",
-                updatedAt = "2026-03-20T14:30:00Z",
+    it("lists through context without creating a manager", function()
+        local agent = new_agent()
+        agent.list_result = {
+            sessions = {
+                { sessionId = "one", cwd = "/tmp", title = "One" },
             },
         }
 
-        local function create_acp_session(opts)
-            opts = opts or {}
-            local list_sessions_spy = spy.new(function(_self, _cwd, callback)
-                callback({ sessions = opts.sessions or acp_sessions }, nil)
-            end)
-            return create_mock_session({
-                list_sessions = list_sessions_spy,
-                chat_history = opts.chat_history,
-                session_id = opts.session_id,
-            })
-        end
+        use_context(agent, nil)
+        SessionRestore.show_picker()
+        assert.equal(0, agent.list_calls)
+        agent.ready_callback(agent)
 
-        it("detects no conflict when session has no messages", function()
-            local session = create_acp_session()
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            local callback = select_session(1)
-            callback({ session_id = "acp-1" })
-
-            assert.spy(vim_ui_select_stub).was.called(1)
-        end)
-
-        it("detects no conflict when session_id is nil", function()
-            local session = create_acp_session({
-                session_id = NO_DEFAULT,
-                chat_history = { messages = { { type = "user" } } },
-            })
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            local callback = select_session(1)
-            callback({ session_id = "acp-1" })
-
-            assert.spy(vim_ui_select_stub).was.called(1)
-        end)
-
-        it("detects no conflict when chat_history is nil", function()
-            local session = create_acp_session({ chat_history = nil })
-            --- @diagnostic disable-next-line: inject-field
-            session.chat_history = nil
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            local callback = select_session(1)
-            callback({ session_id = "acp-1" })
-
-            assert.spy(vim_ui_select_stub).was.called(1)
-        end)
+        assert.equal(1, agent.list_calls)
+        assert.spy(replace_stub).was.called(0)
+        assert.spy(select_stub).was.called(1)
     end)
 
-    describe("restore_by_id", function()
-        it(
-            "calls load_acp_session with the given id without listing sessions",
-            function()
-                local session = create_mock_session()
+    it("creates one load target only after selection", function()
+        local agent = new_agent()
+        agent.list_result = {
+            sessions = {
+                { sessionId = "one", cwd = "/tmp", title = "One" },
+            },
+        }
+        local on_choice
+        select_stub:invokes(function(_items, _opts, callback)
+            on_choice = callback
+        end)
 
-                SessionRestore.restore_by_id(
-                    session --[[@as agentic.SessionManager]],
-                    "abc-123"
-                )
+        use_context(agent, nil)
+        SessionRestore.show_picker()
+        agent.ready_callback(agent)
+        assert.spy(replace_stub).was.called(0)
+        on_choice({
+            session_id = "one",
+            title = "One",
+            updated_at = "2026-01-01",
+        })
 
-                assert.spy(session.agent.list_sessions).was.called(0)
-                assert.spy(session.load_acp_session).was.called(1)
-                local call_args = session.load_acp_session.calls[1]
-                assert.equal("abc-123", call_args[2])
-                assert.is_nil(call_args[3])
-                assert.is_nil(call_args[4])
-                assert.spy(session.widget.show).was.called(1)
-            end
+        assert.spy(replace_stub).was.called(1)
+        local spec = replace_stub.calls[1][3]
+        assert.equal("load", spec.kind)
+        assert.equal("one", spec.session_id)
+    end)
+
+    it("creates nothing when a nil-source picker is cancelled", function()
+        local agent = new_agent()
+        agent.list_result = {
+            sessions = { { sessionId = "one", cwd = "/tmp" } },
+        }
+        local on_choice
+        select_stub:invokes(function(_items, _opts, callback)
+            on_choice = callback
+        end)
+
+        use_context(agent, nil)
+        SessionRestore.show_picker()
+        agent.ready_callback(agent)
+        on_choice(nil)
+
+        assert.spy(replace_stub).was.called(0)
+    end)
+
+    it("waits for readiness and lists exactly once", function()
+        local agent = new_agent()
+
+        use_context(agent, nil)
+        SessionRestore.show_picker()
+        assert.equal(0, agent.list_calls)
+        agent.ready_callback(agent)
+        assert.equal(1, agent.list_calls)
+    end)
+
+    it("creates nothing when readiness fails", function()
+        local agent = new_agent()
+
+        use_context(agent, nil)
+        SessionRestore.show_picker()
+        agent.failure_callback({ code = -32000, message = "offline" })
+
+        assert.equal(0, agent.list_calls)
+        assert.spy(replace_stub).was.called(0)
+        assert
+            .spy(notify_stub).was
+            .called_with("Failed to list sessions: offline", vim.log.levels.WARN)
+    end)
+
+    it("reports restore readiness failures as restore failures", function()
+        local agent = new_agent()
+
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
+        agent.failure_callback({ code = -32000, message = "offline" })
+
+        assert
+            .spy(notify_stub).was
+            .called_with("Failed to restore session: offline", vim.log.levels.WARN)
+    end)
+
+    it("creates no placeholder when provider resolution fails", function()
+        current_stub:returns(nil)
+        get_instance_stub:returns(nil)
+
+        SessionRestore.show_picker()
+
+        assert.spy(get_instance_stub).was.called(1)
+        assert.spy(replace_stub).was.called(0)
+        assert.spy(select_stub).was.called(0)
+    end)
+
+    it("passes nil source with no prepare callback", function()
+        local agent = new_agent()
+
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called(1)
+        assert.is_nil(replace_stub.calls[1][1])
+        local opts = replace_stub.calls[1][4]
+        assert.equal(agent, opts.agent)
+        assert.is_nil(opts.prepare)
+    end)
+
+    it("offers to keep the source before restoring another session", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert
+            .spy(lifecycle_stub).was
+            .called_with(source, "Restore session:", lifecycle_stub.calls[1][3])
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent, retain_source = true }
         )
-
-        it("prompts on conflict and only restores on confirm", function()
-            local session = create_mock_session({
-                chat_history = { messages = { { type = "user" } } },
-                session_id = "existing-session",
-            })
-
-            SessionRestore.restore_by_id(
-                session --[[@as agentic.SessionManager]],
-                "abc-123"
-            )
-
-            assert.spy(vim_ui_select_stub).was.called(1)
-
-            local conflict_callback = vim_ui_select_stub.calls[1][3]
-            conflict_callback("Clear current session and restore")
-
-            assert.spy(session.load_acp_session).was.called(1)
-            local call_args = session.load_acp_session.calls[1]
-            assert.equal("abc-123", call_args[2])
-            assert.spy(session.widget.show).was.called(1)
-        end)
-
-        it("does not restore when conflict prompt is cancelled", function()
-            local session = create_mock_session({
-                chat_history = { messages = { { type = "user" } } },
-                session_id = "existing-session",
-            })
-
-            SessionRestore.restore_by_id(
-                session --[[@as agentic.SessionManager]],
-                "abc-123"
-            )
-
-            assert.spy(vim_ui_select_stub).was.called(1)
-
-            local conflict_callback = vim_ui_select_stub.calls[1][3]
-            conflict_callback("Cancel")
-
-            assert.spy(session.load_acp_session).was.called(0)
-            assert.spy(session.widget.show).was.called(0)
-        end)
     end)
 
-    describe("show_picker with ACP session list", function()
-        local acp_sessions = {
-            {
-                sessionId = "acp-1",
-                title = "ACP First",
-                updatedAt = "2026-03-20T14:30:00Z",
-            },
-            {
-                sessionId = "acp-2",
-                title = "ACP Second",
-                updatedAt = "2026-03-21T09:15:00Z",
-            },
-        }
-
-        local function create_acp_session(opts)
-            opts = opts or {}
-            local list_sessions_spy = spy.new(function(_self, _cwd, callback)
-                if opts.error then
-                    callback(nil, opts.error)
-                else
-                    callback({ sessions = opts.sessions or acp_sessions }, nil)
-                end
-            end)
-            return create_mock_session({
-                list_sessions = list_sessions_spy,
-                chat_history = opts.chat_history,
-                session_id = opts.session_id,
-            })
-        end
-
-        it("uses ACP list with formatted sessions", function()
-            local session = create_acp_session()
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            assert.spy(session.agent.list_sessions).was.called(1)
-            assert.spy(vim_ui_select_stub).was.called(1)
-
-            local items = vim_ui_select_stub.calls[1][1]
-            assert.equal(2, #items)
-            assert.equal("acp-1", items[1].session_id)
-            assert.equal("acp-2", items[2].session_id)
-            assert.truthy(items[1].display:match("2026%-03%-20 14:30"))
-            assert.truthy(items[1].display:match("ACP First"))
-            assert.truthy(items[2].display:match("2026%-03%-21 09:15"))
-            assert.truthy(items[2].display:match("ACP Second"))
+    it("destroys the source only when that choice is selected", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        lifecycle_stub:invokes(function(_session, _prompt, on_selected)
+            on_selected(true)
         end)
 
-        it(
-            "sanitizes CR/LF in title for display but keeps original title",
-            function()
-                local session = create_acp_session({
-                    sessions = {
-                        {
-                            sessionId = "acp-crlf",
-                            title = "Line one\r\nLine two\nLine three",
-                            updatedAt = "2026-03-20T14:30:00Z",
-                        },
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent }
+        )
+    end)
+
+    it("removes the only nil-source target when loading fails", function()
+        local agent = new_agent()
+        local target = { session_key = 22 }
+        function target:on_session_ready(_on_ready, on_failure)
+            self.failure_callback = on_failure
+        end
+
+        replace_stub:revert()
+        local create_stub = spy.stub(SessionRegistry, "create")
+        create_stub:returns(target)
+        extra_stubs[#extra_stubs + 1] = create_stub
+        local destroy_stub = spy.stub(SessionRegistry, "destroy")
+        extra_stubs[#extra_stubs + 1] = destroy_stub
+        SessionRegistry.sessions[22] = target
+
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+        target.failure_callback(target)
+
+        assert.spy(destroy_stub).was.called_with(22)
+    end)
+
+    it("shows a successful target while retaining its source", function()
+        local agent = new_agent()
+        local current_tab = vim.api.nvim_get_current_tabpage()
+        local current_win = vim.api.nvim_get_current_win()
+        local source = {
+            session_key = 21,
+            widget = {
+                get_visible_tab_id = function()
+                    return current_tab
+                end,
+                find_first_non_widget_window = function()
+                    return current_win
+                end,
+            },
+        }
+        local target = { session_key = 22 }
+        function target:on_session_ready(on_ready, on_failure)
+            self.ready_callback = on_ready
+            self.failure_callback = on_failure
+        end
+
+        replace_stub:revert()
+        commit_stub:revert()
+        local create_stub = spy.stub(SessionRegistry, "create")
+        create_stub:returns(target)
+        extra_stubs[#extra_stubs + 1] = create_stub
+        local events = {}
+        local show_stub = spy.stub(SessionRegistry, "show_session")
+        show_stub:invokes(function()
+            events[#events + 1] = "show"
+        end)
+        extra_stubs[#extra_stubs + 1] = show_stub
+        local destroy_stub = spy.stub(SessionRegistry, "destroy")
+        destroy_stub:invokes(function()
+            events[#events + 1] = "destroy"
+        end)
+        extra_stubs[#extra_stubs + 1] = destroy_stub
+        SessionRegistry.sessions[21] = source
+        SessionRegistry.sessions[22] = target
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+        target.ready_callback(target)
+
+        assert.same({ "show" }, events)
+        assert.spy(destroy_stub).was.called(0)
+        assert.equal(source, SessionRegistry.sessions[21])
+    end)
+
+    it("leaves the source intact when its load target fails", function()
+        local agent = new_agent()
+        local source = { session_key = 21 }
+        local target = { session_key = 22 }
+        function target:on_session_ready(on_ready, on_failure)
+            self.ready_callback = on_ready
+            self.failure_callback = on_failure
+        end
+
+        replace_stub:revert()
+        local create_stub = spy.stub(SessionRegistry, "create")
+        create_stub:returns(target)
+        extra_stubs[#extra_stubs + 1] = create_stub
+        local destroy_stub = spy.stub(SessionRegistry, "destroy")
+        extra_stubs[#extra_stubs + 1] = destroy_stub
+        SessionRegistry.sessions[21] = source
+        SessionRegistry.sessions[22] = target
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+        target.failure_callback(target)
+
+        assert.spy(destroy_stub).was.called_with(22)
+        assert.equal(source, SessionRegistry.sessions[21])
+    end)
+
+    it(
+        "delegates retained success and rollback to registry replacement",
+        function()
+            local agent = new_agent()
+            local source = { session_key = 1 }
+
+            use_context(agent, source)
+            SessionRestore.restore_by_id("one")
+            agent.ready_callback(agent)
+
+            assert.spy(replace_stub).was.called_with(
+                source,
+                "claude-acp",
+                { kind = "load", session_id = "one" },
+                { agent = agent, retain_source = true }
+            )
+        end
+    )
+
+    it("delegates an existing target to registry replacement", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        find_stub:returns({ session_key = 2 })
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called_with(
+            source,
+            "claude-acp",
+            { kind = "load", session_id = "one" },
+            { agent = agent, retain_source = true }
+        )
+        assert.spy(commit_stub).was.called(0)
+    end)
+
+    it("delegates the same-manager target to the registry no-op", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        find_stub:returns(source)
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(commit_stub).was.called(0)
+        assert.spy(replace_stub).was.called(1)
+    end)
+
+    it("reuses an existing target without load capability", function()
+        local agent = new_agent()
+        agent.agent_capabilities.loadSession = false
+        local source = { session_key = 1 }
+        find_stub:returns({ session_key = 2 })
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called(1)
+        assert.spy(notify_stub).was.called(0)
+    end)
+
+    it("deduplicates repeated restore while the target is pending", function()
+        local agent = new_agent()
+        local source = { session_key = 1 }
+        local target = { ready_callback_count = 0 }
+        function target:owns_ready_acp_session()
+            return false
+        end
+        function target:on_session_ready(callback)
+            self.ready_callback_count = self.ready_callback_count + 1
+            self.ready_callback = callback
+        end
+        find_stub:returns(target)
+        replace_stub:revert()
+
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+        use_context(agent, source)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.equal(1, target.ready_callback_count)
+    end)
+
+    it("rejects unsupported load without creating a target", function()
+        local agent = new_agent()
+        agent.agent_capabilities.loadSession = false
+
+        use_context(agent, nil)
+        SessionRestore.restore_by_id("one")
+        agent.ready_callback(agent)
+
+        assert.spy(replace_stub).was.called(0)
+        assert.spy(notify_stub).was.called(1)
+    end)
+
+    it("passes optional list metadata only in the local start spec", function()
+        local agent = new_agent()
+        local source = {
+            session_key = 1,
+            widget = "source widget",
+            chat_history = { title = "source title" },
+        }
+        agent.list_result = {
+            sessions = {
+                {
+                    sessionId = "one",
+                    cwd = "/tmp",
+                    title = "Local title",
+                    updatedAt = "2026-08-09T12:00:00Z",
+                },
+            },
+        }
+        local items
+        local on_choice
+        select_stub:invokes(function(values, _opts, callback)
+            items = values
+            on_choice = callback
+        end)
+
+        use_context(agent, source)
+        SessionRestore.show_picker()
+        agent.ready_callback(agent)
+        on_choice(items[1])
+
+        local spec = replace_stub.calls[1][3]
+        assert.equal("Local title", spec.title)
+        assert.equal("2026-08-09T12:00:00Z", spec.timestamp)
+        assert.equal(source, replace_stub.calls[1][1])
+        assert.same(
+            { agent = agent, retain_source = true },
+            replace_stub.calls[1][4]
+        )
+        assert.equal("source widget", source.widget)
+        assert.equal("source title", source.chat_history.title)
+    end)
+
+    it(
+        "shows a short ID and clean title while searching the full ID",
+        function()
+            local agent = new_agent()
+            local session_id = "abcdef1234567890"
+            local title = "Line one\r\nLine two\nLine three\r"
+                .. string.rep("x", 90)
+            agent.list_result = {
+                sessions = {
+                    {
+                        sessionId = session_id,
+                        title = title,
+                        updatedAt = "2026-08-09T12:00:00Z",
                     },
-                })
+                },
+            }
 
-                SessionRestore.show_picker(
-                    session --[[@as agentic.SessionManager]]
+            use_context(agent, nil)
+            SessionRestore.show_picker()
+            agent.ready_callback(agent)
+
+            local item = select_stub.calls[1][1][1]
+            local format_item = select_stub.calls[1][2].format_item
+            local expected = "2026-08-09 12:00 - abcdef12 - "
+                .. ("Line one Line two Line three " .. string.rep("x", 90)):sub(
+                    1,
+                    80
                 )
-
-                local items = vim_ui_select_stub.calls[1][1]
-                assert.equal(1, #items)
-                assert.is_nil(items[1].display:find("\r"))
-                assert.is_nil(items[1].display:find("\n"))
-                assert.truthy(
-                    items[1].display:match("Line one Line two Line three")
-                )
-                assert.equal("Line one\r\nLine two\nLine three", items[1].title)
-
-                local callback = select_session(1)
-                callback(items[1])
-
-                local call_args = session.load_acp_session.calls[1]
-                assert.equal("Line one\r\nLine two\nLine three", call_args[3])
-            end
-        )
-
-        it("notifies error on ACP error", function()
-            local session = create_acp_session({
-                error = { message = "Provider error" },
-            })
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            assert.spy(logger_notify_stub).was.called(1)
-            assert.truthy(
-                logger_notify_stub.calls[1][1]:match("Provider error")
-            )
-            assert.spy(vim_ui_select_stub).was.called(0)
-        end)
-
-        it("shows no sessions found when ACP returns empty list", function()
-            local session = create_acp_session({ sessions = {} })
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            assert.spy(logger_notify_stub).was.called(1)
-            assert.equal(
-                "No saved sessions found",
-                logger_notify_stub.calls[1][1]
-            )
-            assert.spy(vim_ui_select_stub).was.called(0)
-        end)
-
-        it("calls load_acp_session on selection without conflict", function()
-            local session = create_acp_session()
-
-            SessionRestore.show_picker(session --[[@as agentic.SessionManager]])
-
-            local callback = select_session(1)
-            callback({
-                session_id = "acp-1",
-                title = "ACP First",
-                display = "2026-03-20 14:30 - ACP First",
-            })
-
-            assert.spy(session.load_acp_session).was.called(1)
-            local call_args = session.load_acp_session.calls[1]
-            assert.equal("acp-1", call_args[2])
-            assert.equal("ACP First", call_args[3])
-            assert.spy(session.widget.show).was.called(1)
-        end)
-
-        it(
-            "handles conflict: prompts user and calls load_acp_session on confirm",
-            function()
-                local session = create_acp_session({
-                    chat_history = { messages = { { type = "user" } } },
-                    session_id = "existing-session",
-                })
-
-                SessionRestore.show_picker(
-                    session --[[@as agentic.SessionManager]]
-                )
-
-                local callback = select_session(1)
-                callback({
-                    session_id = "acp-1",
-                    title = "ACP First",
-                    display = "2026-03-20 14:30 - ACP First",
-                })
-
-                assert.spy(vim_ui_select_stub).was.called(2)
-
-                local conflict_callback = vim_ui_select_stub.calls[2][3]
-                conflict_callback("Clear current session and restore")
-
-                assert.spy(session.load_acp_session).was.called(1)
-                assert.spy(session.widget.show).was.called(1)
-            end
-        )
-    end)
+            assert.equal(expected, item.display)
+            assert.equal(expected, format_item(item, true))
+            assert.equal(expected .. " " .. session_id, format_item(item))
+            assert.equal(title, item.title)
+            assert.equal(session_id, item.session_id)
+        end
+    )
 end)
