@@ -31,13 +31,18 @@ local function try_session_cwd(callback, current_cwd)
     end
 
     local ok, result = pcall(callback, current_cwd)
-    if
-        ok
-        and type(result) == "string"
-        and result ~= ""
-        and vim.fn.isabsolutepath(result) == 1
-    then
-        return result
+    if ok and type(result) == "string" and result ~= "" then
+        if vim.fn.isabsolutepath(result) == 1 then
+            return result
+        end
+
+        Logger.notify(
+            string.format(
+                "Session CWD must be an absolute path, you returned '%s'",
+                result
+            ),
+            vim.log.levels.WARN
+        )
     end
 
     return nil
