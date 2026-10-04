@@ -11,6 +11,8 @@ on:
       - 'stylua.toml'
       - 'selene.toml'
       - 'vim.toml'
+      - 'scripts/check-rules.sh'
+      - 'rules-report.md'
       - '.github/workflows/pr-check.yml'
   push:
     branches: [main]
@@ -91,6 +93,9 @@ jobs:
         run: |
           export PATH="$PWD/.local/bin:$PATH"
           make selene
+
+      - name: Check AGENTS.md rules
+        run: make rules
 
   test:
     runs-on: ubuntu-latest

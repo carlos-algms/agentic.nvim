@@ -1,0 +1,44 @@
+# Mirror of the router table in AGENTS.md ("Before you change: route").
+# Edit both together. Nested AGENTS.md files apply to their own folder by
+# default; entries here map docs and skills to files outside that folder.
+# Only the documented glob form is used: one path per entry, braces inside a
+# single path segment. Docs: https://docs.coderabbit.ai/knowledge-base/code-guidelines
+knowledge_base:
+  code_guidelines:
+    filePatterns:
+      - files: "tests/AGENTS.md"
+        applyTo: "**/*.test.lua"
+      - files: "tests/AGENTS.md"
+        applyTo: "tests/**"
+      - files: ".agents/skills/agentic-testing/SKILL.md"
+        applyTo: "**/*.test.lua"
+      - files: ".agents/skills/agentic-testing/SKILL.md"
+        applyTo: "tests/**"
+      - files: ".agents/skills/agentic-lua-class/SKILL.md"
+        applyTo: "**/*.lua"
+      - files: ".agents/skills/agentic-self-review/SKILL.md"
+        applyTo: "**/*.lua"
+      - files: ".agents/skills/agentic-ui-widget-lifecycle/SKILL.md"
+        applyTo: "lua/agentic/ui/{chat_widget,widget_*,window_decoration,buffer_guard}.lua"
+      - files: ".agents/skills/agentic-ui-widget-lifecycle/SKILL.md"
+        applyTo: "lua/agentic/session_registry.lua"
+      - files: ".agents/skills/agentic-ui-message-writer/SKILL.md"
+        applyTo: "lua/agentic/ui/{message_writer,permission_manager,tool_call_*,tool_block_border,todo_list}.lua"
+      - files: ".agents/skills/agentic-acp-protocol-flow/SKILL.md"
+        applyTo: "lua/agentic/acp/**"
+      - files: ".agents/skills/agentic-vimdoc/SKILL.md"
+        applyTo: "lua/agentic/{init,config_default,theme}.lua"
+      - files: ".agents/skills/agentic-vimdoc/SKILL.md"
+        applyTo: "README.md"
+      - files: ".agents/skills/agentic-vimdoc/SKILL.md"
+        applyTo: "doc/agentic.txt"
+      - files: ".agents/skills/agentic-docs-authoring/SKILL.md"
+        applyTo: "**/AGENTS.md"
+      - files: ".agents/skills/agentic-docs-authoring/SKILL.md"
+        applyTo: "CONTEXT.md"
+      - files: ".agents/skills/agentic-docs-authoring/SKILL.md"
+        applyTo: "docs/adr/**"
+      - files: ".agents/skills/agentic-docs-authoring/SKILL.md"
+        applyTo: ".agents/skills/**"
+      - files: ".agents/skills/agentic-docs-authoring/SKILL.md"
+        applyTo: ".coderabbit.yaml"

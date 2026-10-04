@@ -10,16 +10,7 @@ chunk 1:  ...{"jsonrpc":"2.0","i
 chunk 2:  d":1,...}\n{"jsonrpc":"2.0","method
 ```
 
-Transport buffering:
-
-```text
-chunks = chunks .. data
-lines  = split(chunks, "\n")
-chunks = lines[#lines]
-for i = 1, #lines - 1 do
-    dispatch(decode(trim(lines[i])))
-end
-```
+Buffering lives in the stdout reader in `ACPTransport` (search `chunks`).
 
 Invariants:
 

@@ -8,176 +8,74 @@ description: >
   failures at make validate. Load it before the first edit, not after.
 ---
 
-# Lua Class Pattern
+# Lua in agentic.nvim
 
-**Basic class structure:**
+## Class shape
 
-```lua
---- @class Animal
-local Animal = {}
-Animal.__index = Animal
+Reference class: `lua/agentic/ui/diff_coordinator.lua`. Copy its shape:
 
-function Animal:new()
-    self = setmetatable({}, self)
-    return self
-end
+- `--- @class agentic.<area>.<Name>` with every field declared by `@field`
+- `Name.__index = Name`
+- `function Name:new(...)` returns `setmetatable({ ... }, self)`
+- private fields and methods start with `_`
 
-function Animal:move()
-    print("Animal moves")
-end
-```
+Adding a subclass: read `references/inheritance.md` first.
 
-**Key points:**
+## Lua 5.1, not 5.4
 
-- Set `__index` to `self` for inheritance
-- Use `setmetatable` to create instances
-- Return the instance from constructor
+Neovim runs LuaJIT 2.1, which follows Lua 5.1. These do not exist: `goto` and
+`::label::`, `table.pack`, `table.unpack` (use `unpack`), and the `\z` string
+escape. Code that uses them fails at runtime or breaks Selene's parser.
 
-**Method definition syntax:**
+## Private methods over module-level locals
 
-- `function Class:method()` - Instance method, receives `self` implicitly
-  - Called as: `instance:method()` or `instance.method(instance)`
-  - Use for methods that need access to instance state
+Prefer a private method (`function Name:_helper()`) over a module-level
+`local function`, even when the method does not use `self`. Methods can sit
+anywhere in the file; module-level locals must be defined before their first
+use. Do not convert a method to a local only because `self` is unused.
 
-- `function Class.method()` - Module function, static, does NOT receive `self`
-  - Called as: `Class.method()` or `instance.method()` (both work, but no
-    `self`)
-  - Use for utility functions, constructors, or static helpers
+## LuaLS does not narrow on reassignment
 
-## Inheritance Pattern
-
-**Class setup (module-level):**
+Reassigning a variable does not narrow its type. After
+`local lines, err = fn(); lines = lines or {}`, LuaLS still types `lines` as
+`string[]|nil`. Introduce a new local instead:
 
 ```lua
-local Parent = {}
-Parent.__index = Parent
+-- Bad: `lines` stays `string[]|nil`
+local lines, err = read_lines(path)
+lines = lines or {}
 
---- @class Child : Parent
-local Child = setmetatable({}, { __index = Parent })
-Child.__index = Child
+-- Good: `lines` is `string[]`
+local result, err = read_lines(path)
+local lines = result or {}
 ```
 
-**Constructor with parent initialization:**
+LuaLS resolves types across files. A type annotation can move to another file
+during a refactor (for example payload types into `acp_payloads.lua`) as long as
+its name stays the same.
+
+## Visibility
+
+Expose a field only when other modules read it. Everything else is private.
+
+Prefixes, configured in `.luarc.json`:
+
+- `_name`: private. Class methods and fields only
+- `__name`: protected, visible to subclasses. Add `--- @protected` (a LuaLS
+  limitation); private members need no `@private`
+- no prefix: public
+
+Module-level locals never take `_`: `local function helper()` and
+`local config = {}` are already private by scope. `local function _helper()`
+is wrong.
 
 ```lua
-function Parent:new(name)
-    local instance = {
-        name = name,
-        parent_state = {}
-    }
-    return setmetatable(instance, self)
-end
-
-function Child:new(name, extra)
-    -- Call parent constructor with Parent class
-    local instance = Parent.new(Parent, name)
-
-    -- Add child-specific state
-    instance.child_state = extra
-
-    -- Re-metatable to child class for proper inheritance chain
-    return setmetatable(instance, Child)
-end
+--- @class agentic.ui.Counter
+--- @field label string Public: read by other modules
+--- @field _count integer Private: internal state
+local Counter = {}
+Counter.__index = Counter
 ```
-
-**Critical rules:**
-
-- **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
-  `Parent.new(self, ...)`
-- **Re-assign metatable to child class** after parent initialization
-- **Inheritance chain:** `instance → Child → Parent`
-
-**Calling parent methods:**
-
-```lua
-function Child:move()
-    Parent.move(self)  -- Explicit parent method call
-    print("Child-specific movement")
-end
-```
-
-## Class Design Guidelines: creating and modifying
-
-- **Minimize class properties** - Only include properties that:
-  - Are accessed by external code (other modules/classes)
-  - Are part of the public API
-  - Need to be accessed by subclasses
-
-- **Use visibility prefixes for encapsulation** - Control what external code can
-  access:
-
-  **Visibility levels (configured in `.luarc.json`):**
-  - `_*`: **Private** - Hidden from external consumers (applies to class
-    methods/fields ONLY)
-  - `__*`: **Protected** - Visible to subclasses
-  - No prefix: **Public** - Visible everywhere
-
-  **IMPORTANT:** Module-level local functions and variables do NOT need `_`
-  prefix:
-  - ✅ `local function helper()` - correct (already private by `local` scope)
-  - ❌ `local function _helper()` - incorrect (redundant `_` prefix)
-  - ✅ `local config = {}` - correct
-  - ❌ `local _config = {}` - incorrect (redundant `_` prefix)
-  - ✅ `function MyClass:_private_method()` - correct (class method needs `_`)
-  - ✅ `@field _private_field` - correct (class field needs `_`)
-
-  ```lua
-  -- ❌ Bad: Unnecessary public exposure of `counter` property, not used externally
-  --- @class MyClass
-  --- @field counter number
-  local MyClass = {}
-  MyClass.__index = MyClass
-
-  function MyClass:new()
-      return setmetatable({ counter = 0 }, self)
-  end
-
-  -- ✅ Good: Proper visibility control
-  --- @class MyClass
-  local MyClass = {}
-  MyClass.__index = MyClass
-
-  function MyClass:new()
-      return setmetatable({
-        -- Counter is internal state, not exposed publicly
-        _counter = 0
-      }, self)
-  end
-
-  --- @protected
-  function MyClass:__protected_method()
-      self._counter = self._counter + 1
-  end
-
-  --- Module-level helper functions (no underscore prefix needed)
-  local function format_value(val)
-      return tostring(val)
-  end
-
-  --- @class Child : MyClass
-  function Child:use_parent_state()
-      self:__protected_method()
-  end
-  ```
-
-  **Note:** The `@private` annotation is NOT necessary for private class methods
-  - LuaLS infers privacy from the `_` prefix automatically
-  - Only use `@protected` for protected methods (`__*`, luals limitation)
-
-- **Document intent with LuaCATS** - Use visibility annotations:
-
-  ```lua
-  --- @class MyClass
-  --- @field public_field string Public API
-  --- @field __protected_field table For subclasses
-  --- @field _private_field number Internal only
-  ```
-
-- **Regular cleanup** - When adding new code, review class definitions and
-  remove:
-  - Unused properties
-  - Properties that were needed during development but are no longer used
-  - Properties that could be local variables instead
 
 ## LuaCATS annotation syntax
 

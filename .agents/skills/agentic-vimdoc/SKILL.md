@@ -20,6 +20,13 @@ Manually written, NOT auto-generated.
 | `lua/agentic/theme.lua`          | Customization (highlight groups)    |
 | `README.md` (install/keymaps)    | Installation, Keymaps, Integrations |
 
+## New highlight group
+
+1. Add the name to the `Theme.HL_GROUPS` constant in `lua/agentic/theme.lua`
+2. Define its default in `Theme.setup()`
+3. Update README.md "Customization (Ricing)": code example and table row
+4. Update the vimdoc Customization section
+
 ## Format rules
 
 - 78-char width.

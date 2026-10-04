@@ -9,8 +9,8 @@ description: >
 # Agentic UI Message Writer
 
 This skill covers chat-buffer content state. For widget windows, layout,
-fallback windows, hidden floats, and buffer redirection, read
-`lua/agentic/ui/AGENTS.md` first.
+fallback windows, hidden floats, and buffer redirection, see
+`lua/agentic/ui/AGENTS.md` and skill `agentic-ui-widget-lifecycle`.
 
 ## Hard rules
 
@@ -36,6 +36,10 @@ row M          "" bottom_pad  fold end anchor
 row M+1..M+K   permission     K rows: N button rows + N empty spacer rows
 row M+K+1      status row     real text, outside the fold
 ```
+
+Pinned by, in `lua/agentic/ui/message_writer.test.lua`:
+`::"emits anchor pad lines around the body in every block"` (pads) and
+`::"writes pending status word as real text at row N"` (status row).
 
 - `K = 2 * N` for N permission options.
 - Permission rows are outside the fold.
@@ -74,6 +78,9 @@ Use only the normal write path outside these cases.
 - Outside restore/provider-switch, use `write_message_chunk` or
   `write_tool_call_block`.
 - `replay_history_messages` does not re-issue ACP `send_prompt`.
+- `write_restoring_message` calls `write_message()`, not
+  `write_message_chunk()`. On restore the provider sends each message whole,
+  despite the `user_message_chunk` name.
 - Adding a bulk-write path requires a new row here and a test.
 
 ## Sender classification
@@ -88,6 +95,13 @@ agent_thought_chunk    -> agent
 tool_call              -> agent
 plan                   -> no header
 ```
+
+Pinned by, in `lua/agentic/ui/message_writer.test.lua`:
+`::"writes user header on first user_message_chunk"`,
+`::"writes agent header on first agent_message_chunk"`,
+`::"writes agent header before tool call block"`,
+`::"skips header for plan updates"`. No test pins `agent_thought_chunk`; add one
+before changing it.
 
 Thinking blocks reuse one extmark in `NS_THINKING`. Any non-thought write must
 clear thinking state first or the next thought extends the wrong extmark.
