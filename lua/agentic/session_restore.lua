@@ -47,6 +47,14 @@ local function notify_readiness_failure(operation)
     end
 end
 
+--- @param item { display: string, session_id: string }
+--- @param supports_chunks boolean|nil
+--- @return string label
+local function format_picker_item(item, supports_chunks)
+    return supports_chunks and item.display
+        or item.display .. " " .. item.session_id
+end
+
 --- @param context agentic.SessionRestoreContext
 --- @param session_id string
 --- @param title string|nil
@@ -123,11 +131,16 @@ function SessionRestore.show_picker()
                 local date = session.updatedAt
                         and session.updatedAt:sub(1, 16):gsub("T", " ")
                     or "unknown date"
+                local title = (session.title or "(no title)")
+                    :gsub("\r\n", " ")
+                    :gsub("[\r\n]", " ")
+                    :sub(1, 80)
                 items[#items + 1] = {
                     display = string.format(
-                        "%s - %s",
+                        "%s - %s - %s",
                         date,
-                        session.title or "(no title)"
+                        session.sessionId:sub(1, 8),
+                        title
                     ),
                     session_id = session.sessionId,
                     title = session.title,
@@ -138,9 +151,7 @@ function SessionRestore.show_picker()
             vim.schedule(function()
                 vim.ui.select(items, {
                     prompt = "Select session to restore:",
-                    format_item = function(item)
-                        return item.display
-                    end,
+                    format_item = format_picker_item,
                 }, function(choice)
                     if choice then
                         restore(

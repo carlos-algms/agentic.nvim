@@ -497,4 +497,40 @@ describe("SessionRestore", function()
         assert.equal("source widget", source.widget)
         assert.equal("source title", source.chat_history.title)
     end)
+
+    it(
+        "shows a short ID and clean title while searching the full ID",
+        function()
+            local agent = new_agent()
+            local session_id = "abcdef1234567890"
+            local title = "Line one\r\nLine two\nLine three\r"
+                .. string.rep("x", 90)
+            agent.list_result = {
+                sessions = {
+                    {
+                        sessionId = session_id,
+                        title = title,
+                        updatedAt = "2026-08-09T12:00:00Z",
+                    },
+                },
+            }
+
+            use_context(agent, nil)
+            SessionRestore.show_picker()
+            agent.ready_callback(agent)
+
+            local item = select_stub.calls[1][1][1]
+            local format_item = select_stub.calls[1][2].format_item
+            local expected = "2026-08-09 12:00 - abcdef12 - "
+                .. ("Line one Line two Line three " .. string.rep("x", 90)):sub(
+                    1,
+                    80
+                )
+            assert.equal(expected, item.display)
+            assert.equal(expected, format_item(item, true))
+            assert.equal(expected .. " " .. session_id, format_item(item))
+            assert.equal(title, item.title)
+            assert.equal(session_id, item.session_id)
+        end
+    )
 end)
