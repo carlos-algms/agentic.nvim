@@ -347,8 +347,8 @@ acp_configs ~
   `session_cwd`  Global callback for new ACP sessions. Receives Neovim's
                        current CWD and must return an absolute path or nil.
                        The per-call `cwd` callback takes precedence. If it
-                       returns no valid path, Agentic uses Neovim's current
-                       CWD. Default: `nil`.
+                       returns no valid path, Agentic tries this global callback,
+                       then falls back to Neovim's current CWD. Default: `nil`.
 
                                           *agentic-config-hooks*
 hooks ~
