@@ -1,6 +1,7 @@
 local Logger = require("agentic.utils.logger")
 local JsonFormat = require("agentic.utils.json_format")
 local transport_module = require("agentic.acp.acp_transport")
+local Config = require("agentic.config")
 
 --- JSON-RPC "Method not found", the answer the ACP spec requires for a request
 --- naming a method the receiver does not implement.
@@ -20,6 +21,32 @@ local KNOWN_ACP_KINDS = {
     write = true,
     switch_mode = true,
 }
+
+--- @param callback agentic.UserConfig.SessionCwdFn|nil
+--- @param current_cwd string
+--- @return string|nil cwd
+local function try_session_cwd(callback, current_cwd)
+    if type(callback) ~= "function" then
+        return nil
+    end
+
+    local ok, result = pcall(callback, current_cwd)
+    if ok and type(result) == "string" and result ~= "" then
+        if vim.fn.isabsolutepath(result) == 1 then
+            return result
+        end
+
+        Logger.notify(
+            string.format(
+                "Session CWD must be an absolute path, you returned '%s'",
+                result
+            ),
+            vim.log.levels.WARN
+        )
+    end
+
+    return nil
+end
 
 --- Split from the class so LuaLS validates instance fields without the prototype methods.
 --- @class agentic.acp.ACPClientData
@@ -808,8 +835,12 @@ end
 
 --- @param handlers agentic.acp.ClientHandlers
 --- @param callback fun(result: agentic.acp.SessionCreationResponse|nil, err: agentic.acp.ACPError|nil)
-function ACPClient:create_session(handlers, callback)
-    local cwd = vim.fn.getcwd()
+--- @param cwd_callback agentic.UserConfig.SessionCwdFn|nil
+function ACPClient:create_session(handlers, callback, cwd_callback)
+    local current_cwd = vim.fn.getcwd()
+    local cwd = try_session_cwd(cwd_callback, current_cwd)
+        or try_session_cwd(Config.acp_configs.session_cwd, current_cwd)
+        or current_cwd
 
     self:_send_request("session/new", {
         cwd = cwd,

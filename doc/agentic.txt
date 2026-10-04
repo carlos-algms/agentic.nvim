@@ -340,6 +340,16 @@ provider_switcher ~
                        from the provider switcher UI.
                        Default: `false`.
 
+                                      *agentic-config-acp-configs*
+acp_configs ~
+  Type: `table`
+
+  `session_cwd`  Global callback for new ACP sessions. Receives Neovim's
+                       current CWD and must return an absolute path or nil.
+                       The per-call `cwd` callback takes precedence. If it
+                       returns no valid path, Agentic tries this global callback,
+                       then falls back to Neovim's current CWD. Default: `nil`.
+
                                           *agentic-config-hooks*
 hooks ~
   Type: `table`
@@ -548,6 +558,12 @@ agentic.new_session({opts})
       `provider`              (string)   Switch provider for the
                                          new session.
       `auto_add_to_context`   (boolean)  Default: `true`.
+      `cwd`                   (function) Receive Neovim's current CWD and
+                                         return an absolute path or nil.
+
+  The `cwd` callback must return an absolute path or nil. It applies only to
+  this new ACP session. If it returns no valid path, Agentic uses the global
+  |agentic-config-acp-configs| callback, then Neovim's current CWD.
 
                                              *agentic.destroy_session()*
 agentic.destroy_session({opts})

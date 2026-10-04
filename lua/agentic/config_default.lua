@@ -13,6 +13,8 @@
 --- | "kiro-acp"
 --- | "pi-acp"
 
+--- @alias agentic.UserConfig.SessionCwdFn fun(current_cwd: string): string|nil
+
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
 --- Per-panel window header: either `{ title, suffix }` or a render function.
@@ -246,6 +248,9 @@
 --- @class agentic.UserConfig.ProviderSwitcher
 --- @field hide_unhealthy_providers boolean Hide providers whose command is not installed
 
+--- @class agentic.UserConfig.ACPConfigs
+--- @field session_cwd? agentic.UserConfig.SessionCwdFn
+
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
@@ -299,6 +304,7 @@
 --- @field title? agentic.PartialUserConfig.ToolCalls.Title
 
 --- @class (partial) agentic.PartialUserConfig: agentic.UserConfig
+--- @field acp_configs? agentic.UserConfig.ACPConfigs
 --- @field windows? agentic.PartialUserConfig.Windows
 --- @field keymaps? agentic.PartialUserConfig.Keymaps
 --- @field spinner_chars? agentic.PartialUserConfig.SpinnerChars
@@ -338,6 +344,7 @@
 --- @field tool_calls agentic.UserConfig.ToolCalls
 --- @field hooks agentic.UserConfig.Hooks
 --- @field headers agentic.UserConfig.Headers
+--- @field acp_configs agentic.UserConfig.ACPConfigs
 --- @field settings agentic.UserConfig.Settings
 --- @field provider_switcher agentic.UserConfig.ProviderSwitcher
 local ConfigDefault = {
@@ -625,6 +632,8 @@ local ConfigDefault = {
     },
 
     headers = {},
+
+    acp_configs = {},
 
     settings = {
         move_cursor_to_chat_on_submit = true,

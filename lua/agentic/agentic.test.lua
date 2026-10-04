@@ -25,6 +25,7 @@ describe("agentic: switch_provider", function()
     local initial_tab_id
     local deferred_create_callback
     local create_session_calls
+    local captured_cwd_callback
     --- @type table<integer, boolean>
     local initial_tabs
 
@@ -58,6 +59,7 @@ describe("agentic: switch_provider", function()
         transient_stubs = {}
         deferred_create_callback = nil
         create_session_calls = 0
+        captured_cwd_callback = nil
         logger_notify_stub = spy.stub(Logger, "notify")
 
         -- Queue callbacks so they run after synchronous code completes
@@ -93,8 +95,13 @@ describe("agentic: switch_provider", function()
             end
 
             -- Synchronous: mini.test has no event loop to pump
-            function fake_agent:create_session(_handlers, callback)
+            function fake_agent:create_session(
+                _handlers,
+                callback,
+                cwd_callback
+            )
                 create_session_calls = create_session_calls + 1
+                captured_cwd_callback = cwd_callback
                 if agent_name == "DeferredProvider" then
                     deferred_create_callback = callback
                     return
@@ -151,6 +158,18 @@ describe("agentic: switch_provider", function()
             assert.is_not_nil(SessionRegistry.sessions[1].session_id)
         end
     )
+
+    it("forwards the per-call CWD callback to the ACP session", function()
+        local Agentic = require("agentic")
+        local callback = function(_)
+            return "/per-call"
+        end
+
+        Agentic.new_session({ auto_add_to_context = false, cwd = callback })
+        flush_schedule()
+
+        assert.equal(callback, captured_cwd_callback)
+    end)
 
     it("open creates no target when provider resolution fails", function()
         local Agentic = require("agentic")
