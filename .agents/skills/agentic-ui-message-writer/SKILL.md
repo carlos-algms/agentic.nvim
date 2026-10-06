@@ -82,8 +82,10 @@ Use only the normal write path outside these cases.
   `write_tool_call_block`.
 - `replay_history_messages` does not re-issue ACP `send_prompt`.
 - `write_restoring_message` calls `write_message()`, not
-  `write_message_chunk()`. On restore the provider sends each message whole,
-  despite the `user_message_chunk` name.
+  `write_message_chunk()`. Each replayed `user_message_chunk` becomes its own
+  message; chunks are not reassembled. Pinned by, in
+  `lua/agentic/session_manager.test.lua`:
+  `::"renders replay chunks as formatted messages"`.
 - Adding a bulk-write path requires a new row here and a test.
 
 ## Sender classification

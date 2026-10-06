@@ -24,7 +24,7 @@ requires `tests/AGENTS.md`.
 | `lua/agentic/ui/{message_writer,permission_manager,tool_call_*,tool_block_border,todo_list}.lua`               | skill `agentic-ui-message-writer`                              |
 | `lua/agentic/acp/**`                                                                                           | `lua/agentic/acp/AGENTS.md`, skill `agentic-acp-protocol-flow` |
 | `lua/agentic/utils/**`                                                                                         | `lua/agentic/utils/AGENTS.md`                                  |
-| `init.lua`, `config_default.lua`, `theme.lua`, README install/keymaps, `doc/agentic.txt`                       | skill `agentic-vimdoc`                                         |
+| `lua/agentic/{init,config_default,theme}.lua`, README install/keymaps, `doc/agentic.txt`                       | skill `agentic-vimdoc`                                         |
 | any `AGENTS.md`, `CONTEXT.md`, `docs/adr/**`, `.agents/skills/**`, `.coderabbit.yaml`                          | skill `agentic-docs-authoring`                                 |
 | opening a PR, or handling a review round                                                                       | skill `agentic-pr-workflow`                                    |
 | reviewing a diff (yours, a subagent's, or a plan review loop)                                                  | skill `agentic-self-review`                                    |
@@ -95,7 +95,9 @@ check is done:
 - [ ] Re-read every changed file. Remove comments you added that are obvious
       or that nobody asked for
 - [ ] Changed `.lua` files: `make validate` passes. On failure, fix and run it
-      again
+      again. Run it ONLY when a `.lua` file changed; a change to `.md`, vimdoc,
+      skills, or `scripts/` alone never runs it (a changed script runs
+      `make rules`)
 - [ ] Changed docs: format them (markdown: one `prettier --write` call over all
       changed `.md` files; vimdoc: `timeout 5 nvim --headless -c "helptags doc/" -c "qa!"`)
 - [ ] The diff passed one review: the plan review loop, or skill
