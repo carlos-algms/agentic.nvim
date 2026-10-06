@@ -13,13 +13,14 @@ Rules:
 
 - Never put `assert.*` or `expect.*` inside scheduled/deferred callbacks.
 - Store async results, wait/flush safely, then assert synchronously.
-- A test of async code or callbacks MUST run that code in a child Neovim.
+- Make deferred work run before the assertion: a synchronous `vim.schedule`
+  stub, or a child Neovim. When to use which: `tests/AGENTS.md`.
 
 Same-process caveats:
 
 - `vim.uv.sleep()` does not flush `vim.schedule`.
 - `vim.wait()` runs scheduled callbacks, but the test still runs in the same
-  process. Use a child Neovim instead.
+  process. Use a synchronous stub or a child Neovim instead.
 
 Correct child-process pattern:
 

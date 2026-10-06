@@ -27,8 +27,11 @@ obvious.
 
 The router table in root `AGENTS.md` and
 `knowledge_base.code_guidelines.filePatterns` in `.coderabbit.yaml` describe the
-same mapping. CodeRabbit applies a nested `AGENTS.md` only to its own folder,
-and never applies a skill unless `.coderabbit.yaml` maps it with `applyTo`.
+same mapping. CodeRabbit applies a nested `AGENTS.md` to its own folder and all
+subfolders. It also auto-discovers every `.agents/skills/<name>/SKILL.md` as an
+"Agent Skill"; an `applyTo` entry in `.coderabbit.yaml` scopes a skill to the
+files it governs. To stop CodeRabbit from using a skill, trash its row on the
+Code Guidelines page of the CodeRabbit UI.
 
 When you add, move, or delete a routed doc, change both files in the same
 change.
@@ -57,8 +60,9 @@ without the rule. Cite it in the rule body as
 docs) are exempt. A pure fact with no possible test (for example "this API
 returns a table") is allowed when written as a fact, not a rule.
 
-A banned token (a call that must never appear) also belongs in the banned-token
-check in `make validate`, not only in prose.
+A banned token (a call that must never appear) also goes into the `BANNED`
+list in `scripts/check-rules.sh`, with a matching line in its `self_test`
+fixture and the expected hit count bumped. `make rules` runs it.
 
 When your change adds or edits a rule, check that rule against every function
 in the same diff.

@@ -23,9 +23,13 @@ Adding a subclass: read `references/inheritance.md` first.
 
 ## Lua 5.1, not 5.4
 
-Neovim runs LuaJIT 2.1, which follows Lua 5.1. These do not exist: `goto` and
-`::label::`, `table.pack`, `table.unpack` (use `unpack`), and the `\z` string
-escape. Code that uses them fails at runtime or breaks Selene's parser.
+Neovim runs LuaJIT 2.1, which follows Lua 5.1.
+
+- `table.pack` and `table.unpack` are `nil` at runtime. Use `unpack` and
+  `{ ... }` with `select("#", ...)`
+- `goto` / `::label::` and the `\z` string escape run in LuaJIT, but Selene
+  (`std = "vim"`, Lua 5.1 parser) rejects them: parse errors for `goto`,
+  `bad_string_escape` for `\z`. `make validate` fails
 
 ## Private methods over module-level locals
 

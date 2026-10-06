@@ -14,9 +14,9 @@ Tests run on mini.test with Busted emulation (`describe`, `it`, `before_each`,
 `after_each`). Do not use luassert or Busted APIs from memory. Use the project
 helpers and read their source before you call them:
 
-- `tests/helpers/assert.lua`: `assert.equal(actual, expected)` takes the actual
-  value FIRST, the reverse of Busted. mini.test then prints `Left: <actual>` /
-  `Right: <expected>`
+- `tests/helpers/assert.lua`: `assert.equal(a, b)` is symmetric
+  (`vim.deep_equal`). On failure mini.test prints `Left: a` / `Right: b`, with
+  no actual/expected labels. Either order is correct
 - `tests/helpers/spy.lua`: `spy.new`, `spy.on`, `spy.stub`. Spies have no
   `:call(n)`
 - `tests/helpers/child.lua`: a child Neovim for async and editor-state tests
@@ -62,9 +62,17 @@ test shows green.
 Store the value in the callback. Assert after the callback has run, in the
 `it()` body.
 
-A test of async code or callbacks MUST run that code in a child Neovim
-(`tests.helpers.child`). In the same process, the scheduled work may not run
-before the assertion, and the test passes falsely.
+A test of async code must make the deferred work run before the `it()` body
+asserts. Two ways, pick the first that fits:
+
+- The test only needs the callback to have run: stub `vim.schedule` to run
+  inline, `spy.stub(vim, "schedule"):invokes(function(fn) fn() end)`, and revert
+  it in `after_each`. Example: `lua/agentic/utils/hooks.test.lua`
+- The test needs a real event loop, a `vim.uv` timer, `vim.defer_fn` timing, or
+  a fast event context: run the code in a child Neovim (`tests.helpers.child`)
+
+Never rely on same-process scheduling without a stub: the scheduled work may not
+run before the assertion, and the test passes falsely.
 
 Two checks enforce this. At runtime, every `tests.helpers.assert` call inside a
 callback queued by `vim.schedule` or `vim.defer_fn` during a test fails the run

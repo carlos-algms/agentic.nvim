@@ -1,6 +1,8 @@
 # Mirror of the router table in AGENTS.md ("Before you change: route").
-# Edit both together. Nested AGENTS.md files apply to their own folder by
-# default; entries here map docs and skills to files outside that folder.
+# Edit both together. One intended extra: agentic-self-review on every .lua
+# file, as CodeRabbit's review checklist. Nested AGENTS.md files apply to
+# their own folder and subfolders by default; entries here map docs and skills
+# to files outside that folder.
 # Only the documented glob form is used: one path per entry, braces inside a
 # single path segment. Docs: https://docs.coderabbit.ai/knowledge-base/code-guidelines
 knowledge_base:

@@ -4,8 +4,8 @@
 providing AI-driven code assistance through a chat interface. Neovim 0.11+,
 LuaJIT 2.1 (Lua 5.1 semantics).
 
-This file is the only instruction file every tool loads. Everything else is
-reached through the router below.
+Reach every other instruction file through the router below. Skip any file
+already in your context.
 
 ## Before you change: route
 
@@ -31,7 +31,8 @@ requires `tests/AGENTS.md`.
 | `rules-report.md` has entries, or you met a rule gap                                                           | skill `agentic-learn`                                          |
 
 This table is mirrored in `.coderabbit.yaml`
-(`knowledge_base.code_guidelines.filePatterns`). Edit both together.
+(`knowledge_base.code_guidelines.filePatterns`), plus `agentic-self-review` on
+every `.lua` file as CodeRabbit's review checklist. Edit both together.
 
 Skill `<name>` is the file `.agents/skills/<name>/SKILL.md`. Open it directly
 ONLY if your tool has no skill loader, or the skill is not in your list.
@@ -92,6 +93,8 @@ check is done:
 ```markdown
 - [ ] Re-read every changed file. Remove comments you added that are obvious
       or that nobody asked for
+- [ ] Changed `.lua` files: `make validate` passes. On failure, fix and run it
+      again
 - [ ] Changed docs: format them (markdown: one `prettier --write` call over all
       changed `.md` files; vimdoc: `timeout 5 nvim --headless -c "helptags doc/" -c "qa!"`)
 - [ ] The diff passed one review: the plan review loop, or skill
