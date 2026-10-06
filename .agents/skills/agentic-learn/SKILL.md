@@ -50,8 +50,9 @@ followed).
    a bug; then fix the bug with TDD and keep the rule
 3. `missing`: write the rule where the router sends that file. Follow skill
    `agentic-docs-authoring`: a runtime rule cites a test that fails without it,
-   and a banned token goes into the `BANNED` list in `scripts/check-rules.sh`
-   (see skill `agentic-docs-authoring`)
+   and a banned token goes into the `BANNED` list in `scripts/check-rules.sh`,
+   unless Selene or LuaLS already fails `make validate` on it (see skill
+   `agentic-docs-authoring`)
 4. `broken`: the rule exists and was not read or not followed. Make it easier
    to find: move it closer to the code, or into the router, or make it
    mechanical (a check that fails). Rewording alone rarely helps

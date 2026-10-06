@@ -13,6 +13,7 @@ BANNED=$(printf '%s\t%s\t%s\n' \
     'nvim_win_set_width/height -> BufHelpers.win_set_width/height' 'nvim_win_set_(width|height)' 'utils/buf_helpers\.lua$' \
     'vim.keymap.set/del -> BufHelpers.keymap_set/del' 'vim\.keymap\.(set|del)\(' 'utils/buf_helpers\.lua$' \
     'vim.wo[winid].opt = -> vim.wo[winid][0].opt =' 'vim\.wo\[[^]]+\]\.[a-z_]+[[:space:]]*=[^=]' '' \
+    'nvim_set_option_value({ win }) -> vim.wo[winid][0].opt =' 'nvim_set_option_value\(.*win[[:space:]]*=' '' \
     'table.pack/table.unpack (Lua 5.1)' '(^|[^A-Za-z0-9_.])table\.(un)?pack([^A-Za-z0-9_]|$)' '')
 TAB=$(printf '\t')
 
@@ -58,7 +59,7 @@ check_async() {
                 line = substr(line, RSTART + RLENGTH)
             }
             epos = match(line, /(^|[^A-Za-z0-9_])end[ \t]*[,)]/) ? RSTART : 0
-            apos = match(line, /(^|[^A-Za-z0-9_.])(assert[.(]|expect\.|MiniTest\.expect\.)/) ? RSTART : 0
+            apos = match(line, /(^|[^A-Za-z0-9_.])(assert[ \t]*[.(]|expect\.|MiniTest\.expect\.)/) ? RSTART : 0
             if (apos && (!epos || apos < epos)) {
                 print FILENAME ":" FNR ":" $0
                 inblk = 0
@@ -80,6 +81,7 @@ vim.api.nvim_win_set_width(0, 1)
 vim.keymap.set("n", "x", "y")
 vim.wo[w].wrap = false
 local t = table.pack(1)
+vim.api.nvim_set_option_value("wrap", false, { win = w })
 -- vim.notify("in a comment is fine")
 EOF
     cat >"$dir/bad.test.lua" <<'EOF'
@@ -104,6 +106,11 @@ it("f", function()
         assert(done)
     end)
 end)
+it("g", function()
+    vim.schedule(function()
+        assert (done)
+    end)
+end)
 EOF
     cat >"$dir/good.test.lua" <<'EOF'
 it("c", function()
@@ -121,8 +128,8 @@ EOF
     async_bad=$(check_async "$dir/bad.test.lua" | grep -c 'bad.test.lua:')
     async_good=$(check_async "$dir/good.test.lua")
     ok=0
-    [ "$banned" = "6" ] || { echo "self-test: expected 6 banned hits, got $banned"; ok=1; }
-    [ "$async_bad" = "4" ] || { echo "self-test: expected 4 async hits, got $async_bad"; ok=1; }
+    [ "$banned" = "7" ] || { echo "self-test: expected 7 banned hits, got $banned"; ok=1; }
+    [ "$async_bad" = "5" ] || { echo "self-test: expected 5 async hits, got $async_bad"; ok=1; }
     [ -z "$async_good" ] || { echo "self-test: async check flagged a valid test: $async_good"; ok=1; }
     [ $ok -eq 0 ] && echo "self-test: ok"
     return $ok
