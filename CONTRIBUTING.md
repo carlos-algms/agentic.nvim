@@ -37,7 +37,7 @@ If in doubt, ask first
   ([spec](https://agentclientprotocol.com/)); `if provider == "foo"`
   branches get rejected - report provider bugs upstream. Only exception:
   documented fallbacks in `ACPClient` for fields missing from the spec
-  (see `lua/agentic/acp/AGENTS.md` -> "Provider quirk handling")
+  (see `lua/agentic/acp/AGENTS.md` and ADR 0005)
 
 ## Prerequisites
 
@@ -57,8 +57,7 @@ If in doubt, ask first
 
 2. Make your changes
 3. If your changes include `.lua` files, run `make validate` (stylua +
-   lua-language-server + selene + tests). See `AGENTS.md` for the scoping
-   rule.
+   lua-language-server + selene + tests + rules).
 
 ## Commit Messages
 

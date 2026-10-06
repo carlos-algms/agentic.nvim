@@ -142,9 +142,9 @@ globals, stubs, and spies.
 
 - ACP and transport tests must stub `agentic.acp.acp_transport`, or anything
   else that opens a subprocess or a network call. Use
-  `tests/mocks/acp_transport_mock.lua`. It delivers messages by direct call, so
-  it cannot produce a fast event context; use a child Neovim and a `vim.uv`
-  timer for that
+  `tests/mocks/acp_transport_mock.lua`. `deliver(message)` delivers by direct
+  call. `deliver(message, "fast_event")` delivers from a `vim.uv` timer, in a
+  fast event context; run that in a child Neovim
 - All tests run in one Neovim process, in sequence, unless you use
   `tests.helpers.child`. State left by one test is seen by the next
 - CI is Linux-only. Do not add Windows guards. `/bin/sh`, `kill -0`, and POSIX

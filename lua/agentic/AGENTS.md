@@ -137,9 +137,10 @@ the regression test for each one.
   - `vim.in_fast_event()` is the predicate when you genuinely need to branch.
   - Regression:
     `lua/agentic/session_manager.test.lua::"builds the create hook payload outside a fast event"`.
-    It drives the callback from a `vim.uv` timer in a child Neovim, because
-    `tests/mocks/acp_transport_mock.lua` delivers by direct call and cannot
-    produce a fast context.
+    It drives the callback from a `vim.uv` timer in a child Neovim. For a
+    transport-level fast context, `tests/mocks/acp_transport_mock.lua`'s
+    `deliver(message, "fast_event")` delivers from a `vim.uv` timer; run it in
+    a child Neovim (`lua/agentic/acp/acp_client.test.lua`).
 - **FORBIDDEN: `goto` / `::label::`** -> Selene cannot parse it. Use inverted
   conditions or `elseif` chains.
 

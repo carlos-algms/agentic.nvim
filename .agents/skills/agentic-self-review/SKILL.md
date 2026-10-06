@@ -40,10 +40,16 @@ for every changed file.
    must cite a test
 7. **Siblings.** For each fixed or guarded path, read the unchanged sibling
    paths in the same function and its callers (`rg` the symbol). Does the
-   change's premise make any unchanged line wrong?
+   change's premise make any unchanged line wrong? A `pcall` in a callee hides
+   a violation: no error, no failing test. Do not treat a caught error as
+   handled until you know what it hid
 8. **Transitive context.** For code that runs in a libuv callback, follow every
    call it makes. The fast-event ban applies to the whole call chain
-9. **Rule gaps.** Every gap found goes to skill `agentic-learn`
+9. **Docs drift.** For each symbol or behavior the diff changes, `rg` it across
+   `docs/`, `doc/`, `README.md`, `CONTRIBUTING.md`, every `AGENTS.md`, and
+   `.agents/skills/`. Re-read each hit against the code. One contract stated in
+   several places drifts in one copy
+10. **Rule gaps.** Every gap found goes to skill `agentic-learn`
 
 ## Output
 

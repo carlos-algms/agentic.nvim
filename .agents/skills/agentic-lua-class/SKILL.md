@@ -31,6 +31,38 @@ Neovim runs LuaJIT 2.1, which follows Lua 5.1.
   (`std = "vim"`, Lua 5.1 parser) rejects them: parse errors for `goto`,
   `bad_string_escape` for `\z`. `make validate` fails
 
+## `a and b or c` is not a ternary
+
+It returns `c` whenever `b` is `false` or `nil`, even when `a` is true. Use it
+only when `b` can never be `false` or `nil`; otherwise write an `if`:
+
+```lua
+-- Bad: returns "default" when opts.wrap is false
+local wrap = opts.wrap ~= nil and opts.wrap or "default"
+
+-- Good
+local wrap = opts.wrap
+if wrap == nil then
+    wrap = "default"
+end
+```
+
+## Named locals over inlined calls
+
+Keep an intermediate result in a named local instead of inlining the call,
+especially in a `for` header:
+
+```lua
+-- Bad: StyLua wraps the header, and LuaLS infers less
+for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(self:get_visible_tab_id())) do
+
+-- Good
+local all_windows = vim.api.nvim_tabpage_list_wins(tab_id)
+for _, winid in ipairs(all_windows) do
+```
+
+Do not inline an existing named local during a change.
+
 ## Private methods over module-level locals
 
 Prefer a private method (`function Name:_helper()`) over a module-level

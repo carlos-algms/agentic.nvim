@@ -25,8 +25,10 @@ For every bug fix or behavioral change:
 5. Re-run `make test-file FILE=<path>` until green.
 6. Revert check: undo the fix (keep the test), run
    `make test-file FILE=<path>`, and confirm red. Restore the fix. Still green
-   with the fix undone = the test does not discriminate; rewrite it (see "A test must be able to fail" in
-   `tests/AGENTS.md`).
+   with the fix undone = the test does not discriminate; rewrite it (see "A
+   test must be able to fail" in `tests/AGENTS.md`). A test that exists only to
+   force a type check goes red under `make luals`, not `make test-file`; run
+   the revert check there.
 
 Use `make test-file FILE=<path>` for the whole loop. It runs one file in
 seconds.

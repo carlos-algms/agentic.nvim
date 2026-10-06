@@ -28,13 +28,25 @@ below exists to keep the number of pushes, and so the number of reviews, low.
    body too, including every collapsed `<details>` block ("Outside diff range",
    nitpicks). The "Actionable comments posted: N" header counts inline threads
    only, and some passes with findings print no header at all
-2. Fix each valid finding. Skip findings that are false or not worth the change
+2. Fix each valid finding. Skip findings that are false or not worth the
+   change. Take the diagnosis, re-derive the patch: CodeRabbit's suggested code
+   has broken this repo's banned-call rules, so check it against the routed
+   docs before you apply it
 3. For each fixed finding, ask whether a written rule would have prevented it.
    If yes, apply skill `agentic-learn` in the same change
 4. One commit and one push, at the end of the round. The commit follows its
    normal rules. Answering a review never skips them
 5. Only after the push, reply to the skipped findings. CodeRabbit then reviews
    the new commit once
+6. A resolved or "addressed" thread is not proof the fix landed. CodeRabbit
+   has marked a finding addressed before the fix commit existed. Trust it only
+   when a later review pass covers the fix commit
+
+## Merging
+
+Do not merge until CodeRabbit's review of the last push has completed: its
+summary comment exists, with or without findings. A PR merged within minutes of
+flipping to ready can carry no review at all.
 
 ## Out-of-diff findings
 
@@ -49,5 +61,7 @@ it is fixed or rejected.
 - State the rule for the whole codebase, not for this line. CodeRabbit stores
   your wording as a learning, and narrow wording lets the same claim fire again
   on another file
+- A finding that correctly cites a repo rule is still false when only a test
+  double can reach the scenario. Name the production path, or reject it
 - A rejection on scope alone ("pre-existing") does not answer whether the
   finding is correct. Fix it, or open a tracked follow-up in the same reply

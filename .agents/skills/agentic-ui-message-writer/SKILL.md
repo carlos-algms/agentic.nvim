@@ -21,6 +21,9 @@ fallback windows, hidden floats, and buffer redirection, see
 - `scrolloff = 4` on chat keeps room for spinner virt_lines above the cursor.
 - Auto-scroll captures before mutation and applies after mutation in the same
   tick. No `vim.schedule` between them.
+- The `_capture_scroll` / `_apply_scroll` pair is needed only when a mutation
+  changes the buffer's line count. A rewrite that keeps the line count
+  (`repaint_status_row`) skips it.
 - Tool-call body updates replace only the body between stable anchor pads.
 - Manual folds only. Never `foldexpr`; read ADR 0001 before proposing foldexpr
   workarounds.
