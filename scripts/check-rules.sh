@@ -41,10 +41,11 @@ check_banned() {
     done
 }
 
-# $@: test files. Prints each `assert.`/`expect.` line that sits between a
-# `vim.schedule(function(...)` / `vim.defer_fn(function(...)` opener and the
-# first `end)` / `end,` after it. A nested `function ... end)` closes the
-# block early, so this misses some cases; the runtime guard catches those.
+# $@: test files. Prints each `assert.`, `assert(`, `expect.` or
+# `MiniTest.expect.` line that sits between a `vim.schedule(function(...)` /
+# `vim.defer_fn(function(...)` opener and the first `end)` / `end,` after it.
+# A nested `function ... end)` closes the block early, so this misses some
+# cases; the runtime guard catches those.
 check_async() {
     [ $# -eq 0 ] && return 0
     hits=$(awk '
@@ -57,7 +58,7 @@ check_async() {
                 line = substr(line, RSTART + RLENGTH)
             }
             epos = match(line, /(^|[^A-Za-z0-9_])end[ \t]*[,)]/) ? RSTART : 0
-            apos = match(line, /(^|[^A-Za-z0-9_.])(assert|expect)\./) ? RSTART : 0
+            apos = match(line, /(^|[^A-Za-z0-9_.])(assert[.(]|expect\.|MiniTest\.expect\.)/) ? RSTART : 0
             if (apos && (!epos || apos < epos)) {
                 print FILENAME ":" FNR ":" $0
                 inblk = 0
@@ -93,6 +94,16 @@ end)
 it("b", function()
     vim.defer_fn(function() assert.is_true(done) end, 10)
 end)
+it("e", function()
+    vim.schedule(function()
+        MiniTest.expect.equality(1, 2)
+    end)
+end)
+it("f", function()
+    vim.schedule(function()
+        assert(done)
+    end)
+end)
 EOF
     cat >"$dir/good.test.lua" <<'EOF'
 it("c", function()
@@ -111,7 +122,7 @@ EOF
     async_good=$(check_async "$dir/good.test.lua")
     ok=0
     [ "$banned" = "6" ] || { echo "self-test: expected 6 banned hits, got $banned"; ok=1; }
-    [ "$async_bad" = "2" ] || { echo "self-test: expected 2 async hits, got $async_bad"; ok=1; }
+    [ "$async_bad" = "4" ] || { echo "self-test: expected 4 async hits, got $async_bad"; ok=1; }
     [ -z "$async_good" ] || { echo "self-test: async check flagged a valid test: $async_good"; ok=1; }
     [ $ok -eq 0 ] && echo "self-test: ok"
     return $ok

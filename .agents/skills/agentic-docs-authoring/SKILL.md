@@ -62,7 +62,8 @@ returns a table") is allowed when written as a fact, not a rule.
 
 A banned token (a call that must never appear) also goes into the `BANNED`
 list in `scripts/check-rules.sh`, with a matching line in its `self_test`
-fixture and the expected hit count bumped. `make rules` runs it.
+fixture and the expected hit count bumped. `make rules` runs it. Skip this
+when Selene or LuaLS already fails `make validate` on the token (`goto`).
 
 When your change adds or edits a rule, check that rule against every function
 in the same diff.

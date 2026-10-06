@@ -75,8 +75,9 @@ Each ban has its reason and regression test in `lua/agentic/AGENTS.md`, section
   `vim.wo[winid][0].opt = val`
 - `nvim_set_option_value` / `nvim_get_option_value` when `vim.bo` / `vim.wo`
   works
-- `nvim --headless` without a `timeout` prefix. A failing `-c` command never
-  reaches `qa!`, and the process hangs
+- an unbounded `nvim --headless` -> a `timeout` prefix in the shell, or the
+  `timeout` option of `vim.system`. A failing `-c` command never reaches
+  `qa!`, and the process hangs
 
 ## Before you end your turn
 

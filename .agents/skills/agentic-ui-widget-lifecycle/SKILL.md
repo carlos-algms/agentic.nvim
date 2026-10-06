@@ -42,8 +42,9 @@ Pinned by, in `lua/agentic/ui/chat_widget.test.lua`:
 
 ## Rules
 
-- `show` creates fresh windows on every call and reapplies every window-local
-  option. There is no "resume" path.
+- `show` after `hide` creates fresh windows and applies every window-local
+  option. `show` on a visible widget reuses its live windows; it reopens
+  nothing.
 - Before closing widget windows, `hide` ensures a non-widget fallback window
   exists in the same tabpage; if `find_first_non_widget_window` returns nil it
   calls `open_editor_window`. Skipping this destroys the user's tabpage: closing

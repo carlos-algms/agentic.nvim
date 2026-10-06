@@ -29,6 +29,12 @@ function M.new(opts)
         start = inner.start,
         update = inner.update,
         finish = function()
+            -- A marked callback queued by another one runs after the last
+            -- case; let it record its failure before the summary prints.
+            local DeferredGuard = require("tests.helpers.deferred_guard")
+            vim.wait(5000, function()
+                return DeferredGuard.pending() == 0
+            end, 10)
             local ok, err = pcall(inner_finish)
             rawset(io, "stdout", real_stdout)
             if not ok then

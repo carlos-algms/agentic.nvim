@@ -98,7 +98,7 @@ install-git-hooks:
 		'  "$$STYLUA" $$STAGED_LUA_FILES' \
 		'  git add $$STAGED_LUA_FILES' \
 		'fi' \
-		'if git diff --cached --name-only | grep -qx "rules-report.md"; then' \
+		'if git diff --cached --name-only --diff-filter=d | grep -qx "rules-report.md"; then' \
 		'  echo "rules-report.md is local-only. Unstage it: git restore --staged rules-report.md"' \
 		'  exit 1' \
 		'fi' \

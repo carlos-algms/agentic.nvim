@@ -37,21 +37,39 @@ describe("tests.helpers.deferred_guard", function()
         assert.is_true(ok)
     end)
 
-    it("fails the run when an assertion runs in a deferred callback", function()
-        local result = vim.system({
-            vim.v.progpath,
-            "--headless",
-            "-i",
-            "NONE",
-            "-n",
-            "-u",
-            "tests/init.lua",
-            "-c",
-            "lua require('tests.runner').run_file('tests/fixtures/deferred_assert.lua')",
-        }, { text = true, timeout = 30000 }):wait()
+    for _, case in ipairs({
+        {
+            name = "fails the run when an assertion runs in a deferred callback",
+            fixture = "tests/fixtures/deferred_assert.lua",
+        },
+        {
+            name = "fails the run when MiniTest.expect runs in a deferred callback",
+            fixture = "tests/fixtures/deferred_expect.lua",
+        },
+        {
+            name = "fails the run when a deferred callback queues an assertion",
+            fixture = "tests/fixtures/deferred_nested_assert.lua",
+        },
+    }) do
+        it(case.name, function()
+            local result = vim.system({
+                vim.v.progpath,
+                "--headless",
+                "-i",
+                "NONE",
+                "-n",
+                "-u",
+                "tests/init.lua",
+                "-c",
+                string.format(
+                    "lua require('tests.runner').run_file('%s')",
+                    case.fixture
+                ),
+            }, { text = true, timeout = 30000 }):wait()
 
-        local output = (result.stdout or "") .. (result.stderr or "")
-        assert.is_not.equal(result.code, 0)
-        assert.truthy(output:find("deferred callback", 1, true))
-    end)
+            local output = (result.stdout or "") .. (result.stderr or "")
+            assert.is_not.equal(result.code, 0)
+            assert.truthy(output:find("deferred callback", 1, true))
+        end)
+    end
 end)

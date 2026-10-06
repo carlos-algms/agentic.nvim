@@ -72,15 +72,24 @@ asserts. Two ways, pick the first that fits:
   a fast event context: run the code in a child Neovim (`tests.helpers.child`)
 
 Never rely on same-process scheduling without a stub: the scheduled work may not
-run before the assertion, and the test passes falsely.
+run before the assertion, and the test passes falsely. Exempt: tests of the
+test harness itself (`tests/unit/test_deferred_guard.lua`), which must run the
+real `vim.schedule`.
 
-Two checks enforce this. At runtime, every `tests.helpers.assert` call inside a
-callback queued by `vim.schedule` or `vim.defer_fn` during a test fails the run
-(`tests/helpers/deferred_guard.lua`). Regression:
-`tests/unit/test_deferred_guard.lua::"fails the run when an assertion runs in a deferred callback"`.
-Statically, `make rules` flags `assert.` inside a `vim.schedule(function` or
-`vim.defer_fn(function` block. Neither sees a `vim.uv` timer callback; that
-case is still on you.
+Two checks enforce this. At runtime, every `MiniTest.expect` call, and so every
+`tests.helpers.assert` call, fails the run when it runs inside a callback
+queued by `vim.schedule` or `vim.defer_fn` during a test, or queued by such a
+callback (`tests/helpers/deferred_guard.lua`). Regressions in
+`tests/unit/test_deferred_guard.lua`:
+`::"fails the run when an assertion runs in a deferred callback"`,
+`::"fails the run when MiniTest.expect runs in a deferred callback"` and
+`::"fails the run when a deferred callback queues an assertion"`. Statically,
+`make rules` flags `assert.`, `assert(` and `expect.` inside a
+`vim.schedule(function` or `vim.defer_fn(function` block.
+
+Still on you, neither check sees them: a bare Lua `assert(...)` in a callback
+the static scan misses, a `vim.uv` timer callback, and a `vim.defer_fn`
+callback that fires after the last test finished.
 
 ```lua
 -- Bad: the failure is silently lost

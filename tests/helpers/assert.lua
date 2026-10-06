@@ -1,18 +1,7 @@
 --- Custom assert module wrapping mini.test's expect for familiar busted/luassert API
 
-local DeferredGuard = require("tests.helpers.deferred_guard")
 local MiniTest = require("mini.test")
-
---- Every assertion goes through `expect`, so the guard sees all of them.
-local expect = setmetatable({}, {
-    __index = function(_, name)
-        local fn = MiniTest.expect[name]
-        return function(...)
-            DeferredGuard.check()
-            return fn(...)
-        end
-    end,
-})
+local expect = MiniTest.expect
 
 --- @class tests.helpers.AssertSpyChain
 --- @field was tests.helpers.AssertSpyWas

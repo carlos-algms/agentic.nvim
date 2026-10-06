@@ -23,9 +23,9 @@ For every bug fix or behavioral change:
    2. right: value/state/output mismatch
 4. Implement the minimum code to pass.
 5. Re-run `make test-file FILE=<path>` until green.
-6. Revert check: undo the fix (keep the test), run `make test-file`, and confirm
-   red. Restore the fix. Still green with the fix undone = the test does not
-   discriminate; rewrite it (see "A test must be able to fail" in
+6. Revert check: undo the fix (keep the test), run
+   `make test-file FILE=<path>`, and confirm red. Restore the fix. Still green
+   with the fix undone = the test does not discriminate; rewrite it (see "A test must be able to fail" in
    `tests/AGENTS.md`).
 
 Use `make test-file FILE=<path>` for the whole loop. It runs one file in

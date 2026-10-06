@@ -12,9 +12,9 @@ description: >
 One review per diff. If this diff already passed a review and no file changed
 since, do not review it again.
 
-This review trusts the gates that already passed. Never run `make validate`,
-`make test`, lint, or types here. The only command you may run is
-`make test-file FILE=<path>`, for the revert check in step 1.
+Run read-only commands only, plus `make test-file FILE=<path>` for the revert
+check in step 1. This review trusts the gates that already passed: never run
+`make validate`, `make test`, lint, or types.
 
 ## Checklist
 
@@ -23,8 +23,8 @@ for every changed file.
 
 1. **Tests can fail.** For each new or changed assertion, name the value that
    would make it fail. None reachable -> the assertion is decoration. For a
-   bug-fix test, undo the fix, run `make test-file`, confirm red, restore the
-   fix
+   bug-fix test, undo the fix, run `make test-file FILE=<path>`, confirm red,
+   restore the fix
 2. **Observable effect.** Does an assertion read a private field that both the
    correct and the broken branch write? Then it cannot fail. Assert the public
    effect instead
