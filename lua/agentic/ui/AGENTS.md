@@ -19,8 +19,10 @@ Chat-buffer content, tool-call blocks, permissions: skill
 - `ToolBlockBorder`: fence glyphs via statuscolumn. ADR 0002
 - `PermissionManager`: pending permissions and focus state. Button and status
   rows are rendered by `MessageWriter`
-- `DiffPreview`: inline or split diff in the real file buffer, never the chat
-  buffer
+- `DiffPreview`: existing-file previews use the real file buffer; new-file
+  previews use a suggestion buffer. Neither uses the chat buffer. Regressions:
+  `lua/agentic/ui/diff_preview.test.lua::"skips a second inline owner for an existing-file buffer"`
+  and `lua/agentic/ui/diff_preview.test.lua::"creates suggestion buffer with real text for new files"`
 
 ## Window and layout hard rules
 
