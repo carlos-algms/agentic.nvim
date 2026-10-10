@@ -109,3 +109,27 @@ describe("config_default", function()
         end)
     end)
 end)
+
+describe("config_default providers", function()
+    local Config = require("agentic.config_default")
+
+    it("ships the glm-acp provider entry", function()
+        local glm = Config.acp_providers["glm-acp"]
+
+        assert.is_table(glm)
+        --- @cast glm agentic.acp.ACPProviderConfig
+        assert.equal("GLM ACP", glm.name)
+        assert.equal("glm-acp-agent", glm.command)
+        assert.same({}, glm.env)
+        assert.is_nil(glm.args)
+    end)
+
+    it("accepts glm-acp as a provider name in PartialUserConfig", function()
+        --- @type agentic.PartialUserConfig
+        local cfg = {
+            provider = "glm-acp",
+        }
+
+        assert.equal("glm-acp", cfg.provider)
+    end)
+end)

@@ -12,6 +12,7 @@
 --- | "goose-acp"
 --- | "kiro-acp"
 --- | "pi-acp"
+--- | "glm-acp"
 
 --- @alias agentic.UserConfig.SessionCwdFn fun(current_cwd: string): string|nil
 
@@ -450,6 +451,12 @@ local ConfigDefault = {
         ["pi-acp"] = {
             name = "Pi ACP",
             command = "pi-acp",
+            env = {},
+        },
+
+        ["glm-acp"] = {
+            name = "GLM ACP",
+            command = "glm-acp-agent",
             env = {},
         },
     },
