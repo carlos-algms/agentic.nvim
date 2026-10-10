@@ -16,6 +16,20 @@ stateDiagram-v2
     any --> error: transport error
 ```
 
+Each transition needs a test that pins it. Pinned today, in
+`lua/agentic/acp/acp_client.test.lua`:
+
+- `any -> disconnected` drains callbacks:
+  `::"calls pending callbacks with error when disconnected"`
+- `any -> error` drains callbacks:
+  `::"calls pending callbacks with error on error state"`
+- normal transitions do not drain:
+  `::"does not drain callbacks on normal state transitions"`
+
+The connect path (`connecting -> connected -> initializing -> ready`) runs only
+inside the `create_ready_client` test fixture; no test asserts it. Reconnect has
+no test. Add one before changing either.
+
 ## Invariants
 
 - `_drain_pending_callbacks` runs on every transition to `disconnected` or

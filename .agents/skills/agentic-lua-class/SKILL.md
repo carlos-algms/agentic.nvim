@@ -1,183 +1,125 @@
 ---
 name: agentic-lua-class
 description: >
-  MANDATORY before writing or editing ANY .lua file in this repo - classes,
-  methods, fields, functions, or LuaCATS annotations. Holds the project's
-  enforced Lua style: class pattern, visibility prefixes (_private,
-  __protected), and optional-type syntax. Skipping it produces luals/selene
-  failures at make validate. Load it before the first edit, not after.
+  Enforced Lua style: class pattern, visibility prefixes (_private,
+  __protected), optional-type syntax, LuaCATS annotations. Use before editing
+  any .lua file; skipping it causes luals and selene failures.
 ---
 
-# Lua Class Pattern
+# Lua in agentic.nvim
 
-**Basic class structure:**
+## Class shape
 
 ```lua
---- @class Animal
-local Animal = {}
-Animal.__index = Animal
+--- @class agentic.ui.Counter
+--- @field label string
+--- @field _count integer
+local Counter = {}
+Counter.__index = Counter
 
-function Animal:new()
-    self = setmetatable({}, self)
-    return self
-end
-
-function Animal:move()
-    print("Animal moves")
+--- @param label string
+--- @return agentic.ui.Counter
+function Counter:new(label)
+    return setmetatable({ label = label, _count = 0 }, self)
 end
 ```
 
-**Key points:**
+Extending a class or adding inheritance: read `references/inheritance.md` first.
 
-- Set `__index` to `self` for inheritance
-- Use `setmetatable` to create instances
-- Return the instance from constructor
+## Lua 5.1, not 5.4
 
-**Method definition syntax:**
+Neovim runs LuaJIT 2.1, which follows Lua 5.1.
 
-- `function Class:method()` - Instance method, receives `self` implicitly
-  - Called as: `instance:method()` or `instance.method(instance)`
-  - Use for methods that need access to instance state
+- `table.pack` and `table.unpack` are `nil` at runtime. Use `unpack` and
+  `{ ... }` with `select("#", ...)`
+- `goto` / `::label::` and the `\z` string escape run in LuaJIT, but Selene
+  (`std = "vim"`, Lua 5.1 parser) rejects them: parse errors for `goto`,
+  `bad_string_escape` for `\z`. `make validate` fails
 
-- `function Class.method()` - Module function, static, does NOT receive `self`
-  - Called as: `Class.method()` or `instance.method()` (both work, but no
-    `self`)
-  - Use for utility functions, constructors, or static helpers
+## `a and b or c` is not a valid ternary
 
-## Inheritance Pattern
-
-**Class setup (module-level):**
+It returns `c` whenever `b` is `false` or `nil`, even when `a` is true. Use it
+only when `b` can never be `false` or `nil`; otherwise write an `if`:
 
 ```lua
-local Parent = {}
-Parent.__index = Parent
+-- Bad: returns "default" when opts.wrap is false
+local wrap = opts.wrap ~= nil and opts.wrap or "default"
 
---- @class Child : Parent
-local Child = setmetatable({}, { __index = Parent })
-Child.__index = Child
-```
-
-**Constructor with parent initialization:**
-
-```lua
-function Parent:new(name)
-    local instance = {
-        name = name,
-        parent_state = {}
-    }
-    return setmetatable(instance, self)
-end
-
-function Child:new(name, extra)
-    -- Call parent constructor with Parent class
-    local instance = Parent.new(Parent, name)
-
-    -- Add child-specific state
-    instance.child_state = extra
-
-    -- Re-metatable to child class for proper inheritance chain
-    return setmetatable(instance, Child)
+-- Good
+local wrap = opts.wrap
+if wrap == nil then
+    wrap = "default"
 end
 ```
 
-**Critical rules:**
+## Named locals over inlined calls
 
-- **Always pass parent class explicitly:** `Parent.new(Parent, ...)` not
-  `Parent.new(self, ...)`
-- **Re-assign metatable to child class** after parent initialization
-- **Inheritance chain:** `instance → Child → Parent`
-
-**Calling parent methods:**
+Keep an intermediate result in a named local instead of inlining the call,
+especially in a `for` header:
 
 ```lua
-function Child:move()
-    Parent.move(self)  -- Explicit parent method call
-    print("Child-specific movement")
-end
+-- Bad: StyLua wraps the header, and LuaLS infers less
+for _, winid in ipairs(vim.api.nvim_tabpage_list_wins(self:get_visible_tab_id())) do
+
+-- Good
+local all_windows = vim.api.nvim_tabpage_list_wins(tab_id)
+for _, winid in ipairs(all_windows) do
 ```
 
-## Class Design Guidelines: creating and modifying
+**Never** inline an existing named local during a change.
 
-- **Minimize class properties** - Only include properties that:
-  - Are accessed by external code (other modules/classes)
-  - Are part of the public API
-  - Need to be accessed by subclasses
+## Private methods over module-level locals
 
-- **Use visibility prefixes for encapsulation** - Control what external code can
-  access:
+Prefer a private method (`function Name:_helper()`) over a module-level
+`local function`, even when the method does not use `self`:
 
-  **Visibility levels (configured in `.luarc.json`):**
-  - `_*`: **Private** - Hidden from external consumers (applies to class
-    methods/fields ONLY)
-  - `__*`: **Protected** - Visible to subclasses
-  - No prefix: **Public** - Visible everywhere
+- Methods can sit anywhere in the file; module-level locals must be defined
+  before their first use
+- Tests can mock methods but not local functions
+- Do not convert a method to a local only because `self` is unused
 
-  **IMPORTANT:** Module-level local functions and variables do NOT need `_`
-  prefix:
-  - ✅ `local function helper()` - correct (already private by `local` scope)
-  - ❌ `local function _helper()` - incorrect (redundant `_` prefix)
-  - ✅ `local config = {}` - correct
-  - ❌ `local _config = {}` - incorrect (redundant `_` prefix)
-  - ✅ `function MyClass:_private_method()` - correct (class method needs `_`)
-  - ✅ `@field _private_field` - correct (class field needs `_`)
+## LuaLS does not narrow on reassignment
 
-  ```lua
-  -- ❌ Bad: Unnecessary public exposure of `counter` property, not used externally
-  --- @class MyClass
-  --- @field counter number
-  local MyClass = {}
-  MyClass.__index = MyClass
+Reassigning a variable does not narrow its type. After
+`local lines, err = fn(); lines = lines or {}`, LuaLS still types `lines` as
+`string[]|nil`. Introduce a new local instead:
 
-  function MyClass:new()
-      return setmetatable({ counter = 0 }, self)
-  end
+```lua
+-- Bad: `lines` stays `string[]|nil`
+local lines, err = read_lines(path)
+lines = lines or {}
 
-  -- ✅ Good: Proper visibility control
-  --- @class MyClass
-  local MyClass = {}
-  MyClass.__index = MyClass
+-- Good: `lines` is `string[]`
+local result, err = read_lines(path)
+local lines = result or {}
+```
 
-  function MyClass:new()
-      return setmetatable({
-        -- Counter is internal state, not exposed publicly
-        _counter = 0
-      }, self)
-  end
+LuaLS resolves types across files. A type annotation can move to another file
+during a refactor (for example payload types into `acp_payloads.lua`) as long as
+its name stays the same.
 
-  --- @protected
-  function MyClass:__protected_method()
-      self._counter = self._counter + 1
-  end
+## Visibility
 
-  --- Module-level helper functions (no underscore prefix needed)
-  local function format_value(val)
-      return tostring(val)
-  end
+Expose a field only when other modules read it. Everything else is private.
 
-  --- @class Child : MyClass
-  function Child:use_parent_state()
-      self:__protected_method()
-  end
-  ```
+Visibility prefixes are configured in `.luarc.json`:
 
-  **Note:** The `@private` annotation is NOT necessary for private class methods
-  - LuaLS infers privacy from the `_` prefix automatically
-  - Only use `@protected` for protected methods (`__*`, luals limitation)
+- `_name`: private. Class methods and fields only
+- `__name`: protected, visible to subclasses. Add `--- @protected` (a LuaLS
+  limitation); private members need no `@private`
+- no prefix: public
 
-- **Document intent with LuaCATS** - Use visibility annotations:
+Module-level locals never take `_`: `local function helper()` and
+`local config = {}` are already private by scope. `local function _helper()`
+is wrong.
 
-  ```lua
-  --- @class MyClass
-  --- @field public_field string Public API
-  --- @field __protected_field table For subclasses
-  --- @field _private_field number Internal only
-  ```
-
-- **Regular cleanup** - When adding new code, review class definitions and
-  remove:
-  - Unused properties
-  - Properties that were needed during development but are no longer used
-  - Properties that could be local variables instead
+```lua
+--- @class agentic.ui.Counter
+--- @field label string read by other modules
+--- @field _count integer internal state
+local Counter = {}
+Counter.__index = Counter
+```
 
 ## LuaCATS annotation syntax
 

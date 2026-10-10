@@ -1,6 +1,9 @@
 ---
 name: agentic-github-discussion
-description: Use when creating, listing, or managing GitHub discussions in carlos-algms/agentic.nvim repository
+description: >
+  Creates, lists, and manages GitHub discussions in this repo through the
+  GraphQL API. Use when the user asks to create, list, or manage a GitHub
+  discussion.
 ---
 
 # GitHub Discussion

@@ -7,7 +7,7 @@ STYLUA   ?= $(shell which stylua 2>/dev/null || echo "$(HOME)/.local/share/nvim/
 PROJECT ?= lua/ tests/
 LOGDIR  ?= .luals-log
 
-.PHONY: luals selene selene-file format-check format format-file check test validate install-hooks
+.PHONY: luals selene selene-file format-check format format-file check test validate install-hooks rules
 
 test:
 	$(NVIM) --headless -i NONE -n -u tests/init.lua -c "lua require('tests.runner').run()"
@@ -47,6 +47,11 @@ format:
 format-file:
 	"$(STYLUA)" "$(FILE)"
 
+# Mechanical AGENTS.md rules: banned calls, asserts in deferred callbacks,
+# committed rules-report.md. The self-test proves each check still fires.
+rules:
+	@scripts/check-rules.sh --self-test && scripts/check-rules.sh
+
 # Convenience aggregator, NOT to be used in the CI
 check: format-check luals selene
 
@@ -60,7 +65,7 @@ validate:
 	$(MAKE) format > .local/agentic_format_output.log 2>&1; \
 	rc_format=$$?; \
 	echo "format: $$rc_format (took $$(($$(date +%s) - start))s) - log: .local/agentic_format_output.log"; \
-	for t in luals selene test; do \
+	for t in luals selene test rules; do \
 		( start=$$(date +%s); \
 		  $(MAKE) $$t > .local/agentic_$${t}_output.log 2>&1; \
 		  rc=$$?; \
@@ -70,7 +75,7 @@ validate:
 	wait; \
 	echo "Total: $$(($$(date +%s) - total_start))s"; \
 	rc_rest=0; \
-	for t in luals selene test; do \
+	for t in luals selene test rules; do \
 		rc=$$(cut -d' ' -f1 .local/agentic_$${t}.rc); \
 		[ "$$rc" -ne 0 ] && rc_rest=1; \
 		rm -f .local/agentic_$${t}.rc; \
@@ -92,6 +97,10 @@ install-git-hooks:
 		'  echo "Running stylua on staged files..."' \
 		'  "$$STYLUA" $$STAGED_LUA_FILES' \
 		'  git add $$STAGED_LUA_FILES' \
+		'fi' \
+		'if git diff --cached --name-only --diff-filter=d | grep -qx "rules-report.md"; then' \
+		'  echo "rules-report.md is local-only. Unstage it: git restore --staged rules-report.md"' \
+		'  exit 1' \
 		'fi' \
 		> .git/hooks/pre-commit
 	@chmod +x .git/hooks/pre-commit

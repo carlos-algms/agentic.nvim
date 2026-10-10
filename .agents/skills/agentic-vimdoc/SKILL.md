@@ -1,10 +1,9 @@
 ---
 name: agentic-vimdoc
-description:
-  Use when writing or updating agentic.nvim vimdoc (doc/agentic.txt), or after
-  changing init.lua, config_default.lua, theme.lua, or README install/keymaps -
-  those edits require a matching vimdoc update. Covers the sync table, format
-  rules, and the helptags regeneration command.
+description: >
+  Sync table, format rules, and helptags command for the vimdoc. Use before
+  editing doc/agentic.txt, init.lua, config_default.lua, theme.lua, or README
+  install and keymaps; vimdoc must match.
 ---
 
 # Vimdoc (`doc/agentic.txt`)
@@ -19,6 +18,13 @@ Manually written, NOT auto-generated.
 | `lua/agentic/config_default.lua` | Configuration, Customization        |
 | `lua/agentic/theme.lua`          | Customization (highlight groups)    |
 | `README.md` (install/keymaps)    | Installation, Keymaps, Integrations |
+
+## New highlight group
+
+1. Add the name to the `Theme.HL_GROUPS` constant in `lua/agentic/theme.lua`
+2. Define its default in `Theme.setup()`
+3. Update README.md "Customization (Ricing)": code example and table row
+4. Update the vimdoc Customization section
 
 ## Format rules
 

@@ -1,9 +1,9 @@
 ---
 name: agentic-acp-protocol-flow
 description: >
-  MANDATORY before editing ACPClient, ACPTransport, AgentInstance, ACP
-  provider flow, tool-call parsing, permission requests, provider switch,
-  reconnect, or ACP subprocess lifecycle in agentic.nvim.
+  Rules for the ACP client, transport, and provider flow. Use before editing
+  ACPClient, ACPTransport, AgentInstance, ACP provider flow, tool-call parsing,
+  permission requests, provider switch, reconnect, or ACP subprocess lifecycle.
 ---
 
 # Agentic ACP Protocol Flow
@@ -23,13 +23,14 @@ Use this skill for ACP runtime behavior. For schema facts, also load
 
 ## Pipeline
 
-```text
-provider subprocess
--> ACPTransport
--> ACPClient
--> SessionManager subscriber
--> MessageWriter / PermissionManager / TodoList / ChatHistory
-```
+Read in this order. Each step calls the next:
+
+1. `lua/agentic/acp/acp_transport.lua` - stdout reader, line framing, calls
+   `callbacks.on_message`
+2. `ACPClient:_handle_message` - response vs request vs notification
+3. `ACPClient:_handle_notification`, then `ACPClient:__handle_session_update`
+4. `SessionManager:_build_handlers` - the subscriber; `_on_session_update`
+5. `MessageWriter`, `PermissionManager`, `TodoList`, `ChatHistory` - render
 
 ## Load references by edit target
 

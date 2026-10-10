@@ -53,3 +53,5 @@ MiniTest.setup({
         end,
     },
 })
+
+require("tests.helpers.deferred_guard").install()

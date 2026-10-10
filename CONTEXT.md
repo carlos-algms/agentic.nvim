@@ -21,6 +21,9 @@ constructing the client that owns that process. One subprocess per provider,
 multiplexed across every **ACP Session**. _Avoid_: agent, client (use the
 precise term).
 
+**Multiple sessions**: Several independent **SessionManager**s that may share
+one **AgentInstance** per **Provider**. _Avoid_: multiple agents.
+
 **ACPClient**: The Lua object that owns one **Provider** subprocess and one
 **ACPTransport**. Routes RPC responses and `session/update` notifications. One
 per **Provider** name, cached by the singleton **AgentInstance**.

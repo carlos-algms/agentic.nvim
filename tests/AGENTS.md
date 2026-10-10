@@ -1,33 +1,159 @@
-# Testing Guide for agentic.nvim
+# Tests
 
-Load the `agentic-testing` skill before creating, editing, or reviewing tests.
-It owns the mini.test workflow, TDD red/green rules, helper APIs, child Neovim
-patterns, async traps, and mark-count checks.
+Read this before you write or change any test, in any folder. Most tests live
+next to their module as `lua/**/<module>.test.lua`; integration tests live in
+`tests/integration/`.
 
-## Non-negotiables
+The procedure (red/green steps, revert check, child Neovim, async
+references) is in skill `agentic-testing`. This file holds the rules. Each rule
+exists because a test in this repo passed while the code was wrong.
 
-- Bug fixes and behavioral changes need a failing test before the fix.
-- The red failure must be behavioral, not missing setup, missing symbols, import
-  errors, syntax errors, or nil method calls.
-- After adding or modifying tests, verify the reported marks match the number of
-  `it()` blocks in the changed file.
-- Tests use project helpers, not luassert:
-  - `tests.helpers.assert`
-  - `tests.helpers.spy`
-  - `tests.helpers.child`
-- Read helper source before using helper APIs:
-  - `tests/helpers/assert.lua`
-  - `tests/helpers/spy.lua`
-  - `tests/helpers/child.lua`
+## Framework
+
+Tests run on mini.test with Busted emulation (`describe`, `it`, `before_each`,
+`after_each`). Do not use luassert or Busted APIs from memory. Use the project
+helpers and read their source before you call them:
+
+- `tests/helpers/assert.lua`: `assert.equal(a, b)` is symmetric
+  (`vim.deep_equal`). On failure mini.test prints `Left: a` / `Right: b`, with
+  no actual/expected labels. Either order is correct
+- `tests/helpers/spy.lua`: `spy.new`, `spy.on`, `spy.stub`. Spies have no
+  `:call(n)`
+- `tests/helpers/child.lua`: a child Neovim for async and editor-state tests
+
+## TDD is mandatory
+
+Every bug fix and behavior change starts with a failing test. Pure refactors,
+formatting, and docs are exempt; say so in the PR.
+
+The red failure must come from behavior: a wrong value, state, or output. A
+missing module, nil method, syntax error, or import error is setup, not red.
+Fix the setup and run again.
+
+## A test must be able to fail
+
+A test that passes for both the fixed and the broken code proves nothing. More
+than half of all CodeRabbit findings in this repo were tests of this kind.
+
+For each new or changed assertion, name the value that would make it fail. If
+no reachable value fails it, the assertion is decoration.
+
+Green is not done. After the test passes, revert the fix, run the test, and see
+it fail. Then restore the fix. A test that stays green with the fix reverted
+must be rewritten.
+
+Assert the observable effect, not the deepest internal you can reach. If both
+the correct branch and the broken branch write the same private field, an
+assertion on that field passes for both, and the revert check above cannot
+catch it. Assert what differs: the rendered buffer, the called callback, the
+window that opened.
+
+A test that checks a guard must also show WHICH guard fired. Assert the
+precondition, not only the outcome. Example: `-1` can mean "hidden" or
+"destroyed"; a test that only checks `-1` passes when the wrong guard fires.
+
+## Never assert inside a deferred callback
+
+mini.test runs each `it()` body inside `pcall`. A callback passed to
+`vim.schedule`, `vim.defer_fn`, a `vim.uv` timer, or a coroutine runs AFTER that
+`pcall` has returned. An assertion that fails there is not reported, and the
+test shows green.
+
+Store the value in the callback. Assert after the callback has run, in the
+`it()` body.
+
+A test of async code must make the deferred work run before the `it()` body
+asserts. Two ways, pick the first that fits:
+
+- The test only needs the callback to have run: stub `vim.schedule` to run
+  inline, `spy.stub(vim, "schedule"):invokes(function(fn) fn() end)`, and revert
+  it in `after_each`. Example: `lua/agentic/utils/hooks.test.lua`
+- The test needs a real event loop, a `vim.uv` timer, `vim.defer_fn` timing, or
+  a fast event context: run the code in a child Neovim (`tests.helpers.child`)
+
+Never rely on same-process scheduling without a stub: the scheduled work may not
+run before the assertion, and the test passes falsely. Exempt: tests of the
+test harness itself (`tests/unit/test_deferred_guard.lua`), which must run the
+real `vim.schedule`.
+
+Two checks enforce this. At runtime, every `MiniTest.expect` call, and so every
+`tests.helpers.assert` call, fails the run when it runs inside a callback
+queued by `vim.schedule` or `vim.defer_fn` during a test, or queued by such a
+callback (`tests/helpers/deferred_guard.lua`). Regressions in
+`tests/unit/test_deferred_guard.lua`:
+`::"fails the run when an assertion runs in a deferred callback"`,
+`::"fails the run when MiniTest.expect runs in a deferred callback"` and
+`::"fails the run when a deferred callback queues an assertion"`. Statically,
+`make rules` flags `assert.`, `assert(` and `expect.` inside a
+`vim.schedule(function` or `vim.defer_fn(function` block.
+
+Still on you, neither check sees them: a bare Lua `assert(...)` in a callback
+the static scan misses, a `vim.uv` timer callback, and a `vim.defer_fn`
+callback that fires after the last test finished.
+
+```lua
+-- Bad: the failure is silently lost
+it("updates the title", function()
+    vim.schedule(function()
+        assert.equal(widget.title, "new")
+    end)
+end)
+
+-- Good: run in a child Neovim, flush, then assert in the it() body
+it("updates the title", function()
+    child.lua([[ require("x").update_title_async("new") ]])
+    child.flush()
+    assert.equal(child.lua_get([[ require("x").title ]]), "new")
+end)
+```
+
+Same-process traps:
+
+- `vim.uv.sleep()` does not run scheduled callbacks
+- `assert.has_no_errors` cannot see an error raised later, in a deferred
+  callback or across child RPC
+
+More patterns: `references/async-tests.md` and `references/child-nvim.md` in
+skill `agentic-testing`.
+
+## Stubs and cleanup
+
+Revert every stub and spy before the test's assertions, or in `after_each`. A
+revert placed after an assertion never runs when that assertion fails, and the
+stub leaks into every later test in the same process. Prefer `after_each`.
+
+Never discard a `pcall` result in a test. `pcall(fn)` with the result ignored
+swallows the exact failure the test exists to catch. Bind it and assert on it.
+
+Teardown compares handle sets, never counts. Capture the baseline handles
+(tabpages, windows, buffers) in `before_each`. In `after_each`, close only the
+handles that are not in the baseline. A count-based loop that closes the
+current tabpage can close a baseline tabpage and leave the test's own tabpage
+open.
+
+When you fix a leak in one test case, grep the whole file for the same
+acquisition pattern first. If several cases share it, move the cleanup into a
+shared `before_each` / `after_each` instead of fixing one case.
+
+Clean up everything a test creates: buffers, windows, tabpages, autocommands,
+globals, stubs, and spies.
+
+## Isolation
+
+- ACP and transport tests must stub `agentic.acp.acp_transport`, or anything
+  else that opens a subprocess or a network call. Use
+  `tests/mocks/acp_transport_mock.lua`. `deliver(message)` delivers by direct
+  call. `deliver(message, "fast_event")` delivers from a `vim.uv` timer, in a
+  fast event context; run that in a child Neovim
+- All tests run in one Neovim process, in sequence, unless you use
+  `tests.helpers.child`. State left by one test is seen by the next
+- CI is Linux-only. Do not add Windows guards. `/bin/sh`, `kill -0`, and POSIX
+  process-group behavior are intentional
 
 ## Commands
-
-```bash
-make test
-```
 
 ```bash
 make test-file FILE=lua/agentic/acp/agent_modes.test.lua
 ```
 
-For Lua or test code changes, run `make validate` after focused checks.
+Use `make test-file` for the red/green loop. It runs one file in seconds.

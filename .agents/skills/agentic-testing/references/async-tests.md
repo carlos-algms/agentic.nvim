@@ -5,22 +5,22 @@ coroutine callbacks, or other deferred functions run after that `pcall` returns.
 
 Failure mode:
 
-- Assertion failures are silently lost.
+- Assertion failures are lost. `tests/helpers/deferred_guard.lua` turns an
+  assertion in a `vim.schedule` / `vim.defer_fn` callback into a failure.
 - Callback errors do not register as test failures.
-- The runner may not report a mark for that `it()` block.
 
 Rules:
 
 - Never put `assert.*` or `expect.*` inside scheduled/deferred callbacks.
 - Store async results, wait/flush safely, then assert synchronously.
-- Verify reported marks match the number of `it()` blocks after changing tests.
-- If code uses `vim.schedule`, prefer a child process test.
+- Make deferred work run before the assertion: a synchronous `vim.schedule`
+  stub, or a child Neovim. When to use which: `tests/AGENTS.md`.
 
 Same-process caveats:
 
 - `vim.uv.sleep()` does not flush `vim.schedule`.
-- `vim.wait()` can flush scheduled callbacks but can make tests disappear from
-  mini.test mark output.
+- `vim.wait()` runs scheduled callbacks, but the test still runs in the same
+  process. Use a synchronous stub or a child Neovim instead.
 
 Correct child-process pattern:
 
@@ -32,6 +32,6 @@ it("tests async in child", function()
         end)
     ]])
     child.api.nvim_eval("1")
-    assert.equal("done", child.g.test_result)
+    assert.equal(child.g.test_result, "done")
 end)
 ```

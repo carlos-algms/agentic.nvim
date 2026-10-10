@@ -36,8 +36,9 @@ If in doubt, ask first
 - **No provider-specific hacks.** ACP is a standard
   ([spec](https://agentclientprotocol.com/)); `if provider == "foo"`
   branches get rejected - report provider bugs upstream. Only exception:
-  documented fallbacks in `ACPClient` for fields missing from the spec
-  (see `lua/agentic/acp/AGENTS.md` -> "Provider quirk handling")
+  quirk handling in `ACPClient`'s protected methods (fields missing from or
+  named differently than the spec), with an inline comment naming the provider
+  (see `lua/agentic/acp/AGENTS.md` and ADR 0005)
 
 ## Prerequisites
 
@@ -57,8 +58,7 @@ If in doubt, ask first
 
 2. Make your changes
 3. If your changes include `.lua` files, run `make validate` (stylua +
-   lua-language-server + selene + tests). See `AGENTS.md` for the scoping
-   rule.
+   lua-language-server + selene + tests + rules).
 
 ## Commit Messages
 

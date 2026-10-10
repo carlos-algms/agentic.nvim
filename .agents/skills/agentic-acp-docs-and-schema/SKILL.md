@@ -1,8 +1,9 @@
 ---
 name: agentic-acp-docs-and-schema
-description:
-  Use when ACP schema is necessary to clarify the work or when the user asks for
-  ACP data, rules, events, or documentation
+description: >
+  Official ACP schema, events, and rules for this plugin's provider work. Use
+  when the work depends on ACP data, or the user asks about ACP schema, events,
+  rules, or docs.
 ---
 
 # ACP documentation and schema
