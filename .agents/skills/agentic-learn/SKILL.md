@@ -1,9 +1,10 @@
 ---
 name: agentic-learn
 description: >
-  Load when a rule was missing, wrong, or broken; a review finding was fixed or
+  Turns rule gaps into routed, verified rules and empties rules-report.md. Use
+  when a rule was missing, wrong, or broken; a review finding was fixed or
   rejected; a sub-agent report has a "Rule gaps" list; or rules-report.md
-  exists. Turns each gap into a routed, verified rule; empties rules-report.md.
+  exists.
 ---
 
 # Learn from rule gaps

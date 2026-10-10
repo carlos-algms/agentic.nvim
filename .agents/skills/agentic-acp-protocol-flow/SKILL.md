@@ -1,9 +1,9 @@
 ---
 name: agentic-acp-protocol-flow
 description: >
-  MANDATORY before editing ACPClient, ACPTransport, AgentInstance, ACP
-  provider flow, tool-call parsing, permission requests, provider switch,
-  reconnect, or ACP subprocess lifecycle.
+  Rules for the ACP client, transport, and provider flow. Use before editing
+  ACPClient, ACPTransport, AgentInstance, ACP provider flow, tool-call parsing,
+  permission requests, provider switch, reconnect, or ACP subprocess lifecycle.
 ---
 
 # Agentic ACP Protocol Flow

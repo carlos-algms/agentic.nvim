@@ -1,10 +1,9 @@
 ---
 name: agentic-docs-authoring
 description: >
-  MANDATORY before editing AGENTS.md, CONTEXT.md, docs/adr/**,
-  .agents/skills/**, or .coderabbit.yaml. Covers anti-staleness,
-  rule-needs-a-test citation, router/.coderabbit.yaml sync, ADR template
-  override, glossary.
+  Rules for writing agent docs: anti-staleness, rule-needs-a-test citation,
+  router and .coderabbit.yaml sync, ADR template, glossary. Use before editing
+  AGENTS.md, CONTEXT.md, docs/adr/**, .agents/skills/**, or .coderabbit.yaml.
 ---
 
 # Writing agent docs

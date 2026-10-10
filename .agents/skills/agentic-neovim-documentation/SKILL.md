@@ -1,8 +1,8 @@
 ---
 name: agentic-neovim-documentation
-description:
-  Load for Neovim docs, features, or Lua API questions. Reads docs locally
-  offline; falls back to online.
+description: >
+  Reads Neovim help and API docs from local files, falling back to online. Use
+  for Neovim docs, features, or Lua API questions.
 ---
 
 # Neovim Documentation Files and help docs

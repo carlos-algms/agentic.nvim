@@ -1,9 +1,8 @@
 ---
 name: agentic-testing
 description: >
-  MANDATORY before creating, editing, or reviewing tests, and before TDD
-  behavior changes. Covers mini.test red/green, revert check, which test
-  references to load.
+  mini.test red/green loop, revert check, and which test references to load. Use
+  before creating, editing, or reviewing tests, and before TDD behavior changes.
 ---
 
 # Agentic Testing

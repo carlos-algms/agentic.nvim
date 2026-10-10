@@ -1,9 +1,9 @@
 ---
 name: agentic-vimdoc
-description:
-  Load before editing doc/agentic.txt, init.lua, config_default.lua, theme.lua,
-  or README install/keymaps; vimdoc must match. Covers sync table, format
-  rules, helptags command.
+description: >
+  Sync table, format rules, and helptags command for the vimdoc. Use before
+  editing doc/agentic.txt, init.lua, config_default.lua, theme.lua, or README
+  install and keymaps; vimdoc must match.
 ---
 
 # Vimdoc (`doc/agentic.txt`)

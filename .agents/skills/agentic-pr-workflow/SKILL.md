@@ -1,9 +1,9 @@
 ---
 name: agentic-pr-workflow
 description: >
-  Load before opening a PR, marking one ready for review, or handling a
-  CodeRabbit review round. Covers draft-first, single-commit review round,
-  reading CodeRabbit findings.
+  Draft-first PR flow and single-commit CodeRabbit review rounds. Use before
+  opening a PR, marking one ready for review, or handling a CodeRabbit review
+  round and its findings.
 ---
 
 # Pull request workflow

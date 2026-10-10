@@ -1,6 +1,9 @@
 ---
 name: agentic-github-discussion
-description: Load to create, list, or manage GitHub discussions.
+description: >
+  Creates, lists, and manages GitHub discussions in this repo through the
+  GraphQL API. Use when the user asks to create, list, or manage a GitHub
+  discussion.
 ---
 
 # GitHub Discussion

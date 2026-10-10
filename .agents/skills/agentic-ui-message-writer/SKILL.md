@@ -1,9 +1,10 @@
 ---
 name: agentic-ui-message-writer
 description: >
-  MANDATORY before editing MessageWriter, PermissionManager, tool-call block
-  rendering, sender headers, thinking blocks, auto-scroll, folds, status rows,
-  permission buttons, or chat-buffer tool-call tests.
+  Rules for chat-buffer content and tool-call rendering. Use before editing
+  MessageWriter, PermissionManager, tool-call block rendering, sender headers,
+  thinking blocks, auto-scroll, folds, status rows, permission buttons, or chat-
+  buffer tool-call tests.
 ---
 
 # Agentic UI Message Writer

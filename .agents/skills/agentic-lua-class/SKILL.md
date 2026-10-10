@@ -1,9 +1,9 @@
 ---
 name: agentic-lua-class
 description: >
-  MANDATORY before editing any .lua file. Covers class pattern, visibility
-  prefixes (_private, __protected), optional-type syntax, LuaCATS annotations.
-  Skipping causes luals/selene failures.
+  Enforced Lua style: class pattern, visibility prefixes (_private,
+  __protected), optional-type syntax, LuaCATS annotations. Use before editing
+  any .lua file; skipping it causes luals and selene failures.
 ---
 
 # Lua in agentic.nvim
@@ -71,10 +71,12 @@ for _, winid in ipairs(all_windows) do
 ## Private methods over module-level locals
 
 Prefer a private method (`function Name:_helper()`) over a module-level
-`local function`, even when the method does not use `self`. Methods can sit
-anywhere in the file; module-level locals must be defined before their first
-use. Tests can mock methods but not local functions. Do not convert a method to
-a local only because `self` is unused.
+`local function`, even when the method does not use `self`:
+
+- Methods can sit anywhere in the file; module-level locals must be defined
+  before their first use
+- Tests can mock methods but not local functions
+- Do not convert a method to a local only because `self` is unused
 
 ## LuaLS does not narrow on reassignment
 

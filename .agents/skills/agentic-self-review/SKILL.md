@@ -1,9 +1,9 @@
 ---
 name: agentic-self-review
 description: >
-  Load to review a diff before commit: yours, a sub-agent's, or as plan-review
-  loop reviewer. Checks tests can fail, routed rules hold for changed files,
-  unchanged siblings still hold. Runs no full gate.
+  Reviews a diff before commit: tests can fail, routed rules hold for changed
+  files, unchanged siblings still hold. Runs no full gate. Use to review a diff:
+  yours, a sub-agent's, or as plan-review loop reviewer.
 ---
 
 # Self-review
