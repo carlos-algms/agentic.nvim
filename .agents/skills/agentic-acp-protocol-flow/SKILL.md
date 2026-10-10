@@ -3,7 +3,7 @@ name: agentic-acp-protocol-flow
 description: >
   MANDATORY before editing ACPClient, ACPTransport, AgentInstance, ACP
   provider flow, tool-call parsing, permission requests, provider switch,
-  reconnect, or ACP subprocess lifecycle in agentic.nvim.
+  reconnect, or ACP subprocess lifecycle.
 ---
 
 # Agentic ACP Protocol Flow

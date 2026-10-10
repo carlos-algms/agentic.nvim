@@ -1,8 +1,8 @@
 ---
 name: agentic-acp-docs-and-schema
 description:
-  Use when ACP schema is necessary to clarify the work or when the user asks for
-  ACP data, rules, events, or documentation
+  Load when ACP schema clarifies the work, or the user asks for ACP data,
+  rules, events, or docs.
 ---
 
 # ACP documentation and schema

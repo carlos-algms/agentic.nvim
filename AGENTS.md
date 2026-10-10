@@ -102,7 +102,7 @@ check is done:
       changed `.md` files; vimdoc: `timeout 5 nvim --headless -c "helptags doc/" -c "qa!"`)
 - [ ] The diff passed one review: the plan review loop, or skill
       `agentic-self-review` for work outside a plan
-- [ ] Every rule gap you met is fixed in this change, or listed in your report
+- [ ] Every rule gap you met is fixed in this change, or listed in the `Rule gaps` list of your final report
 ```
 
 If an item fails: fix it, then redo that item and every item after it.

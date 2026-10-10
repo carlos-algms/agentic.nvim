@@ -1,10 +1,9 @@
 ---
 name: agentic-pr-workflow
 description: >
-  Use when opening a pull request in agentic.nvim, flipping one to ready for
-  review, or handling a CodeRabbit review round (fixing findings, committing,
-  pushing, replying). Holds the draft-first rule, the single-commit review
-  round, and how to read every CodeRabbit finding.
+  Load before opening a PR, marking one ready for review, or handling a
+  CodeRabbit review round. Covers draft-first, single-commit review round,
+  reading CodeRabbit findings.
 ---
 
 # Pull request workflow
@@ -19,8 +18,7 @@ below exists to keep the number of pushes, and so the number of reviews, low.
 2. The PR title follows Conventional Commits. This repo only squash-merges: the
    title becomes the commit subject and the description becomes the commit body
 3. Never stage `docs/plans/`, `docs/superpowers/`, or `rules-report.md`
-4. Flip to "ready for review" only after the diff passed one review (skill
-   `agentic-self-review`, or a plan review loop)
+4. Flip to "ready for review" only when the user asks
 
 ## A review round is one batch
 
@@ -51,8 +49,10 @@ flipping to ready can carry no review at all.
 ## Out-of-diff findings
 
 A finding in the review body has no thread and no resolved state, so nothing in
-the GitHub UI tracks it. Add it to the PR description checklist by hand until
-it is fixed or rejected.
+the GitHub UI tracks it. Fix it or skip it, then post a top-level comment that
+starts with `@coderabbitai` and states what you did and why. The comment is the
+only visibility and history: CodeRabbit may never raise an out-of-diff finding
+again in later reviews. Do not edit the PR description for it.
 
 ## Rejecting a finding
 

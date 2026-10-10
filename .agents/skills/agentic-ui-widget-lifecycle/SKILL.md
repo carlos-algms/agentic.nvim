@@ -3,8 +3,7 @@ name: agentic-ui-widget-lifecycle
 description: >
   MANDATORY before editing ChatWidget show/hide/destroy, WidgetLayout,
   WidgetRegistry, WindowDecoration, BufferGuard, SessionRegistry.show_session,
-  the hidden chat float, fallback windows, or any programmatic window close in
-  agentic.nvim.
+  the hidden chat float, fallback windows, or any programmatic window close.
 ---
 
 # ChatWidget lifecycle

@@ -1,6 +1,6 @@
 # Inheritance pattern
 
-No class in `lua/` uses inheritance today. ADR 0005 rejects per-provider
+ADR 0005 rejects per-provider
 subclasses of `ACPClient`. Load this file only when you add a subclass.
 
 **Class setup (module-level):**

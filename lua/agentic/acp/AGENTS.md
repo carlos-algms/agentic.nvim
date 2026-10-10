@@ -2,6 +2,7 @@
 
 Generic ACP client: one `ACPClient` for every provider, no per-provider
 adapters (ADR 0005). Provider quirks live in protected `ACPClient` methods.
+
 Adding a provider is a config entry under `acp_providers` in
 `lua/agentic/config_default.lua`. Runtime flow, lifecycle, and framing: skill
 `agentic-acp-protocol-flow`.

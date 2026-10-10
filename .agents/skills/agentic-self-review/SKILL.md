@@ -1,10 +1,9 @@
 ---
 name: agentic-self-review
 description: >
-  Use in agentic.nvim when reviewing a diff before a commit: your own work, a
-  sub-agent's, or as the reviewer in a plan review loop. Checks that tests can
-  fail, that every routed rule holds for the changed files, and that unchanged
-  sibling code still holds. Runs no full gate.
+  Load to review a diff before commit: yours, a sub-agent's, or as plan-review
+  loop reviewer. Checks tests can fail, routed rules hold for changed files,
+  unchanged siblings still hold. Runs no full gate.
 ---
 
 # Self-review
@@ -49,7 +48,10 @@ for every changed file.
    `docs/`, `doc/`, `README.md`, `CONTRIBUTING.md`, every `AGENTS.md`, and
    `.agents/skills/`. Re-read each hit against the code. One contract stated in
    several places drifts in one copy
-10. **Rule gaps.** Every gap found goes to skill `agentic-learn`
+10. **Rule gaps.** Every gap found goes in the `Rule gaps` list of your final
+    report: file, rule, what happened. The agent that receives the report
+    appends it to `rules-report.md`. A gap in an area you own is fixed in the
+    same change, per skill `agentic-learn`
 
 ## Output
 

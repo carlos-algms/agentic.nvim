@@ -1,10 +1,8 @@
 ---
 name: agentic-neovim-documentation
 description:
-  Use when neovim documentation is needed for the current task or the user asks
-  for specific neovim features or neovim lua apis. It gives instructions on how
-  to read current Neovim's documentation locally and offline, and also how to
-  read online if it fails
+  Load for Neovim docs, features, or Lua API questions. Reads docs locally
+  offline; falls back to online.
 ---
 
 # Neovim Documentation Files and help docs

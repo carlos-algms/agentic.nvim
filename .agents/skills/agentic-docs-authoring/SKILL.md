@@ -1,10 +1,10 @@
 ---
 name: agentic-docs-authoring
 description: >
-  MANDATORY before editing any AGENTS.md, CONTEXT.md, ADR under docs/adr/,
-  skill under .agents/skills/, or .coderabbit.yaml in agentic.nvim. Holds the
-  anti-staleness rules, the rule-needs-a-test citation rule, the router and
-  .coderabbit.yaml sync rule, the ADR template override, and the glossary rules.
+  MANDATORY before editing AGENTS.md, CONTEXT.md, docs/adr/**,
+  .agents/skills/**, or .coderabbit.yaml. Covers anti-staleness,
+  rule-needs-a-test citation, router/.coderabbit.yaml sync, ADR template
+  override, glossary.
 ---
 
 # Writing agent docs

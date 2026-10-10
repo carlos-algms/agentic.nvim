@@ -1,10 +1,9 @@
 ---
 name: agentic-learn
 description: >
-  Use in agentic.nvim when a rule was missing, wrong, or broken during a task;
-  when a review finding was fixed or rejected; when a sub-agent report has a
-  "Rule gaps" list; or when rules-report.md exists. Turns each gap into a
-  routed, verified rule, and empties rules-report.md.
+  Load when a rule was missing, wrong, or broken; a review finding was fixed or
+  rejected; a sub-agent report has a "Rule gaps" list; or rules-report.md
+  exists. Turns each gap into a routed, verified rule; empties rules-report.md.
 ---
 
 # Learn from rule gaps

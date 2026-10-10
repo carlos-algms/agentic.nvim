@@ -12,6 +12,16 @@ Show/hide/destroy and fallback windows: skill `agentic-ui-widget-lifecycle`.
 Chat-buffer content, tool-call blocks, permissions: skill
 `agentic-ui-message-writer`.
 
+`MessageWriter` (one per chat buffer) owns chat-buffer content. Its parts:
+
+- `ToolCallFold`: manual folds and anchor pads. ADR 0001
+- `ToolCallDiff`: diff extraction and minimization
+- `ToolBlockBorder`: fence glyphs via statuscolumn. ADR 0002
+- `PermissionManager`: pending permissions and focus state. Button and status
+  rows are rendered by `MessageWriter`
+- `DiffPreview`: inline or split diff in the real file buffer, never the chat
+  buffer
+
 ## Window and layout hard rules
 
 - Foreign buffers in widget windows are redirected via `BufferGuard` to a

@@ -1,9 +1,9 @@
 ---
 name: agentic-testing
 description: >
-  MANDATORY before creating, editing, or reviewing tests in agentic.nvim, and
-  before behavior changes that require TDD. Covers the mini.test red/green
-  procedure, the revert check, and which test references to load.
+  MANDATORY before creating, editing, or reviewing tests, and before TDD
+  behavior changes. Covers mini.test red/green, revert check, which test
+  references to load.
 ---
 
 # Agentic Testing
@@ -22,7 +22,7 @@ For every bug fix or behavioral change:
    1. wrong: missing module, nil method, syntax error, unresolved import
    2. right: value/state/output mismatch
 4. Implement the minimum code to pass.
-5. Re-run `make test-file FILE=<path>` until green.
+5. Fix and re-run `make test-file FILE=<path>` until green.
 6. Revert check: undo the fix (keep the test), run
    `make test-file FILE=<path>`, and confirm red. Restore the fix. Still green
    with the fix undone = the test does not discriminate; rewrite it (see "A

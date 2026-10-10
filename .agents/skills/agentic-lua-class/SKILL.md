@@ -1,25 +1,30 @@
 ---
 name: agentic-lua-class
 description: >
-  MANDATORY before writing or editing ANY .lua file in this repo - classes,
-  methods, fields, functions, or LuaCATS annotations. Holds the project's
-  enforced Lua style: class pattern, visibility prefixes (_private,
-  __protected), and optional-type syntax. Skipping it produces luals/selene
-  failures at make validate. Load it before the first edit, not after.
+  MANDATORY before editing any .lua file. Covers class pattern, visibility
+  prefixes (_private, __protected), optional-type syntax, LuaCATS annotations.
+  Skipping causes luals/selene failures.
 ---
 
 # Lua in agentic.nvim
 
 ## Class shape
 
-Reference class: `lua/agentic/ui/diff_coordinator.lua`. Copy its shape:
+```lua
+--- @class agentic.ui.Counter
+--- @field label string
+--- @field _count integer
+local Counter = {}
+Counter.__index = Counter
 
-- `--- @class agentic.<area>.<Name>` with every field declared by `@field`
-- `Name.__index = Name`
-- `function Name:new(...)` returns `setmetatable({ ... }, self)`
-- private fields and methods start with `_`
+--- @param label string
+--- @return agentic.ui.Counter
+function Counter:new(label)
+    return setmetatable({ label = label, _count = 0 }, self)
+end
+```
 
-Adding a subclass: read `references/inheritance.md` first.
+Extending a class or adding inheritance: read `references/inheritance.md` first.
 
 ## Lua 5.1, not 5.4
 
@@ -31,7 +36,7 @@ Neovim runs LuaJIT 2.1, which follows Lua 5.1.
   (`std = "vim"`, Lua 5.1 parser) rejects them: parse errors for `goto`,
   `bad_string_escape` for `\z`. `make validate` fails
 
-## `a and b or c` is not a ternary
+## `a and b or c` is not a valid ternary
 
 It returns `c` whenever `b` is `false` or `nil`, even when `a` is true. Use it
 only when `b` can never be `false` or `nil`; otherwise write an `if`:
@@ -61,14 +66,15 @@ local all_windows = vim.api.nvim_tabpage_list_wins(tab_id)
 for _, winid in ipairs(all_windows) do
 ```
 
-Do not inline an existing named local during a change.
+**Never** inline an existing named local during a change.
 
 ## Private methods over module-level locals
 
 Prefer a private method (`function Name:_helper()`) over a module-level
 `local function`, even when the method does not use `self`. Methods can sit
 anywhere in the file; module-level locals must be defined before their first
-use. Do not convert a method to a local only because `self` is unused.
+use. Tests can mock methods but not local functions. Do not convert a method to
+a local only because `self` is unused.
 
 ## LuaLS does not narrow on reassignment
 
@@ -94,7 +100,7 @@ its name stays the same.
 
 Expose a field only when other modules read it. Everything else is private.
 
-Prefixes, configured in `.luarc.json`:
+Visibility prefixes are configured in `.luarc.json`:
 
 - `_name`: private. Class methods and fields only
 - `__name`: protected, visible to subclasses. Add `--- @protected` (a LuaLS
@@ -107,8 +113,8 @@ is wrong.
 
 ```lua
 --- @class agentic.ui.Counter
---- @field label string Public: read by other modules
---- @field _count integer Private: internal state
+--- @field label string read by other modules
+--- @field _count integer internal state
 local Counter = {}
 Counter.__index = Counter
 ```
