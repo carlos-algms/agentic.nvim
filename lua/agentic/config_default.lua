@@ -356,13 +356,15 @@ local ConfigDefault = {
         ["claude-agent-acp"] = {
             name = "Claude Agent ACP",
             command = "claude-agent-acp",
-            env = {},
+            -- The SDK sets CLAUDE_CODE_ENTRYPOINT=sdk-ts, which makes the
+            -- `claude --resume` picker filter these sessions out. Overriding it to make our sessions visible.
+            env = { CLAUDE_CODE_ENTRYPOINT = "agentic-nvim" },
         },
 
         ["claude-acp"] = {
             name = "Claude ACP",
             command = "claude-code-acp",
-            env = {},
+            env = { CLAUDE_CODE_ENTRYPOINT = "agentic-nvim" },
         },
 
         ["gemini-acp"] = {
