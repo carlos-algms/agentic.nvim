@@ -9,7 +9,7 @@
 > ⚡ A Chat interface for AI agents in Neovim that works with any provider
 > supporting the [Agent Client Protocol (ACP)](https://agentclientprotocol.com)
 > — including Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot, Auggie,
-> Mistral Vibe, Cline, Goose, Kiro, Pi, and more.
+> Mistral Vibe, Cline, Goose, Kiro, Pi, GLM, and more.
 
 **Agentic.nvim** brings your AI assistant to Neovim through the implementation
 of the [Agent Client Protocol (ACP)](https://agentclientprotocol.com).
@@ -126,8 +126,8 @@ _...and any future ACP-compatible provider._
   times
 - **🔌 Any ACP Provider** - Works with any AI provider that implements the Agent
   Client Protocol — Claude, Gemini, Codex, OpenCode, Cursor Agent, Copilot,
-  Auggie, Mistral Vibe, Cline, Goose, Kiro, Pi, and any future ACP-compatible
-  provider
+  Auggie, Mistral Vibe, Cline, Goose, Kiro, Pi, GLM, and any future
+  ACP-compatible provider
 - **🔑 Zero Config Authentication** - No API keys needed
   - **Keep you secrets secret**: run `claude /login`, or `gemini auth login`
     once and, if they're working on your Terminal, they will work automatically
@@ -239,6 +239,7 @@ tools like `nvm`, `fnm`, etc...
 | [goose][goose]                       | `brew install block-goose-cli`<br/> **OR** See [Goose docs][goose-docs]                                                                                                                                                                                                              |
 | [kiro-cli][kiro-docs]                | `curl -fsSL https://cli.kiro.dev/install \| bash`<br/> **OR** See [Kiro CLI docs][kiro-docs]                                                                                                                                                                                         |
 | [pi-acp][pi-acp]                     | Requires the [`pi` CLI][pi-docs] installed first: `curl -fsSL https://pi.dev/install.sh \| sh`<br/> **OR** `pnpm add -g @earendil-works/pi-coding-agent`<br/> **OR** `npm i -g @earendil-works/pi-coding-agent`<br/> Then the adapter: `pnpm add -g pi-acp` **OR** `npm i -g pi-acp` |
+| [glm-acp][glm-acp]                   | `pnpm add -g glm-acp-agent`<br/> **OR** `npm i -g glm-acp-agent`<br/> Then authenticate once: `export Z_AI_API_KEY=...` or run `glm-acp-agent --setup` (stores the key in `~/.config/glm-acp-agent/credentials.json`) |
 
 > [!WARNING]  
 > These install commands are here for convenience, please always refer to the
@@ -261,7 +262,7 @@ tools like `nvm`, `fnm`, etc...
 
   --- @type agentic.PartialUserConfig
   opts = {
-    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp"
+    -- Any ACP-compatible provider works. Built-in: "claude-agent-acp" | "gemini-acp" | "codex-acp" | "opencode-acp" | "cursor-acp" | "copilot-acp" | "auggie-acp" | "mistral-vibe-acp" | "cline-acp" | "goose-acp" | "kiro-acp" | "pi-acp" | "glm-acp"
     provider = "claude-agent-acp", -- setting the name here is all you need to get started
   },
 
@@ -1608,4 +1609,5 @@ the the acknowledgments 😊.
 [goose-docs]: https://block.github.io/goose/docs/getting-started/installation
 [kiro-docs]: https://kiro.dev/docs/cli/
 [pi-acp]: https://github.com/svkozak/pi-acp
+[glm-acp]: https://github.com/stefandevo/glm-acp-agent
 [pi-docs]: https://pi.dev/docs/latest

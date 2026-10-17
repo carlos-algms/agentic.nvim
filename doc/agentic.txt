@@ -5,7 +5,7 @@
 A Chat interface for AI agents in Neovim that works with any provider
 supporting the Agent Client Protocol (ACP) -- including Claude, Gemini,
 Codex, OpenCode, Cursor Agent, Copilot, Auggie, Mistral Vibe, Cline,
-Goose, Kiro, Pi, and more.
+Goose, Kiro, Pi, GLM, and more.
 
 Type |gO| to see the table of contents.
 
@@ -58,6 +58,7 @@ Supported providers:
   - Goose (goose-acp)
   - Kiro (kiro-acp)
   - Pi (pi-acp)
+  - GLM (glm-acp)
   - ...and any future ACP-compatible provider
 
 ==============================================================================
@@ -152,6 +153,16 @@ Provider install commands (always check official docs):
     `pnpm add -g pi-acp`
     OR `npm i -g pi-acp`
 
+  glm-acp-agent                                *agentic-install-glm*
+    https://github.com/stefandevo/glm-acp-agent
+    `pnpm add -g glm-acp-agent`
+    OR `npm i -g glm-acp-agent`
+
+    Authenticate once with your Z.AI API key:
+    `export Z_AI_API_KEY=...`
+    OR run `glm-acp-agent --setup` to store the key in
+    `~/.config/glm-acp-agent/credentials.json`
+
 Clipboard image paste works out of the box on macOS, Windows, and WSL
 when Windows interop and `wslpath` are available. On Linux, you need
 one small CLI dependency (`wl-clipboard` or `xclip`). See
@@ -174,7 +185,7 @@ Using lazy.nvim: ~
       -- "claude-agent-acp" | "gemini-acp" | "codex-acp"
       -- "opencode-acp" | "cursor-acp" | "copilot-acp"
       -- "auggie-acp" | "mistral-vibe-acp" | "cline-acp"
-      -- "goose-acp" | "kiro-acp" | "pi-acp"
+      -- "goose-acp" | "kiro-acp" | "pi-acp" | "glm-acp"
       provider = "claude-agent-acp",
     },
 
@@ -241,7 +252,7 @@ provider ~
   `"claude-agent-acp"`, `"claude-acp"`, `"gemini-acp"`, `"codex-acp"`,
   `"opencode-acp"`, `"cursor-acp"`, `"copilot-acp"`, `"auggie-acp"`,
   `"mistral-vibe-acp"`, `"cline-acp"`, `"goose-acp"`, `"kiro-acp"`,
-  `"pi-acp"`.
+  `"pi-acp"`, `"glm-acp"`.
 
                                       *agentic-config-acp-providers*
 acp_providers ~
