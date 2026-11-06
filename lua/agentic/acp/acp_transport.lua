@@ -50,6 +50,7 @@ end
 --- @return agentic.acp.ACPTransportInstance
 function M.create_stdio_transport(config, callbacks)
     local reconnect_count = 0
+    local stopped = false
 
     --- @class agentic.acp.ACPTransportInstance
     local transport = {
@@ -75,6 +76,7 @@ function M.create_stdio_transport(config, callbacks)
     end
 
     function transport:start()
+        stopped = false
         callbacks.on_state_change("connecting")
 
         -- Resolve command to full executable path for Windows OS PATHEXT support
@@ -171,22 +173,24 @@ function M.create_stdio_transport(config, callbacks)
                 Logger.notify(error_msg, vim.log.levels.ERROR)
             end
 
-            callbacks.on_state_change("disconnected")
-
             if self.process then
                 self.process:close()
                 self.process = nil
+                self.pid = nil
             end
+            callbacks.on_state_change("disconnected")
 
             -- Handle reconnection if enabled
-            if config.enable_reconnect then
+            if config.enable_reconnect and not stopped then
                 local max_attempts = config.max_reconnect_attempts or 3
 
                 if reconnect_count < max_attempts then
                     reconnect_count = reconnect_count + 1
 
                     vim.defer_fn(function()
-                        callbacks.on_reconnect()
+                        if not stopped then
+                            callbacks.on_reconnect()
+                        end
                     end, 2000)
                 end
             end
@@ -274,15 +278,10 @@ function M.create_stdio_transport(config, callbacks)
     end
 
     function transport:stop()
-        if self.process and not self.process:is_closing() then
-            local process = self.process
+        stopped = true
+        local process = self.process
+        if process and not process:is_closing() then
             local pid = self.pid
-            self.process = nil
-            self.pid = nil
-
-            if not process then
-                return
-            end
 
             -- Signal the whole process group (negative pid on POSIX) so
             -- wrappers that don't forward signals (e.g. codex-acp.js
@@ -301,10 +300,17 @@ function M.create_stdio_transport(config, callbacks)
                 end)
             end
 
-            -- Safe to close the handle here even though the spawn exit
-            -- callback may still fire; libuv tolerates close-after-exit and
-            -- the callback's own close path is guarded by `if self.process`.
-            process:close()
+            -- Closing a live uv_process_t prevents libuv from reaping it.
+            -- Keep Neovim alive through the exit callback, even on VimLeavePre.
+            local reaped = vim.wait(5000, function()
+                return self.process ~= process
+            end, 10)
+            if not reaped then
+                Logger.notify(
+                    "ACP agent did not exit after stop",
+                    vim.log.levels.ERROR
+                )
+            end
         end
 
         if self.stdin then
