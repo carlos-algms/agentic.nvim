@@ -44,7 +44,9 @@ Lookups, loaded only when needed:
 - "Why is it done this way?" or "why not X?": grep `docs/adr/` for the keyword;
   read only on a match
 - ACP schema facts: skill `agentic-acp-docs-and-schema`
-- Neovim API docs: skill `agentic-neovim-documentation`
+- Changing how buffer content is drawn (real lines to `virt_lines`/`virt_text`,
+  extmarks, folds, statuscolumn), or any other Neovim API question: skill
+  `agentic-neovim-documentation`, then read the doc of every option you pass
 
 ## No assumptions
 

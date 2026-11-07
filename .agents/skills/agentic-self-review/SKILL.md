@@ -52,6 +52,11 @@ for every changed file.
     report: file, rule, what happened. The agent that receives the report
     appends it to `rules-report.md`. A gap in an area you own is fixed in the
     same change, per skill `agentic-learn`
+11. **Representation swap.** Content moving between real lines and
+    `virt_lines`/`virt_text`, folds, or statuscolumn: list what the old surface
+    gave for free (`'wrap'`, fold level, `'scrolloff'`, conceal, syntax) and
+    prove the new one matches. Any loss is a tradeoff: stop and ask the user
+    before implementing it
 
 ## Output
 
