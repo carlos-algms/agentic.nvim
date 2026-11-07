@@ -191,6 +191,29 @@ describe("agentic.ui.ConfigOptionsModal", function()
         assert.equal(cursor_line(), 1)
     end)
 
+    it("wraps a description wider than the modal", function()
+        local description = string.rep("wide ", 39) .. "wide"
+        config_options.options[1].description = description
+
+        open_modal()
+
+        local width = math.floor(vim.o.columns * 0.35)
+        local rows = virt_lines()[0]
+        assert.is_true(#rows > 2)
+        assert.equal(rows[#rows], "")
+
+        local text_rows = {}
+        for index, row in ipairs(rows) do
+            if index < #rows then
+                assert.is_true(vim.fn.strdisplaywidth(row) <= width)
+                text_rows[#text_rows + 1] = row
+            end
+        end
+
+        assert.equal(table.concat(text_rows, " "), description)
+        assert.equal(vim.api.nvim_win_get_height(winid), 2 + #rows)
+    end)
+
     it("binds no motion keys in the modal buffer", function()
         open_modal()
 

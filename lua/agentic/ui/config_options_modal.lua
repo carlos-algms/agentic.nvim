@@ -53,18 +53,52 @@ local function find_option(options, id)
     return nil
 end
 
+--- Wrap text into rows of at most `max_width` display cells.
+--- Virtual lines never wrap on their own, so the caller must pre-wrap them.
+--- @param text string
+--- @param max_width integer
+--- @return string[] rows
+local function wrap_text(text, max_width)
+    --- @type string[]
+    local rows = {}
+    local current = ""
+
+    for word in text:gmatch("%S+") do
+        if current == "" then
+            current = word
+        elseif vim.fn.strdisplaywidth(current .. " " .. word) > max_width then
+            rows[#rows + 1] = current
+            current = word
+        else
+            current = current .. " " .. word
+        end
+    end
+
+    if current ~= "" then
+        rows[#rows + 1] = current
+    end
+
+    if #rows == 0 then
+        rows[1] = text
+    end
+
+    return rows
+end
+
 --- Build the rendered buffer content for the given options.
 --- Each option renders exactly one real `name: value` row, so the cursor cannot
 --- land on a non-option row. Its description row and the blank separator that
---- follows the block are virtual lines drawn below that row.
+--- follows the block are virtual lines drawn below that row, wrapped to
+--- `max_width` because virtual lines are truncated, never wrapped.
 --- `line_option_ids` maps the 1-based row of a `name: value` line to its option
 --- id. `virt_lines_by_row` maps the 0-based anchor row to its virtual line
 --- texts.
 --- @param options agentic.acp.AnyConfigOption[]
+--- @param max_width integer
 --- @return string[] lines
 --- @return table<integer, string> line_option_ids
 --- @return table<integer, string[]> virt_lines_by_row
-local function build_lines(options)
+local function build_lines(options, max_width)
     --- @type string[]
     local lines = {}
     --- @type table<integer, string>
@@ -93,7 +127,10 @@ local function build_lines(options)
 
         local virt_lines = {}
         if option.description and option.description ~= "" then
-            virt_lines[#virt_lines + 1] = option.description
+            local description_rows = wrap_text(option.description, max_width)
+            for _, description_row in ipairs(description_rows) do
+                virt_lines[#virt_lines + 1] = description_row
+            end
         end
         if index < #options then
             virt_lines[#virt_lines + 1] = ""
@@ -122,10 +159,16 @@ function ConfigOptionsModal:new(callbacks)
     return self
 end
 
+--- @return integer width
+function ConfigOptionsModal:_get_width()
+    return math.floor(vim.o.columns * 0.35)
+end
+
+--- Open the modal window for the current options.
 function ConfigOptionsModal:open()
-    local width = math.floor(vim.o.columns * 0.35)
+    local width = self:_get_width()
     local lines, _, virt_lines_by_row =
-        build_lines(self._callbacks.get_options())
+        build_lines(self._callbacks.get_options(), width)
     local virtual_line_count = 0
     for _, texts in pairs(virt_lines_by_row) do
         virtual_line_count = virtual_line_count + #texts
@@ -165,6 +208,7 @@ function ConfigOptionsModal:open()
     self:_render()
 end
 
+--- Rewrite the buffer rows and their virtual lines from the live options.
 function ConfigOptionsModal:_render()
     if
         not self._bufnr
@@ -176,7 +220,7 @@ function ConfigOptionsModal:_render()
     end
 
     local lines, line_option_ids, virt_lines_by_row =
-        build_lines(self._callbacks.get_options())
+        build_lines(self._callbacks.get_options(), self:_get_width())
     self._line_option_ids = line_option_ids
 
     vim.bo[self._bufnr].modifiable = true
@@ -207,6 +251,7 @@ function ConfigOptionsModal:_render_after_applied()
     end)
 end
 
+--- Apply <CR> on the option row under the cursor.
 function ConfigOptionsModal:_activate_current_option()
     if
         not self._bufnr
