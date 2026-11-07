@@ -69,6 +69,12 @@ Chat-buffer content, tool-call blocks, permissions: skill
   - The named non-`nofile` in-place replacement branch in
     `BufferGuard.on_buf_enter` still exists, but normal widget operations do not
     reach it.
+- A float sized to its content, resized only when it opens
+  - `ConfigOptionsModal` rewrites buffer rows and virtual lines in `_render`,
+    and `AgentConfigOptions.set_options` replaces the whole option array after a
+    config change. Recompute the height in the function that rewrites the
+    content; an open-time height goes stale and clips the new rows. Regression:
+    `config_options_modal.test.lua::"resizes the window when a rerender changes the content height"`.
 - Writing header state back after reading it
   - `WindowDecoration`'s header-state getter hands back the owning widget's own
     `ChatWidget.headers` table, so an in-place mutation is already visible to the
