@@ -214,6 +214,32 @@ describe("agentic.ui.ConfigOptionsModal", function()
         assert.equal(vim.api.nvim_win_get_height(winid), 2 + #rows)
     end)
 
+    it(
+        "resizes the window when a rerender changes the content height",
+        function()
+            schedule_stub = spy.stub(vim, "schedule")
+            schedule_stub:invokes(function(callback)
+                callback()
+            end)
+            open_modal()
+            assert.equal(vim.api.nvim_win_get_height(winid), 4)
+
+            config_options.options[3] = {
+                id = "extra",
+                type = "boolean",
+                currentValue = false,
+                name = "Extra",
+                description = "Extra description",
+            }
+
+            press_enter(2)
+            handle_change_spy.calls[1][3]()
+
+            -- 3 option rows plus 2 descriptions and 2 separators.
+            assert.equal(vim.api.nvim_win_get_height(winid), 7)
+        end
+    )
+
     it("binds no motion keys in the modal buffer", function()
         open_modal()
 

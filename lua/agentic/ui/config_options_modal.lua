@@ -164,16 +164,24 @@ function ConfigOptionsModal:_get_width()
     return math.floor(vim.o.columns * 0.35)
 end
 
+--- @param lines string[]
+--- @param virt_lines_by_row table<integer, string[]>
+--- @return integer height
+function ConfigOptionsModal:_content_height(lines, virt_lines_by_row)
+    local virtual_line_count = 0
+    for _, texts in pairs(virt_lines_by_row) do
+        virtual_line_count = virtual_line_count + #texts
+    end
+
+    return math.max(#lines + virtual_line_count, 1)
+end
+
 --- Open the modal window for the current options.
 function ConfigOptionsModal:open()
     local width = self:_get_width()
     local lines, _, virt_lines_by_row =
         build_lines(self._callbacks.get_options(), width)
-    local virtual_line_count = 0
-    for _, texts in pairs(virt_lines_by_row) do
-        virtual_line_count = virtual_line_count + #texts
-    end
-    local height = math.max(#lines + virtual_line_count, 1)
+    local height = self:_content_height(lines, virt_lines_by_row)
     local row = math.floor(vim.o.lines * 0.25)
     local col = math.floor((vim.o.columns - width) / 2)
 
@@ -233,6 +241,8 @@ function ConfigOptionsModal:_render()
             virt_lines = self:_build_virt_lines(texts),
         })
     end
+    local height = self:_content_height(lines, virt_lines_by_row)
+    BufHelpers.win_set_height(self._winid, height)
 end
 
 --- @param texts string[]
