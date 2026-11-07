@@ -1358,10 +1358,10 @@ describe("agentic.ui.ChatWidget", function()
                 widget:show({ focus_prompt = false })
 
                 local events = {}
-                local original_find = widget.find_first_non_widget_window
+                local original_find = widget.has_non_agentic_window
                 local original_unregister = WidgetRegistry.unregister
                 local original_delete = vim.api.nvim_buf_delete
-                find_stub = spy.stub(widget, "find_first_non_widget_window")
+                find_stub = spy.stub(widget, "has_non_agentic_window")
                 find_stub:invokes(function(self, ...)
                     events[#events + 1] = "fallback"
                     return original_find(self, ...)
@@ -1520,14 +1520,21 @@ describe("agentic.ui.ChatWidget", function()
     describe("hide across tabs", function()
         local widget
         local notify_stub
+        local fugitive_buf
+        local original_open
 
         before_each(function()
             vim.cmd("tabnew")
             notify_stub = spy.stub(Logger, "notify")
             widget = ChatWidget:new(spy.new(function() end) --[[@as function]])
+            fugitive_buf = nil
+            original_open = nil
         end)
 
         after_each(function()
+            if widget and original_open then
+                widget.open_editor_window = original_open
+            end
             if widget then
                 pcall(function()
                     widget:destroy()
@@ -1538,6 +1545,14 @@ describe("agentic.ui.ChatWidget", function()
             pcall(function()
                 vim.cmd("tabclose")
             end)
+            -- After tabclose: the fugitive window is gone, so deleting the
+            -- buffer closes no window. Deleting it while displayed would
+            -- close the tab's last window and take the tabpage down.
+            if fugitive_buf and vim.api.nvim_buf_is_valid(fugitive_buf) then
+                pcall(vim.api.nvim_buf_delete, fugitive_buf, { force = true })
+                fugitive_buf = nil
+            end
+            original_open = nil
         end)
 
         it(
@@ -1547,8 +1562,8 @@ describe("agentic.ui.ChatWidget", function()
 
                 -- ADR 0001: once hidden, the float is the chat buffer's only
                 -- window. Losing it loses the fold anchor.
-                widget.find_first_non_widget_window = function()
-                    return nil
+                widget.has_non_agentic_window = function()
+                    return false
                 end
                 widget.open_editor_window = function()
                     return nil
@@ -1598,6 +1613,45 @@ describe("agentic.ui.ChatWidget", function()
                 assert.equal(0, notify_stub.call_count)
 
                 vim.cmd("tabclose")
+            end
+        )
+
+        it(
+            "does not open a fallback editor window when an excluded-filetype window keeps the tab alive",
+            function()
+                widget:show({ focus_prompt = false })
+                local widget_tab = widget:get_visible_tab_id()
+
+                -- Leave only widget windows in the widget's tab
+                for _, winid in
+                    ipairs(vim.api.nvim_tabpage_list_wins(widget_tab))
+                do
+                    if not vim.w[winid].agentic_bufnr then
+                        pcall(vim.api.nvim_win_close, winid, true)
+                    end
+                end
+
+                -- A fugitive window is in EXCLUDED_FILETYPES, so
+                -- find_first_non_widget_window skips it. But it is a
+                -- valid window that keeps the tab alive, so
+                -- _ensure_fallback_window must not open a new split.
+                fugitive_buf = vim.api.nvim_create_buf(false, true)
+                vim.bo[fugitive_buf].filetype = "fugitive"
+                vim.cmd("vsplit")
+                local fugitive_win = vim.api.nvim_get_current_win()
+                vim.api.nvim_win_set_buf(fugitive_win, fugitive_buf)
+
+                local open_called = false
+                original_open = widget.open_editor_window
+                widget.open_editor_window = function()
+                    open_called = true
+                    return nil
+                end
+
+                widget:hide()
+
+                assert.is_false(open_called)
+                assert.is_true(vim.api.nvim_win_is_valid(fugitive_win))
             end
         )
     end)

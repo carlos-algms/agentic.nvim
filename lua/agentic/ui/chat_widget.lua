@@ -271,7 +271,7 @@ function ChatWidget:_ensure_fallback_window(tabpage)
 
     tabpage = tabpage or self:get_visible_tab_id()
 
-    if not tabpage or self:find_first_non_widget_window(tabpage) then
+    if not tabpage or self:has_non_agentic_window(tabpage) then
         return
     end
 
@@ -780,31 +780,57 @@ local EXCLUDED_FILETYPES = {
     ["mason"] = true, -- Mason installer
 }
 
---- Scoped to the widget's own tabpage, and excludes EVERY registered widget
---- buffer so one session cannot eject a buffer into another's panel window.
---- @param tabpage integer|nil Overrides the derived placement, for a caller holding a tabpage captured before an async boundary
---- @return number|nil winid
-function ChatWidget:find_first_non_widget_window(tabpage)
-    local widget_tab = tabpage or self:get_visible_tab_id()
+--- Non-floating windows in the tabpage not showing a registered widget
+--- buffer.
+--- @param widget_tab integer|nil
+--- @return integer[] winids
+local function non_agentic_windows(widget_tab)
     if not widget_tab or not vim.api.nvim_tabpage_is_valid(widget_tab) then
-        return nil
+        return {}
     end
 
     local all_windows = vim.api.nvim_tabpage_list_wins(widget_tab)
     local widget_bufnrs = WidgetRegistry.all_bufnrs()
+    local result = {}
 
     for _, winid in ipairs(all_windows) do
         local win_config = vim.api.nvim_win_get_config(winid)
         if win_config.relative == "" then
             local bufnr = vim.api.nvim_win_get_buf(winid)
-            local ft = vim.bo[bufnr].filetype
-            if not widget_bufnrs[bufnr] and not EXCLUDED_FILETYPES[ft] then
-                return winid
+            if not widget_bufnrs[bufnr] then
+                result[#result + 1] = winid
             end
         end
     end
 
+    return result
+end
+
+--- Scoped to the widget's own tabpage, and excludes EVERY registered widget
+--- buffer so one session cannot eject a buffer into another's panel window.
+--- Also skips known-special filetypes (EXCLUDED_FILETYPES: fugitive, oil,
+--- qf, ...) that never make a suitable destination for a foreign buffer.
+--- @param tabpage integer|nil Overrides the derived placement, for a caller holding a tabpage captured before an async boundary
+--- @return number|nil winid
+function ChatWidget:find_first_non_widget_window(tabpage)
+    local other_wins = non_agentic_windows(tabpage or self:get_visible_tab_id())
+    for _, winid in ipairs(other_wins) do
+        local bufnr = vim.api.nvim_win_get_buf(winid)
+        if not EXCLUDED_FILETYPES[vim.bo[bufnr].filetype] then
+            return winid
+        end
+    end
     return nil
+end
+
+--- Scoped to the widget's own tabpage. Reports whether the tabpage holds
+--- any non-agentic window — any filetype, EXCLUDED_FILETYPES included.
+--- Used by _ensure_fallback_window: any such window keeps the tab alive
+--- when the widget's own windows close.
+--- @param tabpage integer|nil
+--- @return boolean
+function ChatWidget:has_non_agentic_window(tabpage)
+    return #non_agentic_windows(tabpage or self:get_visible_tab_id()) > 0
 end
 
 --- @param bufnr number

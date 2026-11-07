@@ -46,7 +46,7 @@ Pinned by, in `lua/agentic/ui/chat_widget.test.lua`:
   option. `show` on a visible widget reuses its live windows; it reopens
   nothing.
 - Before closing widget windows, `hide` ensures a non-widget fallback window
-  exists in the same tabpage; if `find_first_non_widget_window` returns nil it
+  exists in the same tabpage; if `has_non_agentic_window` returns false it
   calls `open_editor_window`. Skipping this destroys the user's tabpage: closing
   the last window of a non-current tabpage closes that tabpage silently, and E444
   (cannot close last window) only fires when it is also the last tabpage. See
@@ -57,7 +57,7 @@ Pinned by, in `lua/agentic/ui/chat_widget.test.lua`:
   `get_visible_tab_id` reads no other handle, so the derived placement is already
   nil there: `_ensure_fallback_window` returns early and the close takes the
   widget-only tabpage down with it. Only the tabpage IDENTITY crosses the boundary
-  — `_ensure_fallback_window` and `find_first_non_widget_window` still re-check
+  — `_ensure_fallback_window` and `has_non_agentic_window` still re-check
   `nvim_tabpage_is_valid` on it. Regression:
   `chat_widget.test.lua::"keeps a widget-only tab alive when the chat window closes"`.
 - `ChatWidget:open_editor_window` anchors on the first USABLE window in
@@ -83,7 +83,7 @@ Pinned by, in `lua/agentic/ui/chat_widget.test.lua`:
     restore's explicit `Destroy current session` choice. Regression:
     `chat_widget.test.lua::"keeps the tabpage alive when the widget holds its only windows"`.
   - **Ordering: the fallback MUST run before `WidgetRegistry.unregister`.**
-    `find_first_non_widget_window` excludes windows showing a registered widget
+    `has_non_agentic_window` excludes windows showing a registered widget
     buffer, so once unregistered the widget's own chat window looks like a valid
     fallback and gets handed back.
 - `destroy` is the one programmatic close exempt from the
