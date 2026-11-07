@@ -240,6 +240,26 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end
     )
 
+    it("splits a single word wider than the modal", function()
+        local width = math.floor(vim.o.columns * 0.35)
+        local long_word = string.rep("w", width + 10)
+        local description = "before " .. long_word .. " after"
+        config_options.options[2].description = description
+
+        open_modal()
+
+        local rows = virt_lines()[1]
+        assert.is_true(#rows > 1)
+
+        for _, row in ipairs(rows) do
+            assert.is_true(vim.fn.strdisplaywidth(row) <= width)
+        end
+
+        local stripped = table.concat(rows):gsub("%s", "")
+        assert.equal(stripped, (description:gsub("%s", "")))
+        assert.equal(vim.api.nvim_win_get_height(winid), 4 + #rows)
+    end)
+
     it("binds no motion keys in the modal buffer", function()
         open_modal()
 

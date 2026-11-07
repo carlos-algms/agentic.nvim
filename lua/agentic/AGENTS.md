@@ -105,9 +105,10 @@ ask often.
   `WidgetLayout`, `tool_call_fold.lua`.
 - `virt_lines` chunks never wrap. Neovim truncates a virtual line wider than the
   window (`virt_lines_overflow` defaults to `"trunc"`), while a real buffer line
-  wraps with `'wrap'`. Pre-wrap the text with `strdisplaywidth`, and count the
-  resulting rows in the window height. Regression:
-  `lua/agentic/ui/config_options_modal.test.lua::"wraps a description wider than the modal"`.
+  wraps with `'wrap'`. Pre-wrap the text with `strdisplaywidth`, split a word
+  wider than a whole row, and count the resulting rows in the window height.
+  Regression:
+  `lua/agentic/ui/config_options_modal.test.lua::"splits a single word wider than the modal"`.
 - Assigning a table to `vim.b[...]`, `vim.w[...]`, or `vim.t[...]` stores a
   copy, not a reference. `vim.deepcopy()` is not needed when seeding them from a
   module constant, and mutating the original later does not change the stored

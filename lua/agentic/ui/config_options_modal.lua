@@ -53,6 +53,37 @@ local function find_option(options, id)
     return nil
 end
 
+--- Split a word wider than a row into chunks of at most `max_width` cells.
+--- @param word string
+--- @param max_width integer
+--- @return string[] chunks
+local function split_wide_word(word, max_width)
+    --- @type string[]
+    local chunks = {}
+    local chunk_start = 1
+    local width = 0
+    local index = 1
+    local len = #word
+
+    while index <= len do
+        local char_end = vim.str_utf_end(word, index) + index
+        local char_width = vim.fn.strdisplaywidth(word:sub(index, char_end))
+
+        if width + char_width > max_width and index > chunk_start then
+            chunks[#chunks + 1] = word:sub(chunk_start, index - 1)
+            chunk_start = index
+            width = 0
+        end
+
+        width = width + char_width
+        index = char_end + 1
+    end
+
+    chunks[#chunks + 1] = word:sub(chunk_start)
+
+    return chunks
+end
+
 --- Wrap text into rows of at most `max_width` display cells.
 --- Virtual lines never wrap on their own, so the caller must pre-wrap them.
 --- @param text string
@@ -63,20 +94,35 @@ local function wrap_text(text, max_width)
     local rows = {}
     local current = ""
 
+    local function flush()
+        if current ~= "" then
+            rows[#rows + 1] = current
+            current = ""
+        end
+    end
+
     for word in text:gmatch("%S+") do
-        if current == "" then
+        if vim.fn.strdisplaywidth(word) > max_width then
+            flush()
+            local chunks = split_wide_word(word, max_width)
+            for index, chunk in ipairs(chunks) do
+                if index < #chunks then
+                    rows[#rows + 1] = chunk
+                else
+                    current = chunk
+                end
+            end
+        elseif current == "" then
             current = word
         elseif vim.fn.strdisplaywidth(current .. " " .. word) > max_width then
-            rows[#rows + 1] = current
+            flush()
             current = word
         else
             current = current .. " " .. word
         end
     end
 
-    if current ~= "" then
-        rows[#rows + 1] = current
-    end
+    flush()
 
     if #rows == 0 then
         rows[1] = text
