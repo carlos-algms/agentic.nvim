@@ -2382,6 +2382,100 @@ describe("agentic.SessionManager", function()
             )
         end)
 
+        describe("first-turn environment context", function()
+            local EnvironmentInfo = require("agentic.utils.environment_info")
+            local environment = "<environment_info>fixture</environment_info>"
+            local environment_stub
+
+            before_each(function()
+                environment_stub = spy.stub(EnvironmentInfo, "get_system_info")
+                environment_stub:returns(environment)
+            end)
+
+            after_each(function()
+                environment_stub:revert()
+            end)
+
+            for _, case in ipairs({
+                {
+                    name = "embeds context when supported",
+                    capabilities = {
+                        promptCapabilities = { embeddedContext = true },
+                    },
+                    content = {
+                        type = "resource",
+                        resource = {
+                            uri = "agentic://environment",
+                            mimeType = "text/plain",
+                            text = environment,
+                        },
+                    },
+                },
+                {
+                    name = "keeps text when unsupported",
+                    capabilities = {
+                        promptCapabilities = { embeddedContext = false },
+                    },
+                    content = { type = "text", text = environment },
+                },
+                {
+                    name = "keeps text when embeddedContext is absent",
+                    capabilities = { promptCapabilities = {} },
+                    content = { type = "text", text = environment },
+                },
+                {
+                    name = "keeps text when promptCapabilities is absent",
+                    capabilities = {},
+                    content = { type = "text", text = environment },
+                },
+                {
+                    name = "keeps text when agent capabilities are absent",
+                    content = { type = "text", text = environment },
+                },
+            }) do
+                it(case.name, function()
+                    local session = make_session()
+                    session._is_first_message = true
+                    session.agent.agent_capabilities = case.capabilities --[[@as agentic.acp.AgentCapabilities|nil]]
+                    local prompts = {}
+                    session.agent.send_prompt = function(
+                        _self,
+                        _sid,
+                        prompt,
+                        callback
+                    )
+                        prompts[#prompts + 1] = prompt
+                        callback(nil, nil)
+                    end
+
+                    session:_handle_input_submit("add a docstring to hello.py")
+                    flush_schedule()
+
+                    assert.same({
+                        { type = "text", text = "add a docstring to hello.py" },
+                        case.content,
+                    }, prompts[1])
+                    assert.equal(
+                        "add a docstring to hello.py",
+                        session.chat_history.title
+                    )
+
+                    session:_handle_input_submit("now write the tests")
+                    flush_schedule()
+
+                    assert.same(
+                        { { type = "text", text = "now write the tests" } },
+                        prompts[2]
+                    )
+                    assert.equal(
+                        "add a docstring to hello.py",
+                        session.chat_history.title
+                    )
+                    assert.spy(environment_stub).was.called(1)
+                end)
+            end
+        end)
+
         it("truncates a long first prompt to 60 characters", function()
             local session = make_session()
 
