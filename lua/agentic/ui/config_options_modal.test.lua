@@ -52,14 +52,6 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end)
     end
 
-    --- @param key string
-    local function press_key(key)
-        vim.api.nvim_buf_call(bufnr, function()
-            local mapping = vim.fn.maparg(key, "n", false, true)
-            mapping.callback()
-        end)
-    end
-
     local function cursor_line()
         return vim.api.nvim_win_get_cursor(winid)[1]
     end
@@ -68,18 +60,28 @@ describe("agentic.ui.ConfigOptionsModal", function()
         return vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
     end
 
-    --- @return integer[] rows 0-indexed lines carrying a Comment highlight
-    local function comment_rows()
+    --- @return table<integer, string[]> virt_lines 0-indexed anchor row ->
+    --- virtual line texts
+    local function virt_lines()
         local ns = vim.api.nvim_get_namespaces()["agentic_config_options"]
         local marks =
             vim.api.nvim_buf_get_extmarks(bufnr, ns, 0, -1, { details = true })
-        local rows = {}
+        local result = {}
         for _, mark in ipairs(marks) do
-            if mark[4].hl_group == "Comment" then
-                rows[#rows + 1] = mark[2]
+            local texts = {}
+            for _, chunks in ipairs(mark[4].virt_lines or {}) do
+                texts[#texts + 1] = chunks[1][1]
             end
+            result[mark[2]] = texts
         end
-        return rows
+        return result
+    end
+
+    --- @param key string
+    local function normal_key(key)
+        vim.api.nvim_win_call(winid, function()
+            vim.cmd("normal! " .. key)
+        end)
     end
 
     before_each(function()
@@ -127,64 +129,85 @@ describe("agentic.ui.ConfigOptionsModal", function()
         end
     end)
 
-    it("renders aligned rows with descriptions and booleans", function()
+    it("renders only option rows as real buffer lines", function()
         open_modal()
 
         assert.same(get_lines(), {
             "Model:      " .. select_icon .. " Opus",
-            "Model to use",
-            "",
             "Fast mode:  [ ]",
         })
         assert.is_false(vim.bo[bufnr].modifiable)
     end)
 
-    it("highlights description lines as Comment", function()
+    it("renders descriptions and separators as virtual lines", function()
         open_modal()
 
-        assert.same(comment_rows(), { 1 })
+        assert.same(virt_lines(), {
+            [0] = { "Model to use", "" },
+        })
+        -- Two real rows plus two virtual rows must fit the window.
+        assert.equal(vim.api.nvim_win_get_height(winid), 4)
     end)
 
-    it("starts the cursor on the first option row", function()
+    it("highlights description virtual lines as Comment", function()
         open_modal()
 
+        local ns = vim.api.nvim_get_namespaces()["agentic_config_options"]
+        local mark = vim.api.nvim_buf_get_extmarks(
+            bufnr,
+            ns,
+            0,
+            -1,
+            { details = true }
+        )[1]
+        local chunks = mark[4].virt_lines[1]
+
+        assert.same(chunks, { { "Model to use", "Comment" } })
+    end)
+
+    it("moves j/k across option rows with builtin motions", function()
+        open_modal()
+
+        normal_key("j")
+        press_enter(cursor_line())
+        assert.equal(handle_change_spy.calls[1][1], "fast")
+
+        normal_key("k")
+        press_enter(cursor_line())
+        assert.spy(show_selector_spy).was.called(1)
+    end)
+
+    it("does not wrap j/k around the option rows", function()
+        open_modal()
+
+        normal_key("j")
+        assert.equal(cursor_line(), 2)
+
+        normal_key("j")
+        assert.equal(cursor_line(), 2)
+
+        normal_key("k")
+        normal_key("k")
         assert.equal(cursor_line(), 1)
     end)
 
-    it("picks the nearest option row from a non-option row", function()
+    it("binds no motion keys in the modal buffer", function()
         open_modal()
 
-        -- Row 3 is the blank separator between option rows 1 and 4.
-        vim.api.nvim_win_set_cursor(winid, { 3, 0 })
-        press_key("k")
-        assert.equal(cursor_line(), 1)
+        local lhs = {}
+        for _, mapping in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "n")) do
+            lhs[#lhs + 1] = mapping.lhs
+        end
+        table.sort(lhs)
 
-        vim.api.nvim_win_set_cursor(winid, { 3, 0 })
-        press_key("j")
-        assert.equal(cursor_line(), 4)
-    end)
-
-    it("jumps j/k across option rows and wraps", function()
-        open_modal()
-
-        press_key("j")
-        assert.equal(cursor_line(), 4)
-
-        press_key("j")
-        assert.equal(cursor_line(), 1)
-
-        press_key("k")
-        assert.equal(cursor_line(), 4)
-
-        press_key("k")
-        assert.equal(cursor_line(), 1)
+        assert.same(lhs, { "<CR>", "<Esc>", "q" })
     end)
 
     it("renders checked booleans", function()
         config_options.options[2].currentValue = true
         open_modal()
 
-        assert.equal(get_lines()[4], "Fast mode:  [x]")
+        assert.equal(get_lines()[2], "Fast mode:  [x]")
     end)
 
     it("falls back to the raw select value", function()
@@ -210,7 +233,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
     it("toggles a false boolean and keeps the window open", function()
         open_modal()
 
-        press_enter(4)
+        press_enter(2)
 
         assert.spy(handle_change_spy).was.called(1)
         assert.equal(handle_change_spy.calls[1][1], "fast")
@@ -223,7 +246,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         config_options.options[2].currentValue = true
         open_modal()
 
-        press_enter(4)
+        press_enter(2)
 
         assert.spy(handle_change_spy).was.called(1)
         assert.equal(handle_change_spy.calls[1][1], "fast")
@@ -283,7 +306,7 @@ describe("agentic.ui.ConfigOptionsModal", function()
         open_modal()
         session_id = "sess-2"
 
-        press_enter(4)
+        press_enter(2)
 
         assert.spy(handle_change_spy).was.called(0)
         assert.spy(show_selector_spy).was.called(0)
@@ -295,13 +318,13 @@ describe("agentic.ui.ConfigOptionsModal", function()
             callback()
         end)
         open_modal()
-        press_enter(4)
+        press_enter(2)
         config_options.options[2].currentValue = true
 
         assert.spy(handle_change_spy).was.called(1)
         handle_change_spy.calls[1][3]()
 
         assert.spy(schedule_stub).was.called(1)
-        assert.equal(get_lines()[4], "Fast mode:  [x]")
+        assert.equal(get_lines()[2], "Fast mode:  [x]")
     end)
 end)
