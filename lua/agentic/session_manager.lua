@@ -558,14 +558,30 @@ function SessionManager:_handle_input_submit(input_text)
         text = input_text,
     })
 
-    -- After the user text, so the resume picker shows the prompt.
     if self._is_first_message then
         self._is_first_message = false
 
-        table.insert(prompt, {
-            type = "text",
-            text = EnvironmentInfo.get_system_info(),
-        })
+        local environment = EnvironmentInfo.get_system_info()
+        local capabilities = self.agent.agent_capabilities
+        local prompt_capabilities = capabilities
+            and capabilities.promptCapabilities
+        -- ACP prefers embedded resources for context; preserve text fallback order.
+        -- https://agentclientprotocol.com/protocol/v1/content#embedded-resource
+        if
+            prompt_capabilities
+            and prompt_capabilities.embeddedContext == true
+        then
+            prompt[#prompt + 1] = {
+                type = "resource",
+                resource = {
+                    uri = "agentic://environment",
+                    mimeType = "text/plain",
+                    text = environment,
+                },
+            }
+        else
+            prompt[#prompt + 1] = { type = "text", text = environment }
+        end
     end
 
     --- Written to the chat widget
