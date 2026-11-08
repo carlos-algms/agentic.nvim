@@ -15,6 +15,8 @@
 
 --- @alias agentic.UserConfig.SessionCwdFn fun(current_cwd: string): string|nil
 
+--- @alias agentic.UserConfig.InitialInstructionsFn fun(): string
+
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
 --- Per-panel window header: either `{ title, suffix }` or a render function.
@@ -254,6 +256,7 @@
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
+--- @field initial_instructions? string|agentic.UserConfig.InitialInstructionsFn Extra text sent after the environment info on the first prompt. A function must return a string and runs synchronously
 
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
 --- @class (partial) agentic.PartialUserConfig.Windows.Input: agentic.UserConfig.Windows.Input
@@ -639,6 +642,7 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
+        initial_instructions = nil,
     },
 
     provider_switcher = {

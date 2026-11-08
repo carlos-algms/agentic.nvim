@@ -2285,6 +2285,7 @@ describe("agentic.SessionManager", function()
                 end,
                 destroy = SessionManager.destroy,
                 _handle_input_submit = SessionManager._handle_input_submit,
+                _resolve_initial_instructions = SessionManager._resolve_initial_instructions,
             } --[[@as agentic.SessionManager]]
         end
 
@@ -2474,6 +2475,104 @@ describe("agentic.SessionManager", function()
                     assert.spy(environment_stub).was.called(1)
                 end)
             end
+
+            describe("initial_instructions", function()
+                --- @type string|agentic.UserConfig.InitialInstructionsFn|nil
+                local original
+                --- @type TestStub
+                local notify_stub
+
+                before_each(function()
+                    original = Config.settings.initial_instructions
+                    notify_stub = spy.stub(Logger, "notify")
+                end)
+
+                after_each(function()
+                    Config.settings.initial_instructions = original
+                    notify_stub:revert()
+                end)
+
+                --- @param instructions string|fun(): any
+                --- @return agentic.acp.Content[][]
+                local function first_prompts(instructions)
+                    Config.settings.initial_instructions = instructions
+                    local session = make_session()
+                    session._is_first_message = true
+                    session.agent.agent_capabilities = {
+                        promptCapabilities = { embeddedContext = false },
+                    }
+                    local prompts = {}
+                    session.agent.send_prompt = function(
+                        _self,
+                        _sid,
+                        prompt,
+                        callback
+                    )
+                        prompts[#prompts + 1] = prompt
+                        callback(nil, nil)
+                    end
+
+                    session:_handle_input_submit("hello")
+                    session:_handle_input_submit("second")
+                    flush_schedule()
+                    return prompts
+                end
+
+                it("appends a string after the environment info", function()
+                    local prompts = first_prompts("You are running in Neovim.")
+
+                    assert.equal(
+                        environment .. "\n\nYou are running in Neovim.",
+                        prompts[1][2].text
+                    )
+                    assert.same(
+                        { { type = "text", text = "second" } },
+                        prompts[2]
+                    )
+                end)
+
+                it("calls a function and appends its return value", function()
+                    local prompts = first_prompts(function()
+                        return "from fn " .. vim.fn.filereadable("Makefile")
+                    end)
+
+                    assert.equal(
+                        environment .. "\n\nfrom fn 1",
+                        prompts[1][2].text
+                    )
+                end)
+
+                it("appends nothing for an empty string", function()
+                    local prompts = first_prompts("")
+
+                    assert.equal(environment, prompts[1][2].text)
+                end)
+
+                it("ignores a non-string config value", function()
+                    local prompts = first_prompts(true)
+
+                    assert.equal(environment, prompts[1][2].text)
+                    assert.spy(notify_stub).was.called(1)
+                end)
+
+                it("keeps the prompt when the function throws", function()
+                    local prompts = first_prompts(function()
+                        error("boom")
+                    end)
+
+                    assert.equal(environment, prompts[1][2].text)
+                    assert.spy(notify_stub).was.called(1)
+                end)
+
+                it("keeps the prompt on a non-string return", function()
+                    local prompts = first_prompts(function()
+                        return 42
+                    end)
+
+                    assert.equal(environment, prompts[1][2].text)
+                    assert.spy(notify_stub).was.called(1)
+                end)
+            end)
         end)
 
         it("truncates a long first prompt to 60 characters", function()
