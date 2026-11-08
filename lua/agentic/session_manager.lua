@@ -572,6 +572,10 @@ function SessionManager:_handle_input_submit(input_text)
             Hooks.invoke_sync("before_first_prompt", first_prompt_hook_data)
         -- The hook runs user code, which can destroy this session.
         if self._destroyed then
+            Logger.notify(
+                "Session destroyed by the before_first_prompt hook. Prompt not sent.",
+                vim.log.levels.WARN
+            )
             return false
         end
         if extra_instructions and extra_instructions ~= "" then

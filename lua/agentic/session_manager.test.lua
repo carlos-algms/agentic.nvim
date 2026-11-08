@@ -2628,6 +2628,11 @@ describe("agentic.SessionManager", function()
 
                         assert.is_false(submitted)
                         assert.equal(0, #prompts)
+                        assert.spy(notify_stub).was.called(1)
+                        assert.equal(
+                            vim.log.levels.WARN,
+                            notify_stub.calls[1][2]
+                        )
                     end
                 )
             end)
