@@ -524,6 +524,37 @@ function SessionManager:_set_mode_to_chat_header(mode_id)
     )
 end
 
+--- @return string|nil instructions
+function SessionManager:_resolve_initial_instructions()
+    local configured = Config.settings.initial_instructions
+    if configured == nil then
+        return nil
+    end
+
+    local result = configured
+    if type(configured) == "function" then
+        local ok, resolved = pcall(configured)
+        if not ok then
+            Logger.notify(
+                "settings.initial_instructions failed: " .. tostring(resolved),
+                vim.log.levels.WARN
+            )
+            return nil
+        end
+        result = resolved
+    end
+
+    if type(result) ~= "string" then
+        Logger.notify(
+            "settings.initial_instructions must be a string or return one",
+            vim.log.levels.WARN
+        )
+        return nil
+    end
+
+    return result
+end
+
 --- @param input_text string
 --- @return boolean submitted
 function SessionManager:_handle_input_submit(input_text)
@@ -562,6 +593,10 @@ function SessionManager:_handle_input_submit(input_text)
         self._is_first_message = false
 
         local environment = EnvironmentInfo.get_system_info()
+        local extra_instructions = self:_resolve_initial_instructions()
+        if extra_instructions and extra_instructions ~= "" then
+            environment = environment .. "\n\n" .. extra_instructions
+        end
         local capabilities = self.agent.agent_capabilities
         local prompt_capabilities = capabilities
             and capabilities.promptCapabilities

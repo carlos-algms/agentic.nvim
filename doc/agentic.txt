@@ -332,6 +332,12 @@ settings ~
                        window after submitting a prompt.
                        Default: `true`.
 
+  `initial_instructions`  Extra text sent to the agent after the
+                       environment info, on the first prompt. Accepts a
+                       string, or a sync function that returns a string
+                       so it can read files or run commands. Called when
+                       the first prompt is submitted. Default: `nil`.
+
                                           *agentic-config-provider-switcher*
 provider_switcher ~
   Type: `table`
