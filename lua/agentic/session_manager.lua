@@ -570,6 +570,10 @@ function SessionManager:_handle_input_submit(input_text)
         }
         local extra_instructions =
             Hooks.invoke_sync("before_first_prompt", first_prompt_hook_data)
+        -- The hook runs user code, which can destroy this session.
+        if self._destroyed then
+            return false
+        end
         if extra_instructions and extra_instructions ~= "" then
             environment = environment .. "\n\n" .. extra_instructions
         end

@@ -34,3 +34,9 @@ waits for the hook and returns its value, so only the hooks typed in
 `nil` and runs the hook after the prompt was already sent; calling `invoke_sync`
 on a notification hook lets a slow notification delay the prompt. Regression:
 `lua/agentic/utils/hooks.test.lua::"returns the hook value with the payload, without scheduling"`.
+
+A sync hook runs user code inside the caller's own path, so it can mutate or
+destroy the caller mid-operation. `SessionManager:_handle_input_submit`
+re-checks `_destroyed` right after `Hooks.invoke_sync` for that reason; a sync
+hook called from a long-lived object needs the same re-check. Regression:
+`lua/agentic/session_manager.test.lua::"stops the submission when the hook destroys the session"`.

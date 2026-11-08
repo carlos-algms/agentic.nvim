@@ -2582,6 +2582,54 @@ describe("agentic.SessionManager", function()
                     assert.equal(environment, prompts[1][2].text)
                     assert.spy(notify_stub).was.called(1)
                 end)
+
+                it(
+                    "keeps the prompt when the hook returns a non-string",
+                    function()
+                        local returns_table = function()
+                            return {} --[[@as any]]
+                        end
+
+                        local prompts = first_prompts(returns_table)
+
+                        assert.equal(environment, prompts[1][2].text)
+                        assert.spy(notify_stub).was.called(1)
+                        assert.equal(
+                            vim.log.levels.WARN,
+                            notify_stub.calls[1][2]
+                        )
+                    end
+                )
+
+                it(
+                    "stops the submission when the hook destroys the session",
+                    function()
+                        local session = make_session()
+                        session._is_first_message = true
+                        session.agent.agent_capabilities = {
+                            promptCapabilities = { embeddedContext = false },
+                        }
+                        local prompts = {}
+                        session.agent.send_prompt = function(
+                            _self,
+                            _sid,
+                            prompt,
+                            callback
+                        )
+                            prompts[#prompts + 1] = prompt
+                            callback(nil, nil)
+                        end
+                        Config.hooks.before_first_prompt = function()
+                            session:destroy()
+                            return "extra"
+                        end
+
+                        local submitted = session:_handle_input_submit("hello")
+
+                        assert.is_false(submitted)
+                        assert.equal(0, #prompts)
+                    end
+                )
             end)
         end)
 
