@@ -332,12 +332,6 @@ settings ~
                        window after submitting a prompt.
                        Default: `true`.
 
-  `initial_instructions`  Extra text sent to the agent after the
-                       environment info, on the first prompt. Accepts a
-                       string, or a sync function that returns a string
-                       so it can read files or run commands. Called when
-                       the first prompt is submitted. Default: `nil`.
-
                                           *agentic-config-provider-switcher*
 provider_switcher ~
   Type: `table`
@@ -852,6 +846,7 @@ System information ~
 The first message of each session automatically includes platform
 info, shell/Neovim version, date, git status, and project root.
 This reduces time to first response by providing immediate context.
+Extend it with the `before_first_prompt` hook, see |agentic-hooks|.
 
 Event hooks ~
                                                      *agentic-hooks*
@@ -863,6 +858,12 @@ in a closed tab. `on_session_update` fires for background sessions.
 Skipped during session restore. `on_response_complete` also fires for
 background sessions. Guard `tab_page_id` before passing it to any
 `nvim_tabpage_*` function; those raise on `nil`.
+
+`before_first_prompt` is the one hook that returns a value. It runs
+synchronously while the first prompt is being built, and its string is
+appended after the environment info. A slow hook delays that prompt,
+and a hook that raises or returns a non-string is reported and skipped.
+Every other hook is fire-and-forget and cannot change what is sent.
 >lua
   -- Token usage per session, keyed by session_key. A plain Lua table,
   -- because a session may be running in no tab at all.
@@ -871,6 +872,14 @@ background sessions. Guard `tab_page_id` before passing it to any
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
+      before_first_prompt = function(data)
+        -- Returns a string appended after the environment info, or nil.
+        -- Runs synchronously: read files or run commands here.
+        -- data.session_id: string
+        -- data.session_key: integer
+        -- data.provider_name: string (e.g. "claude-agent-acp")
+        return "Diagnostics are LSP diagnostics in a Neovim buffer."
+      end,
       on_create_session_response = function(data)
         -- Fires on both success and failure. Check `data.err` first.
         -- data.session_id: string|nil (nil if err is set)

@@ -26,6 +26,7 @@ describe("agentic.utils.Hooks", function()
         end
         Config.hooks = Config.hooks or {}
         Config.hooks.on_prompt_submit = nil
+        Config.hooks.before_first_prompt = nil
     end)
 
     it("invokes the configured hook with the data", function()
@@ -75,5 +76,99 @@ describe("agentic.utils.Hooks", function()
         end)
         assert.spy(notify_stub).was.called(1)
         assert.equal(vim.log.levels.ERROR, notify_stub.calls[1][2])
+    end)
+
+    describe("invoke_sync", function()
+        --- @return agentic.UserConfig.BeforeFirstPromptData
+        local function payload()
+            --- @type agentic.UserConfig.BeforeFirstPromptData
+            local data = {
+                session_id = "session-1",
+                session_key = 7,
+                provider_name = "TestProvider",
+            }
+            return data
+        end
+
+        it(
+            "returns the hook value with the payload, without scheduling",
+            function()
+                Config.hooks = Config.hooks or {}
+                local hook_spy = spy.new(function()
+                    return "extra"
+                end)
+                Config.hooks.before_first_prompt = function(data)
+                    return hook_spy(data)
+                end
+
+                local data = payload()
+                local result = Hooks.invoke_sync("before_first_prompt", data)
+
+                assert.equal("extra", result)
+                assert.spy(hook_spy).was.called(1)
+                assert.equal(data, hook_spy.calls[1][1])
+                assert.spy(schedule_stub).was.called(0)
+            end
+        )
+
+        it(
+            "returns nil without notifying when no hook is configured",
+            function()
+                notify_stub = spy.stub(Logger, "notify")
+                Config.hooks = Config.hooks or {}
+                Config.hooks.before_first_prompt = nil
+
+                assert.is_nil(
+                    Hooks.invoke_sync("before_first_prompt", payload())
+                )
+                assert.spy(notify_stub).was.called(0)
+            end
+        )
+
+        it(
+            "returns nil without notifying when the hook is not a function",
+            function()
+                notify_stub = spy.stub(Logger, "notify")
+                Config.hooks = Config.hooks or {}
+                --- @diagnostic disable-next-line: assign-type-mismatch
+                Config.hooks.before_first_prompt = "not a function"
+
+                assert.is_nil(
+                    Hooks.invoke_sync("before_first_prompt", payload())
+                )
+                assert.spy(notify_stub).was.called(0)
+            end
+        )
+
+        it("returns nil and notifies at ERROR when the hook throws", function()
+            notify_stub = spy.stub(Logger, "notify")
+            Config.hooks = Config.hooks or {}
+            Config.hooks.before_first_prompt = function()
+                error("boom")
+            end
+
+            assert.is_nil(Hooks.invoke_sync("before_first_prompt", payload()))
+            assert.spy(notify_stub).was.called(1)
+            assert.equal(vim.log.levels.ERROR, notify_stub.calls[1][2])
+        end)
+
+        it(
+            "returns nil and notifies at WARN when the value is not a string",
+            function()
+                notify_stub = spy.stub(Logger, "notify")
+                Config.hooks = Config.hooks or {}
+                --- @type fun(): any
+                local returns_integer = function()
+                    return 42
+                end
+                Config.hooks.before_first_prompt = returns_integer
+
+                assert.is_nil(
+                    Hooks.invoke_sync("before_first_prompt", payload())
+                )
+                assert.spy(notify_stub).was.called(1)
+                assert.equal(vim.log.levels.WARN, notify_stub.calls[1][2])
+            end
+        )
     end)
 end)

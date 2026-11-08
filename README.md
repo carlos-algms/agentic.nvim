@@ -1040,11 +1040,19 @@ This helps the AI Agent understand the context of the current project without
 having to run additional commands or grep through files, the goals is to reduce
 time for the first response.
 
+To add your own text after that block, return a string from the
+`before_first_prompt` [event hook](#event-hooks).
+
 ### Event Hooks
 
 Agentic.nvim provides hooks that let you respond to specific events during the
 chat lifecycle. These are useful for logging, notifications, analytics, or
 integrating with other plugins.
+
+Every hook is fire-and-forget except `before_first_prompt`. That one runs
+synchronously while the first prompt is being built, and its return value is
+appended after the system information, so it can read files or run commands. A
+slow `before_first_prompt` delays that prompt.
 
 > [!IMPORTANT]
 > **Identify a session by `data.session_key`, not by `data.tab_page_id`.**
@@ -1065,6 +1073,17 @@ return {
   --- @type agentic.PartialUserConfig
   opts = {
     hooks = {
+      -- Runs synchronously while the first prompt is built. Returns text
+      -- appended after the system information, or nil for nothing.
+      before_first_prompt = function(data)
+        -- data.session_id: string - The ACP session ID
+        -- data.session_key: integer - Stable session identity
+        -- data.provider_name: string - The provider running the session
+        if vim.fn.filereadable("AGENTS.md") == 1 then
+          return "This project documents its conventions in AGENTS.md."
+        end
+      end,
+
       -- Called when a new ACP session is created (or fails to create).
       -- Fires on both success and failure; check `data.err` first.
       on_create_session_response = function(data)

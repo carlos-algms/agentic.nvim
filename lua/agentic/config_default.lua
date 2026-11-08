@@ -15,8 +15,6 @@
 
 --- @alias agentic.UserConfig.SessionCwdFn fun(current_cwd: string): string|nil
 
---- @alias agentic.UserConfig.InitialInstructionsFn fun(): string
-
 --- @alias agentic.UserConfig.HeaderRenderFn fun(parts: agentic.ui.ChatWidget.HeaderParts, session_state: agentic.acp.SessionState?): string|nil
 
 --- Per-panel window header: either `{ title, suffix }` or a render function.
@@ -36,6 +34,12 @@
 --- @field session_id string The ACP session ID
 --- @field session_key integer Stable for the session's whole life
 --- @field tab_page_id? number Where it is visible now; nil in the background. DEPRECATED: use session_key
+
+--- Data passed to the before_first_prompt hook
+--- @class agentic.UserConfig.BeforeFirstPromptData
+--- @field session_id string The ACP session ID
+--- @field session_key integer Stable for the session's whole life
+--- @field provider_name string The provider running the session, e.g. `claude-agent-acp`
 
 --- Data passed to the on_response_complete hook
 --- @class agentic.UserConfig.ResponseCompleteData
@@ -239,6 +243,7 @@
 --- @field title agentic.UserConfig.ToolCalls.Title
 
 --- @class agentic.UserConfig.Hooks
+--- @field before_first_prompt? fun(data: agentic.UserConfig.BeforeFirstPromptData): string|nil Extra text appended after the environment info on the first prompt. Runs synchronously and blocks the prompt while it runs
 --- @field on_create_session_response? fun(data: agentic.UserConfig.CreateSessionResponseData): nil
 --- @field on_prompt_submit? fun(data: agentic.UserConfig.PromptSubmitData): nil
 --- @field on_response_complete? fun(data: agentic.UserConfig.ResponseCompleteData): nil
@@ -256,7 +261,6 @@
 --- Control various behaviors and features of the plugin
 --- @class agentic.UserConfig.Settings
 --- @field move_cursor_to_chat_on_submit boolean Automatically move cursor to chat window after submitting a prompt
---- @field initial_instructions? string|agentic.UserConfig.InitialInstructionsFn Extra text sent after the environment info on the first prompt. A function must return a string and runs synchronously
 
 --- @class (partial) agentic.PartialUserConfig.Windows.Chat: agentic.UserConfig.Windows.Chat
 --- @class (partial) agentic.PartialUserConfig.Windows.Input: agentic.UserConfig.Windows.Input
@@ -628,6 +632,7 @@ local ConfigDefault = {
     },
 
     hooks = {
+        before_first_prompt = nil,
         on_create_session_response = nil,
         on_prompt_submit = nil,
         on_response_complete = nil,
@@ -642,7 +647,6 @@ local ConfigDefault = {
 
     settings = {
         move_cursor_to_chat_on_submit = true,
-        initial_instructions = nil,
     },
 
     provider_switcher = {
