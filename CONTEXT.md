@@ -257,8 +257,9 @@ is sent verbatim to the **Provider**.
 ### Hooks
 
 **Hooks**: User-registerable callbacks under `Config.hooks` (see
-`config_default.lua`). All fire via `vim.schedule` + `pcall`. Every payload
-carries the **Session key**. Six hooks today:
+`config_default.lua`). Seven hooks today. Six are notifications: they fire via
+`vim.schedule` + `pcall`, their return value is ignored, and they cannot change
+what is sent to the **Provider**.
 
 - `on_create_session_response` — fires after `session/new` returns.
 - `on_prompt_submit` — fires when user submits a prompt.
@@ -269,6 +270,12 @@ carries the **Session key**. Six hooks today:
 - `on_file_edit` — fires when a file-mutating **Tool Call** completes (kinds:
   `edit`, `create`, `write`, `delete`, `move`). Skipped during session restore.
 - `on_request_permission` — fires for each pending **Permission Request**.
+
+The seventh, `before_first_prompt`, is the only value-returning hook. It runs
+synchronously while the first prompt is built, through `Hooks.invoke_sync`, and
+its string is appended after the environment info. A slow hook delays that
+prompt. A raise or a non-string return is reported and the prompt goes out
+unchanged. Every payload carries the **Session key**.
 
 ### Reconnect
 

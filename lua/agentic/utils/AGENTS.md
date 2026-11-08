@@ -26,3 +26,11 @@ Tests: `lua/agentic/utils/buf_helpers.test.lua`.
 `Hooks.invoke` payloads carry the raw ACP response (`data.response`) next to the
 normalized fields (`session_id`, `session_key`, ...). Both are there on purpose;
 do not remove one as a duplicate.
+
+Two contracts live in one table. `Hooks.invoke` is fire-and-forget: it defers
+through `vim.schedule`, and its return value is dropped. `Hooks.invoke_sync`
+waits for the hook and returns its value, so only the hooks typed in
+`Hooks.SyncName` may use it. Calling `invoke` on a sync hook gives the caller
+`nil` and runs the hook after the prompt was already sent; calling `invoke_sync`
+on a notification hook lets a slow notification delay the prompt. Regression:
+`lua/agentic/utils/hooks.test.lua::"returns the hook value with the payload, without scheduling"`.
