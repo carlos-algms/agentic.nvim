@@ -8,7 +8,8 @@ local assert = require("tests.helpers.assert")
 -- This is the canonical exception to the "MUST stub `agentic.acp.acp_transport`"
 -- rule in `tests/AGENTS.md`: that rule exists for tests that *use* the
 -- transport. This file *tests* the transport itself, so spawning a real
--- subprocess is the whole point. No provider binary is spawned; only /bin/sh.
+-- subprocess is the whole point. No provider binary is spawned; only local
+-- shell/coreutils fixtures.
 
 describe("ACPTransport process lifecycle", function()
     local child
@@ -43,6 +44,32 @@ describe("ACPTransport process lifecycle", function()
         end
         return false
     end
+
+    it("reaps the stopped child before returning", function()
+        local pid = child.lua([[
+            local Transport = require("agentic.acp.acp_transport")
+            _G.reconnected = false
+            _G.transport = Transport.create_stdio_transport({
+                command = "/bin/cat",
+                enable_reconnect = true,
+            }, {
+                on_state_change = function() end,
+                on_message = function() end,
+                on_reconnect = function() _G.reconnected = true end,
+            })
+            _G.transport:start()
+            return _G.transport.pid
+        ]])
+        assert.is_not_nil(pid)
+        assert.is_true(is_alive(pid))
+
+        child.lua([[ _G.transport:stop() ]])
+
+        assert.is_false(is_alive(pid))
+        vim.uv.sleep(2100)
+        assert.is_false(child.lua_get([[_G.reconnected]]))
+        child.lua([[ _G.transport:stop() ]])
+    end)
 
     it(
         "kills descendant processes when wrapper does not forward signals",
