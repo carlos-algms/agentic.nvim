@@ -613,6 +613,10 @@ agentic.switch_provider({opts})
 agentic.stop_generation()
   Stop the agent's current generation or tool execution. The
   session remains active and ready for the next prompt.
+  Cancellation is sent for the current live session even when local busy
+  tracking is idle. Pending permissions, busy state, and the spinner are
+  cleared immediately. Late completions do not clear a newer prompt's busy
+  state or spinner.
 
                                              *agentic.restore_session()*
 agentic.restore_session()

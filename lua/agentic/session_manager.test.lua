@@ -1669,6 +1669,7 @@ describe("agentic.SessionManager", function()
             --- @type agentic.SessionManager
             local session = {
                 session_id = "original-session",
+                _pending_prompts = {},
                 session_key = 3,
                 widget = {
                     get_visible_tab_id = function()
@@ -2196,12 +2197,14 @@ describe("agentic.SessionManager", function()
         local schedule_queue
         --- @type fun(response: table|nil, err: table|nil)|nil
         local send_prompt_callback
+        local prompt_callbacks
         --- @type integer|nil
         local widget_tab
 
         before_each(function()
             schedule_queue = {}
             send_prompt_callback = nil
+            prompt_callbacks = {}
             widget_tab = 11
             schedule_stub = spy.stub(vim, "schedule")
             schedule_stub:invokes(function(fn)
@@ -2227,6 +2230,7 @@ describe("agentic.SessionManager", function()
         local function make_session()
             return {
                 session_id = "session-1",
+                _pending_prompts = {},
                 session_key = 7,
                 is_generating = false,
                 _connection_error = false,
@@ -2278,6 +2282,7 @@ describe("agentic.SessionManager", function()
                     provider_config = { name = "TestProvider" },
                     send_prompt = function(_self, _sid, _prompt, callback)
                         send_prompt_callback = callback
+                        prompt_callbacks[#prompt_callbacks + 1] = callback
                     end,
                 },
                 can_submit_prompt = function()
@@ -2320,6 +2325,54 @@ describe("agentic.SessionManager", function()
             assert.equal(7, hook_spy.calls[1][1].session_key)
             assert.equal(11, hook_spy.calls[1][1].tab_page_id)
         end)
+
+        for _, case in ipairs({
+            { index = 1, name = "first prompt completes" },
+            { index = 2, name = "follow-up completes" },
+            {
+                index = 2,
+                name = "follow-up is rejected",
+                err = { code = -32603, message = "A turn is already running" },
+            },
+        }) do
+            it(
+                "stays busy while another prompt remains when " .. case.name,
+                function()
+                    local session = make_session()
+                    local stop_spy = spy.new(function() end)
+                    local start_spy = spy.new(function() end)
+                    local finish_spy = spy.new(function() end)
+                    session.status_animation.stop = stop_spy
+                    session.status_animation.start = start_spy
+                    session.message_writer.write_finish_message = finish_spy
+
+                    session:_handle_input_submit("first")
+                    session:_handle_input_submit("follow-up")
+                    assert.equal(2, #prompt_callbacks)
+
+                    prompt_callbacks[case.index](nil, case.err)
+                    flush_schedule()
+
+                    assert.is_true(session.is_generating)
+                    assert.spy(stop_spy).was.called(0)
+                    assert.spy(finish_spy).was.called(1)
+                    SessionManager._start_spinner(session, "generating")
+                    assert
+                        .spy(start_spy).was
+                        .called_with(session.status_animation, "generating")
+
+                    prompt_callbacks[3 - case.index](
+                        { stopReason = "end_turn" },
+                        nil
+                    )
+                    flush_schedule()
+
+                    assert.is_false(session.is_generating)
+                    assert.spy(stop_spy).was.called(1)
+                    assert.spy(finish_spy).was.called(2)
+                end
+            )
+        end
 
         -- The completion payload is built inside a `vim.schedule`, so a tabpage
         -- captured at submit time reports a window the user may have hidden
