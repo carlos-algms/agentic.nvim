@@ -18,6 +18,7 @@ local Hooks = require("agentic.utils.hooks")
 --- @field provider_name agentic.UserConfig.ProviderName
 --- @field _is_first_message boolean
 --- @field is_generating boolean
+--- @field _pending_prompts table<table, boolean>
 --- @field widget agentic.ui.ChatWidget
 --- @field agent agentic.acp.ACPClient
 --- @field message_writer agentic.ui.MessageWriter
@@ -83,6 +84,7 @@ function SessionManager:new(agent, provider_name, on_new_session)
         provider_name = provider_name,
         _is_first_message = true,
         is_generating = false,
+        _pending_prompts = {},
         _connection_error = false,
         _destroyed = false,
         _session_creation_failed = false,
@@ -199,6 +201,7 @@ function SessionManager:_handle_connection_error()
     self._session_creation_failed = true
     SessionManager._resolve_session_ready_callbacks(self, false)
     self.is_generating = false
+    self._pending_prompts = {}
     self.status_animation:stop()
     self.message_writer:write_message(
         ACPPayloads.generate_agent_message(
@@ -663,6 +666,7 @@ function SessionManager:_handle_input_submit(input_text)
     local session_id = self.session_id
 
     self.is_generating = true
+    self._pending_prompts[prompt] = true
 
     self.agent:send_prompt(self.session_id, prompt, function(response, err)
         vim.schedule(function()
@@ -671,8 +675,11 @@ function SessionManager:_handle_input_submit(input_text)
             end
 
             self.message_writer:write_finish_message(response, err)
-            self.status_animation:stop()
-            self.is_generating = false
+            self._pending_prompts[prompt] = nil
+            self.is_generating = next(self._pending_prompts) ~= nil
+            if not self.is_generating then
+                self.status_animation:stop()
+            end
 
             --- @type agentic.UserConfig.ResponseCompleteData
             local response_hook_data = {
@@ -956,6 +963,17 @@ function SessionManager:_start_spinner(state)
     end
 end
 
+function SessionManager:stop_generation()
+    if self.session_id then
+        self.agent:stop_generation(self.session_id)
+    end
+
+    self._pending_prompts = {}
+    self.is_generating = false
+    self.permission_manager:clear()
+    self.status_animation:stop()
+end
+
 function SessionManager:add_selection_or_file_to_session()
     local added_selection = self:add_selection_to_session()
 
@@ -1021,6 +1039,7 @@ function SessionManager:destroy()
         self.session_id = nil
     end
     self.is_generating = false
+    self._pending_prompts = {}
     if self.status_animation then
         self.status_animation:stop()
     end

@@ -878,6 +878,28 @@ describe("agentic: switch_provider", function()
         assert.spy(anim_stop_spy).was.called(1)
     end)
 
+    it(
+        "stop_generation sends cancel even when is_generating is stale",
+        function()
+            local Agentic = require("agentic")
+
+            local session = create_session()
+            session.session_id = "test-session-id" --[[@as string]]
+            session.is_generating = false
+
+            -- Avoids a real RPC call
+            local stop_generation_stub =
+                track_stub(session.agent, "stop_generation")
+
+            Agentic.stop_generation()
+
+            assert.spy(stop_generation_stub).was.called(1)
+            assert
+                .spy(stop_generation_stub).was
+                .called_with(session.agent, "test-session-id")
+        end
+    )
+
     -- Creation spawns a provider subprocess. Stopping generation with nothing
     -- live used to create a session only to immediately reset it: a no-op with
     -- a real side effect.
@@ -888,6 +910,69 @@ describe("agentic: switch_provider", function()
 
         assert.equal(0, vim.tbl_count(SessionRegistry.sessions))
     end)
+
+    it("keeps a new prompt busy when cancelled prompts finish later", function()
+        local Agentic = require("agentic")
+        local session = create_session()
+        local callbacks = {}
+        local send_stub = track_stub(session.agent, "send_prompt")
+        send_stub:invokes(function(_self, _sid, _prompt, callback)
+            callbacks[#callbacks + 1] = callback
+        end)
+        local cancel_stub = track_stub(session.agent, "stop_generation")
+        local stop_spy = track_stub(session.status_animation, "stop")
+        track_stub(session.status_animation, "start")
+
+        session:_handle_input_submit("first")
+        session:_handle_input_submit("follow-up")
+        Agentic.stop_generation()
+        Agentic.stop_generation()
+        assert.is_false(session.is_generating)
+        assert.spy(cancel_stub).was.called(2)
+        assert.spy(stop_spy).was.called(2)
+
+        session:_handle_input_submit("new turn")
+        assert.equal(3, #callbacks)
+        for index = 1, 2 do
+            callbacks[index]({ stopReason = "cancelled" }, nil)
+        end
+        flush_schedule()
+
+        assert.is_true(session.is_generating)
+        assert.spy(stop_spy).was.called(2)
+
+        callbacks[3]({ stopReason = "end_turn" }, nil)
+        flush_schedule()
+        assert.is_false(session.is_generating)
+        assert.spy(stop_spy).was.called(3)
+    end)
+
+    it(
+        "finishes a new turn without waiting for cancelled prompt responses",
+        function()
+            local Agentic = require("agentic")
+            local session = create_session()
+            local callbacks = {}
+            local send_stub = track_stub(session.agent, "send_prompt")
+            send_stub:invokes(function(_self, _sid, _prompt, callback)
+                callbacks[#callbacks + 1] = callback
+            end)
+            track_stub(session.agent, "stop_generation")
+            track_stub(session.status_animation, "start")
+            local stop_spy = track_stub(session.status_animation, "stop")
+
+            session:_handle_input_submit("first")
+            Agentic.stop_generation()
+            session:_handle_input_submit("new turn")
+            assert.equal(2, #callbacks)
+
+            callbacks[2]({ stopReason = "end_turn" }, nil)
+            flush_schedule()
+
+            assert.is_false(session.is_generating)
+            assert.spy(stop_spy).was.called(2)
+        end
+    )
 
     it("delegates explicit session destruction to the registry", function()
         local Agentic = require("agentic")

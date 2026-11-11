@@ -232,13 +232,7 @@ function Agentic.stop_generation()
         return
     end
 
-    if session.is_generating and session.session_id then
-        session.agent:stop_generation(session.session_id)
-    end
-
-    session.permission_manager:clear()
-    session.is_generating = false
-    session.status_animation:stop()
+    session:stop_generation()
 end
 
 --- show a selector to restore a previous session
